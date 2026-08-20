@@ -1,0 +1,293 @@
+import { z } from "zod";
+
+/** 编辑器对外提供的三种布局模式。 */
+export const EditorModeSchema = z.enum(["compact", "full", "mobile"]);
+/** 编辑器布局模式。 */
+export type EditorMode = z.infer<typeof EditorModeSchema>;
+
+/** API 中允许使用的稳定实体标识。 */
+export const EntityIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, "标识只能包含字母、数字、下划线和连字符");
+
+/** 可安全放进 Tiptap JSON 属性中的 JSON 值。 */
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+/** Tiptap mark 的最小、可传输表示。 */
+export interface TiptapMark {
+  /** mark 名称，例如 bold、link 或 textStyle。 */
+  type: string;
+  /** 仅包含 JSON 值的受控属性。 */
+  attrs?: Record<string, JsonValue> | undefined;
+}
+
+/** Tiptap 节点的最小、可传输表示。 */
+export interface TiptapNode {
+  /** 节点名称，例如 paragraph、text 或 richImage。 */
+  type: string;
+  /** 节点属性；具体白名单由 editor-core 与 API 共同约束。 */
+  attrs?: Record<string, JsonValue> | undefined;
+  /** 递归子节点。 */
+  content?: TiptapNode[] | undefined;
+  /** 应用于当前节点的 marks。 */
+  marks?: TiptapMark[] | undefined;
+  /** 仅 text 节点允许携带的文本。 */
+  text?: string | undefined;
+}
+
+/** 任意递归 JSON 值的运行时校验器。 */
+export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number().finite(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValueSchema),
+    z.record(z.string(), JsonValueSchema),
+  ]),
+);
+
+/** Tiptap mark 的运行时校验器。 */
+export const TiptapMarkSchema: z.ZodType<TiptapMark> = z.object({
+  type: z.string().min(1).max(64),
+  attrs: z.record(z.string(), JsonValueSchema).optional(),
+}).strict();
+
+/** Tiptap 节点的递归运行时校验器。 */
+export const TiptapNodeSchema: z.ZodType<TiptapNode> = z.lazy(() =>
+  z.object({
+    type: z.string().min(1).max(64),
+    attrs: z.record(z.string(), JsonValueSchema).optional(),
+    content: z.array(TiptapNodeSchema).max(20_000).optional(),
+    marks: z.array(TiptapMarkSchema).max(64).optional(),
+    text: z.string().max(2_000_000).optional(),
+  }).strict(),
+);
+
+/** 服务端接受和返回的唯一正文格式。 */
+export const TiptapDocumentSchema = z.object({
+  type: z.literal("doc"),
+  content: z.array(TiptapNodeSchema).max(20_000).default([]),
+}).strict();
+/** 经过结构校验的 Tiptap 文档。 */
+export type TiptapDocument = z.infer<typeof TiptapDocumentSchema>;
+
+/** RFC 3339 时间字符串。 */
+export const DateTimeSchema = z.string().datetime({ offset: true });
+
+/** 当前文档及其乐观并发修订信息。 */
+export const DocumentEnvelopeSchema = z.object({
+  id: EntityIdSchema,
+  title: z.string().min(1).max(200),
+  schemaVersion: z.number().int().positive(),
+  revision: z.number().int().nonnegative(),
+  savedAt: DateTimeSchema,
+  content: TiptapDocumentSchema,
+}).strict();
+/** 当前文档快照。 */
+export type DocumentEnvelope = z.infer<typeof DocumentEnvelopeSchema>;
+
+/** 写入文档时固定使用的乐观并发请求体。 */
+export const UpdateDocumentRequestSchema = z.object({
+  schemaVersion: z.number().int().positive(),
+  baseRevision: z.number().int().nonnegative(),
+  clientMutationId: EntityIdSchema,
+  content: TiptapDocumentSchema,
+}).strict();
+/** 文档写入请求。 */
+export type UpdateDocumentRequest = z.infer<typeof UpdateDocumentRequestSchema>;
+
+/** 不可变历史版本的摘要。 */
+export const RevisionSummarySchema = z.object({
+  revision: z.number().int().nonnegative(),
+  schemaVersion: z.number().int().positive(),
+  savedAt: DateTimeSchema,
+  authorId: EntityIdSchema,
+  authorName: z.string(),
+  operation: z.enum(["seed", "update", "rollback", "suggestion"]),
+  summary: z.string(),
+  targetRevision: z.number().int().nonnegative().nullable(),
+}).strict();
+/** 历史版本摘要。 */
+export type RevisionSummary = z.infer<typeof RevisionSummarySchema>;
+
+/** 游标分页查询参数。 */
+export const CursorQuerySchema = z.object({
+  cursor: z.string().min(1).max(256).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+}).strict();
+/** 通用游标分页信息。 */
+export const PageInfoSchema = z.object({ nextCursor: z.string().nullable() }).strict();
+
+/** 历史版本分页结果。 */
+export const RevisionPageSchema = z.object({
+  items: z.array(RevisionSummarySchema),
+  pageInfo: PageInfoSchema,
+}).strict();
+/** 历史版本分页结果。 */
+export type RevisionPage = z.infer<typeof RevisionPageSchema>;
+
+/** 回滚会创建新版本，而不会删除旧版本。 */
+export const RollbackDocumentRequestSchema = z.object({
+  baseRevision: z.number().int().nonnegative(),
+  targetRevision: z.number().int().nonnegative(),
+  clientMutationId: EntityIdSchema,
+}).strict();
+/** 文档回滚请求。 */
+export type RollbackDocumentRequest = z.infer<typeof RollbackDocumentRequestSchema>;
+
+/** 统一 API 错误响应。 */
+export const ApiErrorSchema = z.object({
+  error: z.object({
+    code: z.string().min(1),
+    message: z.string().min(1),
+    details: z.record(z.string(), JsonValueSchema).optional(),
+  }).strict(),
+}).strict();
+/** 统一 API 错误响应。 */
+export type ApiError = z.infer<typeof ApiErrorSchema>;
+
+/** 已保存的本地图片元数据。 */
+export const AssetSchema = z.object({
+  id: EntityIdSchema,
+  assetId: EntityIdSchema,
+  fileName: z.string().min(1).max(255),
+  name: z.string().min(1).max(255),
+  mimeType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+  byteSize: z.number().int().positive(),
+  size: z.number().int().positive(),
+  url: z.string().min(1),
+  createdAt: DateTimeSchema,
+}).strict();
+/** 图片资产。 */
+export type Asset = z.infer<typeof AssetSchema>;
+
+/** 新建骰子所需参数。 */
+export const CreateDiceRollRequestSchema = z.object({ expression: z.string().trim().min(2).max(120), rerollOf: EntityIdSchema.nullable().optional() }).strict();
+/** 骰子投掷结果；同一 rollId 始终返回相同数据。 */
+export const DiceRollSchema = z.object({
+  rollId: EntityIdSchema,
+  rootRollId: EntityIdSchema,
+  rerollOf: EntityIdSchema.nullable(),
+  expression: z.string(),
+  rolls: z.array(z.number().finite()).max(1_000),
+  total: z.number().finite(),
+  createdAt: DateTimeSchema,
+}).strict();
+/** 持久化骰子投掷。 */
+export type DiceRollResult = z.infer<typeof DiceRollSchema>;
+
+/** 间贴排序方式。 */
+export const CommentSortSchema = z.enum(["score", "newest"]);
+/** 新增间贴回复的请求体。 */
+export const CreateCommentReplyRequestSchema = z.object({
+  parentId: EntityIdSchema.nullable().default(null),
+  body: z.string().trim().min(1).max(10_000),
+}).strict();
+/** 间贴赞踩请求；0 表示撤销。 */
+export const VoteCommentRequestSchema = z.object({ value: z.union([z.literal(-1), z.literal(0), z.literal(1)]) }).strict();
+
+/** 树状间贴回复。 */
+export interface CommentReply {
+  /** 稳定回复 ID。 */
+  id: string;
+  /** 父回复 ID；null 表示间贴根回复。 */
+  parentId: string | null;
+  /** 已裁剪到显示所需字段的作者信息。 */
+  author: { id: string; name: string; role: "author" | "reader" | "moderator"; avatar: string; coins: number; replied: boolean };
+  /** 纯文本回复正文。 */
+  body: string;
+  /** 点赞减点踩后的排序分。 */
+  score: number;
+  /** 当前查看者在服务端记录的投票。 */
+  viewerVote: -1 | 0 | 1;
+  /** 点赞总数。 */
+  upvotes: number;
+  /** 点踩总数。 */
+  downvotes: number;
+  /** Web 演示组件兼容字段，与 viewerVote 保持一致。 */
+  myVote: -1 | 0 | 1;
+  /** RFC 3339 创建时间。 */
+  createdAt: string;
+  /** 已按同一排序规则组装的后代。 */
+  children: CommentReply[];
+}
+/** 树状间贴回复的运行时校验器。 */
+export const CommentReplySchema: z.ZodType<CommentReply> = z.lazy(() => z.object({
+  id: EntityIdSchema,
+  parentId: EntityIdSchema.nullable(),
+  author: z.object({ id: EntityIdSchema, name: z.string(), role: z.enum(["author", "reader", "moderator"]), avatar: z.string(), coins: z.number().int(), replied: z.boolean() }).strict(),
+  body: z.string(),
+  score: z.number().int(),
+  viewerVote: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
+  upvotes: z.number().int().nonnegative(),
+  downvotes: z.number().int().nonnegative(),
+  myVote: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
+  createdAt: DateTimeSchema,
+  children: z.array(CommentReplySchema),
+}).strict());
+
+/** 单个段落首/尾锚点的间贴树。 */
+export const CommentThreadSchema = z.object({
+  documentId: EntityIdSchema,
+  anchorId: EntityIdSchema,
+  archived: z.boolean(),
+  total: z.number().int().nonnegative(),
+  items: z.array(CommentReplySchema),
+  pageInfo: PageInfoSchema,
+}).strict();
+/** 间贴树响应。 */
+export type CommentThread = z.infer<typeof CommentThreadSchema>;
+
+/** 演示身份。 */
+export const DemoUserSchema = z.object({ id: EntityIdSchema, name: z.string().min(1), role: z.enum(["author", "reader", "moderator"]), isFriend: z.boolean(), bio: z.string() }).strict();
+/** 演示身份。 */
+export type DemoUser = z.infer<typeof DemoUserSchema>;
+
+/** 章节目录项。 */
+export const ChapterSchema = z.object({ id: EntityIdSchema, title: z.string(), order: z.number().int().positive(), documentId: EntityIdSchema }).strict();
+/** 纠错建议。 */
+export const SuggestionSchema = z.object({ id: EntityIdSchema, documentId: EntityIdSchema, fromText: z.string(), toText: z.string(), reason: z.string(), status: z.enum(["pending", "approved", "rejected"]), authorId: EntityIdSchema, reviewerId: EntityIdSchema.nullable(), createdAt: DateTimeSchema }).strict();
+/** 读者提交纠错建议的请求体。 */
+export const CreateSuggestionRequestSchema = z.object({ fromText: z.string().min(1), toText: z.string().min(1), reason: z.string().max(500).default("") }).strict();
+/** 作者或版主审核纠错建议的请求体。 */
+export const ReviewSuggestionRequestSchema = z.object({ decision: z.enum(["approve", "reject"]), baseRevision: z.number().int().nonnegative() }).strict();
+
+/** @ 搜索结果。 */
+export const MentionSearchResultSchema = z.object({ items: z.array(DemoUserSchema) }).strict();
+/** 服务端解析非好友 @ 的请求体。 */
+export const ResolveMentionRequestSchema = z.object({ name: z.string().min(1).max(80), userId: EntityIdSchema.optional() }).strict();
+/** @ 解析结果。 */
+export const ResolveMentionResponseSchema = z.object({ resolved: z.boolean(), displayText: z.string(), user: DemoUserSchema.nullable() }).strict();
+
+/** 回复可见内容解析请求。 */
+export const ResolveReplyGateRequestSchema = z.object({ gateId: EntityIdSchema, documentId: EntityIdSchema }).strict();
+/** 回复可见内容解析结果。 */
+export const ResolveReplyGateResponseSchema = z.object({ visible: z.boolean(), content: TiptapDocumentSchema.nullable(), message: z.string() }).strict();
+
+/** 演示附件与购买条件。 */
+export const AttachmentSchema = z.object({ id: EntityIdSchema, name: z.string(), mimeType: z.string(), price: z.number().int().nonnegative(), purchased: z.boolean(), downloadUrl: z.string().nullable() }).strict();
+/** 演示附件购买结果。 */
+export const PurchaseAttachmentResponseSchema = z.object({ attachment: AttachmentSchema, buyerBalance: z.number().int(), authorIncome: z.number().int(), alreadyPurchased: z.boolean() }).strict();
+
+/** 投票选项和统计。 */
+export const PollOptionSchema = z.object({ id: EntityIdSchema, label: z.string(), votes: z.number().int().nonnegative() }).strict();
+/** 演示投票详情。 */
+export const PollSchema = z.object({ id: EntityIdSchema, question: z.string(), multiple: z.boolean(), eligible: z.boolean(), options: z.array(PollOptionSchema), viewerOptionIds: z.array(EntityIdSchema) }).strict();
+/** 提交投票的请求体。 */
+export const SubmitPollVoteRequestSchema = z.object({ optionIds: z.array(EntityIdSchema).min(1).max(10) }).strict();
+/** 实名投票记录。 */
+export const PollVoteSchema = z.object({ user: DemoUserSchema, optionIds: z.array(EntityIdSchema), createdAt: DateTimeSchema }).strict();
+/** 实名投票记录分页结果。 */
+export const PollVotePageSchema = z.object({ items: z.array(PollVoteSchema), pageInfo: PageInfoSchema }).strict();
+
+/** 图片上传适配器，方便将本地 API 替换为对象存储。 */
+export interface AssetAdapter { upload(file: File, signal?: AbortSignal): Promise<Asset>; }
+/** 骰子适配器，保证只有显式 reroll 才产生新结果。 */
+export interface DiceAdapter { create(expression: string, signal?: AbortSignal): Promise<DiceRollResult>; reroll(rollId: string, signal?: AbortSignal): Promise<DiceRollResult>; }
+/** 间贴适配器。 */
+export interface CommentAdapter { getThread(documentId: string, anchorId: string, sort: z.infer<typeof CommentSortSchema>, cursor?: string): Promise<CommentThread>; reply(documentId: string, anchorId: string, body: string, parentId?: string): Promise<CommentReply>; vote(replyId: string, value: -1 | 0 | 1): Promise<{ score: number; viewerVote: -1 | 0 | 1 }>; }
+/** 首版演示业务能力的可替换适配器。 */
+export interface DemoBusinessAdapter { searchUsers(query: string, friendsOnly?: boolean): Promise<DemoUser[]>; resolveMention(name: string, userId?: string): Promise<z.infer<typeof ResolveMentionResponseSchema>>; purchaseAttachment(id: string): Promise<z.infer<typeof PurchaseAttachmentResponseSchema>>; vote(pollId: string, optionIds: string[]): Promise<z.infer<typeof PollSchema>>; }

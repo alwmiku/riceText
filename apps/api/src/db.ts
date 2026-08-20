@@ -1,0 +1,270 @@
+import { DatabaseSync } from "node:sqlite";
+import { dirname } from "node:path";
+import { mkdirSync } from "node:fs";
+
+/** API 数据库初始化选项。 */
+export interface DatabaseOptions {
+  /** SQLite 文件路径；`:memory:` 用于快速单元测试。 */
+  path: string;
+  /** 是否写入幂等演示数据，默认 true。 */
+  seed?: boolean;
+}
+
+/** 首版完整关系模型；既有 migration 内容不可改写，后续变更应追加新版本。 */
+const migrationV1 = `
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('author', 'reader', 'moderator')),
+  is_friend INTEGER NOT NULL DEFAULT 0 CHECK (is_friend IN (0, 1)),
+  bio TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE documents (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  schema_version INTEGER NOT NULL,
+  current_revision INTEGER NOT NULL,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE document_revisions (
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL,
+  schema_version INTEGER NOT NULL,
+  content_json TEXT NOT NULL,
+  author_id TEXT NOT NULL REFERENCES users(id),
+  operation TEXT NOT NULL CHECK (operation IN ('seed', 'update', 'rollback', 'suggestion')),
+  target_revision INTEGER,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (document_id, revision)
+);
+
+CREATE TABLE document_mutations (
+  document_id TEXT NOT NULL,
+  client_mutation_id TEXT NOT NULL,
+  request_json TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  PRIMARY KEY (document_id, client_mutation_id),
+  FOREIGN KEY (document_id, revision) REFERENCES document_revisions(document_id, revision)
+);
+
+CREATE TABLE assets (
+  id TEXT PRIMARY KEY,
+  original_name TEXT NOT NULL,
+  stored_name TEXT NOT NULL UNIQUE,
+  mime_type TEXT NOT NULL,
+  byte_size INTEGER NOT NULL,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE dice_rolls (
+  id TEXT PRIMARY KEY,
+  root_roll_id TEXT NOT NULL,
+  previous_roll_id TEXT REFERENCES dice_rolls(id),
+  expression TEXT NOT NULL,
+  details_json TEXT NOT NULL,
+  total REAL NOT NULL,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE comment_threads (
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  anchor_id TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (document_id, anchor_id)
+);
+
+CREATE TABLE comment_replies (
+  id TEXT PRIMARY KEY,
+  document_id TEXT NOT NULL,
+  anchor_id TEXT NOT NULL,
+  parent_id TEXT REFERENCES comment_replies(id) ON DELETE CASCADE,
+  author_id TEXT NOT NULL REFERENCES users(id),
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (document_id, anchor_id) REFERENCES comment_threads(document_id, anchor_id)
+);
+
+CREATE INDEX comment_replies_thread_idx ON comment_replies(document_id, anchor_id, created_at DESC);
+
+CREATE TABLE comment_votes (
+  reply_id TEXT NOT NULL REFERENCES comment_replies(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  value INTEGER NOT NULL CHECK (value IN (-1, 1)),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (reply_id, user_id)
+);
+
+CREATE TABLE chapters (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  sort_order INTEGER NOT NULL,
+  document_id TEXT NOT NULL REFERENCES documents(id)
+);
+
+CREATE TABLE suggestions (
+  id TEXT PRIMARY KEY,
+  document_id TEXT NOT NULL REFERENCES documents(id),
+  from_text TEXT NOT NULL,
+  to_text TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+  author_id TEXT NOT NULL REFERENCES users(id),
+  reviewer_id TEXT REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  reviewed_at TEXT
+);
+
+CREATE TABLE reply_gates (
+  id TEXT PRIMARY KEY,
+  document_id TEXT NOT NULL REFERENCES documents(id),
+  content_json TEXT NOT NULL
+);
+
+CREATE TABLE reply_receipts (
+  document_id TEXT NOT NULL REFERENCES documents(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (document_id, user_id)
+);
+
+CREATE TABLE wallets (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  balance INTEGER NOT NULL
+);
+
+CREATE TABLE attachments (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  price INTEGER NOT NULL,
+  author_id TEXT NOT NULL REFERENCES users(id),
+  download_url TEXT NOT NULL
+);
+
+CREATE TABLE attachment_purchases (
+  attachment_id TEXT NOT NULL REFERENCES attachments(id),
+  buyer_id TEXT NOT NULL REFERENCES users(id),
+  price INTEGER NOT NULL,
+  author_income INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (attachment_id, buyer_id)
+);
+
+CREATE TABLE polls (
+  id TEXT PRIMARY KEY,
+  question TEXT NOT NULL,
+  multiple INTEGER NOT NULL CHECK (multiple IN (0, 1)),
+  minimum_role TEXT NOT NULL
+);
+
+CREATE TABLE poll_options (
+  id TEXT PRIMARY KEY,
+  poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  sort_order INTEGER NOT NULL
+);
+
+CREATE TABLE poll_votes (
+  id TEXT PRIMARY KEY,
+  poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  UNIQUE (poll_id, user_id)
+);
+
+CREATE TABLE poll_vote_options (
+  vote_id TEXT NOT NULL REFERENCES poll_votes(id) ON DELETE CASCADE,
+  option_id TEXT NOT NULL REFERENCES poll_options(id),
+  PRIMARY KEY (vote_id, option_id)
+);
+`;
+
+/** 与 Web fallback 对齐的规范 Tiptap 种子文档。 */
+const seedDocument = {
+  type: "doc" as const,
+  content: [
+    { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "雾港来信" }] },
+    { type: "paragraph", content: [{ type: "text", text: "潮声沿着旧城墙漫上来，旅人把未寄出的信压在灯下。" }, { type: "inlineCommentAnchor", attrs: { threadId: "anchor-opening", count: 2, placement: "end" } }] },
+    { type: "novelExcerpt", attrs: { variant: "desktop-book", bookTitle: "雾港来信", chapterTitle: "第一章 潮汐", author: "林见", sourceUrl: "https://example.com/books/mist-harbor" }, content: [{ type: "paragraph", content: [{ type: "text", text: "如果明天仍有雾，就沿着钟声的方向走。" }] }] },
+    { type: "paragraph", content: [{ type: "text", text: "黑幕后的句子需要悬停或点击才会显现。", marks: [{ type: "spoiler" }] }] },
+    { type: "replyGate", attrs: { gateId: "gate-bonus", prompt: "回复后查看番外片段" }, content: [{ type: "paragraph", content: [{ type: "text", text: "番外内容由服务端权限投影。" }] }] },
+    { type: "attachmentRef", attrs: { attachmentId: "attachment-sample", name: "雾港设定集.txt", mimeType: "text/plain", size: 2048, priceCoins: 10 } },
+    { type: "pollRef", attrs: { pollId: "poll-route", question: "下一章先去哪里？", multiple: false, options: [{ id: "poll-option-tower", label: "钟楼" }, { id: "poll-option-dock", label: "旧码头" }, { id: "poll-option-library", label: "潮汐图书馆" }] } },
+  ],
+};
+
+/** 在独占事务中执行一次迁移；失败时不会记录 schema version。 */
+function runMigration(db: DatabaseSync, version: number, sql: string): void {
+  const row = db.prepare("SELECT version FROM schema_migrations WHERE version = ?").get(version);
+  if (row) return;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(sql);
+    db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(version, new Date().toISOString());
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/** 幂等写入开发身份、正文和演示业务数据，重复启动不会覆盖用户修改。 */
+function seed(db: DatabaseSync): void {
+  const now = new Date().toISOString();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const insertUser = db.prepare("INSERT OR IGNORE INTO users(id, name, role, is_friend, bio) VALUES (?, ?, ?, ?, ?)");
+    insertUser.run("author", "林见", "author", 1, "《雾港来信》作者，负责章节与修订审核。");
+    insertUser.run("reader", "小满", "reader", 1, "喜欢在段落末留下间贴的读者。");
+    insertUser.run("moderator", "版务七号", "moderator", 0, "负责内容审核与版本恢复。");
+    insertUser.run("wanderer", "远舟", "reader", 0, "可由服务端解析的非好友用户。");
+
+    db.prepare("INSERT OR IGNORE INTO documents(id, title, schema_version, current_revision, created_by, created_at, updated_at) VALUES (?, ?, 1, 1, 'author', ?, ?)").run("demo-post", "雾港来信 · 第一章", now, now);
+    db.prepare("INSERT OR IGNORE INTO document_revisions(document_id, revision, schema_version, content_json, author_id, operation, target_revision, created_at) VALUES (?, 1, 1, ?, 'author', 'seed', NULL, ?)").run("demo-post", JSON.stringify(seedDocument), now);
+
+    db.prepare("INSERT OR IGNORE INTO comment_threads(document_id, anchor_id, archived, created_at) VALUES ('demo-post', 'anchor-opening', 0, ?)").run(now);
+    db.prepare("INSERT OR IGNORE INTO comment_replies(id, document_id, anchor_id, parent_id, author_id, body, created_at) VALUES ('comment-root', 'demo-post', 'anchor-opening', NULL, 'reader', '这里的钟声会不会和序章呼应？', ?)").run(now);
+    db.prepare("INSERT OR IGNORE INTO comment_replies(id, document_id, anchor_id, parent_id, author_id, body, created_at) VALUES ('comment-child', 'demo-post', 'anchor-opening', 'comment-root', 'author', '会在第三章解释钟楼的来历。', ?)").run(now);
+    db.prepare("INSERT OR IGNORE INTO comment_votes(reply_id, user_id, value, created_at) VALUES ('comment-root', 'author', 1, ?)").run(now);
+
+    db.prepare("INSERT OR IGNORE INTO chapters(id, title, sort_order, document_id) VALUES ('chapter-1', '第一章 潮汐', 1, 'demo-post')").run();
+    db.prepare("INSERT OR IGNORE INTO chapters(id, title, sort_order, document_id) VALUES ('chapter-2', '第二章 钟楼', 2, 'demo-post')").run();
+    db.prepare("INSERT OR IGNORE INTO reply_gates(id, document_id, content_json) VALUES ('gate-bonus', 'demo-post', ?)").run(JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "番外：邮差其实在第一封信到来前就见过旅人。" }] }] }));
+
+    db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('author', 100)").run();
+    db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('reader', 50)").run();
+    db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('moderator', 100)").run();
+    db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('wanderer', 20)").run();
+    db.prepare("INSERT OR IGNORE INTO attachments(id, name, mime_type, price, author_id, download_url) VALUES ('attachment-sample', '雾港设定集.txt', 'text/plain', 10, 'author', '/demo-downloads/mist-harbor.txt')").run();
+
+    db.prepare("INSERT OR IGNORE INTO polls(id, question, multiple, minimum_role) VALUES ('poll-route', '下一章先去哪里？', 0, 'reader')").run();
+    db.prepare("INSERT OR IGNORE INTO poll_options(id, poll_id, label, sort_order) VALUES ('poll-option-tower', 'poll-route', '钟楼', 1)").run();
+    db.prepare("INSERT OR IGNORE INTO poll_options(id, poll_id, label, sort_order) VALUES ('poll-option-dock', 'poll-route', '旧码头', 2)").run();
+    db.prepare("INSERT OR IGNORE INTO poll_options(id, poll_id, label, sort_order) VALUES ('poll-option-library', 'poll-route', '潮汐图书馆', 3)").run();
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/** 打开数据库、启用安全 pragma、执行迁移并可选写入幂等种子。 */
+export function createDatabase(options: DatabaseOptions): DatabaseSync {
+  if (options.path !== ":memory:") mkdirSync(dirname(options.path), { recursive: true });
+  const db = new DatabaseSync(options.path);
+  // WAL 允许读取与单写入并行；外键和 busy_timeout 防止静默脏数据及瞬时锁失败。
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
+  db.exec("PRAGMA busy_timeout = 5000");
+  db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)");
+  runMigration(db, 1, migrationV1);
+  if (options.seed !== false) seed(db);
+  return db;
+}

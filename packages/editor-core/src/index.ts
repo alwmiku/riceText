@@ -1,0 +1,16 @@
+/** Canonical Tiptap extensions, commands, and schema factory. */
+export * from './extensions.js'
+
+/** Controlled rich-text editor and reusable formatting toolbar. */
+export * from './editor.js'
+
+/** Document allowlists, validation, sanitization, and JSON helpers. */
+export * from './sanitize.js'
+
+/** Public persisted node attributes and replaceable adapter contracts. */
+export * from './types.js'
+
+/** Pure React static viewer and its interaction controller. */
+export * from './viewer.js'
+
+export type { Editor, Extensions, JSONContent } from '@tiptap/core'

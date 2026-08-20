@@ -1,0 +1,3781 @@
+openapi: 3.1.0
+info:
+  title: RiceText 论坛与小说富文本 API
+  version: 0.1.0
+  description: "Tiptap JSON、不可变版本、图片、骰子与间贴为真实实现；带 x-implementation-status: mock 的章节/@/回复可见/附件/投票接口为同契约演示适配器。"
+servers:
+  - url: http://localhost:8787
+    description: 本地开发 API
+tags:
+  - name: 文档
+    description: 文档当前态、不可变修订和乐观并发。
+  - name: 图片
+    description: 本地白名单图片上传和读取。
+  - name: 骰子
+    description: 初始化后稳定、可显式重投的跑团骰子。
+  - name: 间贴
+    description: 段落首尾锚点上的树状回复和赞踩。
+  - name: 演示业务
+    description: 未来生产契约的 SQLite 演示实现，不代表真实权限或账务。
+paths:
+  /api/documents/{documentId}:
+    get:
+      operationId: getDocument
+      tags:
+        - 文档
+      summary: 读取当前文档
+      description: |-
+        读取最新不可变修订的 Tiptap JSON。任何演示身份均可访问。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 当前文档，例如 revision 为 1 的 demo-post。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  title:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                  schemaVersion:
+                    type: integer
+                    exclusiveMinimum: 0
+                    maximum: 9007199254740991
+                  revision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  savedAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  content:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        const: doc
+                      content:
+                        default: []
+                        maxItems: 20000
+                        type: array
+                        items:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - type
+                      - content
+                    additionalProperties: false
+                required:
+                  - id
+                  - title
+                  - schemaVersion
+                  - revision
+                  - savedAt
+                  - content
+                additionalProperties: false
+        "404":
+          description: 文档不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档不存在。
+    put:
+      operationId: updateDocument
+      tags:
+        - 文档
+      summary: 保存文档并创建修订
+      description: |-
+        需要 author 或 moderator。baseRevision 过期返回 409；相同 clientMutationId 重试返回首次结果且不重复建版。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                schemaVersion:
+                  type: integer
+                  exclusiveMinimum: 0
+                  maximum: 9007199254740991
+                baseRevision:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+                clientMutationId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                content:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      const: doc
+                    content:
+                      default: []
+                      maxItems: 20000
+                      type: array
+                      items:
+                        type: object
+                        description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                        additionalProperties: true
+                  required:
+                    - type
+                    - content
+                  additionalProperties: false
+              required:
+                - schemaVersion
+                - baseRevision
+                - clientMutationId
+                - content
+              additionalProperties: false
+      responses:
+        "200":
+          description: 幂等重试命中的既有修订。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  title:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                  schemaVersion:
+                    type: integer
+                    exclusiveMinimum: 0
+                    maximum: 9007199254740991
+                  revision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  savedAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  content:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        const: doc
+                      content:
+                        default: []
+                        maxItems: 20000
+                        type: array
+                        items:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - type
+                      - content
+                    additionalProperties: false
+                required:
+                  - id
+                  - title
+                  - schemaVersion
+                  - revision
+                  - savedAt
+                  - content
+                additionalProperties: false
+        "201":
+          description: 新建的不可变修订。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  title:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                  schemaVersion:
+                    type: integer
+                    exclusiveMinimum: 0
+                    maximum: 9007199254740991
+                  revision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  savedAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  content:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        const: doc
+                      content:
+                        default: []
+                        maxItems: 20000
+                        type: array
+                        items:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - type
+                      - content
+                    additionalProperties: false
+                required:
+                  - id
+                  - title
+                  - schemaVersion
+                  - revision
+                  - savedAt
+                  - content
+                additionalProperties: false
+        "403":
+          description: 当前身份无编辑权限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份无编辑权限。
+        "409":
+          description: 当前 revision 与 baseRevision 冲突，details.currentRevision 可用于刷新。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前 revision 与 baseRevision 冲突，details.currentRevision 可用于刷新。
+        "422":
+          description: 正文包含非法节点、属性或 URL。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 正文包含非法节点、属性或 URL。
+  /api/documents/{documentId}/revisions:
+    get:
+      operationId: listRevisions
+      tags:
+        - 文档
+      summary: 分页读取版本历史
+      description: |-
+        按 revision 倒序返回；cursor 使用上一页最后一项的 revision。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: cursor
+          in: query
+          required: false
+          description: 查询参数 cursor
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+        - name: limit
+          in: query
+          required: false
+          description: 查询参数 limit
+          schema:
+            default: 20
+            type: integer
+            minimum: 1
+            maximum: 100
+          example: 20
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 不可变版本摘要页。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        revision:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        schemaVersion:
+                          type: integer
+                          exclusiveMinimum: 0
+                          maximum: 9007199254740991
+                        savedAt:
+                          type: string
+                          format: date-time
+                          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                        authorId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        authorName:
+                          type: string
+                        operation:
+                          type: string
+                          enum:
+                            - seed
+                            - update
+                            - rollback
+                            - suggestion
+                        summary:
+                          type: string
+                        targetRevision:
+                          anyOf:
+                            - type: integer
+                              minimum: 0
+                              maximum: 9007199254740991
+                            - type: "null"
+                      required:
+                        - revision
+                        - schemaVersion
+                        - savedAt
+                        - authorId
+                        - authorName
+                        - operation
+                        - summary
+                        - targetRevision
+                      additionalProperties: false
+                  pageInfo:
+                    type: object
+                    properties:
+                      nextCursor:
+                        anyOf:
+                          - type: string
+                          - type: "null"
+                    required:
+                      - nextCursor
+                    additionalProperties: false
+                required:
+                  - items
+                  - pageInfo
+                additionalProperties: false
+        "404":
+          description: 文档不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档不存在。
+  /api/documents/{documentId}/rollback:
+    post:
+      operationId: rollbackDocument
+      tags:
+        - 文档
+      summary: 回退到指定版本
+      description: |-
+        需要 author 或 moderator。回退会复制目标内容并创建新 revision，不删除任何历史。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                baseRevision:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+                targetRevision:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+                clientMutationId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+              required:
+                - baseRevision
+                - targetRevision
+                - clientMutationId
+              additionalProperties: false
+      responses:
+        "200":
+          description: 幂等重试命中的回滚结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  title:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                  schemaVersion:
+                    type: integer
+                    exclusiveMinimum: 0
+                    maximum: 9007199254740991
+                  revision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  savedAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  content:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        const: doc
+                      content:
+                        default: []
+                        maxItems: 20000
+                        type: array
+                        items:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - type
+                      - content
+                    additionalProperties: false
+                required:
+                  - id
+                  - title
+                  - schemaVersion
+                  - revision
+                  - savedAt
+                  - content
+                additionalProperties: false
+        "201":
+          description: 新创建的回滚修订。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  title:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                  schemaVersion:
+                    type: integer
+                    exclusiveMinimum: 0
+                    maximum: 9007199254740991
+                  revision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  savedAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  content:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        const: doc
+                      content:
+                        default: []
+                        maxItems: 20000
+                        type: array
+                        items:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - type
+                      - content
+                    additionalProperties: false
+                required:
+                  - id
+                  - title
+                  - schemaVersion
+                  - revision
+                  - savedAt
+                  - content
+                additionalProperties: false
+        "403":
+          description: 当前身份无回滚权限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份无回滚权限。
+        "404":
+          description: 文档或目标修订不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档或目标修订不存在。
+        "409":
+          description: baseRevision 已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: baseRevision 已过期。
+  /api/assets:
+    post:
+      operationId: uploadAsset
+      tags:
+        - 图片
+      summary: 上传本地图片
+      description: |-
+        multipart/form-data 的 file 字段；允许 PNG/JPEG/GIF/WebP，最多 8 MiB。所有已登录演示身份可上传。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: file 为待上传图片二进制。
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PNG/JPEG/GIF/WebP，最大 8 MiB
+      responses:
+        "201":
+          description: 可直接用于 richImage 节点的资产 URL。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  assetId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  fileName:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                  mimeType:
+                    type: string
+                    enum:
+                      - image/png
+                      - image/jpeg
+                      - image/gif
+                      - image/webp
+                  byteSize:
+                    type: integer
+                    exclusiveMinimum: 0
+                    maximum: 9007199254740991
+                  size:
+                    type: integer
+                    exclusiveMinimum: 0
+                    maximum: 9007199254740991
+                  url:
+                    type: string
+                    minLength: 1
+                  createdAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                required:
+                  - id
+                  - assetId
+                  - fileName
+                  - name
+                  - mimeType
+                  - byteSize
+                  - size
+                  - url
+                  - createdAt
+                additionalProperties: false
+        "413":
+          description: 图片超过大小限制。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 图片超过大小限制。
+        "415":
+          description: MIME 或文件签名不是受支持图片。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: MIME 或文件签名不是受支持图片。
+        "422":
+          description: 缺少 file 字段。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 缺少 file 字段。
+  /api/assets/{assetId}:
+    get:
+      operationId: readAsset
+      tags:
+        - 图片
+      summary: 读取图片二进制
+      description: |-
+        按资产 ID 返回原始图片，并设置 immutable 缓存头；不代理外链。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          description: 上传后返回的图片资产 ID
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 上传后返回的图片资产 ID
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 图片二进制；实际 Content-Type 来自保存的白名单 MIME。
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: 资产不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 资产不存在。
+  /api/dice:
+    post:
+      operationId: createDiceRoll
+      tags:
+        - 骰子
+      summary: 创建稳定骰子结果
+      description: |-
+        表达式由 RPG Dice Roller 解析，例如 3d5。服务端只投掷一次并持久化。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expression:
+                  type: string
+                  minLength: 2
+                  maxLength: 120
+                rerollOf:
+                  anyOf:
+                    - type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                    - type: "null"
+              required:
+                - expression
+              additionalProperties: false
+      responses:
+        "201":
+          description: 新 rollId、明细和总数，例如 3d5=12。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rollId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  rootRollId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  rerollOf:
+                    anyOf:
+                      - type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      - type: "null"
+                  expression:
+                    type: string
+                  rolls:
+                    maxItems: 1000
+                    type: array
+                    items:
+                      type: number
+                  total:
+                    type: number
+                  createdAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                required:
+                  - rollId
+                  - rootRollId
+                  - rerollOf
+                  - expression
+                  - rolls
+                  - total
+                  - createdAt
+                additionalProperties: false
+        "422":
+          description: 骰子表达式不可解析。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 骰子表达式不可解析。
+  /api/dice/{rollId}:
+    get:
+      operationId: getDiceRoll
+      tags:
+        - 骰子
+      summary: 读取稳定骰子结果
+      description: |-
+        重复读取同一 rollId 绝不会重新投掷。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: rollId
+          in: path
+          required: true
+          description: 首次投掷或重投生成的稳定 rollId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 首次投掷或重投生成的稳定 rollId
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 已持久化的原始结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rollId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  rootRollId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  rerollOf:
+                    anyOf:
+                      - type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      - type: "null"
+                  expression:
+                    type: string
+                  rolls:
+                    maxItems: 1000
+                    type: array
+                    items:
+                      type: number
+                  total:
+                    type: number
+                  createdAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                required:
+                  - rollId
+                  - rootRollId
+                  - rerollOf
+                  - expression
+                  - rolls
+                  - total
+                  - createdAt
+                additionalProperties: false
+        "404":
+          description: 骰子结果不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 骰子结果不存在。
+  /api/dice/{rollId}/reroll:
+    post:
+      operationId: rerollDice
+      tags:
+        - 骰子
+      summary: 显式重新投掷
+      description: |-
+        创建新 rollId，并通过 previousRollId/rootRollId 保留重投链。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: rollId
+          in: path
+          required: true
+          description: 首次投掷或重投生成的稳定 rollId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 首次投掷或重投生成的稳定 rollId
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "201":
+          description: 新投掷结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rollId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  rootRollId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  rerollOf:
+                    anyOf:
+                      - type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      - type: "null"
+                  expression:
+                    type: string
+                  rolls:
+                    maxItems: 1000
+                    type: array
+                    items:
+                      type: number
+                  total:
+                    type: number
+                  createdAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                required:
+                  - rollId
+                  - rootRollId
+                  - rerollOf
+                  - expression
+                  - rolls
+                  - total
+                  - createdAt
+                additionalProperties: false
+        "404":
+          description: 原骰子结果不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 原骰子结果不存在。
+  /api/documents/{documentId}/comments/{anchorId}:
+    get:
+      operationId: getCommentThread
+      tags:
+        - 间贴
+      summary: 读取间贴回复树
+      description: |-
+        只对根回复做游标分页，返回根节点的完整后代；sort=score 或 newest。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 路径参数 documentId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+          example: demo-post
+        - name: anchorId
+          in: path
+          required: true
+          description: 路径参数 anchorId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: cursor
+          in: query
+          required: false
+          description: 查询参数 cursor
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+        - name: limit
+          in: query
+          required: false
+          description: 查询参数 limit
+          schema:
+            default: 20
+            type: integer
+            minimum: 1
+            maximum: 100
+          example: 20
+        - name: sort
+          in: query
+          required: false
+          description: 查询参数 sort
+          schema:
+            default: score
+            type: string
+            enum:
+              - score
+              - newest
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 锚点的树状回复及当前身份投票。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documentId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  anchorId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  archived:
+                    type: boolean
+                  total:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                      additionalProperties: true
+                  pageInfo:
+                    type: object
+                    properties:
+                      nextCursor:
+                        anyOf:
+                          - type: string
+                          - type: "null"
+                    required:
+                      - nextCursor
+                    additionalProperties: false
+                required:
+                  - documentId
+                  - anchorId
+                  - archived
+                  - total
+                  - items
+                  - pageInfo
+                additionalProperties: false
+        "404":
+          description: 文档不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档不存在。
+  /api/documents/{documentId}/comments/{anchorId}/replies:
+    post:
+      operationId: createCommentReply
+      tags:
+        - 间贴
+      summary: 新增间贴回复
+      description: |-
+        所有演示身份可回复。parentId 为 null 创建根回复，否则创建楼中楼。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 路径参数 documentId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+          example: demo-post
+        - name: anchorId
+          in: path
+          required: true
+          description: 路径参数 anchorId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parentId:
+                  default: null
+                  anyOf:
+                    - type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                    - type: "null"
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+              required:
+                - parentId
+                - body
+              additionalProperties: false
+      responses:
+        "201":
+          description: 新回复；children 初始为空。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  parentId:
+                    anyOf:
+                      - type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      - type: "null"
+                  author:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      name:
+                        type: string
+                      role:
+                        type: string
+                        enum:
+                          - author
+                          - reader
+                          - moderator
+                      avatar:
+                        type: string
+                      coins:
+                        type: integer
+                        minimum: -9007199254740991
+                        maximum: 9007199254740991
+                      replied:
+                        type: boolean
+                    required:
+                      - id
+                      - name
+                      - role
+                      - avatar
+                      - coins
+                      - replied
+                    additionalProperties: false
+                  body:
+                    type: string
+                  score:
+                    type: integer
+                    minimum: -9007199254740991
+                    maximum: 9007199254740991
+                  viewerVote:
+                    anyOf:
+                      - type: number
+                        const: -1
+                      - type: number
+                        const: 0
+                      - type: number
+                        const: 1
+                  upvotes:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  downvotes:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  myVote:
+                    anyOf:
+                      - type: number
+                        const: -1
+                      - type: number
+                        const: 0
+                      - type: number
+                        const: 1
+                  createdAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  children:
+                    type: array
+                    items:
+                      type: object
+                      description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                      additionalProperties: true
+                required:
+                  - id
+                  - parentId
+                  - author
+                  - body
+                  - score
+                  - viewerVote
+                  - upvotes
+                  - downvotes
+                  - myVote
+                  - createdAt
+                  - children
+                additionalProperties: false
+        "404":
+          description: 文档或父回复不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档或父回复不存在。
+        "409":
+          description: 锚点已随正文删除并归档。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 锚点已随正文删除并归档。
+  /api/comments/replies/{replyId}/vote:
+    put:
+      operationId: voteComment
+      tags:
+        - 间贴
+      summary: 赞、踩或撤销
+      description: |-
+        value=1 点赞、-1 点踩、0 撤销；每个身份对每条回复只有一票。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: replyId
+          in: path
+          required: true
+          description: 路径参数 replyId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                value:
+                  anyOf:
+                    - type: number
+                      const: -1
+                    - type: number
+                      const: 0
+                    - type: number
+                      const: 1
+              required:
+                - value
+              additionalProperties: false
+      responses:
+        "200":
+          description: 更新后的净赞数、赞踩计数和当前投票。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  score:
+                    type: integer
+                    minimum: -9007199254740991
+                    maximum: 9007199254740991
+                  viewerVote:
+                    anyOf:
+                      - type: number
+                        const: -1
+                      - type: number
+                        const: 0
+                      - type: number
+                        const: 1
+                  upvotes:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  downvotes:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  myVote:
+                    anyOf:
+                      - type: number
+                        const: -1
+                      - type: number
+                        const: 0
+                      - type: number
+                        const: 1
+                required:
+                  - score
+                  - viewerVote
+                  - upvotes
+                  - downvotes
+                  - myVote
+                additionalProperties: false
+        "404":
+          description: 回复不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 回复不存在。
+  /api/demo/session:
+    get:
+      operationId: getDemoSession
+      tags:
+        - 演示业务
+      summary: 读取当前演示身份
+      description: |-
+        由 x-demo-user 请求头选择 author、reader 或 moderator；默认 reader。仅供首版开发。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 当前身份和可切换身份。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      name:
+                        type: string
+                        minLength: 1
+                      role:
+                        type: string
+                        enum:
+                          - author
+                          - reader
+                          - moderator
+                      isFriend:
+                        type: boolean
+                      bio:
+                        type: string
+                    required:
+                      - id
+                      - name
+                      - role
+                      - isFriend
+                      - bio
+                    additionalProperties: false
+                  available:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        name:
+                          type: string
+                          minLength: 1
+                        role:
+                          type: string
+                          enum:
+                            - author
+                            - reader
+                            - moderator
+                        isFriend:
+                          type: boolean
+                        bio:
+                          type: string
+                      required:
+                        - id
+                        - name
+                        - role
+                        - isFriend
+                        - bio
+                      additionalProperties: false
+                required:
+                  - current
+                  - available
+                additionalProperties: false
+      x-implementation-status: mock
+  /api/demo/chapters:
+    get:
+      operationId: listChapters
+      tags:
+        - 演示业务
+      summary: 读取章节目录
+      description: |-
+        演示书籍目录，未来由真实书籍服务实现。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 按 order 升序的章节。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        title:
+                          type: string
+                        order:
+                          type: integer
+                          exclusiveMinimum: 0
+                          maximum: 9007199254740991
+                        documentId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      required:
+                        - id
+                        - title
+                        - order
+                        - documentId
+                      additionalProperties: false
+                required:
+                  - items
+                additionalProperties: false
+      x-implementation-status: mock
+  /api/demo/documents/{documentId}/suggestions:
+    get:
+      operationId: listSuggestions
+      tags:
+        - 演示业务
+      summary: 读取纠错建议
+      description: |-
+        作者与版主可看到全部状态；读者仅看到自己提交的建议。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 纠错建议列表。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        documentId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        fromText:
+                          type: string
+                        toText:
+                          type: string
+                        reason:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                            - pending
+                            - approved
+                            - rejected
+                        authorId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        reviewerId:
+                          anyOf:
+                            - type: string
+                              minLength: 1
+                              maxLength: 128
+                              pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                            - type: "null"
+                        createdAt:
+                          type: string
+                          format: date-time
+                          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                      required:
+                        - id
+                        - documentId
+                        - fromText
+                        - toText
+                        - reason
+                        - status
+                        - authorId
+                        - reviewerId
+                        - createdAt
+                      additionalProperties: false
+                required:
+                  - items
+                additionalProperties: false
+        "404":
+          description: 文档不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档不存在。
+      x-implementation-status: mock
+    post:
+      operationId: createSuggestion
+      tags:
+        - 演示业务
+      summary: 提交纠错建议
+      description: |-
+        读者提交待审核文字替换；未审核内容不会写入正文。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fromText:
+                  type: string
+                  minLength: 1
+                toText:
+                  type: string
+                  minLength: 1
+                reason:
+                  default: ""
+                  type: string
+                  maxLength: 500
+              required:
+                - fromText
+                - toText
+                - reason
+              additionalProperties: false
+      responses:
+        "201":
+          description: pending 状态建议。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  documentId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  fromText:
+                    type: string
+                  toText:
+                    type: string
+                  reason:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - pending
+                      - approved
+                      - rejected
+                  authorId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  reviewerId:
+                    anyOf:
+                      - type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      - type: "null"
+                  createdAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                required:
+                  - id
+                  - documentId
+                  - fromText
+                  - toText
+                  - reason
+                  - status
+                  - authorId
+                  - reviewerId
+                  - createdAt
+                additionalProperties: false
+        "404":
+          description: 文档不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档不存在。
+      x-implementation-status: mock
+  /api/demo/suggestions/{suggestionId}:
+    patch:
+      operationId: reviewSuggestion
+      tags:
+        - 演示业务
+      summary: 审核纠错建议
+      description: |-
+        仅 author/moderator。approve 会替换当前正文第一次匹配文字并创建 operation=suggestion 的真实修订；reject 只更新建议状态。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: suggestionId
+          in: path
+          required: true
+          description: 路径参数 suggestionId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision:
+                  type: string
+                  enum:
+                    - approve
+                    - reject
+                baseRevision:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+              required:
+                - decision
+                - baseRevision
+              additionalProperties: false
+      responses:
+        "200":
+          description: 审核后的建议和可选新文档修订。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestion:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      documentId:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      fromText:
+                        type: string
+                      toText:
+                        type: string
+                      reason:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - pending
+                          - approved
+                          - rejected
+                      authorId:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      reviewerId:
+                        anyOf:
+                          - type: string
+                            minLength: 1
+                            maxLength: 128
+                            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                          - type: "null"
+                      createdAt:
+                        type: string
+                        format: date-time
+                        pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                    required:
+                      - id
+                      - documentId
+                      - fromText
+                      - toText
+                      - reason
+                      - status
+                      - authorId
+                      - reviewerId
+                      - createdAt
+                    additionalProperties: false
+                  document:
+                    anyOf:
+                      - type: object
+                        properties:
+                          id:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                          title:
+                            type: string
+                            minLength: 1
+                            maxLength: 200
+                          schemaVersion:
+                            type: integer
+                            exclusiveMinimum: 0
+                            maximum: 9007199254740991
+                          revision:
+                            type: integer
+                            minimum: 0
+                            maximum: 9007199254740991
+                          savedAt:
+                            type: string
+                            format: date-time
+                            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                          content:
+                            type: object
+                            properties:
+                              type:
+                                type: string
+                                const: doc
+                              content:
+                                default: []
+                                maxItems: 20000
+                                type: array
+                                items:
+                                  type: object
+                                  description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                                  additionalProperties: true
+                            required:
+                              - type
+                              - content
+                            additionalProperties: false
+                        required:
+                          - id
+                          - title
+                          - schemaVersion
+                          - revision
+                          - savedAt
+                          - content
+                        additionalProperties: false
+                      - type: "null"
+                required:
+                  - suggestion
+                  - document
+                additionalProperties: false
+        "403":
+          description: 当前身份不可审核。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份不可审核。
+        "404":
+          description: 建议不存在或待替换文字已不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 建议不存在或待替换文字已不存在。
+        "409":
+          description: 建议已审核或 baseRevision 过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 建议已审核或 baseRevision 过期。
+      x-implementation-status: mock
+  /api/demo/users/search:
+    get:
+      operationId: searchMentionUsers
+      tags:
+        - 演示业务
+      summary: 搜索 @ 用户
+      description: |-
+        q 同时匹配名称和 ID；friendsOnly=true 仅返回当前身份好友。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: 查询参数 q
+          schema:
+            default: ""
+            type: string
+            maxLength: 80
+        - name: friendsOnly
+          in: query
+          required: false
+          description: 查询参数 friendsOnly
+          schema:
+            default: false
+            type: boolean
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 最多 20 个候选用户。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        name:
+                          type: string
+                          minLength: 1
+                        role:
+                          type: string
+                          enum:
+                            - author
+                            - reader
+                            - moderator
+                        isFriend:
+                          type: boolean
+                        bio:
+                          type: string
+                      required:
+                        - id
+                        - name
+                        - role
+                        - isFriend
+                        - bio
+                      additionalProperties: false
+                required:
+                  - items
+                additionalProperties: false
+      x-implementation-status: mock
+  /api/demo/mentions/resolve:
+    post:
+      operationId: resolveMention
+      tags:
+        - 演示业务
+      summary: 服务端解析 @
+      description: |-
+        发送时按可选 ID 或精确名称解析非好友；失败时客户端应渲染普通文本。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                userId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+              required:
+                - name
+              additionalProperties: false
+      responses:
+        "200":
+          description: resolved 表示是否使用 @ 成功样式。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resolved:
+                    type: boolean
+                  displayText:
+                    type: string
+                  user:
+                    anyOf:
+                      - type: object
+                        properties:
+                          id:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                          name:
+                            type: string
+                            minLength: 1
+                          role:
+                            type: string
+                            enum:
+                              - author
+                              - reader
+                              - moderator
+                          isFriend:
+                            type: boolean
+                          bio:
+                            type: string
+                        required:
+                          - id
+                          - name
+                          - role
+                          - isFriend
+                          - bio
+                        additionalProperties: false
+                      - type: "null"
+                required:
+                  - resolved
+                  - displayText
+                  - user
+                additionalProperties: false
+      x-implementation-status: mock
+  /api/demo/reply-gates/resolve:
+    post:
+      operationId: resolveReplyGate
+      tags:
+        - 演示业务
+      summary: 解析回复可见内容
+      description: |-
+        按服务端记录的回复关系返回内容；作者和版主始终可见。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                gateId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                documentId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+              required:
+                - gateId
+                - documentId
+              additionalProperties: false
+      responses:
+        "200":
+          description: 不可见时 content 为 null。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  visible:
+                    type: boolean
+                  content:
+                    anyOf:
+                      - type: object
+                        properties:
+                          type:
+                            type: string
+                            const: doc
+                          content:
+                            default: []
+                            maxItems: 20000
+                            type: array
+                            items:
+                              type: object
+                              description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                              additionalProperties: true
+                        required:
+                          - type
+                          - content
+                        additionalProperties: false
+                      - type: "null"
+                  message:
+                    type: string
+                required:
+                  - visible
+                  - content
+                  - message
+                additionalProperties: false
+        "404":
+          description: gateId 不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: gateId 不存在。
+      x-implementation-status: mock
+  /api/demo/attachments/{attachmentId}:
+    get:
+      operationId: getAttachment
+      tags:
+        - 演示业务
+      summary: 读取附件购买状态
+      description: |-
+        未购买时隐藏 downloadUrl；作者和版主直接具备权限。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: attachmentId
+          in: path
+          required: true
+          description: 路径参数 attachmentId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 附件价格和当前身份权益。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  name:
+                    type: string
+                  mimeType:
+                    type: string
+                  price:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  purchased:
+                    type: boolean
+                  downloadUrl:
+                    anyOf:
+                      - type: string
+                      - type: "null"
+                required:
+                  - id
+                  - name
+                  - mimeType
+                  - price
+                  - purchased
+                  - downloadUrl
+                additionalProperties: false
+        "404":
+          description: 附件不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 附件不存在。
+      x-implementation-status: mock
+  /api/demo/attachments/{attachmentId}/purchase:
+    post:
+      operationId: purchaseAttachment
+      tags:
+        - 演示业务
+      summary: 购买附件
+      description: |-
+        演示金币账务；重复购买幂等，首次购买扣款并按售价 70% 向作者入账。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: attachmentId
+          in: path
+          required: true
+          description: 路径参数 attachmentId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 已购买或重复购买结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attachment:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      name:
+                        type: string
+                      mimeType:
+                        type: string
+                      price:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      purchased:
+                        type: boolean
+                      downloadUrl:
+                        anyOf:
+                          - type: string
+                          - type: "null"
+                    required:
+                      - id
+                      - name
+                      - mimeType
+                      - price
+                      - purchased
+                      - downloadUrl
+                    additionalProperties: false
+                  buyerBalance:
+                    type: integer
+                    minimum: -9007199254740991
+                    maximum: 9007199254740991
+                  authorIncome:
+                    type: integer
+                    minimum: -9007199254740991
+                    maximum: 9007199254740991
+                  alreadyPurchased:
+                    type: boolean
+                required:
+                  - attachment
+                  - buyerBalance
+                  - authorIncome
+                  - alreadyPurchased
+                additionalProperties: false
+        "402":
+          description: 金币不足。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 金币不足。
+        "404":
+          description: 附件不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 附件不存在。
+      x-implementation-status: mock
+  /api/demo/polls/{pollId}:
+    get:
+      operationId: getPoll
+      tags:
+        - 演示业务
+      summary: 读取投票统计
+      description: |-
+        返回当前身份资格、已选选项和实时计数。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: pollId
+          in: path
+          required: true
+          description: 路径参数 pollId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 投票详情。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  question:
+                    type: string
+                  multiple:
+                    type: boolean
+                  eligible:
+                    type: boolean
+                  options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        label:
+                          type: string
+                        votes:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                      required:
+                        - id
+                        - label
+                        - votes
+                      additionalProperties: false
+                  viewerOptionIds:
+                    type: array
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                required:
+                  - id
+                  - question
+                  - multiple
+                  - eligible
+                  - options
+                  - viewerOptionIds
+                additionalProperties: false
+        "404":
+          description: 投票不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 投票不存在。
+      x-implementation-status: mock
+  /api/demo/polls/{pollId}/votes:
+    post:
+      operationId: submitPollVote
+      tags:
+        - 演示业务
+      summary: 提交或改投
+      description: |-
+        满足资格的用户可投；单选投票只能提交一个 optionId，重复提交会更新选择。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: pollId
+          in: path
+          required: true
+          description: 路径参数 pollId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                optionIds:
+                  minItems: 1
+                  maxItems: 10
+                  type: array
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+              required:
+                - optionIds
+              additionalProperties: false
+      responses:
+        "200":
+          description: 更新后的投票详情。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  question:
+                    type: string
+                  multiple:
+                    type: boolean
+                  eligible:
+                    type: boolean
+                  options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        label:
+                          type: string
+                        votes:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                      required:
+                        - id
+                        - label
+                        - votes
+                      additionalProperties: false
+                  viewerOptionIds:
+                    type: array
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                required:
+                  - id
+                  - question
+                  - multiple
+                  - eligible
+                  - options
+                  - viewerOptionIds
+                additionalProperties: false
+        "403":
+          description: 当前身份不满足投票要求。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份不满足投票要求。
+        "404":
+          description: 投票或选项不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 投票或选项不存在。
+        "422":
+          description: 选项数量不符合单选/多选要求。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 选项数量不符合单选/多选要求。
+      x-implementation-status: mock
+    get:
+      operationId: listPollVotes
+      tags:
+        - 演示业务
+      summary: 分页读取实名投票
+      description: |-
+        按投票时间倒序，cursor 为上一页最后一条记录 ID。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。
+      parameters:
+        - name: pollId
+          in: path
+          required: true
+          description: 路径参数 pollId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: cursor
+          in: query
+          required: false
+          description: 查询参数 cursor
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+        - name: limit
+          in: query
+          required: false
+          description: 查询参数 limit
+          schema:
+            default: 20
+            type: integer
+            minimum: 1
+            maximum: 100
+          example: 20
+        - name: x-demo-user
+          in: header
+          required: false
+          description: 演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 实名用户与所选 optionId。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              minLength: 1
+                              maxLength: 128
+                              pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                            name:
+                              type: string
+                              minLength: 1
+                            role:
+                              type: string
+                              enum:
+                                - author
+                                - reader
+                                - moderator
+                            isFriend:
+                              type: boolean
+                            bio:
+                              type: string
+                          required:
+                            - id
+                            - name
+                            - role
+                            - isFriend
+                            - bio
+                          additionalProperties: false
+                        optionIds:
+                          type: array
+                          items:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        createdAt:
+                          type: string
+                          format: date-time
+                          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                      required:
+                        - user
+                        - optionIds
+                        - createdAt
+                      additionalProperties: false
+                  pageInfo:
+                    type: object
+                    properties:
+                      nextCursor:
+                        anyOf:
+                          - type: string
+                          - type: "null"
+                    required:
+                      - nextCursor
+                    additionalProperties: false
+                required:
+                  - items
+                  - pageInfo
+                additionalProperties: false
+        "404":
+          description: 投票不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 投票不存在。
+      x-implementation-status: mock
