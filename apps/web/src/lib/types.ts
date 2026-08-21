@@ -1,4 +1,9 @@
-import type { DiceRollAttributes, EditorMode as CoreEditorMode, JSONContent, UploadedAsset as CoreUploadedAsset } from '@ricetext/editor-core';
+import type {
+  DiceRollAttributes,
+  EditorMode as CoreEditorMode,
+  JSONContent,
+  UploadedAsset as CoreUploadedAsset,
+} from "@ricetext/editor-core";
 
 /** 与 editor-core 共用的 Tiptap/ProseMirror JSON 类型。 */
 export type RichTextNode = JSONContent;
@@ -21,7 +26,7 @@ export interface DocumentEnvelope {
   /** 唯一权威正文格式。 */
   content: RichTextNode;
   /** 当前副本的落点；local-demo 表示 API 不可达时的本机演示副本。 */
-  storage?: 'server' | 'local-demo';
+  storage?: "server" | "local-demo";
 }
 
 /** 单条不可变历史版本摘要。 */
@@ -37,7 +42,8 @@ export interface RevisionSummary {
 }
 
 /** 编辑器保存状态，供宿主页面显示而不依赖实现细节。 */
-export type SaveState = 'loading' | 'saved' | 'dirty' | 'saving' | 'conflict' | 'offline' | 'error';
+export type SaveState =
+  "loading" | "saved" | "dirty" | "saving" | "conflict" | "offline" | "error";
 
 /** 用于独立演示权限、金币和回复状态的身份。 */
 export interface SeedIdentity {
@@ -46,7 +52,7 @@ export interface SeedIdentity {
   /** 显示名。 */
   name: string;
   /** 决定编辑、投票和审核能力的角色。 */
-  role: 'author' | 'reader' | 'moderator';
+  role: "author" | "reader" | "moderator";
   /** 无图片时显示的头像文字。 */
   avatar: string;
   /** 附件购买演示余额。 */

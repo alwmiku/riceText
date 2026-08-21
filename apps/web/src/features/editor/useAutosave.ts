@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError, saveDocument } from '../../lib/api';
-import { createId } from '../../lib/utils';
-import type { DocumentEnvelope, RichTextNode, SaveState } from '../../lib/types';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ApiError, saveDocument } from "../../lib/api";
+import { createId } from "../../lib/utils";
+import type {
+  DocumentEnvelope,
+  RichTextNode,
+  SaveState,
+} from "../../lib/types";
 
 /** 自动保存对页面暴露的只读状态与显式操作。 */
 export interface AutosaveResult {
@@ -36,11 +40,16 @@ export interface AutosaveOptions {
  *
  * 请求永不并发：输入发生在请求期间时，后一代会在前一请求完成后使用新的 revision。
  */
-export function useAutosave({ document, content, generation, onSaved }: AutosaveOptions): AutosaveResult {
-  const [state, setState] = useState<SaveState>('saved');
+export function useAutosave({
+  document,
+  content,
+  generation,
+  onSaved,
+}: AutosaveOptions): AutosaveResult {
+  const [state, setState] = useState<SaveState>("saved");
   const [revision, setRevision] = useState(document.revision);
   const [savedAt, setSavedAt] = useState(document.savedAt);
-  const [conflictMessage, setConflictMessage] = useState('');
+  const [conflictMessage, setConflictMessage] = useState("");
   const revisionRef = useRef(document.revision);
   const latestRef = useRef({ content, generation });
   const savedGeneration = useRef(generation);
@@ -60,14 +69,18 @@ export function useAutosave({ document, content, generation, onSaved }: Autosave
     setSavedAt(document.savedAt);
     savedGeneration.current = generation;
     failedGeneration.current = null;
-    setState(document.storage === 'local-demo' ? 'offline' : 'saved');
+    setState(document.storage === "local-demo" ? "offline" : "saved");
   }, [document.id, document.revision, document.savedAt, document.storage]);
 
   const enqueue = useCallback(async () => {
     const snapshot = latestRef.current;
     // 同一代已经保存或明确失败时不重复提交，防止错误状态形成无限重试循环。
-    if (snapshot.generation <= savedGeneration.current || snapshot.generation === failedGeneration.current) return;
-    setState('saving');
+    if (
+      snapshot.generation <= savedGeneration.current ||
+      snapshot.generation === failedGeneration.current
+    )
+      return;
+    setState("saving");
     // Promise 链保证任意时刻只有一个 PUT；catch 先清除上一请求的拒绝状态。
     queueRef.current = queueRef.current
       .catch(() => undefined)
@@ -75,7 +88,7 @@ export function useAutosave({ document, content, generation, onSaved }: Autosave
         const result = await saveDocument(document.id, {
           schemaVersion: document.schemaVersion,
           baseRevision: revisionRef.current,
-          clientMutationId: createId('save'),
+          clientMutationId: createId("save"),
           content: snapshot.content,
         });
         revisionRef.current = result.revision;
@@ -83,18 +96,28 @@ export function useAutosave({ document, content, generation, onSaved }: Autosave
         failedGeneration.current = null;
         setRevision(result.revision);
         setSavedAt(result.savedAt);
-        setState(result.storage === 'local-demo' ? 'offline' : snapshot.generation === latestRef.current.generation ? 'saved' : 'dirty');
+        setState(
+          result.storage === "local-demo"
+            ? "offline"
+            : snapshot.generation === latestRef.current.generation
+              ? "saved"
+              : "dirty",
+        );
         onSavedRef.current?.(result);
       })
       .catch((error: unknown) => {
         if (error instanceof ApiError && error.status === 409) {
           // 409 必须保留本地正文并等待用户决策，绝不自动覆盖服务器版本。
-          setConflictMessage('服务器已有更新版本。本地内容仍保留，请比较后选择加载最新版或继续复制。');
-          setState('conflict');
+          setConflictMessage(
+            "服务器已有更新版本。本地内容仍保留，请比较后选择加载最新版或继续复制。",
+          );
+          setState("conflict");
         } else {
           failedGeneration.current = snapshot.generation;
-          setConflictMessage(error instanceof Error ? error.message : '自动保存失败');
-          setState('error');
+          setConflictMessage(
+            error instanceof Error ? error.message : "自动保存失败",
+          );
+          setState("error");
         }
       });
     await queueRef.current;
@@ -102,22 +125,33 @@ export function useAutosave({ document, content, generation, onSaved }: Autosave
 
   // 新编辑代在静默 1.2 秒后入队；卸载或继续输入会取消旧定时器。
   useEffect(() => {
-    if (generation <= savedGeneration.current || state === 'conflict' || (state === 'error' && generation === failedGeneration.current)) return;
-    setState('dirty');
+    if (
+      generation <= savedGeneration.current ||
+      state === "conflict" ||
+      (state === "error" && generation === failedGeneration.current)
+    )
+      return;
+    setState("dirty");
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => void enqueue(), 1200);
-    return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); };
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    };
   }, [enqueue, generation, state]);
 
   return {
-    state, revision, savedAt, conflictMessage, flush: enqueue,
+    state,
+    revision,
+    savedAt,
+    conflictMessage,
+    flush: enqueue,
     acceptLatest(latestRevision) {
       // 只更新并发基线，不在这里改正文；正文取舍由冲突 UI 的用户操作负责。
       revisionRef.current = latestRevision;
       failedGeneration.current = null;
       setRevision(latestRevision);
-      setConflictMessage('');
-      setState('dirty');
+      setConflictMessage("");
+      setState("dirty");
     },
   };
 }
