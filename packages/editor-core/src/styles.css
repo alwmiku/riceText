@@ -469,6 +469,11 @@
   border-radius: 6px;
 }
 
+.rt-attachment.ProseMirror-selectednode {
+  outline: 2px solid var(--rt-primary);
+  outline-offset: 2px;
+}
+
 .rt-attachment__name,
 .rt-attachment small {
   min-width: 0;

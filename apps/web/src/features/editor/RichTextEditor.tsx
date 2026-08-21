@@ -2,7 +2,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { editorExtensions } from '@ricetext/editor-core';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import {
-  AlignCenter, AlignLeft, AlignRight, AtSign, Bold, ChevronDown, Dice5, EyeOff, Heading1, Heading2,
+  AlignCenter, AlignLeft, AlignRight, AtSign, Bold, ChevronDown, Dice5, EyeOff, FileText, Heading1, Heading2,
   ImagePlus, Italic, Link2, List, ListOrdered, MessageCirclePlus, MoreHorizontal, Quote, Redo2,
   Send, TextQuote, Underline as UnderlineIcon, Undo2, UnlockKeyhole,
 } from 'lucide-react';
@@ -10,7 +10,7 @@ import { useEffect, useMemo, useReducer, useState } from 'react';
 import { Button, Dialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, IconButton } from '../../components/ui';
 import type { EditorMode, RichTextNode } from '../../lib/types';
 import { createId } from '../../lib/utils';
-import { DiceDialog, ExcerptDialog, ImageDialog, MentionDialog } from './dialogs';
+import { AttachmentDialog, DiceDialog, ExcerptDialog, ImageDialog, MentionDialog } from './dialogs';
 
 /** RichTextEditor 的稳定公共属性；宿主只需持有 JSON，不接触 ProseMirror 实例。 */
 export interface RichTextEditorProps {
@@ -39,6 +39,8 @@ function Toolbar({ editor, condensed = false }: { editor: Editor | null; condens
   const [imageAssetId, setImageAssetId] = useState<string | null>(null);
   const [excerptOpen, setExcerptOpen] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
+  const [attachmentOpen, setAttachmentOpen] = useState(false);
+  const [attachmentInitial, setAttachmentInitial] = useState<{ name: string; mimeType: string; size: number; priceCoins: number } | null>(null);
   const [, forceSelectionRender] = useReducer((value: number) => value + 1, 0);
   useEffect(() => {
     if (!editor) return undefined;
@@ -81,6 +83,22 @@ function Toolbar({ editor, condensed = false }: { editor: Editor | null; condens
     }
     setImageOpen(true);
   };
+  const openAttachmentDialog = () => {
+    const attrs = editor.getAttributes('attachmentRef') as { attachmentId?: string; name?: string; mimeType?: string; size?: number; priceCoins?: number } | undefined;
+    const selection = editor.state.selection as { node?: { type?: { name?: string } } };
+    const isAttachmentSelected = editor.isActive('attachmentRef') || selection.node?.type?.name === 'attachmentRef';
+    if (isAttachmentSelected && attrs && typeof attrs.name === 'string') {
+      setAttachmentInitial({
+        name: attrs.name,
+        mimeType: attrs.mimeType ?? 'application/octet-stream',
+        size: attrs.size ?? 0,
+        priceCoins: attrs.priceCoins ?? 0,
+      });
+    } else {
+      setAttachmentInitial(null);
+    }
+    setAttachmentOpen(true);
+  };
 
   return <>
     <div className="editor-toolbar" role="toolbar" aria-label="富文本工具栏">
@@ -111,9 +129,10 @@ function Toolbar({ editor, condensed = false }: { editor: Editor | null; condens
         {!condensed && <IconButton label="链接" active={editor.isActive('link')} onClick={addLink}><Link2 size={16} /></IconButton>}
         <IconButton label="图片" onClick={openImageDialog}><ImagePlus size={16} /></IconButton>
         <IconButton label="骰子" onClick={() => setDiceOpen(true)}><Dice5 size={16} /></IconButton>
+        <IconButton label="附件" onClick={openAttachmentDialog}><FileText size={16} /></IconButton>
         {!condensed && <><IconButton label="间贴锚点" onClick={() => insert({ type: 'inlineCommentAnchor', attrs: { threadId: createId('thread'), count: 0, placement: 'end' } })}><MessageCirclePlus size={16} /></IconButton><IconButton label="@ 用户" onClick={() => setMentionOpen(true)}><AtSign size={16} /></IconButton><IconButton label="黑幕" active={editor.isActive('spoiler')} onClick={() => editor.chain().focus().toggleSpoiler().run()}><EyeOff size={16} /></IconButton></>}
       </span>
-      {!condensed && <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8" aria-label="更多插入"><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setExcerptOpen(true)}><TextQuote size={15} />小说摘录</DropdownMenuItem><DropdownMenuItem onSelect={insertGate}><UnlockKeyhole size={15} />回复后可见</DropdownMenuItem><DropdownMenuItem onSelect={() => insert({ type: 'attachmentRef', attrs: { attachmentId: createId('attachment'), name: '章节设定集.zip', mimeType: 'application/zip', size: 2840000, priceCoins: 20 } })}><ImagePlus size={15} />附件引用</DropdownMenuItem><DropdownMenuItem onSelect={() => insert({ type: 'pollRef', attrs: { pollId: createId('poll'), question: '下一章先跟随哪位角色？', multiple: false, options: [{ id: 'keeper', label: '灯塔守望人' }, { id: 'postman', label: '失踪的邮差' }, { id: 'clerk', label: '港务局记录员' }] } })}><List size={15} />投票</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+      {!condensed && <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8" aria-label="更多插入"><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setExcerptOpen(true)}><TextQuote size={15} />小说摘录</DropdownMenuItem><DropdownMenuItem onSelect={insertGate}><UnlockKeyhole size={15} />回复后可见</DropdownMenuItem><DropdownMenuItem onSelect={openAttachmentDialog}><FileText size={15} />附件引用</DropdownMenuItem><DropdownMenuItem onSelect={() => insert({ type: 'pollRef', attrs: { pollId: createId('poll'), question: '下一章先跟随哪位角色？', multiple: false, options: [{ id: 'keeper', label: '灯塔守望人' }, { id: 'postman', label: '失踪的邮差' }, { id: 'clerk', label: '港务局记录员' }] } })}><List size={15} />投票</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
     </div>
     <DiceDialog open={diceOpen} onOpenChange={setDiceOpen} onInsert={(result) => insert({ type: 'diceRoll', attrs: result })} />
     <ImageDialog open={imageOpen} onOpenChange={setImageOpen} initial={imageInitial ?? undefined} onInsert={(asset, values) => {
@@ -122,6 +141,13 @@ function Toolbar({ editor, condensed = false }: { editor: Editor | null; condens
         editor.chain().focus().updateAttributes('richImage', { assetId: nextAssetId, ...values }).run();
       } else {
         insert({ type: 'richImage', attrs: { assetId: asset?.assetId ?? null, ...values } });
+      }
+    }} />
+    <AttachmentDialog open={attachmentOpen} onOpenChange={setAttachmentOpen} initial={attachmentInitial ?? undefined} onInsert={(values) => {
+      if (attachmentInitial) {
+        editor.chain().focus().updateAttributes('attachmentRef', values).run();
+      } else {
+        insert({ type: 'attachmentRef', attrs: { attachmentId: createId('attachment'), ...values } });
       }
     }} />
     <ExcerptDialog open={excerptOpen} onOpenChange={setExcerptOpen} onInsert={(values) => insert({ type: 'novelExcerpt', attrs: { bookTitle: values.bookTitle, chapterTitle: values.chapterTitle, author: values.author, sourceUrl: values.sourceUrl || null, variant: values.variant }, content: [{ type: 'paragraph', content: [{ type: 'text', text: values.text }] }] })} />
