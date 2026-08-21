@@ -2,10 +2,20 @@ import '@testing-library/jest-dom/vitest'
 
 import type { JSONContent } from '@tiptap/core'
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
-import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { RichTextViewer, useRichTextViewerController } from './viewer.js'
+
+beforeAll(() => {
+  Object.defineProperty(Range.prototype, 'getClientRects', {
+    configurable: true,
+    value: () => ({ length: 0, item: () => null, [Symbol.iterator]: function* () { /* empty */ } }),
+  })
+  Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => new DOMRect(0, 0, 0, 0),
+  })
+})
 
 const interactiveDocument: JSONContent = {
   type: 'doc',
@@ -45,21 +55,21 @@ const interactiveDocument: JSONContent = {
 }
 
 describe('RichTextViewer', () => {
-  it('renders ordinary static markup without editor surfaces', () => {
-    const html = renderToStaticMarkup(<RichTextViewer content={{
+  it('renders read-only ProseMirror content without editor surfaces', async () => {
+    const { container } = render(<RichTextViewer content={{
       type: 'doc',
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Read only', marks: [{ type: 'bold' }] }] }],
     }} />)
 
-    expect(html).toContain('<article')
-    expect(html).toContain('<strong>Read only</strong>')
-    expect(html).not.toContain('contenteditable')
-    expect(html).not.toContain('ProseMirror')
-    expect(html).not.toContain('rt-toolbar')
+    await screen.findByText('Read only')
+    expect(container.querySelector('article')).not.toBeNull()
+    expect(container.querySelector('strong')).toHaveTextContent('Read only')
+    expect(container.querySelector('[contenteditable="true"]')).not.toBeInTheDocument()
+    expect(screen.queryByRole('toolbar')).not.toBeInTheDocument()
   })
 
-  it('renders empty comment anchors as small gray bubbles without a number', () => {
-    const html = renderToStaticMarkup(<RichTextViewer enableLightbox={false} content={{
+  it('renders empty comment anchors as small gray bubbles without a number', async () => {
+    const { container } = render(<RichTextViewer enableLightbox={false} content={{
       type: 'doc',
       content: [{
         type: 'paragraph',
@@ -67,22 +77,24 @@ describe('RichTextViewer', () => {
       }],
     }} />)
 
-    expect(html).toContain('rt-inline-comment-anchor--empty')
-    expect(html).not.toContain('>0<')
+    await waitFor(() => expect(container.querySelector('.rt-inline-comment-anchor--empty')).not.toBeNull())
+    const bubble = container.querySelector('.rt-inline-comment-anchor--empty')
+    expect(bubble).not.toHaveTextContent('0')
   })
 
-  it('renders a synthetic empty bubble at the end of paragraphs without an anchor', () => {
-    const html = renderToStaticMarkup(<RichTextViewer enableLightbox={false} content={{
+  it('renders a synthetic empty bubble at the end of paragraphs without an anchor', async () => {
+    const { container } = render(<RichTextViewer enableLightbox={false} content={{
       type: 'doc',
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'plain paragraph' }] }],
     }} />)
 
-    expect(html).toContain('plain paragraph')
-    expect(html).toContain('rt-inline-comment-anchor--empty')
+    await screen.findByText('plain paragraph')
+    await waitFor(() => expect(container.querySelector('.rt-inline-comment-anchor--empty')).not.toBeNull())
+    expect(container.innerHTML).toContain('plain paragraph')
   })
 
-  it('renders custom references and strips unsafe URLs before markup generation', () => {
-    const html = renderToStaticMarkup(<RichTextViewer enableLightbox={false} content={{
+  it('renders custom references and strips unsafe URLs before rendering', async () => {
+    const { container } = render(<RichTextViewer enableLightbox={false} content={{
       type: 'doc',
       content: [
         { type: 'paragraph', content: [
@@ -94,15 +106,15 @@ describe('RichTextViewer', () => {
       ],
     }} />)
 
-    expect(html).toContain('@Lin')
-    expect(html).toContain('3d5')
-    expect(html).toContain('= 12')
-    expect(html).not.toContain('javascript:')
-    expect(html).not.toContain('contenteditable')
+    await screen.findByText('@Lin')
+    expect(screen.getByText('3d5')).toBeInTheDocument()
+    expect(screen.getByText('= 12')).toBeInTheDocument()
+    expect(container.innerHTML).not.toContain('javascript:')
+    expect(container.querySelector('[contenteditable="true"]')).not.toBeInTheDocument()
   })
 
-  it('projects locked reply content without leaking its children', () => {
-    const html = renderToStaticMarkup(<RichTextViewer
+  it('projects locked reply content without leaking its children', async () => {
+    render(<RichTextViewer
       interactions={{ isReplyGateVisible: () => false }}
       content={{ type: 'doc', content: [{
         type: 'replyGate', attrs: { gateId: 'g1', prompt: 'Reply first' },
@@ -110,12 +122,12 @@ describe('RichTextViewer', () => {
       }] }}
     />)
 
-    expect(html).toContain('Reply first')
-    expect(html).not.toContain('secret body')
+    await screen.findByText('Reply first')
+    expect(screen.queryByText('secret body')).not.toBeInTheDocument()
   })
 
-  it('renders structural blocks and every supported ordinary mark', () => {
-    const html = renderToStaticMarkup(<RichTextViewer content={{
+  it('renders structural blocks and every supported ordinary mark', async () => {
+    const { container } = render(<RichTextViewer content={{
       type: 'doc',
       content: [
         { type: 'heading', attrs: { level: 6, textAlign: 'right' }, content: [{ type: 'text', text: 'Heading' }] },
@@ -133,16 +145,18 @@ describe('RichTextViewer', () => {
       ],
     }} />)
 
+    await screen.findByText('Heading')
+    const html = container.innerHTML
     expect(html).toContain('<h6')
     expect(html).toContain('<ul>')
     expect(html).toContain('<ol start="3">')
     expect(html).toContain('<blockquote>')
     expect(html).toContain('<pre>')
     expect(html).toContain('<hr')
-    expect(html).toContain('font-family:serif')
+    expect(html).toContain('serif')
   })
 
-  it('dispatches inline comments, dice, mentions, reply gates, attachments, polls, links, and spoilers', () => {
+  it('dispatches inline comments, dice, mentions, reply gates, attachments, polls, links, and spoilers', async () => {
     const onInlineCommentActivate = vi.fn()
     const onDiceReroll = vi.fn()
     const onMentionActivate = vi.fn()
@@ -169,6 +183,7 @@ describe('RichTextViewer', () => {
       }}
     />)
 
+    await screen.findByRole('button', { name: 'Comments: 3' })
     fireEvent.click(screen.getByRole('button', { name: 'Comments: 3' }))
     fireEvent.click(screen.getByTitle('Roll again'))
     const mention = document.querySelector('.rt-mention') as HTMLElement
@@ -200,7 +215,7 @@ describe('RichTextViewer', () => {
     expect(onLinkActivate).toHaveBeenCalledWith('https://example.com/source', expect.anything())
   })
 
-  it('shows visible gated content and disables unavailable business actions', () => {
+  it('shows visible gated content and disables unavailable business actions', async () => {
     render(<RichTextViewer
       content={interactiveDocument}
       enableLightbox={false}
@@ -213,7 +228,7 @@ describe('RichTextViewer', () => {
       }}
     />)
 
-    expect(screen.getByText('Hidden chapter')).toBeInTheDocument()
+    await screen.findByText('Hidden chapter')
     expect(screen.getByText('archive.zip').closest('button')).toBeDisabled()
     expect(screen.getByRole('button', { name: /One\s*0 votes/u })).toBeDisabled()
     expect(screen.getByText('Source')).toHaveAttribute('href', 'https://example.com/book')
@@ -225,7 +240,7 @@ describe('RichTextViewer', () => {
     Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', { configurable: true, value: vi.fn() })
     render(<RichTextViewer content={interactiveDocument} interactions={{ onImageOpen }} labels={{ closeImage: 'Dismiss', nextImage: 'Forward', previousImage: 'Back' }} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Alpha image' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Alpha image' }))
     expect(onImageOpen).toHaveBeenCalledWith(expect.objectContaining({ assetId: 'a1', index: 0 }))
     expect(screen.getByRole('dialog', { name: 'Alpha image' })).toBeInTheDocument()
     expect(screen.getByText('1 / 2')).toBeInTheDocument()

@@ -1,7 +1,27 @@
-import type { JSONContent } from '@tiptap/core'
-import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, WheelEvent } from 'react'
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { JSONContent, Extensions, Editor } from '@tiptap/core'
+import {
+  EditorContent,
+  NodeViewContent,
+  NodeViewWrapper,
+  ReactNodeViewRenderer,
+  useEditor,
+  type NodeViewProps,
+} from '@tiptap/react'
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, WheelEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import {
+  AttachmentRef,
+  DiceRoll,
+  InlineCommentAnchor,
+  Mention,
+  NovelExcerpt,
+  PollRef,
+  ReplyGate,
+  RichImage,
+  Spoiler,
+  editorExtensions,
+} from './extensions.js'
 import { sanitizeDocument } from './sanitize.js'
 import type {
   AttachmentReferenceAttributes,
@@ -170,24 +190,20 @@ export function useRichTextViewerController(imageCount: number): RichTextViewerC
 
 interface GalleryData {
   images: ViewerImage[]
-  pathToIndex: Map<string, number>
 }
 
-/** 单次遍历收集图片和 JSON 路径索引，保证正文顺序就是灯箱前后顺序。 */
+/** 单次遍历收集图片，保证正文顺序就是灯箱前后顺序。 */
 function collectGallery(document: JSONContent): GalleryData {
   const images: ViewerImage[] = []
-  const pathToIndex = new Map<string, number>()
-  const visit = (node: JSONContent, path: string) => {
+  const visit = (node: JSONContent) => {
     if (node.type === 'richImage') {
       const attrs = node.attrs as unknown as RichImageAttributes
-      const index = images.length
-      images.push({ ...attrs, index })
-      pathToIndex.set(path, index)
+      images.push({ ...attrs, index: images.length })
     }
-    node.content?.forEach((child, index) => visit(child, `${path}.${index}`))
+    node.content?.forEach(visit)
   }
-  visit(document, '0')
-  return { images, pathToIndex }
+  visit(document)
+  return { images }
 }
 
 function formatBytes(bytes: number): string {
@@ -196,178 +212,265 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1_048_576).toFixed(1)} MB`
 }
 
-interface RenderContext {
-  controller: RichTextViewerController
-  interactions: RichTextViewerInteractions
-  labels: RichTextViewerLabels
-  gallery: GalleryData
-  enableLightbox: boolean
-}
-
-/** 按白名单 mark 递归包裹文本；未知 mark 已在 sanitize 阶段移除。 */
-function renderMarks(node: JSONContent, content: ReactNode, path: string, context: RenderContext): ReactNode {
-  return node.marks?.reduce<ReactNode>((child, mark, index) => {
-    const key = `${path}-mark-${index}`
-    switch (mark.type) {
-      case 'bold': return <strong key={key}>{child}</strong>
-      case 'italic': return <em key={key}>{child}</em>
-      case 'underline': return <u key={key}>{child}</u>
-      case 'strike': return <s key={key}>{child}</s>
-      case 'code': return <code key={key}>{child}</code>
-      case 'link': {
-        const href = String(mark.attrs?.href ?? '')
-        return <a key={key} href={href} target="_blank" rel="noopener noreferrer nofollow" onClick={(event) => context.interactions.onLinkActivate?.(href, event)}>{child}</a>
-      }
-      case 'textStyle': {
-        const style: CSSProperties = {
-          color: typeof mark.attrs?.color === 'string' ? mark.attrs.color : undefined,
-          fontFamily: typeof mark.attrs?.fontFamily === 'string' ? mark.attrs.fontFamily : undefined,
-          fontSize: typeof mark.attrs?.fontSize === 'string' ? mark.attrs.fontSize : undefined,
-        }
-        return <span key={key} style={style}>{child}</span>
-      }
-      case 'spoiler': {
-        const spoilerKey = `${path}:${index}`
-        const revealed = context.controller.revealedSpoilers.has(spoilerKey)
-        return (
-          <span key={key} className={`rt-spoiler${revealed ? ' rt-spoiler--revealed' : ''}`} data-spoiler="true" role="button" tabIndex={0} aria-expanded={revealed}
-            onClick={() => context.controller.toggleSpoiler(spoilerKey)} onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); context.controller.toggleSpoiler(spoilerKey) }
-            }}>
-            {child}
-          </span>
-        )
-      }
-      default: return child
-    }
-  }, content) ?? content
-}
-
-function renderChildren(node: JSONContent, path: string, context: RenderContext): ReactNode {
-  return node.content?.map((child, index) => renderNode(child, `${path}.${index}`, context)) ?? null
-}
-
-/**
- * 把规范 JSON 映射为普通 React 元素。
- * 业务节点只通过 interactions 调用宿主，不在 Viewer 内直接请求接口或持有领域数据。
- */
-function renderNode(node: JSONContent, path: string, context: RenderContext): ReactNode {
-  const children = renderChildren(node, path, context)
-  const attrs = node.attrs ?? {}
-  switch (node.type) {
-    case 'doc': return <Fragment key={path}>{children}</Fragment>
-    case 'text': return <Fragment key={path}>{renderMarks(node, node.text ?? '', path, context)}</Fragment>
-    case 'paragraph': {
+/** 为没有行末间贴锚点的非空段落补一个自动锚点，保持阅读模式的气泡体验。 */
+function addMissingParagraphAnchors(doc: JSONContent): JSONContent {
+  const clone = structuredClone(doc)
+  const visit = (node: JSONContent, path: string): void => {
+    if (node.type === 'paragraph') {
       const hasEndAnchor = node.content?.some((child) => child.type === 'inlineCommentAnchor' && child.attrs?.placement === 'end') ?? false
       const hasVisibleContent = node.content?.some((child) => child.type !== 'inlineCommentAnchor') ?? false
-      return (
-        <p key={path} style={{ textAlign: attrs.textAlign as CSSProperties['textAlign'] }}>
-          {children}
-          {!hasEndAnchor && hasVisibleContent ? (
-            <button key={`${path}-comment`} type="button" className="rt-inline-comment-anchor rt-inline-comment-anchor--empty" data-node-type="inline-comment-anchor" data-thread-id={`auto:${path}`} data-count="0" data-placement="end" aria-label={`${context.labels.inlineComments}: 0`}
-              onClick={() => context.interactions.onInlineCommentActivate?.({ threadId: `auto:${path}`, count: 0, placement: 'end' })} />
-          ) : null}
-        </p>
-      )
-    }
-    case 'heading': {
-      const level = Math.min(6, Math.max(1, Number(attrs.level ?? 2)))
-      const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
-      return <Tag key={path} style={{ textAlign: attrs.textAlign as CSSProperties['textAlign'] }}>{children}</Tag>
-    }
-    case 'bulletList': return <ul key={path}>{children}</ul>
-    case 'orderedList': return <ol key={path} start={Number(attrs.start ?? 1)}>{children}</ol>
-    case 'listItem': return <li key={path} style={{ textAlign: attrs.textAlign as CSSProperties['textAlign'] }}>{children}</li>
-    case 'blockquote': return <blockquote key={path}>{children}</blockquote>
-    case 'codeBlock': return <pre key={path}><code>{children}</code></pre>
-    case 'hardBreak': return <br key={path} />
-    case 'horizontalRule': return <hr key={path} />
-    case 'inlineCommentAnchor': {
-      const value = attrs as unknown as InlineCommentAnchorAttributes
-      const empty = value.count <= 0
-      return (
-        <button key={path} type="button" className={`rt-inline-comment-anchor rt-inline-comment-anchor--${value.placement}${empty ? ' rt-inline-comment-anchor--empty' : ''}`} data-node-type="inline-comment-anchor" data-thread-id={value.threadId} data-count={value.count} data-placement={value.placement} aria-label={`${context.labels.inlineComments}: ${value.count}`}
-          onClick={() => context.interactions.onInlineCommentActivate?.(value)}>{empty ? '' : value.count}</button>
-      )
-    }
-    case 'richImage': {
-      const value = attrs as unknown as RichImageAttributes
-      const index = context.gallery.pathToIndex.get(path) ?? 0
-      const image = context.gallery.images[index]
-      const open = () => {
-        if (!context.enableLightbox || !image) return
-        context.controller.openImage(index)
-        context.interactions.onImageOpen?.(image)
+      if (!hasEndAnchor && hasVisibleContent) {
+        node.content = [
+          ...(node.content ?? []),
+          { type: 'inlineCommentAnchor', attrs: { threadId: `auto:${path}`, count: 0, placement: 'end' } },
+        ]
       }
-      return (
-        <figure key={path} className={`rt-rich-image rt-rich-image--${value.align}`} style={{ width: `${value.width}%` }}>
-          <button type="button" className="rt-rich-image__open" disabled={!context.enableLightbox} onClick={open} aria-label={value.alt || 'Open image'}>
-            <img src={value.src} alt={value.alt} loading="lazy" />
-          </button>
-          {value.caption ? <figcaption>{value.caption}</figcaption> : null}
-        </figure>
-      )
     }
-    case 'diceRoll': {
-      const value = attrs as unknown as DiceRollAttributes
-      const dice = <span className="rt-dice-roll" title={value.rolls.join(' + ')}><span>{value.expression}</span><strong>= {value.total}</strong></span>
-      return <Fragment key={path}>{renderMarks(node, context.interactions.onDiceReroll ? <button type="button" className="rt-dice-roll__button" title={context.labels.rerollDice} onClick={() => context.interactions.onDiceReroll?.(value)}>{dice}</button> : dice, path, context)}</Fragment>
-    }
-    case 'novelExcerpt': {
-      const value = attrs as unknown as NovelExcerptAttributes
-      return (
-        <aside key={path} className={`rt-novel-excerpt rt-novel-excerpt--${value.variant}`}>
-          <header><strong>{value.bookTitle}</strong><span>{value.chapterTitle}</span><small>{value.author}</small></header>
-          <div className="rt-novel-excerpt__content">{children}</div>
-          {value.sourceUrl ? <a href={value.sourceUrl} target="_blank" rel="noopener noreferrer nofollow">{context.labels.source}</a> : null}
-        </aside>
-      )
-    }
-    case 'mention': {
-      const value = attrs as unknown as MentionAttributes
-      return <Fragment key={path}>{renderMarks(node, (
-        <span className={`rt-mention ${value.resolved ? 'rt-mention--resolved' : 'rt-mention--unresolved'}`} role={context.interactions.onMentionActivate ? 'button' : undefined}
-          tabIndex={context.interactions.onMentionActivate ? 0 : undefined} onClick={() => context.interactions.onMentionActivate?.(value)} onKeyDown={(event) => {
-            if ((event.key === 'Enter' || event.key === ' ') && context.interactions.onMentionActivate) context.interactions.onMentionActivate(value)
-          }}>
-          @{value.name}{context.interactions.renderMentionCard ? <span className="rt-mention__card">{context.interactions.renderMentionCard(value)}</span> : null}
-        </span>
-      ), path, context)}</Fragment>
-    }
-    case 'replyGate': {
-      const value = attrs as unknown as ReplyGateAttributes
-      const visible = context.interactions.isReplyGateVisible?.(value) ?? true
-      return visible ? <section key={path} className="rt-reply-gate rt-reply-gate--visible">{children}</section> : (
-        <section key={path} className="rt-reply-gate rt-reply-gate--locked">
-          <button type="button" onClick={() => context.interactions.onReplyGateRequest?.(value)}>{value.prompt}</button>
-        </section>
-      )
-    }
-    case 'attachmentRef': {
-      const value = attrs as unknown as AttachmentReferenceAttributes
-      const state = context.interactions.getAttachmentState?.(value) ?? { available: value.priceCoins === 0, pending: false }
-      return (
-        <button key={path} type="button" className="rt-attachment" disabled={state.pending || !context.interactions.onAttachmentActivate} onClick={() => context.interactions.onAttachmentActivate?.(value)}>
-          <span className="rt-attachment__name">{value.name}</span><small>{formatBytes(value.size)} · {value.mimeType}</small>
-          <strong>{state.available ? context.labels.download : `${context.labels.purchase} · ${value.priceCoins} ${context.labels.coins}`}</strong>
-        </button>
-      )
-    }
-    case 'pollRef': {
-      const value = attrs as unknown as PollReferenceAttributes
-      const state = context.interactions.getPollState?.(value) ?? { selectedOptionIds: [], votesByOption: {}, canVote: true, pending: false }
-      return (
-        <section key={path} className="rt-poll" aria-labelledby={`poll-${value.pollId}`}>
-          <h3 id={`poll-${value.pollId}`}>{value.question}</h3>
-          <div className="rt-poll__options">{value.options.map((option) => {
-            const selected = state.selectedOptionIds.includes(option.id)
-            return <button key={option.id} type="button" aria-pressed={selected} disabled={!state.canVote || state.pending || !context.interactions.onPollVote} onClick={() => context.interactions.onPollVote?.(value, option.id)}><span>{option.label}</span><small>{state.votesByOption[option.id] ?? 0} {context.labels.votes}</small></button>
-          })}</div>
-        </section>
-      )
-    }
-    default: return null
+    node.content?.forEach((child, index) => visit(child, `${path}.${index}`))
   }
+  visit(clone, '0')
+  return clone
+}
+
+/** Viewer-only context passed to every custom NodeView through a stable ref. */
+interface ViewerContext {
+  interactions: RichTextViewerInteractions
+  controller: RichTextViewerController
+  labels: RichTextViewerLabels
+  enableLightbox: boolean
+  galleryImages: readonly ViewerImage[]
+}
+
+/** Stable ref wrapper so NodeViews always read the latest viewer context. */
+interface ViewerContextRef {
+  current: ViewerContext
+}
+
+type ViewerNodeProps = NodeViewProps & { viewerRef: ViewerContextRef }
+
+function getRichImageIndex(editor: Editor, getPos: () => number): number {
+  let index = 0
+  let found = false
+  editor.state.doc.descendants((node, pos) => {
+    if (found) return false
+    if (node.type.name === 'richImage') {
+      if (pos === getPos()) {
+        found = true
+        return false
+      }
+      index += 1
+    }
+    return true
+  })
+  return found ? index : 0
+}
+
+function RichImageNodeView({ node, getPos, editor, viewerRef }: ViewerNodeProps) {
+  const viewer = viewerRef.current
+  const attrs = node.attrs as unknown as RichImageAttributes
+  const index = getRichImageIndex(editor, getPos)
+  const image = viewer.galleryImages[index]
+  const open = () => {
+    if (!viewer.enableLightbox || !image) return
+    viewer.controller.openImage(index)
+    viewer.interactions.onImageOpen?.(image)
+  }
+  return (
+    <figure className={`rt-rich-image rt-rich-image--${attrs.align}`} style={{ width: `${attrs.width}%` }}>
+      <button type="button" className="rt-rich-image__open" disabled={!viewer.enableLightbox} onClick={open} aria-label={attrs.alt || 'Open image'}>
+        <img src={attrs.src} alt={attrs.alt} loading="lazy" />
+      </button>
+      {attrs.caption ? <figcaption>{attrs.caption}</figcaption> : null}
+    </figure>
+  )
+}
+
+function DiceRollNodeView({ node, viewerRef }: ViewerNodeProps) {
+  const viewer = viewerRef.current
+  const attrs = node.attrs as unknown as DiceRollAttributes
+  const dice = (
+    <span className="rt-dice-roll" title={attrs.rolls.join(' + ')}>
+      <span>{attrs.expression}</span>
+      <strong>= {attrs.total}</strong>
+    </span>
+  )
+  return viewer.interactions.onDiceReroll ? (
+    <button type="button" className="rt-dice-roll__button" title={viewer.labels.rerollDice} onClick={() => viewer.interactions.onDiceReroll?.(attrs)}>{dice}</button>
+  ) : dice
+}
+
+function InlineCommentAnchorNodeView({ node, viewerRef }: ViewerNodeProps) {
+  const viewer = viewerRef.current
+  const attrs = node.attrs as unknown as InlineCommentAnchorAttributes
+  const empty = attrs.count <= 0
+  return (
+    <button
+      type="button"
+      className={`rt-inline-comment-anchor rt-inline-comment-anchor--${attrs.placement}${empty ? ' rt-inline-comment-anchor--empty' : ''}`}
+      data-node-type="inline-comment-anchor"
+      data-thread-id={attrs.threadId}
+      data-count={attrs.count}
+      data-placement={attrs.placement}
+      aria-label={`${viewer.labels.inlineComments}: ${attrs.count}`}
+      onClick={() => viewer.interactions.onInlineCommentActivate?.(attrs)}
+    >
+      {empty ? '' : attrs.count}
+    </button>
+  )
+}
+
+function MentionNodeView({ node, viewerRef }: ViewerNodeProps) {
+  const viewer = viewerRef.current
+  const attrs = node.attrs as unknown as MentionAttributes
+  const interactive = Boolean(viewer.interactions.onMentionActivate)
+  return (
+    <span
+      className={`rt-mention ${attrs.resolved ? 'rt-mention--resolved' : 'rt-mention--unresolved'}`}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={() => viewer.interactions.onMentionActivate?.(attrs)}
+      onKeyDown={(event) => {
+        if ((event.key === 'Enter' || event.key === ' ') && interactive) viewer.interactions.onMentionActivate?.(attrs)
+      }}
+    >
+      @{attrs.name}
+      {viewer.interactions.renderMentionCard ? <span className="rt-mention__card">{viewer.interactions.renderMentionCard(attrs)}</span> : null}
+    </span>
+  )
+}
+
+function AttachmentNodeView({ node, viewerRef }: ViewerNodeProps) {
+  const viewer = viewerRef.current
+  const attrs = node.attrs as unknown as AttachmentReferenceAttributes
+  const state = viewer.interactions.getAttachmentState?.(attrs) ?? { available: attrs.priceCoins === 0, pending: false }
+  return (
+    <button
+      type="button"
+      className="rt-attachment"
+      disabled={state.pending || !viewer.interactions.onAttachmentActivate}
+      onClick={() => viewer.interactions.onAttachmentActivate?.(attrs)}
+    >
+      <span className="rt-attachment__name">{attrs.name}</span>
+      <small>{formatBytes(attrs.size)} · {attrs.mimeType}</small>
+      <strong>{state.available ? viewer.labels.download : `${viewer.labels.purchase} · ${attrs.priceCoins} ${viewer.labels.coins}`}</strong>
+    </button>
+  )
+}
+
+function PollNodeView({ node, viewerRef }: ViewerNodeProps) {
+  const viewer = viewerRef.current
+  const attrs = node.attrs as unknown as PollReferenceAttributes
+  const state = viewer.interactions.getPollState?.(attrs) ?? { selectedOptionIds: [], votesByOption: {}, canVote: true, pending: false }
+  return (
+    <section className="rt-poll" aria-labelledby={`poll-${attrs.pollId}`}>
+      <h3 id={`poll-${attrs.pollId}`}>{attrs.question}</h3>
+      <div className="rt-poll__options">
+        {attrs.options.map((option) => {
+          const selected = state.selectedOptionIds.includes(option.id)
+          return (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={selected}
+              disabled={!state.canVote || state.pending || !viewer.interactions.onPollVote}
+              onClick={() => viewer.interactions.onPollVote?.(attrs, option.id)}
+            >
+              <span>{option.label}</span>
+              <small>{state.votesByOption[option.id] ?? 0} {viewer.labels.votes}</small>
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function ReplyGateNodeView({ node, viewerRef }: ViewerNodeProps) {
+  const viewer = viewerRef.current
+  const attrs = node.attrs as unknown as ReplyGateAttributes
+  const visible = viewer.interactions.isReplyGateVisible?.(attrs) ?? true
+  if (!visible) {
+    return (
+      <NodeViewWrapper as="section" className="rt-reply-gate rt-reply-gate--locked">
+        <button type="button" onClick={() => viewer.interactions.onReplyGateRequest?.(attrs)}>{attrs.prompt}</button>
+      </NodeViewWrapper>
+    )
+  }
+  return (
+    <NodeViewWrapper as="section" className="rt-reply-gate rt-reply-gate--visible">
+      <NodeViewContent />
+    </NodeViewWrapper>
+  )
+}
+
+function NovelExcerptNodeView({ node, viewerRef }: ViewerNodeProps) {
+  const viewer = viewerRef.current
+  const attrs = node.attrs as unknown as NovelExcerptAttributes
+  return (
+    <NodeViewWrapper as="aside" className={`rt-novel-excerpt rt-novel-excerpt--${attrs.variant}`}>
+      <header>
+        <strong>{attrs.bookTitle}</strong>
+        <span>{attrs.chapterTitle}</span>
+        <small>{attrs.author}</small>
+      </header>
+      <div className="rt-novel-excerpt__content">
+        <NodeViewContent />
+      </div>
+      {attrs.sourceUrl ? (
+        <a href={attrs.sourceUrl} target="_blank" rel="noopener noreferrer nofollow">{viewer.labels.source}</a>
+      ) : null}
+    </NodeViewWrapper>
+  )
+}
+
+/** Build a read-only Tiptap extension set with viewer NodeViews attached. */
+function createViewerExtensions(viewerRef: ViewerContextRef): Extensions {
+  return editorExtensions().map((extension) => {
+    switch (extension.name) {
+      case 'richImage':
+        return RichImage.extend({
+          addNodeView: () => ReactNodeViewRenderer(({ node, getPos, editor }) => (
+            <RichImageNodeView node={node} getPos={getPos} editor={editor} viewerRef={viewerRef} />
+          ), { trackNodeViewPosition: true }),
+        })
+      case 'diceRoll':
+        return DiceRoll.extend({
+          addNodeView: () => ReactNodeViewRenderer(({ node }) => <DiceRollNodeView node={node} viewerRef={viewerRef} />),
+        })
+      case 'inlineCommentAnchor':
+        return InlineCommentAnchor.extend({
+          addNodeView: () => ReactNodeViewRenderer(({ node }) => <InlineCommentAnchorNodeView node={node} viewerRef={viewerRef} />),
+        })
+      case 'mention':
+        return Mention.extend({
+          addNodeView: () => ReactNodeViewRenderer(({ node }) => <MentionNodeView node={node} viewerRef={viewerRef} />),
+        })
+      case 'attachmentRef':
+        return AttachmentRef.extend({
+          addNodeView: () => ReactNodeViewRenderer(({ node }) => <AttachmentNodeView node={node} viewerRef={viewerRef} />),
+        })
+      case 'pollRef':
+        return PollRef.extend({
+          addNodeView: () => ReactNodeViewRenderer(({ node }) => <PollNodeView node={node} viewerRef={viewerRef} />),
+        })
+      case 'replyGate':
+        return ReplyGate.extend({
+          addNodeView: () => ReactNodeViewRenderer(({ node }) => <ReplyGateNodeView node={node} viewerRef={viewerRef} />),
+        })
+      case 'novelExcerpt':
+        return NovelExcerpt.extend({
+          addNodeView: () => ReactNodeViewRenderer(({ node }) => <NovelExcerptNodeView node={node} viewerRef={viewerRef} />),
+        })
+      case 'spoiler':
+        return Spoiler.extend({
+          renderHTML() {
+            return ['span', { class: 'rt-spoiler', 'data-spoiler': 'true', role: 'button', tabindex: '0', 'aria-expanded': 'false' }, 0]
+          },
+        })
+      default:
+        return extension
+    }
+  })
 }
 
 interface ImageLightboxProps {
@@ -380,7 +483,6 @@ function ImageLightbox({ controller, images, labels }: ImageLightboxProps) {
   const drag = useRef<{ x: number; y: number } | null>(null)
   const index = controller.lightbox.index
   const image = index === null ? undefined : images[index]
-  // 键盘监听只在灯箱打开时存在，关闭或切图时会清理旧监听器。
   useEffect(() => {
     if (!image) return undefined
     const onKeyDown = (event: KeyboardEvent) => {
@@ -426,19 +528,95 @@ function ImageLightbox({ controller, images, labels }: ImageLightboxProps) {
 }
 
 /**
- * Renders sanitized Tiptap JSON as ordinary React elements. It deliberately
- * does not import `@tiptap/react`, create an `Editor`, or emit `contenteditable`.
+ * Renders sanitized Tiptap JSON with a read-only Tiptap/ProseMirror editor.
+ * Custom nodes use React NodeViews so viewer interactions keep working.
  */
 export function RichTextViewer({ content, className = '', interactions = {}, controller: externalController, enableLightbox = true, labels: labelOverrides = {} }: RichTextViewerProps) {
-  const document = useMemo(() => sanitizeDocument(content), [content])
+  const document = useMemo(() => addMissingParagraphAnchors(sanitizeDocument(content)), [content])
   const gallery = useMemo(() => collectGallery(document), [document])
   const internalController = useRichTextViewerController(gallery.images.length)
   const controller = externalController ?? internalController
   const labels = useMemo(() => ({ ...defaultLabels, ...labelOverrides }), [labelOverrides])
-  const context: RenderContext = { controller, interactions, labels, gallery, enableLightbox }
+  const viewerContext = useMemo<ViewerContext>(() => ({
+    interactions,
+    controller,
+    labels,
+    enableLightbox,
+    galleryImages: gallery.images,
+  }), [interactions, controller, labels, enableLightbox, gallery.images])
+  const viewerContextRef = useRef<ViewerContext>(viewerContext)
+  useEffect(() => {
+    viewerContextRef.current = viewerContext
+  }, [viewerContext])
+  const extensions = useMemo(() => createViewerExtensions(viewerContextRef), [viewerContextRef])
+  const editor = useEditor({
+    extensions,
+    content: document,
+    editable: false,
+    immediatelyRender: false,
+    shouldRerenderOnTransaction: false,
+  }, [document, interactions, labels, enableLightbox])
+  const rootRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (!editor) return undefined
+    const element = editor.options.element
+    if (!element) return undefined
+
+    const handleClick = (event: MouseEvent) => {
+      const current = viewerContextRef.current
+      const target = event.target as HTMLElement
+      const link = target.closest('a')
+      if (link?.getAttribute('href')) {
+        const href = link.getAttribute('href')!
+        current.interactions.onLinkActivate?.(href, event as unknown as ReactMouseEvent<HTMLAnchorElement>)
+        if (!event.defaultPrevented) event.preventDefault()
+        return
+      }
+
+      const spoiler = target.closest<HTMLElement>('[data-spoiler="true"]')
+      if (spoiler) {
+        const pos = editor.view.posAtDOM(spoiler, 0) ?? 0
+        const key = `spoiler:${pos}`
+        const next = !current.controller.revealedSpoilers.has(key)
+        current.controller.toggleSpoiler(key)
+        spoiler.classList.toggle('rt-spoiler--revealed', next)
+        spoiler.setAttribute('aria-expanded', String(next))
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      const target = event.target as HTMLElement
+      const spoiler = target.closest<HTMLElement>('[data-spoiler="true"]')
+      if (!spoiler) return
+      event.preventDefault()
+      const current = viewerContextRef.current
+      const pos = editor.view.posAtDOM(spoiler, 0) ?? 0
+      const key = `spoiler:${pos}`
+      const next = !current.controller.revealedSpoilers.has(key)
+      current.controller.toggleSpoiler(key)
+      spoiler.classList.toggle('rt-spoiler--revealed', next)
+      spoiler.setAttribute('aria-expanded', String(next))
+    }
+
+    element.addEventListener('click', handleClick)
+    element.addEventListener('keydown', handleKeyDown)
+    return () => {
+      element.removeEventListener('click', handleClick)
+      element.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [editor])
+
+  if (!editor) {
+    return <article ref={rootRef} className={`rt-viewer ${className}`} />
+  }
+
   return (
     <>
-      <article className={`rt-viewer ${className}`}>{renderNode(document, '0', context)}</article>
+      <article ref={rootRef} className={`rt-viewer ${className}`}>
+        <EditorContent editor={editor} />
+      </article>
       {enableLightbox ? <ImageLightbox controller={controller} images={gallery.images} labels={labels} /> : null}
     </>
   )

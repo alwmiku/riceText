@@ -509,11 +509,11 @@ button {
 }
 
 .viewer-page {
-  max-width: 1120px;
+  max-width: 1280px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 760px) 260px;
-  gap: 38px;
+  grid-template-columns: minmax(0, 920px) 280px;
+  gap: 40px;
   align-items: start;
 }
 .viewer-article {
