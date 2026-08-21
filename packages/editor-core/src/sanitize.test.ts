@@ -154,7 +154,7 @@ describe('document sanitization', () => {
     expect(result.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining(['unknown-mark', 'unknown-attribute', 'unsafe-url', 'invalid-attribute']))
   })
 
-  it('strips bold, italic, and text color from spoiler text while keeping font settings', () => {
+  it('strips bold, italic, and text style from spoiler text', () => {
     const safe = sanitizeDocument({
       type: 'doc',
       content: [{
@@ -176,7 +176,7 @@ describe('document sanitization', () => {
     expect(marks).toContainEqual({ type: 'spoiler' })
     expect(marks).not.toContainEqual({ type: 'bold' })
     expect(marks).not.toContainEqual({ type: 'italic' })
-    expect(marks).toContainEqual({ type: 'textStyle', attrs: { fontFamily: 'serif', fontSize: '18px' } })
+    expect(marks).not.toContainEqual(expect.objectContaining({ type: 'textStyle' }))
   })
 
   it('normalizes attributes for every persisted business node', () => {

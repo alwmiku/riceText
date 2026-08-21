@@ -236,10 +236,8 @@ function sanitizeMarks(value: unknown, path: string, context: SanitizerContext):
         addIssue(context, { code: 'invalid-attribute', path, message: `${mark.type} is not allowed inside spoiler and was removed.` })
         continue
       }
-      if (mark.type === 'textStyle' && mark.attrs) {
-        const { color: _color, ...rest } = mark.attrs as Record<string, unknown>
-        if (_color !== undefined) addIssue(context, { code: 'invalid-attribute', path, message: 'Text color is not allowed inside spoiler and was removed.' })
-        if (Object.keys(rest).length > 0) spoilerSafeMarks.push({ type: 'textStyle', attrs: rest })
+      if (mark.type === 'textStyle') {
+        addIssue(context, { code: 'invalid-attribute', path, message: 'Text style is not allowed inside spoiler and was removed.' })
         continue
       }
       spoilerSafeMarks.push(mark)

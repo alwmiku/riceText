@@ -523,23 +523,11 @@
 
 .rt-spoiler {
   color: transparent;
-  font-weight: normal;
-  font-style: normal;
   background: #171a19;
   border-radius: 3px;
   box-decoration-break: clone;
   cursor: pointer;
   transition: color 120ms ease;
-}
-
-/* Keep spoiler blocks visually uniform even if old content contains inline
-   formatting: bold/italic/color should not change the black-curtain look. */
-.rt-spoiler * {
-  color: inherit !important;
-  font-family: inherit !important;
-  font-size: inherit !important;
-  font-weight: inherit !important;
-  font-style: inherit !important;
 }
 
 .rt-spoiler:hover,

@@ -144,6 +144,31 @@ describe('editorExtensions', () => {
     invalidArray.destroy()
   })
 
+  it('prevents bold, italic, and text style from coexisting with spoiler', () => {
+    const editor = new Editor({ extensions: editorExtensions(), content: '<p>secret</p>' })
+    editor.commands.selectAll()
+    editor.commands.toggleBold()
+    editor.commands.toggleSpoiler()
+    let marks = editor.getJSON().content?.[0]?.content?.[0]?.marks
+    expect(marks).toContainEqual({ type: 'spoiler' })
+    expect(marks).not.toContainEqual({ type: 'bold' })
+
+    editor.commands.selectAll()
+    editor.commands.toggleItalic()
+    editor.commands.toggleSpoiler()
+    marks = editor.getJSON().content?.[0]?.content?.[0]?.marks
+    expect(marks).toContainEqual({ type: 'spoiler' })
+    expect(marks).not.toContainEqual({ type: 'italic' })
+
+    editor.commands.selectAll()
+    editor.commands.setColor('#ff0000')
+    editor.commands.toggleSpoiler()
+    marks = editor.getJSON().content?.[0]?.content?.[0]?.marks
+    expect(marks).toContainEqual({ type: 'spoiler' })
+    expect(marks).not.toContainEqual(expect.objectContaining({ type: 'textStyle' }))
+    editor.destroy()
+  })
+
   it('applies, toggles, and removes the spoiler command and rejects unsafe links', () => {
     const editor = new Editor({ extensions: editorExtensions(), content: '<p>classified</p>' })
     editor.commands.selectAll()

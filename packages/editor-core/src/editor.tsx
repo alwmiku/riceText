@@ -168,13 +168,13 @@ export function EditorToolbar({ editor, mode = 'full', disabled = false, onSubmi
             </label>
             <label className="rt-toolbar__field">
               <span className="rt-sr-only">Font family</span>
-              <select aria-label="Font family" disabled={preventDisabled} value={String(editor.getAttributes('textStyle').fontFamily ?? 'system-ui')} onChange={(event) => editor.chain().focus().setFontFamily(event.currentTarget.value).run()}>
+              <select aria-label="Font family" disabled={preventDisabled || spoilerActive} value={String(editor.getAttributes('textStyle').fontFamily ?? 'system-ui')} onChange={(event) => editor.chain().focus().setFontFamily(event.currentTarget.value).run()}>
                 {ALLOWED_FONT_FAMILIES.map((font) => <option key={font} value={font}>{font}</option>)}
               </select>
             </label>
             <label className="rt-toolbar__field rt-toolbar__field--short">
               <span className="rt-sr-only">Font size</span>
-              <select aria-label="Font size" disabled={preventDisabled} value={String(editor.getAttributes('textStyle').fontSize ?? '16px')} onChange={(event) => editor.chain().focus().setFontSize(event.currentTarget.value).run()}>
+              <select aria-label="Font size" disabled={preventDisabled || spoilerActive} value={String(editor.getAttributes('textStyle').fontSize ?? '16px')} onChange={(event) => editor.chain().focus().setFontSize(event.currentTarget.value).run()}>
                 {ALLOWED_FONT_SIZES.map((size) => <option key={size} value={`${size}px`}>{size}</option>)}
               </select>
             </label>
