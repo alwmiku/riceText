@@ -202,7 +202,7 @@ export function RichTextEditor({ content, mode, editable = true, onChange, onSub
     <div className="mobile-toolbar"><IconButton label="加粗" active={Boolean(editor?.isActive('bold'))} disabled={Boolean(editor?.isActive('spoiler'))} onClick={cmd(editor, (value) => value.chain().focus().toggleBold().run())}><Bold size={18} /></IconButton><IconButton label="插入图片" onClick={() => setMobileToolsOpen(true)}><ImagePlus size={18} /></IconButton><IconButton label="插入骰子" onClick={() => setMobileToolsOpen(true)}><Dice5 size={18} /></IconButton><IconButton label="更多工具" onClick={() => setMobileToolsOpen(true)}><MoreHorizontal size={19} /></IconButton><Button size="icon" aria-label="发布" onClick={onSubmit}><Send size={18} /></Button></div>
   </div><Dialog open={mobileToolsOpen} onOpenChange={setMobileToolsOpen} title="编辑工具" description="选择排版或插入内容。" className="!bottom-0 !top-auto !w-full !max-w-none !translate-y-0 rounded-b-none"><Toolbar editor={editor} /></Dialog></>;
 
-  return <div className="surface mobile-edge overflow-hidden">
+  return <div className="surface mobile-edge overflow-clip">
     <Toolbar editor={editor} />
     <div className="editor-content-wrap"><EditorContent editor={editor} /></div>
   </div>;
