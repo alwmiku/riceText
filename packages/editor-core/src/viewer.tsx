@@ -91,6 +91,8 @@ export interface RichTextViewerLabels {
   download: string
   /** Text for a paid attachment action. */
   purchase: string
+  /** Currency unit appended to attachment prices. */
+  coins: string
   /** Poll vote unit appended to totals. */
   votes: string
   /** Label for the optional novel excerpt source link. */
@@ -126,7 +128,7 @@ export interface RichTextViewerProps {
 }
 
 const defaultLabels: RichTextViewerLabels = {
-  inlineComments: 'Open inline comments', rerollDice: 'Reroll dice', download: 'Download', purchase: 'Purchase', votes: 'votes',
+  inlineComments: 'Open inline comments', rerollDice: 'Reroll dice', download: 'Download', purchase: 'Purchase', coins: 'coins', votes: 'votes',
   source: 'Source', closeImage: 'Close image', previousImage: 'Previous image', nextImage: 'Next image', zoomIn: 'Zoom in', zoomOut: 'Zoom out', resetZoom: 'Reset zoom',
 }
 
@@ -347,7 +349,7 @@ function renderNode(node: JSONContent, path: string, context: RenderContext): Re
       return (
         <button key={path} type="button" className="rt-attachment" disabled={state.pending || !context.interactions.onAttachmentActivate} onClick={() => context.interactions.onAttachmentActivate?.(value)}>
           <span className="rt-attachment__name">{value.name}</span><small>{formatBytes(value.size)} · {value.mimeType}</small>
-          <strong>{state.available ? context.labels.download : `${context.labels.purchase} · ${value.priceCoins}`}</strong>
+          <strong>{state.available ? context.labels.download : `${context.labels.purchase} · ${value.priceCoins} ${context.labels.coins}`}</strong>
         </button>
       )
     }
