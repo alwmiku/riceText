@@ -6,6 +6,7 @@ import type {
   DocumentValidationIssue,
   DocumentValidationResult,
   InlineCommentAnchorAttributes,
+  LongTextBlockAttributes,
   MentionAttributes,
   NovelExcerptAttributes,
   PollOptionReference,
@@ -58,11 +59,12 @@ const allowedNodes = new Set([
   'replyGate',
   'attachmentRef',
   'pollRef',
+  'longTextBlock',
 ])
 
-const blockNodes = new Set(['paragraph', 'heading', 'bulletList', 'orderedList', 'blockquote', 'codeBlock', 'horizontalRule', 'richImage', 'novelExcerpt', 'replyGate', 'attachmentRef', 'pollRef'])
+const blockNodes = new Set(['paragraph', 'heading', 'bulletList', 'orderedList', 'blockquote', 'codeBlock', 'horizontalRule', 'richImage', 'novelExcerpt', 'replyGate', 'attachmentRef', 'pollRef', 'longTextBlock'])
 const inlineNodes = new Set(['text', 'hardBreak', 'inlineCommentAnchor', 'diceRoll', 'mention'])
-const atomNodes = new Set(['hardBreak', 'horizontalRule', 'inlineCommentAnchor', 'richImage', 'diceRoll', 'mention', 'attachmentRef', 'pollRef'])
+const atomNodes = new Set(['hardBreak', 'horizontalRule', 'inlineCommentAnchor', 'richImage', 'diceRoll', 'mention', 'attachmentRef', 'pollRef', 'longTextBlock'])
 
 const nodeAttributeAllowlist: Readonly<Record<string, readonly string[]>> = {
   doc: [],
@@ -84,6 +86,7 @@ const nodeAttributeAllowlist: Readonly<Record<string, readonly string[]>> = {
   replyGate: ['gateId', 'prompt'],
   attachmentRef: ['attachmentId', 'name', 'mimeType', 'size', 'priceCoins'],
   pollRef: ['pollId', 'question', 'multiple', 'options'],
+  longTextBlock: ['chapterId', 'title', 'text', 'order'],
 }
 
 const markAttributeAllowlist: Readonly<Record<string, readonly string[]>> = {
@@ -341,6 +344,15 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
       }
       const attrs: PollReferenceAttributes = {
         pollId: stringValue(raw.pollId, 128), question: stringValue(raw.question, 500), multiple: raw.multiple === true, options,
+      }
+      return attrs as unknown as Record<string, unknown>
+    }
+    case 'longTextBlock': {
+      const attrs: LongTextBlockAttributes = {
+        chapterId: stringValue(raw.chapterId, 128),
+        title: stringValue(raw.title, 500),
+        text: stringValue(raw.text, 100_000_000),
+        order: finiteInteger(raw.order, 0, 0, 1_000_000),
       }
       return attrs as unknown as Record<string, unknown>
     }

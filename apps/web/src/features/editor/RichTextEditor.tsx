@@ -53,6 +53,7 @@ export interface RichTextEditorProps {
   content: RichTextNode;
   mode: EditorMode;
   editable?: boolean;
+  longTextMode?: boolean;
   onChange: (content: RichTextNode) => void;
   /** 每次事务产生 ProseMirror steps 时回调，供增量同步使用。 */
   onChangeSteps?: (steps: unknown[]) => void;
@@ -613,6 +614,7 @@ export function RichTextEditor({
   content,
   mode,
   editable = true,
+  longTextMode = false,
   onChange,
   onChangeSteps,
   onSubmit,
@@ -668,6 +670,26 @@ export function RichTextEditor({
   }, [content, editor]);
   // 显式销毁 EditorView，避免路由切换后残留 DOM 监听器。
   useEffect(() => () => editor?.destroy(), [editor]);
+
+  if (longTextMode)
+    return (
+      <div className="surface mobile-edge overflow-clip">
+        <div className="document-bar">
+          <div className="min-w-0">
+            <p className="document-title">长文本编辑</p>
+          </div>
+          {onSubmit ? (
+            <Button size="sm" onClick={onSubmit}>
+              <Send size={14} />
+              保存
+            </Button>
+          ) : null}
+        </div>
+        <div className="editor-content-wrap">
+          <EditorContent editor={editor} />
+        </div>
+      </div>
+    );
 
   if (mode === "compact")
     return (

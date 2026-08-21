@@ -63,6 +63,7 @@ const allowedNodeAttrs: Record<string, ReadonlySet<string>> = {
     "priceCoins",
   ]),
   pollRef: new Set(["pollId", "question", "multiple", "options"]),
+  longTextBlock: new Set(["chapterId", "title", "text", "order"]),
 };
 
 /** mark 属性白名单独立于节点，避免任意 style/class/on* 进入正文。 */
@@ -342,6 +343,21 @@ function validateNode(node: TiptapNode, depth: number): void {
         422,
         "INVALID_ATTACHMENT",
         "附件大小和金币价格必须为非负数",
+      );
+  }
+  if (node.type === "longTextBlock") {
+    stringAttr(attrs, "chapterId", true);
+    stringAttr(attrs, "title", true);
+    stringAttr(attrs, "text", true);
+    if (
+      typeof attrs.order !== "number" ||
+      !Number.isInteger(attrs.order) ||
+      attrs.order < 0
+    )
+      throw new HttpError(
+        422,
+        "INVALID_LONG_TEXT_ORDER",
+        "长文本章节顺序必须是非负整数",
       );
   }
   if (node.type === "pollRef") {

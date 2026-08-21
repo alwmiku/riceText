@@ -223,6 +223,18 @@ export interface DemoFeatureAdapter {
   vote(pollId: string, optionIds: readonly string[]): Promise<void>
 }
 
+/** Attributes persisted by a long-text chapter block. */
+export interface LongTextBlockAttributes {
+  /** Stable chapter identifier. */
+  chapterId: string
+  /** Chapter title. */
+  title: string
+  /** Full chapter text. */
+  text: string
+  /** Display order inside the novel. */
+  order: number
+}
+
 /** A rich image normalized for the viewer's gallery. */
 export interface ViewerImage extends RichImageAttributes {
   /** Zero-based position within this document's image gallery. */
