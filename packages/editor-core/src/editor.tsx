@@ -55,6 +55,8 @@ export interface RichTextEditorProps extends EditorActionRequests {
   content: JSONContent
   /** Called for each transaction that changes document content. */
   onChange?: (content: JSONContent, context: EditorChangeContext) => void
+  /** Called with ProseMirror transaction steps for incremental sync. */
+  onChangeSteps?: (steps: unknown[], editor: Editor) => void
   /** Called when the editor has initialized and can accept commands. */
   onReady?: (editor: Editor) => void
   /** Called when the preset's submit button is activated. */
@@ -220,6 +222,7 @@ export function EditorToolbar({ editor, mode = 'full', disabled = false, onSubmi
 export function RichTextEditor({
   content,
   onChange,
+  onChangeSteps,
   onReady,
   onSubmit,
   mode = 'full',
@@ -250,10 +253,11 @@ export function RichTextEditor({
         'data-placeholder': placeholder,
       },
     },
-    onUpdate: ({ editor: updatedEditor }) => {
+    onUpdate: ({ editor: updatedEditor, transaction }) => {
       const raw = updatedEditor.getJSON()
       const safe = sanitizeDocument(raw)
       onChange?.(safe, { editor: updatedEditor, sanitized: JSON.stringify(raw) !== JSON.stringify(safe) })
+      onChangeSteps?.(transaction.steps.map((step) => step.toJSON()), updatedEditor)
     },
   })
 

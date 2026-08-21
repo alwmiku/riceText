@@ -29,6 +29,7 @@ import {
   SubmitPollVoteRequestSchema,
   SuggestionSchema,
   UpdateDocumentRequestSchema,
+  UpdateDocumentStepsRequestSchema,
   VoteCommentRequestSchema,
 } from "./schemas.js";
 
@@ -94,6 +95,12 @@ export const contractRoutes: readonly ContractRoute[] = [
     summary: "保存文档并创建修订", description: "需要 author 或 moderator。baseRevision 过期返回 409；相同 clientMutationId 重试返回首次结果且不重复建版。",
     params: documentParams, body: UpdateDocumentRequestSchema,
     responses: { 200: { description: "幂等重试命中的既有修订。", schema: DocumentEnvelopeSchema }, 201: { description: "新建的不可变修订。", schema: DocumentEnvelopeSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 409: { description: "当前 revision 与 baseRevision 冲突，details.currentRevision 可用于刷新。", schema: ApiErrorSchema }, 422: { description: "正文包含非法节点、属性或 URL。", schema: ApiErrorSchema } },
+  },
+  {
+    operationId: "updateDocumentSteps", method: "PATCH", path: "/api/documents/:documentId/steps", tags: ["文档"],
+    summary: "使用 ProseMirror 增量步骤更新文档", description: "需要 author 或 moderator。客户端提交 transaction steps，服务端基于当前 revision 应用 steps 并创建新修订。首版仅定义契约，后续实现服务端应用。",
+    params: documentParams, body: UpdateDocumentStepsRequestSchema,
+    responses: { 200: { description: "幂等重试命中的既有修订。", schema: DocumentEnvelopeSchema }, 201: { description: "新建的不可变修订。", schema: DocumentEnvelopeSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 409: { description: "当前 revision 与 baseRevision 冲突。", schema: ApiErrorSchema }, 422: { description: "steps 无法应用到当前文档或包含非法结构。", schema: ApiErrorSchema } },
   },
   {
     operationId: "listRevisions", method: "GET", path: "/api/documents/:documentId/revisions", tags: ["文档"],

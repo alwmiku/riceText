@@ -54,6 +54,8 @@ export interface RichTextEditorProps {
   mode: EditorMode;
   editable?: boolean;
   onChange: (content: RichTextNode) => void;
+  /** 每次事务产生 ProseMirror steps 时回调，供增量同步使用。 */
+  onChangeSteps?: (steps: unknown[]) => void;
   onSubmit?: () => void;
   onExpand?: () => void;
   onCommentAnchorOpen?: (threadId: string) => void;
@@ -612,6 +614,7 @@ export function RichTextEditor({
   mode,
   editable = true,
   onChange,
+  onChangeSteps,
   onSubmit,
   onExpand,
   onCommentAnchorOpen,
@@ -635,7 +638,10 @@ export function RichTextEditor({
     editable,
     immediatelyRender: false,
     shouldRerenderOnTransaction: false,
-    onUpdate: ({ editor: value }) => onChange(value.getJSON() as RichTextNode),
+    onUpdate: ({ editor: value, transaction }) => {
+      onChange(value.getJSON() as RichTextNode);
+      onChangeSteps?.(transaction.steps.map((step) => step.toJSON()));
+    },
     editorProps: {
       attributes: {
         "aria-label": mode === "compact" ? "快速回复编辑区" : "正文编辑区",
