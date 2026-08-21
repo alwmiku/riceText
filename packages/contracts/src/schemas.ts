@@ -132,6 +132,56 @@ export type UpdateDocumentStepsRequest = z.infer<
   typeof UpdateDocumentStepsRequestSchema
 >;
 
+/** 小说章节的持久化结构。 */
+export const NovelChapterSchema = z
+  .object({
+    id: EntityIdSchema,
+    novelId: EntityIdSchema,
+    title: z.string().min(1).max(500),
+    order: z.number().int().nonnegative(),
+    content: TiptapDocumentSchema,
+    savedAt: DateTimeSchema,
+  })
+  .strict();
+/** 小说章节。 */
+export type NovelChapter = z.infer<typeof NovelChapterSchema>;
+
+/** 新增或覆盖章节的请求体。 */
+export const UpdateNovelChapterRequestSchema = z
+  .object({
+    baseRevision: z.number().int().nonnegative(),
+    clientMutationId: EntityIdSchema,
+    content: TiptapDocumentSchema,
+  })
+  .strict();
+/** 更新小说章节请求。 */
+export type UpdateNovelChapterRequest = z.infer<
+  typeof UpdateNovelChapterRequestSchema
+>;
+
+/** 章节级增量更新请求体（先定义契约，服务端后续实现）。 */
+export const UpdateNovelChapterDeltaRequestSchema = z
+  .object({
+    baseRevision: z.number().int().nonnegative(),
+    clientMutationId: EntityIdSchema,
+    steps: z.array(ProseMirrorStepSchema).min(1).max(1_000),
+  })
+  .strict();
+/** 章节增量更新请求。 */
+export type UpdateNovelChapterDeltaRequest = z.infer<
+  typeof UpdateNovelChapterDeltaRequestSchema
+>;
+
+/** 章节列表响应。 */
+export const NovelChapterListSchema = z
+  .object({
+    items: z.array(NovelChapterSchema).max(10_000),
+    nextCursor: z.string().nullable(),
+  })
+  .strict();
+/** 章节列表响应。 */
+export type NovelChapterList = z.infer<typeof NovelChapterListSchema>;
+
 /** 不可变历史版本的摘要。 */
 export const RevisionSummarySchema = z
   .object({
