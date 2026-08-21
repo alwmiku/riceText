@@ -526,7 +526,7 @@ function Toolbar({
       <ImageDialog
         open={imageOpen}
         onOpenChange={setImageOpen}
-        initial={imageInitial ?? undefined}
+        {...(imageInitial ? { initial: imageInitial } : {})}
         onInsert={(asset, values) => {
           if (imageInitial) {
             const nextAssetId =
@@ -551,7 +551,7 @@ function Toolbar({
       <AttachmentDialog
         open={attachmentOpen}
         onOpenChange={setAttachmentOpen}
-        initial={attachmentInitial ?? undefined}
+        {...(attachmentInitial ? { initial: attachmentInitial } : {})}
         onInsert={(values) => {
           if (attachmentInitial) {
             editor
