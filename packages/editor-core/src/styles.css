@@ -353,6 +353,13 @@
   border-radius: 5px;
 }
 
+.rt-dice-roll.ProseMirror-selectednode,
+.rt-dice-roll__button.ProseMirror-selectednode {
+  border-width: 2px;
+  border-color: #dd9a1f;
+  padding: 0 6px;
+}
+
 .rt-dice-roll__button {
   padding: 0;
   background: transparent;
