@@ -257,10 +257,11 @@ function renderNode(node: JSONContent, path: string, context: RenderContext): Re
     case 'text': return <Fragment key={path}>{renderMarks(node, node.text ?? '', path, context)}</Fragment>
     case 'paragraph': {
       const hasEndAnchor = node.content?.some((child) => child.type === 'inlineCommentAnchor' && child.attrs?.placement === 'end') ?? false
+      const hasVisibleContent = node.content?.some((child) => child.type !== 'inlineCommentAnchor') ?? false
       return (
         <p key={path} style={{ textAlign: attrs.textAlign as CSSProperties['textAlign'] }}>
           {children}
-          {!hasEndAnchor ? (
+          {!hasEndAnchor && hasVisibleContent ? (
             <button key={`${path}-comment`} type="button" className="rt-inline-comment-anchor rt-inline-comment-anchor--empty" data-node-type="inline-comment-anchor" data-thread-id={`auto:${path}`} data-count="0" data-placement="end" aria-label={`${context.labels.inlineComments}: 0`}
               onClick={() => context.interactions.onInlineCommentActivate?.({ threadId: `auto:${path}`, count: 0, placement: 'end' })} />
           ) : null}
