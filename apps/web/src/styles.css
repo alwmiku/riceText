@@ -258,19 +258,39 @@ button {
 }
 .tiptap ul,
 .tiptap ol {
-  padding-inline-start: 1.7em;
+  list-style: none;
   margin: 1em 0;
-}
-.tiptap ul {
-  list-style: disc;
-  list-style-position: inside;
+  padding-left: 0;
 }
 .tiptap ol {
-  list-style: decimal;
-  list-style-position: inside;
+  counter-reset: rt-list-counter;
 }
 .tiptap li {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
   margin: 0.2em 0;
+}
+.tiptap ul > li::before {
+  content: "•";
+  flex: 0 0 auto;
+}
+.tiptap ol > li {
+  counter-increment: rt-list-counter;
+}
+.tiptap ol > li::before {
+  content: counter(rt-list-counter) ".";
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.tiptap li[style*="text-align: center"] {
+  justify-content: center;
+}
+.tiptap li[style*="text-align: right"] {
+  justify-content: flex-end;
+}
+.tiptap li[style*="text-align: justify"] {
+  justify-content: space-between;
 }
 .tiptap a {
   color: #14766d;

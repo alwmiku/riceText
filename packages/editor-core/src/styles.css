@@ -257,22 +257,50 @@
 }
 
 .rt-viewer ul,
-.rt-editor ul {
-  list-style: disc;
-  list-style-position: inside;
-  padding-left: 1.5em;
-}
-
+.rt-editor ul,
 .rt-viewer ol,
 .rt-editor ol {
-  list-style: decimal;
-  list-style-position: inside;
-  padding-left: 1.5em;
+  list-style: none;
+  margin: 1em 0;
+  padding-left: 0;
 }
-
+.rt-viewer ol,
+.rt-editor ol {
+  counter-reset: rt-list-counter;
+}
 .rt-viewer li,
 .rt-editor li {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
   margin: 0.2em 0;
+}
+.rt-viewer ul > li::before,
+.rt-editor ul > li::before {
+  content: "•";
+  flex: 0 0 auto;
+}
+.rt-viewer ol > li,
+.rt-editor ol > li {
+  counter-increment: rt-list-counter;
+}
+.rt-viewer ol > li::before,
+.rt-editor ol > li::before {
+  content: counter(rt-list-counter) ".";
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.rt-viewer li[style*="text-align: center"],
+.rt-editor li[style*="text-align: center"] {
+  justify-content: center;
+}
+.rt-viewer li[style*="text-align: right"],
+.rt-editor li[style*="text-align: right"] {
+  justify-content: flex-end;
+}
+.rt-viewer li[style*="text-align: justify"],
+.rt-editor li[style*="text-align: justify"] {
+  justify-content: space-between;
 }
 
 .rt-viewer pre,

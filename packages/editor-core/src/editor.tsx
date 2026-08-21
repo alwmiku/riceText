@@ -242,6 +242,7 @@ export function RichTextEditor({
     editable,
     autofocus,
     immediatelyRender: false,
+    shouldRerenderOnTransaction: false,
     editorProps: {
       attributes: {
         'class': 'rt-editor__content',

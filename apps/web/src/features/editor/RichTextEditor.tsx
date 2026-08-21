@@ -634,6 +634,7 @@ export function RichTextEditor({
     content,
     editable,
     immediatelyRender: false,
+    shouldRerenderOnTransaction: false,
     onUpdate: ({ editor: value }) => onChange(value.getJSON() as RichTextNode),
     editorProps: {
       attributes: {
