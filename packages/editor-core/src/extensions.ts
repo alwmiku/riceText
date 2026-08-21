@@ -85,7 +85,7 @@ export const InlineCommentAnchor = Node.create({
   group: 'inline',
   inline: true,
   atom: true,
-  selectable: false,
+  selectable: true,
   draggable: false,
   addAttributes() {
     return {

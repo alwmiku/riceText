@@ -294,25 +294,6 @@
   background: #c3ccca;
 }
 
-/* In the editor, every paragraph that does not already carry a persisted
-   comment anchor gets a small, non-editable gray bubble at its end. It is a CSS
-   pseudo-element, so it cannot be selected or deleted as document content. */
-.rt-editor .tiptap p:not(:has(.rt-inline-comment-anchor[data-placement="end"]))::after,
-.rt-editor__content p:not(:has(.rt-inline-comment-anchor[data-placement="end"]))::after,
-.tiptap p:not(:has(.rt-inline-comment-anchor[data-placement="end"]))::after,
-.ProseMirror p:not(:has(.rt-inline-comment-anchor[data-placement="end"]))::after {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-left: 6px;
-  border-radius: 999px;
-  background: #c3ccca;
-  vertical-align: middle;
-  pointer-events: none;
-  user-select: none;
-}
-
 .rt-rich-image {
   box-sizing: border-box;
   max-width: 100%;
