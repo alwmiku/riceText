@@ -284,6 +284,35 @@
   border-radius: 999px;
 }
 
+.rt-inline-comment-anchor--empty {
+  min-width: 8px;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  color: transparent;
+  font-size: 0;
+  background: #c3ccca;
+}
+
+/* In the editor, every paragraph that does not already carry a persisted
+   comment anchor gets a small, non-editable gray bubble at its end. It is a CSS
+   pseudo-element, so it cannot be selected or deleted as document content. */
+.rt-editor .tiptap p:not(:has(.rt-inline-comment-anchor[data-placement="end"]))::after,
+.rt-editor__content p:not(:has(.rt-inline-comment-anchor[data-placement="end"]))::after,
+.tiptap p:not(:has(.rt-inline-comment-anchor[data-placement="end"]))::after,
+.ProseMirror p:not(:has(.rt-inline-comment-anchor[data-placement="end"]))::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: #c3ccca;
+  vertical-align: middle;
+  pointer-events: none;
+  user-select: none;
+}
+
 .rt-rich-image {
   box-sizing: border-box;
   max-width: 100%;
@@ -494,11 +523,23 @@
 
 .rt-spoiler {
   color: transparent;
+  font-weight: normal;
+  font-style: normal;
   background: #171a19;
   border-radius: 3px;
   box-decoration-break: clone;
   cursor: pointer;
   transition: color 120ms ease;
+}
+
+/* Keep spoiler blocks visually uniform even if old content contains inline
+   formatting: bold/italic/color should not change the black-curtain look. */
+.rt-spoiler * {
+  color: inherit !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  font-style: inherit !important;
 }
 
 .rt-spoiler:hover,
@@ -515,7 +556,7 @@
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   color: #ffffff;
-  background: rgb(10 13 12 / 96%);
+  background: rgb(10 13 12 / 52%);
 }
 
 .rt-lightbox__stage {
@@ -544,7 +585,7 @@
   justify-content: center;
   gap: 5px;
   padding: 7px max(10px, env(safe-area-inset-right)) max(7px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
-  background: #171c1a;
+  background: rgb(23 28 26 / 62%);
 }
 
 .rt-lightbox__toolbar button {

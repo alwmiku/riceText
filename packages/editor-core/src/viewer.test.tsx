@@ -58,6 +58,29 @@ describe('RichTextViewer', () => {
     expect(html).not.toContain('rt-toolbar')
   })
 
+  it('renders empty comment anchors as small gray bubbles without a number', () => {
+    const html = renderToStaticMarkup(<RichTextViewer enableLightbox={false} content={{
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [{ type: 'inlineCommentAnchor', attrs: { threadId: 'thread-0', count: 0, placement: 'end' } }],
+      }],
+    }} />)
+
+    expect(html).toContain('rt-inline-comment-anchor--empty')
+    expect(html).not.toContain('>0<')
+  })
+
+  it('renders a synthetic empty bubble at the end of paragraphs without an anchor', () => {
+    const html = renderToStaticMarkup(<RichTextViewer enableLightbox={false} content={{
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'plain paragraph' }] }],
+    }} />)
+
+    expect(html).toContain('plain paragraph')
+    expect(html).toContain('rt-inline-comment-anchor--empty')
+  })
+
   it('renders custom references and strips unsafe URLs before markup generation', () => {
     const html = renderToStaticMarkup(<RichTextViewer enableLightbox={false} content={{
       type: 'doc',

@@ -132,6 +132,7 @@ export function EditorToolbar({ editor, mode = 'full', disabled = false, onSubmi
   }, [editor])
 
   const preventDisabled = disabled || !editor.isEditable
+  const spoilerActive = editor.isActive('spoiler')
   const request = (callback: ((value: Editor) => void) | undefined) => () => callback?.(editor)
   return (
     <div className={`rt-toolbar rt-toolbar--${mode}`} role="toolbar" aria-label="Rich text formatting">
@@ -140,8 +141,8 @@ export function EditorToolbar({ editor, mode = 'full', disabled = false, onSubmi
         <ToolbarButton label="Redo" disabled={preventDisabled || !editor.can().redo()} onPress={() => editor.chain().focus().redo().run()}>↷</ToolbarButton>
       </div>
       <div className="rt-toolbar__group">
-        <ToolbarButton label="Bold" active={editor.isActive('bold')} disabled={preventDisabled} onPress={() => editor.chain().focus().toggleBold().run()}><strong>B</strong></ToolbarButton>
-        <ToolbarButton label="Italic" active={editor.isActive('italic')} disabled={preventDisabled} onPress={() => editor.chain().focus().toggleItalic().run()}><em>I</em></ToolbarButton>
+        <ToolbarButton label="Bold" active={editor.isActive('bold')} disabled={preventDisabled || spoilerActive} onPress={() => editor.chain().focus().toggleBold().run()}><strong>B</strong></ToolbarButton>
+        <ToolbarButton label="Italic" active={editor.isActive('italic')} disabled={preventDisabled || spoilerActive} onPress={() => editor.chain().focus().toggleItalic().run()}><em>I</em></ToolbarButton>
         <ToolbarButton label="Underline" active={editor.isActive('underline')} disabled={preventDisabled} onPress={() => editor.chain().focus().toggleUnderline().run()}><u>U</u></ToolbarButton>
         <ToolbarButton label="Strikethrough" active={editor.isActive('strike')} disabled={preventDisabled} onPress={() => editor.chain().focus().toggleStrike().run()}><s>S</s></ToolbarButton>
         <ToolbarButton label="Spoiler" active={editor.isActive('spoiler')} disabled={preventDisabled} onPress={() => editor.chain().focus().toggleSpoiler().run()}>◼</ToolbarButton>
@@ -182,7 +183,7 @@ export function EditorToolbar({ editor, mode = 'full', disabled = false, onSubmi
               aria-label="Text color"
               title="Text color"
               type="color"
-              disabled={preventDisabled}
+              disabled={preventDisabled || spoilerActive}
               value={String(editor.getAttributes('textStyle').color ?? '#1f2937')}
               onChange={(event) => editor.chain().focus().setColor(event.currentTarget.value).run()}
             />

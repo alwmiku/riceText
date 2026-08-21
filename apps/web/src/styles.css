@@ -82,7 +82,8 @@ button { letter-spacing: 0; }
 .inline-comment-anchor { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; margin: 0 4px; border: 1px solid #60a9a2; border-radius: 999px; background: #eaf7f5; color: #176f67; font: 700 11px/1 Inter, sans-serif; cursor: pointer; vertical-align: .15em; }
 .dice-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 27px; padding: 2px 8px; border: 1px solid #dfaa44; border-radius: 5px; background: #fff8e8; color: #7a4b00; font-family: inherit; font-size: .9em; font-weight: 700; vertical-align: baseline; cursor: pointer; }
 .dice-chip::before { content: "◆"; font-size: .7em; color: #d58a05; }
-.spoiler-text { color: transparent; background: #1e2328; border-radius: 3px; padding: 0 .18em; cursor: pointer; transition: color 120ms ease; }
+.spoiler-text { color: transparent; font-weight: normal; font-style: normal; background: #1e2328; border-radius: 3px; padding: 0 .18em; cursor: pointer; transition: color 120ms ease; }
+.spoiler-text * { color: inherit !important; font-family: inherit !important; font-size: inherit !important; font-weight: inherit !important; font-style: inherit !important; }
 .spoiler-text:hover, .spoiler-text:focus, .spoiler-text[data-revealed="true"] { color: white; }
 .novel-excerpt { margin: 22px 0; border-inline-start: 3px solid #23877e; padding: 18px 20px; background: #f4f8f7; font-family: "Noto Serif SC", "Songti SC", serif; }
 .novel-excerpt[data-preset="mobile"] { max-width: 390px; margin-inline: auto; border: 1px solid #d9e5e3; border-inline-start-width: 1px; padding: 24px 20px; background: white; box-shadow: 0 8px 22px rgb(35 65 61 / .08); }
@@ -133,7 +134,7 @@ button { letter-spacing: 0; }
 .comment-actions { display: flex; align-items: center; gap: 2px; }
 .comment-children { margin-top: 12px; }
 
-.lightbox-overlay { position: fixed; inset: 0; z-index: 80; display: grid; grid-template-rows: 56px minmax(0,1fr) 48px; background: rgb(11 15 18 / .96); color: white; }
+.lightbox-overlay { position: fixed; inset: 0; z-index: 80; display: grid; grid-template-rows: 56px minmax(0,1fr) 48px; background: rgb(11 15 18 / .52); color: white; }
 .lightbox-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 0 12px; background: rgb(0 0 0 / .22); }
 .lightbox-stage { position: relative; min-height: 0; overflow: hidden; display: grid; place-items: center; touch-action: none; }
 .lightbox-stage img { max-width: 94vw; max-height: calc(100vh - 124px); object-fit: contain; user-select: none; will-change: transform; }

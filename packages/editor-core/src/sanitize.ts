@@ -141,15 +141,17 @@ function containsControlCharacter(value: string): boolean {
 
 /**
  * Returns a safe URL for the requested content type, or `null` when rejected.
- * Image URLs accept HTTP(S) and `/uploads/...`; links additionally accept
- * `mailto:`, fragments, and ordinary same-origin paths.
+ * Image URLs accept HTTP(S), `/uploads/...`, `/api/assets/...`, and local
+ * `blob:` object URLs; links additionally accept `mailto:`, fragments, and
+ * ordinary same-origin paths.
  */
 export function sanitizeUrl(value: unknown, kind: 'image' | 'link' = 'link'): string | null {
   if (typeof value !== 'string') return null
   if (containsControlCharacter(value)) return null
   const candidate = value.trim()
   if (!candidate || candidate.length > 2_048) return null
-  if (candidate.startsWith('/uploads/') && !candidate.includes('\\')) return candidate
+  if ((candidate.startsWith('/uploads/') || candidate.startsWith('/api/assets/')) && !candidate.includes('\\')) return candidate
+  if (kind === 'image' && candidate.startsWith('blob:') && !candidate.includes('\\')) return candidate
   if (kind === 'link' && (candidate.startsWith('/') || candidate.startsWith('#'))) return candidate
   try {
     const url = new URL(candidate)
@@ -226,6 +228,23 @@ function sanitizeMarks(value: unknown, path: string, context: SanitizerContext):
       continue
     }
     addIssue(context, { code: 'unknown-mark', path: markPath, message: `Mark ${raw.type} is not allowed and was removed.` })
+  }
+  if (marks.some((mark) => mark.type === 'spoiler')) {
+    const spoilerSafeMarks: NonNullable<JSONContent['marks']> = []
+    for (const mark of marks) {
+      if (mark.type === 'bold' || mark.type === 'italic') {
+        addIssue(context, { code: 'invalid-attribute', path, message: `${mark.type} is not allowed inside spoiler and was removed.` })
+        continue
+      }
+      if (mark.type === 'textStyle' && mark.attrs) {
+        const { color: _color, ...rest } = mark.attrs as Record<string, unknown>
+        if (_color !== undefined) addIssue(context, { code: 'invalid-attribute', path, message: 'Text color is not allowed inside spoiler and was removed.' })
+        if (Object.keys(rest).length > 0) spoilerSafeMarks.push({ type: 'textStyle', attrs: rest })
+        continue
+      }
+      spoilerSafeMarks.push(mark)
+    }
+    return spoilerSafeMarks.length > 0 ? spoilerSafeMarks : undefined
   }
   return marks.length > 0 ? marks : undefined
 }

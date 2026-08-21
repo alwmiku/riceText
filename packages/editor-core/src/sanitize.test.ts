@@ -76,6 +76,8 @@ describe('document sanitization', () => {
   it('uses protocol allowlists and handles malformed serialized JSON', () => {
     expect(sanitizeUrl('https://example.com/a', 'image')).toBe('https://example.com/a')
     expect(sanitizeUrl('/uploads/a.jpg', 'image')).toBe('/uploads/a.jpg')
+    expect(sanitizeUrl('/api/assets/a1b2', 'image')).toBe('/api/assets/a1b2')
+    expect(sanitizeUrl('blob:local-object-url', 'image')).toBe('blob:local-object-url')
     expect(sanitizeUrl('mailto:user@example.com', 'link')).toBe('mailto:user@example.com')
     expect(sanitizeUrl('mailto:user@example.com', 'image')).toBeNull()
     expect(sanitizeUrl('vbscript:msgbox(1)', 'link')).toBeNull()
@@ -150,6 +152,31 @@ describe('document sanitization', () => {
       { type: 'link', attrs: { href: '/safe', target: '_blank', rel: 'noopener noreferrer nofollow' } },
     ])
     expect(result.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining(['unknown-mark', 'unknown-attribute', 'unsafe-url', 'invalid-attribute']))
+  })
+
+  it('strips bold, italic, and text color from spoiler text while keeping font settings', () => {
+    const safe = sanitizeDocument({
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [{
+          type: 'text',
+          text: 'secret',
+          marks: [
+            { type: 'spoiler' },
+            { type: 'bold' },
+            { type: 'italic' },
+            { type: 'textStyle', attrs: { color: '#ff0000', fontFamily: 'serif', fontSize: '18px' } },
+          ],
+        }],
+      }],
+    })
+
+    const marks = safe.content?.[0]?.content?.[0]?.marks
+    expect(marks).toContainEqual({ type: 'spoiler' })
+    expect(marks).not.toContainEqual({ type: 'bold' })
+    expect(marks).not.toContainEqual({ type: 'italic' })
+    expect(marks).toContainEqual({ type: 'textStyle', attrs: { fontFamily: 'serif', fontSize: '18px' } })
   })
 
   it('normalizes attributes for every persisted business node', () => {

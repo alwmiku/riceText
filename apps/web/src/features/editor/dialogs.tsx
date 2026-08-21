@@ -32,8 +32,8 @@ export function ImageDialog({ open, onOpenChange, onInsert }: { open: boolean; o
   const [asset, setAsset] = useState<UploadedAsset | null>(null);
   const [pending, setPending] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  // 外链只允许 HTTP(S)；本地文件必须先完成上传并取得稳定 assetId。
-  const valid = asset !== null || /^https?:\/\//i.test(src);
+  // 外链只允许 HTTP(S) 或本站资产路径；本地文件必须先完成上传并取得稳定 assetId。
+  const valid = asset !== null || /^(https?:\/\/|\/api\/assets\/|\/uploads\/|blob:)/i.test(src);
   const pickFile = async (file?: File) => {
     if (!file) return;
     setPending(true);

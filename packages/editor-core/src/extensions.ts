@@ -85,7 +85,8 @@ export const InlineCommentAnchor = Node.create({
   group: 'inline',
   inline: true,
   atom: true,
-  selectable: true,
+  selectable: false,
+  draggable: false,
   addAttributes() {
     return {
       threadId: { default: '', parseHTML: (element) => element.getAttribute('data-thread-id')?.slice(0, 128) ?? '' },
@@ -95,14 +96,15 @@ export const InlineCommentAnchor = Node.create({
   },
   parseHTML() { return [{ tag: 'span[data-node-type="inline-comment-anchor"]' }] },
   renderHTML({ node }) {
+    const empty = Number(node.attrs.count) <= 0
     return ['span', {
-      'class': 'rt-inline-comment-anchor',
+      'class': `rt-inline-comment-anchor${empty ? ' rt-inline-comment-anchor--empty' : ''}`,
       'data-node-type': 'inline-comment-anchor',
       'data-thread-id': String(node.attrs.threadId),
       'data-count': String(node.attrs.count),
       'data-placement': node.attrs.placement === 'start' ? 'start' : 'end',
       'contenteditable': 'false',
-    }, String(node.attrs.count)]
+    }, empty ? '' : String(node.attrs.count)]
   },
   addCommands() {
     return { insertInlineCommentAnchor: (attrs) => ({ commands }) => commands.insertContent({ type: this.name, attrs }) }

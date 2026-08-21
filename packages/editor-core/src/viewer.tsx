@@ -255,7 +255,18 @@ function renderNode(node: JSONContent, path: string, context: RenderContext): Re
   switch (node.type) {
     case 'doc': return <Fragment key={path}>{children}</Fragment>
     case 'text': return <Fragment key={path}>{renderMarks(node, node.text ?? '', path, context)}</Fragment>
-    case 'paragraph': return <p key={path} style={{ textAlign: attrs.textAlign as CSSProperties['textAlign'] }}>{children}</p>
+    case 'paragraph': {
+      const hasEndAnchor = node.content?.some((child) => child.type === 'inlineCommentAnchor' && child.attrs?.placement === 'end') ?? false
+      return (
+        <p key={path} style={{ textAlign: attrs.textAlign as CSSProperties['textAlign'] }}>
+          {children}
+          {!hasEndAnchor ? (
+            <button key={`${path}-comment`} type="button" className="rt-inline-comment-anchor rt-inline-comment-anchor--empty" data-node-type="inline-comment-anchor" data-thread-id={`auto:${path}`} data-count="0" data-placement="end" aria-label={`${context.labels.inlineComments}: 0`}
+              onClick={() => context.interactions.onInlineCommentActivate?.({ threadId: `auto:${path}`, count: 0, placement: 'end' })} />
+          ) : null}
+        </p>
+      )
+    }
     case 'heading': {
       const level = Math.min(6, Math.max(1, Number(attrs.level ?? 2)))
       const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
@@ -270,9 +281,10 @@ function renderNode(node: JSONContent, path: string, context: RenderContext): Re
     case 'horizontalRule': return <hr key={path} />
     case 'inlineCommentAnchor': {
       const value = attrs as unknown as InlineCommentAnchorAttributes
+      const empty = value.count <= 0
       return (
-        <button key={path} type="button" className={`rt-inline-comment-anchor rt-inline-comment-anchor--${value.placement}`} aria-label={`${context.labels.inlineComments}: ${value.count}`}
-          onClick={() => context.interactions.onInlineCommentActivate?.(value)}>{value.count}</button>
+        <button key={path} type="button" className={`rt-inline-comment-anchor rt-inline-comment-anchor--${value.placement}${empty ? ' rt-inline-comment-anchor--empty' : ''}`} data-node-type="inline-comment-anchor" data-thread-id={value.threadId} data-count={value.count} data-placement={value.placement} aria-label={`${context.labels.inlineComments}: ${value.count}`}
+          onClick={() => context.interactions.onInlineCommentActivate?.(value)}>{empty ? '' : value.count}</button>
       )
     }
     case 'richImage': {
