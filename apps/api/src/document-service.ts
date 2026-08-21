@@ -37,7 +37,7 @@ const allowedNodeAttrs: Record<string, ReadonlySet<string>> = {
   heading: new Set(["level", "textAlign"]),
   bulletList: new Set(),
   orderedList: new Set(["start"]),
-  listItem: new Set(),
+  listItem: new Set(["textAlign"]),
   blockquote: new Set(),
   codeBlock: new Set(["language"]),
   horizontalRule: new Set(),

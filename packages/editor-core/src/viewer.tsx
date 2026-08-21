@@ -277,7 +277,7 @@ function renderNode(node: JSONContent, path: string, context: RenderContext): Re
     }
     case 'bulletList': return <ul key={path}>{children}</ul>
     case 'orderedList': return <ol key={path} start={Number(attrs.start ?? 1)}>{children}</ol>
-    case 'listItem': return <li key={path}>{children}</li>
+    case 'listItem': return <li key={path} style={{ textAlign: attrs.textAlign as CSSProperties['textAlign'] }}>{children}</li>
     case 'blockquote': return <blockquote key={path}>{children}</blockquote>
     case 'codeBlock': return <pre key={path}><code>{children}</code></pre>
     case 'hardBreak': return <br key={path} />

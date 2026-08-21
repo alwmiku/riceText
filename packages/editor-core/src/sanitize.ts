@@ -71,7 +71,7 @@ const nodeAttributeAllowlist: Readonly<Record<string, readonly string[]>> = {
   heading: ['level', 'textAlign'],
   bulletList: [],
   orderedList: ['start'],
-  listItem: [],
+  listItem: ['textAlign'],
   blockquote: [],
   codeBlock: ['language'],
   hardBreak: [],
@@ -265,7 +265,8 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
 
   switch (type) {
     case 'paragraph':
-    case 'heading': {
+    case 'heading':
+    case 'listItem': {
       const textAlign = raw.textAlign === 'center' || raw.textAlign === 'right' || raw.textAlign === 'justify' ? raw.textAlign : 'left'
       return type === 'heading' ? { level: finiteInteger(raw.level, 2, 1, 6), textAlign } : { textAlign }
     }

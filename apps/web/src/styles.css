@@ -261,6 +261,17 @@ button {
   padding-inline-start: 1.7em;
   margin: 1em 0;
 }
+.tiptap ul {
+  list-style: disc;
+  list-style-position: inside;
+}
+.tiptap ol {
+  list-style: decimal;
+  list-style-position: inside;
+}
+.tiptap li {
+  margin: 0.2em 0;
+}
 .tiptap a {
   color: #14766d;
   text-decoration: underline;

@@ -256,6 +256,25 @@
   border-left: 3px solid #78b9ad;
 }
 
+.rt-viewer ul,
+.rt-editor ul {
+  list-style: disc;
+  list-style-position: inside;
+  padding-left: 1.5em;
+}
+
+.rt-viewer ol,
+.rt-editor ol {
+  list-style: decimal;
+  list-style-position: inside;
+  padding-left: 1.5em;
+}
+
+.rt-viewer li,
+.rt-editor li {
+  margin: 0.2em 0;
+}
+
 .rt-viewer pre,
 .rt-editor pre {
   padding: 14px;

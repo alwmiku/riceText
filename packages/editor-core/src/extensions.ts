@@ -355,7 +355,7 @@ export function editorExtensions(options: EditorExtensionsOptions = {}): Extensi
     Color.configure({ types: ['textStyle'] }),
     FontFamily.configure({ types: ['textStyle'] }),
     FontSize.configure({ types: ['textStyle'] }),
-    TextAlign.configure({ types: ['heading', 'paragraph'], alignments: ['left', 'center', 'right', 'justify'] }),
+    TextAlign.configure({ types: ['heading', 'paragraph', 'listItem'], alignments: ['left', 'center', 'right', 'justify'] }),
     InlineCommentAnchor,
     RichImage,
     DiceRoll,
