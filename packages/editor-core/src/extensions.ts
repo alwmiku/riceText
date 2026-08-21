@@ -6,6 +6,8 @@ import { TextAlign } from '@tiptap/extension-text-align'
 import { FontSize, TextStyle } from '@tiptap/extension-text-style'
 import { Underline } from '@tiptap/extension-underline'
 import { StarterKit } from '@tiptap/starter-kit'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
 import { sanitizeUrl } from './sanitize.js'
 import type {
@@ -79,6 +81,15 @@ function parseJsonArray(value: string | null): unknown[] {
   }
 }
 
+/** Counts persisted inline-comment anchors in a ProseMirror document. */
+function countInlineCommentAnchors(doc: ProseMirrorNode): number {
+  let count = 0
+  doc.descendants((node) => {
+    if (node.type.name === 'inlineCommentAnchor') count += 1
+  })
+  return count
+}
+
 /** Tiptap node for paragraph-start or paragraph-end comment counters. */
 export const InlineCommentAnchor = Node.create({
   name: 'inlineCommentAnchor',
@@ -108,6 +119,19 @@ export const InlineCommentAnchor = Node.create({
   },
   addCommands() {
     return { insertInlineCommentAnchor: (attrs) => ({ commands }) => commands.insertContent({ type: this.name, attrs }) }
+  },
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('inlineCommentAnchorProtected'),
+        filterTransaction: (transaction, state) => {
+          if (!transaction.docChanged) return true
+          const before = countInlineCommentAnchors(state.doc)
+          const after = countInlineCommentAnchors(transaction.doc)
+          return after >= before
+        },
+      }),
+    ]
   },
 })
 

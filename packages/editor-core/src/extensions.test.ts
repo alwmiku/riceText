@@ -169,6 +169,25 @@ describe('editorExtensions', () => {
     editor.destroy()
   })
 
+  it('protects inline comment anchors from deletion', () => {
+    const content: JSONContent = {
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'keep' },
+          { type: 'inlineCommentAnchor', attrs: { threadId: 't1', count: 2, placement: 'end' } },
+        ],
+      }],
+    }
+    const editor = new Editor({ extensions: editorExtensions(), content })
+    const before = JSON.stringify(editor.getJSON())
+    editor.commands.selectAll()
+    editor.commands.deleteSelection()
+    expect(JSON.stringify(editor.getJSON())).toBe(before)
+    editor.destroy()
+  })
+
   it('applies, toggles, and removes the spoiler command and rejects unsafe links', () => {
     const editor = new Editor({ extensions: editorExtensions(), content: '<p>classified</p>' })
     editor.commands.selectAll()

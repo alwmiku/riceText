@@ -282,15 +282,18 @@
   background: var(--rt-primary);
   border: 0;
   border-radius: 999px;
+  cursor: pointer;
 }
 
 .rt-inline-comment-anchor--empty {
   min-width: 8px;
   width: 8px;
   height: 8px;
+  margin: 0 0 0 6px;
   padding: 0;
   color: transparent;
   font-size: 0;
+  vertical-align: middle;
   background: #c3ccca;
 }
 
