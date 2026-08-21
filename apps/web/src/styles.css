@@ -204,6 +204,62 @@ button {
   border-bottom: 1px solid hsl(var(--border));
   background: #fbfcfc;
 }
+
+.long-text-workspace {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+}
+
+.chapter-sidebar {
+  position: sticky;
+  top: 116px;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  padding: 10px;
+}
+
+.chapter-sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.chapter-sidebar__item:hover {
+  background: #edf7f5;
+}
+
+.chapter-sidebar__item--dragging {
+  opacity: 0.5;
+  outline: 1px dashed #197c73;
+}
+
+.chapter-sidebar__item button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #6b7a76;
+  cursor: pointer;
+}
+
+.chapter-sidebar__item button:hover:not(:disabled) {
+  background: #e2efec;
+  color: #176e66;
+}
+
+.chapter-sidebar__item button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 .toolbar-group {
   display: inline-flex;
   align-items: center;

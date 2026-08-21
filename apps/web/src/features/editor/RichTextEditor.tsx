@@ -47,6 +47,7 @@ import {
   ImageDialog,
   MentionDialog,
 } from "./dialogs";
+import { ChapterSidebar } from "../novel/ChapterSidebar";
 
 /** RichTextEditor 的稳定公共属性；宿主只需持有 JSON，不接触 ProseMirror 实例。 */
 export interface RichTextEditorProps {
@@ -685,8 +686,11 @@ export function RichTextEditor({
             </Button>
           ) : null}
         </div>
-        <div className="editor-content-wrap">
-          <EditorContent editor={editor} />
+        <div className="long-text-workspace">
+          <ChapterSidebar editor={editor} />
+          <div className="editor-content-wrap">
+            <EditorContent editor={editor} />
+          </div>
         </div>
       </div>
     );

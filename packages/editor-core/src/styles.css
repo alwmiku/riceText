@@ -631,6 +631,13 @@
   line-height: 1.8;
 }
 
+.rt-long-text__virtual,
+.rt-long-text__virtual-input {
+  font-family: inherit;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
 .rt-long-text__editor {
   box-sizing: border-box;
   width: 100%;
