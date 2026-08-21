@@ -35,6 +35,8 @@ function cmd(editor: Editor | null, action: (editor: Editor) => boolean): () => 
 function Toolbar({ editor, condensed = false }: { editor: Editor | null; condensed?: boolean }) {
   const [diceOpen, setDiceOpen] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
+  const [imageInitial, setImageInitial] = useState<{ src: string; alt: string; caption: string; align: string; width: number } | null>(null);
+  const [imageAssetId, setImageAssetId] = useState<string | null>(null);
   const [excerptOpen, setExcerptOpen] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [, forceSelectionRender] = useReducer((value: number) => value + 1, 0);
@@ -60,6 +62,25 @@ function Toolbar({ editor, condensed = false }: { editor: Editor | null; condens
     editor.chain().focus().extendMarkRange('link').setLink({ href }).run();
   };
   const insertGate = () => insert({ type: 'replyGate', attrs: { gateId: createId('gate'), prompt: '回复后可见' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '在这里编辑回复后可见的内容' }] }] });
+  const openImageDialog = () => {
+    const attrs = editor.getAttributes('richImage') as { src?: string; alt?: string; caption?: string; align?: string; width?: number; assetId?: string | null } | undefined;
+    const selection = editor.state.selection as { node?: { type?: { name?: string } } };
+    const isImageSelected = editor.isActive('richImage') || selection.node?.type?.name === 'richImage';
+    if (isImageSelected && attrs && typeof attrs.src === 'string') {
+      setImageInitial({
+        src: attrs.src,
+        alt: attrs.alt ?? '',
+        caption: attrs.caption ?? '',
+        align: attrs.align ?? 'center',
+        width: attrs.width ?? 80,
+      });
+      setImageAssetId(attrs.assetId ?? null);
+    } else {
+      setImageInitial(null);
+      setImageAssetId(null);
+    }
+    setImageOpen(true);
+  };
 
   return <>
     <div className="editor-toolbar" role="toolbar" aria-label="富文本工具栏">
@@ -88,14 +109,21 @@ function Toolbar({ editor, condensed = false }: { editor: Editor | null; condens
       </span>}
       <span className="toolbar-group">
         {!condensed && <IconButton label="链接" active={editor.isActive('link')} onClick={addLink}><Link2 size={16} /></IconButton>}
-        <IconButton label="图片" onClick={() => setImageOpen(true)}><ImagePlus size={16} /></IconButton>
+        <IconButton label="图片" onClick={openImageDialog}><ImagePlus size={16} /></IconButton>
         <IconButton label="骰子" onClick={() => setDiceOpen(true)}><Dice5 size={16} /></IconButton>
         {!condensed && <><IconButton label="间贴锚点" onClick={() => insert({ type: 'inlineCommentAnchor', attrs: { threadId: createId('thread'), count: 0, placement: 'end' } })}><MessageCirclePlus size={16} /></IconButton><IconButton label="@ 用户" onClick={() => setMentionOpen(true)}><AtSign size={16} /></IconButton><IconButton label="黑幕" active={editor.isActive('spoiler')} onClick={() => editor.chain().focus().toggleSpoiler().run()}><EyeOff size={16} /></IconButton></>}
       </span>
       {!condensed && <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8" aria-label="更多插入"><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setExcerptOpen(true)}><TextQuote size={15} />小说摘录</DropdownMenuItem><DropdownMenuItem onSelect={insertGate}><UnlockKeyhole size={15} />回复后可见</DropdownMenuItem><DropdownMenuItem onSelect={() => insert({ type: 'attachmentRef', attrs: { attachmentId: createId('attachment'), name: '章节设定集.zip', mimeType: 'application/zip', size: 2840000, priceCoins: 20 } })}><ImagePlus size={15} />附件引用</DropdownMenuItem><DropdownMenuItem onSelect={() => insert({ type: 'pollRef', attrs: { pollId: createId('poll'), question: '下一章先跟随哪位角色？', multiple: false, options: [{ id: 'keeper', label: '灯塔守望人' }, { id: 'postman', label: '失踪的邮差' }, { id: 'clerk', label: '港务局记录员' }] } })}><List size={15} />投票</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
     </div>
     <DiceDialog open={diceOpen} onOpenChange={setDiceOpen} onInsert={(result) => insert({ type: 'diceRoll', attrs: result })} />
-    <ImageDialog open={imageOpen} onOpenChange={setImageOpen} onInsert={(asset, values) => insert({ type: 'richImage', attrs: { assetId: asset?.assetId ?? null, ...values } })} />
+    <ImageDialog open={imageOpen} onOpenChange={setImageOpen} initial={imageInitial ?? undefined} onInsert={(asset, values) => {
+      if (imageInitial) {
+        const nextAssetId = asset?.assetId ?? (values.src === imageInitial.src ? imageAssetId : null);
+        editor.chain().focus().updateAttributes('richImage', { assetId: nextAssetId, ...values }).run();
+      } else {
+        insert({ type: 'richImage', attrs: { assetId: asset?.assetId ?? null, ...values } });
+      }
+    }} />
     <ExcerptDialog open={excerptOpen} onOpenChange={setExcerptOpen} onInsert={(values) => insert({ type: 'novelExcerpt', attrs: { bookTitle: values.bookTitle, chapterTitle: values.chapterTitle, author: values.author, sourceUrl: values.sourceUrl || null, variant: values.variant }, content: [{ type: 'paragraph', content: [{ type: 'text', text: values.text }] }] })} />
     <MentionDialog open={mentionOpen} onOpenChange={setMentionOpen} onInsert={(user) => insert({ type: 'mention', attrs: { userId: user.id, name: user.name, resolved: user.resolved, avatarUrl: user.avatarUrl } })} />
   </>;

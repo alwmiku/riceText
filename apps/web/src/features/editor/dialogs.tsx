@@ -23,7 +23,7 @@ export function DiceDialog({ open, onOpenChange, onInsert }: { open: boolean; on
 }
 
 /** 同时支持 HTTP(S) 外链和 multipart 上传的图片属性编辑器。 */
-export function ImageDialog({ open, onOpenChange, onInsert }: { open: boolean; onOpenChange: (value: boolean) => void; onInsert: (asset: UploadedAsset | null, values: { src: string; alt: string; caption: string; align: string; width: number }) => void }) {
+export function ImageDialog({ open, onOpenChange, onInsert, initial }: { open: boolean; onOpenChange: (value: boolean) => void; onInsert: (asset: UploadedAsset | null, values: { src: string; alt: string; caption: string; align: string; width: number }) => void; initial?: { src: string; alt: string; caption: string; align: string; width: number } }) {
   const [src, setSrc] = useState('');
   const [alt, setAlt] = useState('');
   const [caption, setCaption] = useState('');
@@ -32,6 +32,15 @@ export function ImageDialog({ open, onOpenChange, onInsert }: { open: boolean; o
   const [asset, setAsset] = useState<UploadedAsset | null>(null);
   const [pending, setPending] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    setSrc(initial?.src ?? '');
+    setAlt(initial?.alt ?? '');
+    setCaption(initial?.caption ?? '');
+    setAlign(initial?.align ?? 'center');
+    setWidth(initial?.width ?? 80);
+    setAsset(null);
+  }, [open, initial]);
   // 外链只允许 HTTP(S) 或本站资产路径；本地文件必须先完成上传并取得稳定 assetId。
   const valid = asset !== null || /^(https?:\/\/|\/api\/assets\/|\/uploads\/|blob:)/i.test(src);
   const pickFile = async (file?: File) => {
@@ -40,7 +49,8 @@ export function ImageDialog({ open, onOpenChange, onInsert }: { open: boolean; o
     try { const next = await uploadAsset(file); setAsset(next); setSrc(next.url); if (!alt) setAlt(file.name.replace(/\.[^.]+$/, '')); }
     finally { setPending(false); }
   };
-  return <Dialog open={open} onOpenChange={onOpenChange} title="插入图片" description="可使用 HTTP(S) 外链，或上传到本站媒体服务。" className="max-w-xl" footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button><Button disabled={!valid || pending} onClick={() => { onInsert(asset, { src, alt, caption, align, width }); onOpenChange(false); }}>插入图片</Button></>}>
+  const editing = Boolean(initial);
+  return <Dialog open={open} onOpenChange={onOpenChange} title={editing ? '编辑图片' : '插入图片'} description="可使用 HTTP(S) 外链，或上传到本站媒体服务。" className="max-w-xl" footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button><Button disabled={!valid || pending} onClick={() => { onInsert(asset, { src, alt, caption, align, width }); onOpenChange(false); }}>{editing ? '保存修改' : '插入图片'}</Button></>}>
     <div className="grid gap-4">
       <div className="grid grid-cols-[1fr_auto] gap-2"><input className="field" value={src} onChange={(event) => { setSrc(event.target.value); setAsset(null); }} placeholder="https://example.com/image.jpg" aria-label="图片地址" /><Button variant="outline" onClick={() => inputRef.current?.click()} disabled={pending}>{pending ? <LoaderCircle size={16} className="animate-spin" /> : <Upload size={16} />}上传</Button></div>
       <input ref={inputRef} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void pickFile(event.target.files?.[0])} />

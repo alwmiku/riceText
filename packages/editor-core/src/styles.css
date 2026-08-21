@@ -304,6 +304,12 @@
   margin-bottom: 22px;
 }
 
+.rt-rich-image.ProseMirror-selectednode {
+  outline: 2px solid var(--rt-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .rt-rich-image--left { margin-right: auto; }
 .rt-rich-image--center { margin-right: auto; margin-left: auto; }
 .rt-rich-image--right { margin-left: auto; }
