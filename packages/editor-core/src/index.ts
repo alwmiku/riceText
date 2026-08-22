@@ -13,6 +13,9 @@ export * from './sanitize.js'
 /** Public persisted node attributes and replaceable adapter contracts. */
 export * from './types.js'
 
+/** Configurable vertical poll-result chart used by viewer surfaces. */
+export * from './poll-result-chart.js'
+
 /** Pure React static viewer and its interaction controller. */
 export * from './viewer.js'
 
