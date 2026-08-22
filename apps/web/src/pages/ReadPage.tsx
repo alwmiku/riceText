@@ -41,9 +41,7 @@ export default function ReadPage() {
     () => ({
       onInlineCommentActivate: (attrs) => setThreadId(attrs.threadId),
       isReplyGateVisible: () =>
-        identity.replied ||
-        identity.role === "author" ||
-        identity.role === "moderator",
+        identity.role === "reader" && identity.replied,
       onReplyGateRequest: () => setThreadId("thread_1"),
       renderMentionCard: (attrs) => (
         <span>

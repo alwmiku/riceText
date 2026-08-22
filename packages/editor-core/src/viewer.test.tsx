@@ -113,6 +113,20 @@ describe('RichTextViewer', () => {
     expect(container.querySelector('[contenteditable="true"]')).not.toBeInTheDocument()
   })
 
+  it('keeps reply gates locked by default and does not add synthetic anchors inside them', async () => {
+    const { container } = render(<RichTextViewer
+      enableLightbox={false}
+      content={{ type: 'doc', content: [{
+        type: 'replyGate', attrs: { gateId: 'g1', prompt: 'Reply first' },
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'secret body' }] }],
+      }] }}
+    />)
+
+    await screen.findByText('Reply first')
+    expect(screen.queryByText('secret body')).not.toBeInTheDocument()
+    expect(container.querySelector('.rt-inline-comment-anchor--empty')).toBeNull()
+  })
+
   it('projects locked reply content without leaking its children', async () => {
     render(<RichTextViewer
       interactions={{ isReplyGateVisible: () => false }}

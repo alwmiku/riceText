@@ -51,10 +51,11 @@ describe('ReadPage', () => {
     mocks.getCommentThread.mockReset().mockResolvedValue(seedComments);
   });
 
-  it('作者看到回复可见正文，可取得付费附件但不能参与自己的投票', async () => {
+  it('作者可取得付费附件但不会在阅读器自动看到回复可见正文，且不能参与自己的投票', async () => {
     renderPage(identities[0]!);
     expect(await screen.findByText('章节资料.zip')).toBeInTheDocument();
-    expect(screen.getByText(/日志坐标/)).toBeInTheDocument();
+    expect(screen.queryByText(/日志坐标/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '回复主题后显示本段航海日志。' })).toBeInTheDocument();
     expect(screen.getByText('@晚风翻页')).toBeInTheDocument();
 
     const attachment = screen.getByText('章节资料.zip').closest('button')!;

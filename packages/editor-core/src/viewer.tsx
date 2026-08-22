@@ -215,8 +215,9 @@ function formatBytes(bytes: number): string {
 /** 为没有行末间贴锚点的非空段落补一个自动锚点，保持阅读模式的气泡体验。 */
 function addMissingParagraphAnchors(doc: JSONContent): JSONContent {
   const clone = structuredClone(doc)
-  const visit = (node: JSONContent, path: string): void => {
-    if (node.type === 'paragraph') {
+  const visit = (node: JSONContent, path: string, insideReplyGate = false): void => {
+    const nextInsideReplyGate = insideReplyGate || node.type === 'replyGate'
+    if (node.type === 'paragraph' && !insideReplyGate) {
       const hasEndAnchor = node.content?.some((child) => child.type === 'inlineCommentAnchor' && child.attrs?.placement === 'end') ?? false
       const hasVisibleContent = node.content?.some((child) => child.type !== 'inlineCommentAnchor') ?? false
       if (!hasEndAnchor && hasVisibleContent) {
@@ -226,7 +227,7 @@ function addMissingParagraphAnchors(doc: JSONContent): JSONContent {
         ]
       }
     }
-    node.content?.forEach((child, index) => visit(child, `${path}.${index}`))
+    node.content?.forEach((child, index) => visit(child, `${path}.${index}`, nextInsideReplyGate))
   }
   visit(clone, '0')
   return clone
@@ -396,7 +397,7 @@ function PollNodeView({ node, viewerRef }: ViewerNodeProps) {
 function ReplyGateNodeView({ node, viewerRef }: ViewerNodeProps) {
   const viewer = viewerRef.current
   const attrs = node.attrs as unknown as ReplyGateAttributes
-  const visible = viewer.interactions.isReplyGateVisible?.(attrs) ?? true
+  const visible = viewer.interactions.isReplyGateVisible?.(attrs) === true
   if (!visible) {
     return (
       <NodeViewWrapper as="section" className="rt-reply-gate rt-reply-gate--locked">

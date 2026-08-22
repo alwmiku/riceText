@@ -9,6 +9,7 @@ import {
   Bold,
   ChevronDown,
   Dice5,
+  Eraser,
   EyeOff,
   FileText,
   Heading1,
@@ -90,6 +91,46 @@ function isRichNodeActive(editor: Editor, nodeName: string): boolean {
 function isContainerNodeActive(editor: Editor, nodeName: string): boolean {
   const selectedNodeName = getSelectedNodeName(editor);
   return selectedNodeName ? selectedNodeName === nodeName : editor.isActive(nodeName);
+}
+
+function unwrapOutermostReplyGate(editor: Editor): boolean {
+  const { selection } = editor.state;
+  const { $from } = selection;
+  for (let depth = 1; depth <= $from.depth; depth += 1) {
+    const node = $from.node(depth);
+    if (node.type.name !== "replyGate") continue;
+    const from = $from.before(depth);
+    const to = $from.after(depth);
+    return editor
+      .chain()
+      .focus()
+      .command(({ tr, dispatch }) => {
+        tr.replaceWith(from, to, node.content);
+        dispatch?.(tr);
+        return true;
+      })
+      .run();
+  }
+
+  const selectedNode = (selection as {
+    node?: { type?: { name?: string }; content: unknown };
+  }).node;
+  if (selectedNode?.type?.name === "replyGate") {
+    return editor
+      .chain()
+      .focus()
+      .command(({ tr, dispatch }) => {
+        tr.replaceWith(
+          selection.from,
+          selection.to,
+          selectedNode.content as Parameters<typeof tr.replaceWith>[2],
+        );
+        dispatch?.(tr);
+        return true;
+      })
+      .run();
+  }
+  return false;
 }
 
 /** 完整/移动 Sheet 共用的格式与业务节点工具栏。 */
@@ -275,6 +316,14 @@ function Toolbar({
             )}
           >
             <UnderlineIcon size={16} />
+          </IconButton>
+          <IconButton
+            label="清除样式"
+            onClick={cmd(editor, (value) =>
+              value.chain().focus().unsetAllMarks().clearNodes().run(),
+            )}
+          >
+            <Eraser size={16} />
           </IconButton>
           {!condensed && (
             <>
@@ -532,6 +581,16 @@ function Toolbar({
               >
                 <UnlockKeyhole size={15} />
                 回复后可见
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!replyGateActive}
+                className={cn(
+                  replyGateActive && "bg-primary/10 text-primary [&_svg]:stroke-primary",
+                )}
+                onSelect={() => unwrapOutermostReplyGate(editor)}
+              >
+                <UnlockKeyhole size={15} />
+                取消回复可见
               </DropdownMenuItem>
               <DropdownMenuItem
                 className={cn(
