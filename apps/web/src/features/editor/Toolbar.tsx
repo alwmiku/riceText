@@ -23,6 +23,7 @@ import {
   Underline as UnderlineIcon,
   Undo2,
   UnlockKeyhole,
+  Vote,
   XCircle,
 } from "lucide-react";
 import { useEffect, useReducer, useState } from "react";
@@ -545,7 +546,7 @@ export function Toolbar({
                 active={pollActive}
                 onClick={openPollDialog}
               >
-                <List size={16} />
+                <Vote size={16} />
               </IconButton>
             </>
           )}
