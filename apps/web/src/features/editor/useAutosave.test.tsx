@@ -246,6 +246,13 @@ describe("useAutosave", () => {
     });
     expect(saveDocumentMock).toHaveBeenCalledTimes(1);
 
+    saveDocumentMock.mockResolvedValueOnce(savedDocument(19));
+    await act(async () => {
+      await result.current.flush();
+    });
+    expect(saveDocumentMock).toHaveBeenCalledTimes(2);
+    expect(result.current).toMatchObject({ state: "saved", revision: 19 });
+
     const newestContent: RichTextNode = {
       type: "doc",
       content: [

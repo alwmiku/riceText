@@ -59,7 +59,8 @@ export interface RichTextEditorProps {
   onChange: (content: RichTextNode) => void;
   /** 每次事务产生 ProseMirror steps 时回调，供增量同步使用。 */
   onChangeSteps?: (steps: unknown[]) => void;
-  onSubmit?: () => void;
+  onSubmit?: (content: RichTextNode) => void;
+  onReady?: (editor: Editor | null) => void;
   onExpand?: () => void;
   onCommentAnchorOpen?: (threadId: string) => void;
   onModeToolsOpen?: () => void;
@@ -727,6 +728,7 @@ export function RichTextEditor({
   onChange,
   onChangeSteps,
   onSubmit,
+  onReady,
   onExpand,
   onCommentAnchorOpen,
   onModeToolsOpen,
@@ -768,6 +770,11 @@ export function RichTextEditor({
     },
   });
 
+  useEffect(() => {
+    onReady?.(editor ?? null);
+    return () => onReady?.(null);
+  }, [editor, onReady]);
+
   // 权限或首屏加载状态变化时，只切换编辑能力，不重建 ProseMirror 实例。
   useEffect(() => {
     editor?.setEditable(editable);
@@ -789,7 +796,7 @@ export function RichTextEditor({
             <p className="document-title">长文本编辑</p>
           </div>
           {onSubmit ? (
-            <Button size="sm" onClick={onSubmit}>
+            <Button size="sm" onClick={() => editor && onSubmit(editor.getJSON() as RichTextNode)}>
               <Send size={14} />
               保存
             </Button>
@@ -830,7 +837,7 @@ export function RichTextEditor({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button size="sm" onClick={onSubmit}>
+          <Button size="sm" onClick={() => editor && onSubmit?.(editor.getJSON() as RichTextNode)}>
             <Send size={15} />
             发布回复
           </Button>
@@ -876,7 +883,11 @@ export function RichTextEditor({
             >
               <MoreHorizontal size={19} />
             </IconButton>
-            <Button size="icon" aria-label="发布" onClick={onSubmit}>
+            <Button
+              size="icon"
+              aria-label="发布"
+              onClick={() => editor && onSubmit?.(editor.getJSON() as RichTextNode)}
+            >
               <Send size={18} />
             </Button>
           </div>

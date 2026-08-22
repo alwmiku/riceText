@@ -1,3 +1,4 @@
+import type { Editor } from "@tiptap/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -11,7 +12,7 @@ import {
   Smartphone,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppContext } from "../app-context";
 import { Button, Dialog, Segmented } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
@@ -28,6 +29,7 @@ import type {
   SaveState,
 } from "../lib/types";
 import { formatTime } from "../lib/utils";
+import { cn } from "../lib/utils";
 
 const statusLabels: Record<SaveState, string> = {
   loading: "正在载入",
@@ -80,6 +82,9 @@ export default function ComposePage() {
   const [document, setDocument] = useState<DocumentEnvelope>(data);
   const [content, setContent] = useState<RichTextNode>(data.content);
   const [generation, setGeneration] = useState(0);
+  const contentRef = useRef<RichTextNode>(data.content);
+  const generationRef = useRef(0);
+  const editorRef = useRef<Editor | null>(null);
   const [mode, setMode] = useState<EditorMode>(() =>
     window.matchMedia("(max-width: 600px)").matches ? "mobile" : "full",
   );
@@ -91,12 +96,16 @@ export default function ComposePage() {
     enabled: Boolean(threadId),
   });
 
-  // placeholder 让首屏立即有内容；只有尚未编辑时才用真实服务器文档替换正文。
+  // placeholder 让首屏立即有内容；只有尚未编辑且服务器数据确实更新（revision 更高）时，
+  // 才用真实服务器文档替换正文，避免 fetch 失败回退的旧种子数据覆盖已保存的编辑。
   useEffect(() => {
     if (generation !== 0) return;
+    if (data.revision <= document.revision) return;
     setDocument(data);
+    contentRef.current = data.content;
+    generationRef.current = 0;
     setContent(data.content);
-  }, [data, generation]);
+  }, [data, generation, document.revision]);
   const autosave = useAutosave({
     document,
     content,
@@ -104,20 +113,24 @@ export default function ComposePage() {
     onSaved: (next) => {
       setDocument((current) => ({
         ...current,
+        content: next.content,
         revision: next.revision,
         savedAt: next.savedAt,
         storage: next.storage ?? current.storage ?? "server",
       }));
+      queryClient.setQueryData<DocumentEnvelope>(["document", next.id], next);
       void queryClient.invalidateQueries({
-        queryKey: ["revisions", document.id],
+        queryKey: ["revisions", next.id],
       });
     },
   });
   // Tiptap 初始化时可能规范化 JSON；服务器查询完成前忽略这类非用户更新，避免错误 baseRevision。
   const updateContent = (next: RichTextNode) => {
     if (isPlaceholderData) return;
+    contentRef.current = next;
+    generationRef.current += 1;
     setContent(next);
-    setGeneration((value) => value + 1);
+    setGeneration(generationRef.current);
   };
   // 回滚响应已经是一个新 revision；编辑器通过受控 content 同步显示该快照。
   const rollback = async (revision: number) => {
@@ -128,17 +141,31 @@ export default function ComposePage() {
         autosave.revision,
       );
       setDocument(next);
+      queryClient.setQueryData<DocumentEnvelope>(["document", next.id], next);
+      contentRef.current = next.content;
+      generationRef.current += 1;
       setContent(next.content);
-      setGeneration((value) => value + 1);
+      setGeneration(generationRef.current);
       setNotice(`已回退到版本 ${revision}，并创建版本 ${next.revision}`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "版本回退失败");
     }
   };
   // 显式发布先 flush，保证提示出现时最新正文已经进入保存队列。
-  const publish = async () => {
+  const publish = async (latestContent?: RichTextNode) => {
     if (isPlaceholderData) return;
-    await autosave.flush();
+    const contentToSave = latestContent ??
+      (editorRef.current?.getJSON() as RichTextNode | undefined);
+    if (
+      contentToSave &&
+      JSON.stringify(contentToSave) !== JSON.stringify(contentRef.current)
+    ) {
+      contentRef.current = contentToSave;
+      generationRef.current += 1;
+      setContent(contentToSave);
+      setGeneration(generationRef.current);
+    }
+    await autosave.flush(contentRef.current, generationRef.current);
     setNotice(
       mode === "compact"
         ? "回复已进入演示发布队列"
@@ -152,7 +179,10 @@ export default function ComposePage() {
       mode={mode}
       editable={!isPlaceholderData}
       onChange={updateContent}
-      onSubmit={() => void publish()}
+      onSubmit={(latestContent) => void publish(latestContent)}
+      onReady={(editorInstance) => {
+        editorRef.current = editorInstance;
+      }}
       onExpand={() => setMode("full")}
       onModeToolsOpen={() => setMode("full")}
       onCommentAnchorOpen={setThreadId}
@@ -187,24 +217,42 @@ export default function ComposePage() {
           ]}
         />
       </div>
-      {autosave.state === "conflict" && (
-        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-[#e5b75e] bg-[#fff9eb] px-3 py-2 text-xs text-[#72500f]">
+      {(autosave.state === "conflict" ||
+        (autosave.state === "error" && autosave.conflictMessage)) && (
+        <div
+          className={cn(
+            "mb-3 flex flex-wrap items-center gap-3 rounded-md border px-3 py-2 text-xs",
+            autosave.state === "conflict"
+              ? "border-[#e5b75e] bg-[#fff9eb] text-[#72500f]"
+              : "border-[#f0b4b0] bg-[#fdf1f0] text-[#8f2b24]",
+          )}
+        >
           <AlertTriangle size={16} />
           <span className="min-w-[220px] flex-1">
             {autosave.conflictMessage}
           </span>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              navigator.clipboard.writeText(JSON.stringify(content, null, 2))
-            }
-          >
-            复制本地副本
-          </Button>
-          <Button size="sm" onClick={() => window.location.reload()}>
-            加载最新版
-          </Button>
+          {autosave.state === "error" ? (
+            <span className="whitespace-nowrap">
+              当前身份：{identity.name}（仅作者或版主可保存，请切换身份后重试）
+            </span>
+          ) : (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  navigator.clipboard.writeText(
+                    JSON.stringify(content, null, 2),
+                  )
+                }
+              >
+                复制本地副本
+              </Button>
+              <Button size="sm" onClick={() => window.location.reload()}>
+                加载最新版
+              </Button>
+            </>
+          )}
         </div>
       )}
       {notice && (

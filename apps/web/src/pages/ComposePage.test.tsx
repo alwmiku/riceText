@@ -26,12 +26,13 @@ vi.mock('../features/editor/RichTextEditor', () => ({
     mode: string;
     editable?: boolean;
     onChange: (content: RichTextNode) => void;
-    onSubmit?: () => void;
+    onSubmit?: (content: RichTextNode) => void;
+    onReady?: (editor: null) => void;
     onExpand?: () => void;
     onCommentAnchorOpen?: (id: string) => void;
   }) => <section data-testid="editor" data-mode={props.mode} data-editable={String(props.editable)}>
     <button type="button" onClick={() => props.onChange({ type: 'doc', content: [{ type: 'paragraph' }] })}>模拟编辑</button>
-    <button type="button" onClick={props.onSubmit}>模拟发布</button>
+    <button type="button" onClick={() => props.onSubmit?.({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'submitted' }] }] })}>模拟发布</button>
     <button type="button" onClick={props.onExpand}>模拟展开</button>
     <button type="button" onClick={() => props.onCommentAnchorOpen?.('thread_1')}>模拟间贴锚点</button>
   </section>,

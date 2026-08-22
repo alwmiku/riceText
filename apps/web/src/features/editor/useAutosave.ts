@@ -17,8 +17,8 @@ export interface AutosaveResult {
   savedAt: string;
   /** 冲突或普通保存错误的用户可读信息。 */
   conflictMessage: string;
-  /** 立即把最新编辑代次排入串行保存队列。 */
-  flush: () => Promise<void>;
+  /** 立即把最新编辑代次排入串行保存队列，可传入当前编辑器快照强制使用最新正文。 */
+  flush: (content?: RichTextNode, generation?: number) => Promise<void>;
   /** 用户确认采用服务器 revision 后解除冲突阻塞。 */
   acceptLatest: (latestRevision: number) => void;
 }
@@ -63,21 +63,27 @@ export function useAutosave({
   onSavedRef.current = onSaved;
 
   // 宿主收到服务端/本地保存结果时，同步 revision 基线并解除旧失败代次。
+  // 保存回调已通过 revisionRef 记录新基线；只有外部同步（回滚/刷新装载）才重置
+  // savedGeneration，避免把保存期间产生的新编辑代次误标记为“已保存”。
   useEffect(() => {
+    const baselineChangedExternally =
+      revisionRef.current !== document.revision;
     revisionRef.current = document.revision;
     setRevision(document.revision);
     setSavedAt(document.savedAt);
-    savedGeneration.current = generation;
-    failedGeneration.current = null;
+    if (baselineChangedExternally) {
+      savedGeneration.current = generation;
+      failedGeneration.current = null;
+    }
     setState(document.storage === "local-demo" ? "offline" : "saved");
   }, [document.id, document.revision, document.savedAt, document.storage]);
 
-  const enqueue = useCallback(async () => {
-    const snapshot = latestRef.current;
-    // 同一代已经保存或明确失败时不重复提交，防止错误状态形成无限重试循环。
+  const enqueue = useCallback(async (force = false, override?: { content: RichTextNode; generation: number }) => {
+    const snapshot = override ?? latestRef.current;
+    // 同一代已经保存时不重复提交；自动保存会跳过明确失败的代次，显式 flush 可重试。
     if (
       snapshot.generation <= savedGeneration.current ||
-      snapshot.generation === failedGeneration.current
+      (!force && snapshot.generation === failedGeneration.current)
     )
       return;
     setState("saving");
@@ -144,7 +150,13 @@ export function useAutosave({
     revision,
     savedAt,
     conflictMessage,
-    flush: enqueue,
+    flush: (contentOverride, generationOverride) =>
+      enqueue(
+        true,
+        contentOverride && generationOverride !== undefined
+          ? { content: contentOverride, generation: generationOverride }
+          : undefined,
+      ),
     acceptLatest(latestRevision) {
       // 只更新并发基线，不在这里改正文；正文取舍由冲突 UI 的用户操作负责。
       revisionRef.current = latestRevision;
