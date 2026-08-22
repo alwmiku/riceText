@@ -53,9 +53,6 @@ export function ChapterRail({
                 key={chapter.id}
                 onClick={() => onSelect(order)}
               >
-                <span className="chapter-number">
-                  {String(order).padStart(2, "0")}
-                </span>
                 <span className="min-w-0 flex-1">
                   <strong className="block truncate font-semibold">
                     {main}

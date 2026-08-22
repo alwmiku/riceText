@@ -39,9 +39,6 @@ export function TocSidebar({
                 aria-current={active ? "true" : undefined}
                 onClick={() => onSelect(index)}
               >
-                <span className="viewer-toc__number">
-                  {String(index).padStart(2, "0")}
-                </span>
                 <span className="min-w-0 flex-1 truncate">{main}</span>
                 {sub ? (
                   <small className="truncate text-[10px] text-muted-foreground">

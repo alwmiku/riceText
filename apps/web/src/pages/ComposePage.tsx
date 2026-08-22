@@ -190,6 +190,8 @@ export default function ComposePage() {
 
   const editor = (
     <RichTextEditor
+      // 切章时重建编辑器，保证新章节内容一定被加载（独立 undo 历史更合理）。
+      key={activeIndex}
       content={editorContent}
       mode={mode}
       editable={!isPlaceholderData}
