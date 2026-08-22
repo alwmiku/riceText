@@ -10,3 +10,4 @@ test-results/
 .env
 .env.local
 apps/web/public/uploads/
+.vscode/
