@@ -572,6 +572,68 @@
   margin: 18px 0;
 }
 
+.rt-editor .rt-reply-gate,
+.rt-editor__content .rt-reply-gate,
+.rt-editor .tiptap .rt-reply-gate,
+.tiptap .rt-reply-gate,
+.ProseMirror .rt-reply-gate {
+  position: relative;
+  box-sizing: border-box;
+  padding: 42px 18px 18px;
+  color: var(--rt-text);
+  background: #f8fbfa;
+  border: 2px dashed #9ba9a5;
+  border-radius: 6px;
+}
+
+.rt-editor .rt-reply-gate::before,
+.rt-editor__content .rt-reply-gate::before,
+.rt-editor .tiptap .rt-reply-gate::before,
+.tiptap .rt-reply-gate::before,
+.ProseMirror .rt-reply-gate::before {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 9px;
+  color: var(--rt-primary-strong);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+  background: #e7f5f2;
+  border: 1px solid #b4dcd5;
+  border-radius: 999px;
+  content: attr(data-prompt);
+  pointer-events: none;
+}
+
+.rt-editor .rt-reply-gate > :first-child,
+.rt-editor__content .rt-reply-gate > :first-child,
+.rt-editor .tiptap .rt-reply-gate > :first-child,
+.tiptap .rt-reply-gate > :first-child,
+.ProseMirror .rt-reply-gate > :first-child {
+  margin-top: 0;
+}
+
+.rt-editor .rt-reply-gate > :last-child,
+.rt-editor__content .rt-reply-gate > :last-child,
+.rt-editor .tiptap .rt-reply-gate > :last-child,
+.tiptap .rt-reply-gate > :last-child,
+.ProseMirror .rt-reply-gate > :last-child {
+  margin-bottom: 0;
+}
+
+.rt-editor .rt-reply-gate:focus-within,
+.rt-editor__content .rt-reply-gate:focus-within,
+.rt-editor .tiptap .rt-reply-gate:focus-within,
+.tiptap .rt-reply-gate:focus-within,
+.ProseMirror .rt-reply-gate:focus-within {
+  border-color: var(--rt-selected-border);
+  box-shadow: 0 0 0 4px rgb(15 118 110 / 12%);
+}
+
 .rt-reply-gate--locked {
   padding: 18px;
   text-align: center;

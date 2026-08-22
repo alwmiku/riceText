@@ -76,11 +76,20 @@ function cmd(
   };
 }
 
-function isRichNodeActive(editor: Editor, nodeName: string): boolean {
+function getSelectedNodeName(editor: Editor): string | undefined {
   const selection = editor.state.selection as {
     node?: { type?: { name?: string } };
   };
-  return editor.isActive(nodeName) || selection.node?.type?.name === nodeName;
+  return selection.node?.type?.name;
+}
+
+function isRichNodeActive(editor: Editor, nodeName: string): boolean {
+  return getSelectedNodeName(editor) === nodeName;
+}
+
+function isContainerNodeActive(editor: Editor, nodeName: string): boolean {
+  const selectedNodeName = getSelectedNodeName(editor);
+  return selectedNodeName ? selectedNodeName === nodeName : editor.isActive(nodeName);
 }
 
 /** 完整/移动 Sheet 共用的格式与业务节点工具栏。 */
@@ -129,8 +138,8 @@ function Toolbar({
   const attachmentActive = isRichNodeActive(editor, "attachmentRef");
   const mentionActive = isRichNodeActive(editor, "mention");
   const commentAnchorActive = isRichNodeActive(editor, "inlineCommentAnchor");
-  const excerptActive = isRichNodeActive(editor, "novelExcerpt");
-  const replyGateActive = isRichNodeActive(editor, "replyGate");
+  const excerptActive = isContainerNodeActive(editor, "novelExcerpt");
+  const replyGateActive = isContainerNodeActive(editor, "replyGate");
   const pollActive = isRichNodeActive(editor, "pollRef");
   const moreInsertActive = excerptActive || replyGateActive || pollActive;
 
