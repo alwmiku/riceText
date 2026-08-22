@@ -345,16 +345,58 @@
 }
 
 .rt-rich-image {
+  position: relative;
   box-sizing: border-box;
   max-width: 100%;
   margin-top: 22px;
   margin-bottom: 22px;
 }
 
-.rt-rich-image.ProseMirror-selectednode {
+.rt-rich-image.ProseMirror-selectednode,
+.rt-rich-image--selected {
   outline: 2px solid var(--rt-primary);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+.rt-rich-image__resize {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: none;
+  width: 12px;
+  height: 44px;
+  padding: 0;
+  background: var(--rt-primary);
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  cursor: ew-resize;
+  transform: translateY(-50%);
+}
+
+.rt-rich-image__resize--left { left: -8px; }
+.rt-rich-image__resize--right { right: -8px; }
+
+.rt-rich-image__size {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: none;
+  padding: 2px 6px;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.4;
+  background: rgba(15, 23, 42, 0.72);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.rt-rich-image.ProseMirror-selectednode .rt-rich-image__resize,
+.rt-rich-image--selected .rt-rich-image__resize,
+.rt-rich-image.ProseMirror-selectednode .rt-rich-image__size,
+.rt-rich-image--selected .rt-rich-image__size {
+  display: block;
 }
 
 .rt-rich-image--left { margin-right: auto; }

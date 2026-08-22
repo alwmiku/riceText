@@ -627,6 +627,7 @@ export function RichTextEditor({
   const extensions = useMemo(
     () =>
       editorExtensions({
+        resizableImages: true,
         additionalExtensions: [
           Placeholder.configure({
             placeholder: mode === "compact" ? "写下回复…" : "开始写作…",

@@ -86,6 +86,20 @@ describe('RichTextEditor', () => {
     view.unmount()
   })
 
+  it('renders resize handles for selected rich images', async () => {
+    const content: JSONContent = {
+      type: 'doc',
+      content: [{ type: 'richImage', attrs: { assetId: null, src: '/uploads/a.png', alt: 'A', caption: '', align: 'center', width: 64 } }],
+    }
+    let editor: Editor | undefined
+    const { container } = render(<RichTextEditor content={content} mode="full" onReady={(value) => { editor = value }} />)
+
+    await waitFor(() => expect(editor).toBeDefined())
+    expect(screen.getByRole('button', { name: 'Resize image from left edge' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resize image from right edge' })).toBeInTheDocument()
+    expect(container.querySelector('.rt-rich-image')).toHaveStyle({ width: '64%' })
+  })
+
   it('keeps compact tools hidden until expanded and submits sanitized content', async () => {
     const onSubmit = vi.fn()
     const { container } = render(
