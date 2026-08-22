@@ -275,6 +275,29 @@ button {
   background: white;
   min-height: 560px;
 }
+.editor-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 20px;
+  min-height: 34px;
+  padding: 6px 14px;
+  color: #68737d;
+  font-size: 12px;
+  background: #fafbfc;
+  border-top: 1px solid #e3e7ea;
+}
+.editor-footer strong {
+  color: #37414b;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.editor-footer em {
+  color: #14766d;
+  font-style: normal;
+  font-weight: 600;
+}
 .tiptap {
   min-height: 560px;
   padding: 52px clamp(28px, 7vw, 92px) 100px;

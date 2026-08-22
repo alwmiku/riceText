@@ -180,6 +180,7 @@ export default function ComposePage() {
       editable={!isPlaceholderData}
       onChange={updateContent}
       onSubmit={(latestContent) => void publish(latestContent)}
+      savedAt={autosave.savedAt}
       onReady={(editorInstance) => {
         editorRef.current = editorInstance;
       }}

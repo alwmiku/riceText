@@ -40,7 +40,7 @@ import {
   IconButton,
 } from "../../components/ui";
 import type { EditorMode, RichTextNode } from "../../lib/types";
-import { cn, createId } from "../../lib/utils";
+import { cn, createId, formatTime } from "../../lib/utils";
 import {
   AttachmentDialog,
   DiceDialog,
@@ -63,12 +63,97 @@ export interface RichTextEditorProps {
   onChangeSteps?: (steps: unknown[]) => void;
   onSubmit?: (content: RichTextNode) => void;
   onReady?: (editor: Editor | null) => void;
+  /** Most recent successful save time, shown in the editor footer. */
+  savedAt?: string;
   onExpand?: () => void;
   onCommentAnchorOpen?: (threadId: string) => void;
   onModeToolsOpen?: () => void;
 }
 
 const colors = ["#20272c", "#197c73", "#b66a0a", "#b63434", "#6b4bb5"];
+
+interface StepJson {
+  stepType?: string;
+  markType?: string;
+  from?: number;
+  to?: number;
+  slice?: { content?: Array<{ type?: string }> };
+}
+
+const blockActionLabels: ReadonlyArray<[string, string]> = [
+  ["replyGate", "回复可见"],
+  ["pollRef", "投票"],
+  ["richImage", "图片"],
+  ["attachmentRef", "附件"],
+  ["diceRoll", "骰子"],
+  ["mention", "提及"],
+  ["novelExcerpt", "小说摘录"],
+  ["inlineCommentAnchor", "间贴锚点"],
+  ["heading", "标题"],
+  ["blockquote", "引用"],
+  ["bulletList", "列表"],
+  ["orderedList", "列表"],
+  ["horizontalRule", "分隔线"],
+];
+
+/** 把最近一次 ProseMirror transform 的步骤描述成用户可读动作。 */
+function describeSteps(steps: readonly { toJSON(): StepJson }[]): string {
+  const actions: string[] = [];
+  for (const step of steps) {
+    const json = step.toJSON();
+    if (json.stepType === "addMark") {
+      actions.push(
+        json.markType === "bold"
+          ? "加粗"
+          : json.markType === "italic"
+            ? "斜体"
+            : json.markType === "underline"
+              ? "下划线"
+              : json.markType === "strike"
+                ? "删除线"
+                : json.markType === "spoiler"
+                  ? "黑幕"
+                  : json.markType === "link"
+                    ? "链接"
+                    : json.markType === "textStyle"
+                      ? "字体变化"
+                      : "文字格式",
+      );
+    } else if (json.stepType === "removeMark") {
+      actions.push("清除格式");
+    } else if (
+      json.stepType === "setNodeMarkup" ||
+      json.stepType === "attr" ||
+      json.stepType === "nodeAttr"
+    ) {
+      actions.push("修改属性");
+    } else if (
+      json.stepType === "replace" ||
+      json.stepType === "replaceAround" ||
+      json.stepType === "insert"
+    ) {
+      const types = new Set(
+        (json.slice?.content ?? []).map((node) => node.type),
+      );
+      if (types.has("text")) actions.push("输入");
+      if (types.has("hardBreak")) actions.push("换行");
+      let matchedBlock = false;
+      for (const [type, label] of blockActionLabels) {
+        if (types.has(type)) {
+          actions.push(label);
+          matchedBlock = true;
+        }
+      }
+      if (!matchedBlock && !types.has("text") && types.size === 0) {
+        actions.push("删除");
+      }
+    } else {
+      actions.push("编辑");
+    }
+  }
+  const unique = [...new Set(actions)];
+  return unique.length > 0 ? unique.join("、") : "编辑";
+}
 
 /** 把需要 Editor 的命令包装成稳定的按钮回调。 */
 function cmd(
@@ -770,11 +855,16 @@ export function RichTextEditor({
   onChangeSteps,
   onSubmit,
   onReady,
+  savedAt,
   onExpand,
   onCommentAnchorOpen,
   onModeToolsOpen,
 }: RichTextEditorProps) {
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const [lastTransactionAt, setLastTransactionAt] = useState<number | null>(
+    null,
+  );
+  const [lastAction, setLastAction] = useState("");
   const extensions = useMemo(
     () =>
       editorExtensions({
@@ -812,6 +902,22 @@ export function RichTextEditor({
   });
 
   useEffect(() => {
+    if (!editor) return undefined;
+    const onTransaction = (payload: unknown) => {
+      const transaction = (payload as { transaction?: unknown }).transaction;
+      const steps = (transaction as {
+        steps?: readonly { toJSON(): StepJson }[];
+      })?.steps ?? [];
+      setLastTransactionAt(Date.now());
+      setLastAction(describeSteps(steps));
+    };
+    editor.on("transaction", onTransaction);
+    return () => {
+      editor.off("transaction", onTransaction);
+    };
+  }, [editor]);
+
+  useEffect(() => {
     onReady?.(editor ?? null);
     return () => onReady?.(null);
   }, [editor, onReady]);
@@ -828,6 +934,14 @@ export function RichTextEditor({
   }, [content, editor]);
   // 显式销毁 EditorView，避免路由切换后残留 DOM 监听器。
   useEffect(() => () => editor?.destroy(), [editor]);
+
+  const wordCount = useMemo(
+    () =>
+      editor
+        ? editor.getText().replace(/\s+/g, "").length
+        : 0,
+    [editor, lastTransactionAt],
+  );
 
   if (longTextMode)
     return (
@@ -951,6 +1065,28 @@ export function RichTextEditor({
       <div className="editor-content-wrap">
         <EditorContent editor={editor} />
       </div>
+      <footer className="editor-footer">
+        <span>
+          字数 <strong>{wordCount.toLocaleString()}</strong>
+        </span>
+        <span>
+          最近保存{" "}
+          <strong>
+            {savedAt ? formatTime(savedAt) : "—"}
+          </strong>
+        </span>
+        <span>
+          最近更新{" "}
+          <strong>
+            {lastTransactionAt !== null
+              ? new Date(lastTransactionAt).toLocaleTimeString("zh-CN", {
+                  hour12: false,
+                })
+              : "—"}
+          </strong>
+          {lastAction ? <em>· {lastAction}</em> : null}
+        </span>
+      </footer>
     </div>
   );
 }
