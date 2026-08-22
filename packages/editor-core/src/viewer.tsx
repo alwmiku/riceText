@@ -233,6 +233,23 @@ function addMissingParagraphAnchors(doc: JSONContent): JSONContent {
   return clone
 }
 
+/** Removes locked reply-gate children before ProseMirror constructs reader DOM. */
+function projectReplyGates(doc: JSONContent, interactions: RichTextViewerInteractions): JSONContent {
+  const clone = structuredClone(doc)
+  const visit = (node: JSONContent): void => {
+    if (node.type === 'replyGate') {
+      const attrs = node.attrs as unknown as ReplyGateAttributes
+      if (interactions.isReplyGateVisible?.(attrs) !== true) {
+        node.content = [{ type: 'paragraph' }]
+        return
+      }
+    }
+    node.content?.forEach(visit)
+  }
+  visit(clone)
+  return clone
+}
+
 /** Viewer-only context passed to every custom NodeView through a stable ref. */
 interface ViewerContext {
   interactions: RichTextViewerInteractions
@@ -541,7 +558,10 @@ function ImageLightbox({ controller, images, labels }: ImageLightboxProps) {
  * Custom nodes use React NodeViews so viewer interactions keep working.
  */
 export function RichTextViewer({ content, className = '', interactions = {}, controller: externalController, enableLightbox = true, labels: labelOverrides = {} }: RichTextViewerProps) {
-  const document = useMemo(() => addMissingParagraphAnchors(sanitizeDocument(content)), [content])
+  const document = useMemo(
+    () => addMissingParagraphAnchors(projectReplyGates(sanitizeDocument(content), interactions)),
+    [content, interactions],
+  )
   const gallery = useMemo(() => collectGallery(document), [document])
   const internalController = useRichTextViewerController(gallery.images.length)
   const controller = externalController ?? internalController
