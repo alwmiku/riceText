@@ -4,9 +4,6 @@ export * from './extensions.js'
 /** Long-text chapter splitting helpers. */
 export * from './chapter-splitter.js'
 
-/** Controlled rich-text editor and reusable formatting toolbar. */
-export * from './editor.js'
-
 /** Document allowlists, validation, sanitization, and JSON helpers. */
 export * from './sanitize.js'
 
