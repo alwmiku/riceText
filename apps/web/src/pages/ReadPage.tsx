@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import { useAppContext } from "../app-context";
 import { Badge, Dialog } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
+import { TocSidebar } from "../features/viewer/TocSidebar";
 import { getCommentThread, getDocument } from "../lib/api";
 import { defaultDocument } from "../lib/seed";
 import type { CommentReply } from "../lib/types";
@@ -139,27 +140,7 @@ export default function ReadPage() {
             onTocChange={setTocItems}
           />
         </article>
-        {tocItems.length > 0 ? (
-          <nav className="viewer-toc surface p-4" aria-label="正文目录">
-            <p className="section-label">目录</p>
-            <ol className="viewer-toc__list">
-              {tocItems.map((item) => (
-                <li key={item.index} className={`viewer-toc__item viewer-toc__item--h${item.level}`}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      globalThis.document
-                        .querySelector(`[data-toc-index="${item.index}"]`)
-                        ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                    }
-                  >
-                    {item.text}
-                  </button>
-                </li>
-              ))}
-            </ol>
-          </nav>
-        ) : null}
+        <TocSidebar items={tocItems} />
         <aside className="viewer-aside">
           <div className="surface p-4">
             <p className="section-label">阅读位置</p>

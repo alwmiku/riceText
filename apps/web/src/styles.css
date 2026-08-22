@@ -461,15 +461,15 @@ button {
   max-width: 1320px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 200px minmax(0, 920px) 280px;
+  grid-template-areas: "toc article aside";
+  grid-template-columns: 200px minmax(0, 1fr) 280px;
   gap: 32px;
   align-items: start;
 }
 .viewer-toc {
+  grid-area: toc;
   position: sticky;
   top: 80px;
-  grid-column: 1;
-  align-self: start;
   max-height: calc(100vh - 120px);
   overflow-y: auto;
 }
@@ -515,7 +515,7 @@ button {
   scroll-margin-top: 90px;
 }
 .viewer-article {
-  grid-column: 2;
+  grid-area: article;
   min-width: 0;
   padding: clamp(28px, 6vw, 72px);
   background: white;
@@ -556,9 +556,9 @@ button {
   padding-inline-start: 1.6em;
 }
 .viewer-aside {
+  grid-area: aside;
   position: sticky;
   top: 80px;
-  grid-column: 3;
 }
 .viewer-article .rt-viewer h1 {
   max-width: 100%;
@@ -725,6 +725,7 @@ button {
     display: none;
   }
   .viewer-page {
+    grid-template-areas: "article aside";
     grid-template-columns: minmax(0, 1fr) 280px;
   }
   .viewer-toc {
@@ -751,9 +752,7 @@ button {
   .viewer-article {
     padding: 30px 22px;
   }
-  .viewer-toc {
-    display: none;
-  }
+  .viewer-toc,
   .viewer-aside {
     display: none;
   }
