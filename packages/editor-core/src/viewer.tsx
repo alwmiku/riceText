@@ -590,6 +590,17 @@ export function extractHeadings(doc: JSONContent): ViewerTocItem[] {
   return items
 }
 
+/** 安全获取 ProseMirror 内容 DOM：Tiptap 在 view 未挂载时访问会抛错。 */
+function getEditorViewDom(editor: Editor): HTMLElement | null {
+  try {
+    const view = editor.view
+    if (!view) return null
+    return view.dom instanceof HTMLElement ? view.dom : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Renders sanitized Tiptap JSON with a read-only Tiptap/ProseMirror editor.
  * Custom nodes use React NodeViews so viewer interactions keep working.
@@ -630,16 +641,28 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
 
   useEffect(() => {
     if (!editor) return undefined
-    const editorElement = editor.options.element
-    const element = editorElement instanceof HTMLElement ? editorElement : null
-    if (!element) return undefined
-
-    // 按文档顺序给标题 DOM 打索引标记，供宿主目录快速跳转。
-    element
-      .querySelectorAll('h1, h2, h3, h4, h5, h6')
-      .forEach((heading, index) => {
-        heading.setAttribute('data-toc-index', String(index))
+    const tagHeadings = () => {
+      const dom = getEditorViewDom(editor)
+      if (!dom) return
+      // 按文档顺序给非空标题打索引标记，与 extractHeadings 的目录条目保持一致。
+      let tocIndex = 0
+      dom.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading) => {
+        if (!(heading.textContent ?? '').trim()) return
+        heading.setAttribute('data-toc-index', String(tocIndex))
+        tocIndex += 1
       })
+    }
+    tagHeadings()
+    editor.on('create', tagHeadings)
+    return () => {
+      editor.off('create', tagHeadings)
+    }
+  }, [editor, document])
+
+  useEffect(() => {
+    if (!editor) return undefined
+    const dom = getEditorViewDom(editor)
+    if (!dom) return undefined
 
     const handleClick = (event: MouseEvent) => {
       const current = viewerContextRef.current
@@ -654,7 +677,12 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
 
       const spoiler = target.closest<HTMLElement>('[data-spoiler="true"]')
       if (spoiler) {
-        const pos = editor.view.posAtDOM(spoiler, 0) ?? 0
+        let pos = 0
+        try {
+          pos = editor.view.posAtDOM(spoiler, 0) ?? 0
+        } catch {
+          pos = 0
+        }
         const key = `spoiler:${pos}`
         const next = !current.controller.revealedSpoilers.has(key)
         current.controller.toggleSpoiler(key)
@@ -670,7 +698,12 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
       if (!spoiler) return
       event.preventDefault()
       const current = viewerContextRef.current
-      const pos = editor.view.posAtDOM(spoiler, 0) ?? 0
+      let pos = 0
+      try {
+        pos = editor.view.posAtDOM(spoiler, 0) ?? 0
+      } catch {
+        pos = 0
+      }
       const key = `spoiler:${pos}`
       const next = !current.controller.revealedSpoilers.has(key)
       current.controller.toggleSpoiler(key)
@@ -678,13 +711,13 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
       spoiler.setAttribute('aria-expanded', String(next))
     }
 
-    element.addEventListener('click', handleClick)
-    element.addEventListener('keydown', handleKeyDown)
+    dom.addEventListener('click', handleClick)
+    dom.addEventListener('keydown', handleKeyDown)
     return () => {
-      element.removeEventListener('click', handleClick)
-      element.removeEventListener('keydown', handleKeyDown)
+      dom.removeEventListener('click', handleClick)
+      dom.removeEventListener('keydown', handleKeyDown)
     }
-  }, [editor])
+  }, [editor, document])
 
   if (!editor) {
     return <article ref={rootRef} className={`rt-viewer ${className}`} />
