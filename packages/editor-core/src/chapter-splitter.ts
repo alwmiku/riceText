@@ -34,6 +34,29 @@ export const defaultChapterSplitterAdapter: ChapterSplitterAdapter = {
   },
 };
 
+let activeChapterSplitterAdapter: ChapterSplitterAdapter =
+  defaultChapterSplitterAdapter;
+
+/** 注册自定义章节切分适配器，例如 C++ Addon / WASM / 独立服务。 */
+export function setChapterSplitterAdapter(
+  adapter: ChapterSplitterAdapter,
+): void {
+  activeChapterSplitterAdapter = adapter;
+}
+
+/** 获取当前章节切分适配器。 */
+export function getChapterSplitterAdapter(): ChapterSplitterAdapter {
+  return activeChapterSplitterAdapter;
+}
+
+/** 使用当前适配器执行章节切分。 */
+export async function splitChaptersWithAdapter(
+  text: string,
+  options: ChapterSplitOptions = {},
+): Promise<ChapterSplit[]> {
+  return activeChapterSplitterAdapter.split(text, options);
+}
+
 /** 章节级增量操作。 */
 export type ChapterOp =
   | { type: "insert"; text: string }

@@ -312,7 +312,12 @@ function InlineCommentAnchorNodeView({ node, viewerRef }: ViewerNodeProps) {
       data-count={attrs.count}
       data-placement={attrs.placement}
       aria-label={`${viewer.labels.inlineComments}: ${attrs.count}`}
-      onClick={() => viewer.interactions.onInlineCommentActivate?.(attrs)}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        viewer.interactions.onInlineCommentActivate?.(attrs)
+      }}
     >
       {empty ? '' : attrs.count}
     </button>

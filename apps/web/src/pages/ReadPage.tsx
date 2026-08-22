@@ -90,6 +90,24 @@ export default function ReadPage() {
     }),
     [identity, ownedAttachments, pollVotes],
   );
+  const labels = useMemo(
+    () => ({
+      inlineComments: "打开间贴",
+      rerollDice: "重新投掷",
+      download: "下载",
+      purchase: "购买",
+      coins: "金币",
+      votes: "票",
+      source: "来源",
+      closeImage: "关闭图片",
+      previousImage: "上一张",
+      nextImage: "下一张",
+      zoomIn: "放大",
+      zoomOut: "缩小",
+      resetZoom: "重置缩放",
+    }),
+    [],
+  );
   return (
     <main className="app-main">
       <div className="viewer-page">
@@ -116,21 +134,7 @@ export default function ReadPage() {
           <RichTextViewer
             content={document.content as JSONContent}
             interactions={interactions}
-            labels={{
-              inlineComments: "打开间贴",
-              rerollDice: "重新投掷",
-              download: "下载",
-              purchase: "购买",
-              coins: "金币",
-              votes: "票",
-              source: "来源",
-              closeImage: "关闭图片",
-              previousImage: "上一张",
-              nextImage: "下一张",
-              zoomIn: "放大",
-              zoomOut: "缩小",
-              resetZoom: "重置缩放",
-            }}
+            labels={labels}
           />
         </article>
         <aside className="viewer-aside">
