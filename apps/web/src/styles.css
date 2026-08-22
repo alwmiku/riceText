@@ -472,16 +472,33 @@ button {
   top: 80px;
   max-height: calc(100vh - 120px);
   overflow-y: auto;
+  font-family: "Noto Serif SC", "Songti SC", serif;
+}
+.viewer-toc__heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #37414b;
+  font-size: 13px;
+  font-weight: 700;
+}
+.viewer-toc__divider {
+  height: 1px;
+  margin: 10px 0 8px;
+  background: hsl(var(--border));
 }
 .viewer-toc__list {
   display: grid;
   gap: 2px;
-  margin: 12px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 .viewer-toc__item button {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
   width: 100%;
   overflow: hidden;
   padding: 4px 8px;
@@ -494,18 +511,41 @@ button {
   border-radius: 5px;
   cursor: pointer;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 .viewer-toc__item button:hover {
   color: #14766d;
   background: #eef5f3;
 }
-.viewer-toc__item--h1 button { font-weight: 700; }
-.viewer-toc__item--h2 button { padding-inline-start: 16px; }
-.viewer-toc__item--h3 button { padding-inline-start: 28px; font-size: 12.5px; }
+.viewer-toc__item--h1 button {
+  font-weight: 700;
+  color: #37414b;
+}
+.viewer-toc__item--h1 button::before {
+  content: "•";
+  color: #0f766e;
+}
+.viewer-toc__item--h2 button {
+  padding-inline-start: 20px;
+}
+.viewer-toc__item--h2 button::before {
+  content: "◦";
+  color: #5b8f88;
+}
+.viewer-toc__item--h3 button,
 .viewer-toc__item--h4 button,
 .viewer-toc__item--h5 button,
-.viewer-toc__item--h6 button { padding-inline-start: 38px; font-size: 12px; }
+.viewer-toc__item--h6 button {
+  padding-inline-start: 32px;
+  font-size: 12.5px;
+}
+.viewer-toc__item--h3 button::before,
+.viewer-toc__item--h4 button::before,
+.viewer-toc__item--h5 button::before,
+.viewer-toc__item--h6 button::before {
+  content: "·";
+  color: #7a8b86;
+}
 .viewer-article .rt-viewer h1,
 .viewer-article .rt-viewer h2,
 .viewer-article .rt-viewer h3,

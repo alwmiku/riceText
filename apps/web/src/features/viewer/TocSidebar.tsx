@@ -1,4 +1,5 @@
 import type { ViewerTocItem } from "@ricetext/editor-core";
+import { Menu } from "lucide-react";
 
 /** 滚动到正文中对应索引的标题元素。 */
 function scrollToHeading(index: number): void {
@@ -12,7 +13,11 @@ export function TocSidebar({ items }: { items: readonly ViewerTocItem[] }) {
   if (items.length === 0) return null;
   return (
     <nav className="viewer-toc surface p-4" aria-label="正文目录">
-      <p className="section-label">目录</p>
+      <p className="viewer-toc__heading">
+        <Menu size={14} aria-hidden="true" />
+        目录
+      </p>
+      <div className="viewer-toc__divider" aria-hidden="true" />
       <ol className="viewer-toc__list">
         {items.map((item) => (
           <li
