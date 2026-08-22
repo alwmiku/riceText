@@ -51,6 +51,9 @@ export function PollResultChart({
   const totalVotes = options.reduce((total, option) => total + option.votes, 0);
   const maxVotes = Math.max(0, ...options.map((option) => option.votes));
   const plotStyle: CSSProperties = { height: `${Math.max(120, height)}px` };
+  const columnGridStyle: CSSProperties = {
+    gridTemplateColumns: `repeat(${Math.max(1, options.length)}, 76px)`,
+  };
 
   return (
     <div
@@ -69,7 +72,7 @@ export function PollResultChart({
               />
             ))
           : null}
-        <div className="rt-poll__chart-columns">
+        <div className="rt-poll__chart-columns" style={columnGridStyle}>
           {options.map((option) => {
             const pendingSelected = pendingSelection.includes(option.id);
             const percentage =
@@ -117,7 +120,7 @@ export function PollResultChart({
         </div>
       </div>
       {!voted ? (
-        <div className="rt-poll__legend">
+        <div className="rt-poll__legend" style={columnGridStyle}>
           {options.map((option) => (
             <label key={option.id} className="rt-poll__legend-item">
               <input

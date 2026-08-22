@@ -778,7 +778,7 @@
   position: absolute;
   z-index: 1;
   inset: 0;
-  display: flex;
+  display: grid;
   align-items: stretch;
   justify-content: center;
   gap: 18px;
@@ -846,16 +846,17 @@
 }
 
 .rt-poll__legend {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   justify-content: center;
-  gap: 8px 14px;
+  gap: 8px 18px;
   margin-top: 8px;
 }
 
 .rt-poll__legend-item {
   display: inline-flex;
+  min-width: 0;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   color: var(--rt-text);
   font-size: 12px;
