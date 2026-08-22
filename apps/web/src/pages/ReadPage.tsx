@@ -74,6 +74,8 @@ export default function ReadPage() {
         canVote: identity.role !== "author",
         pending: false,
       }),
+      onPollSubmit: (attrs: PollReferenceAttributes, optionIds: readonly string[]) =>
+        setPollVotes((current) => ({ ...current, [attrs.pollId]: [...optionIds] })),
       onPollVote: (attrs: PollReferenceAttributes, optionId: string) =>
         setPollVotes((current) => {
           const selected = current[attrs.pollId] ?? [];

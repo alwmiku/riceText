@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 export interface PollResultChartOption {
   id: string;
@@ -6,12 +6,17 @@ export interface PollResultChartOption {
   votes: number;
   selected: boolean;
   disabled: boolean;
+  multiple: boolean;
 }
 
 export interface PollResultChartProps {
   options: readonly PollResultChartOption[];
   voteLabel: string;
   onVote?: (optionId: string) => void;
+  onSelectionChange?: (optionIds: readonly string[]) => void;
+  onSubmit?: (optionIds: readonly string[]) => void;
+  submitLabel?: string;
+  voted?: boolean;
   /** Chart plot height in CSS pixels. Defaults to a compact 160px. */
   height?: number;
   /** Shows horizontal guide lines when a quantitative grid is useful. */
@@ -27,7 +32,22 @@ export function PollResultChart({
   height = 160,
   showGrid = false,
   className = "",
+  onSelectionChange,
+  onSubmit,
+  submitLabel = "投票",
+  voted = false,
 }: PollResultChartProps) {
+  const [pendingSelection, setPendingSelection] = useState<readonly string[]>(
+    options.filter((option) => option.selected).map((option) => option.id),
+  );
+  const optionSelectionKey = options
+    .filter((option) => option.selected)
+    .map((option) => option.id)
+    .join("|");
+  useEffect(() => {
+    if (voted) return;
+    setPendingSelection(optionSelectionKey ? optionSelectionKey.split("|") : []);
+  }, [optionSelectionKey, voted]);
   const totalVotes = options.reduce((total, option) => total + option.votes, 0);
   const maxVotes = Math.max(0, ...options.map((option) => option.votes));
   const plotStyle: CSSProperties = { height: `${Math.max(120, height)}px` };
@@ -51,6 +71,7 @@ export function PollResultChart({
           : null}
         <div className="rt-poll__chart-columns">
           {options.map((option) => {
+            const pendingSelected = pendingSelection.includes(option.id);
             const percentage =
               totalVotes > 0
                 ? Math.round((option.votes / totalVotes) * 100)
@@ -62,10 +83,21 @@ export function PollResultChart({
                 key={option.id}
                 type="button"
                 className="rt-poll__chart-column"
-                aria-pressed={option.selected}
+                aria-pressed={voted ? option.selected : pendingSelected}
                 aria-label={`${option.label} ${option.votes} ${voteLabel}, ${percentage}%`}
-                disabled={option.disabled}
-                onClick={() => onVote?.(option.id)}
+                disabled={voted || option.disabled}
+                onClick={() => {
+                  if (voted || option.disabled) return;
+                  const next = option.multiple
+                    ? pendingSelected
+                      ? pendingSelection.filter((id) => id !== option.id)
+                      : [...pendingSelection, option.id]
+                    : pendingSelected
+                      ? []
+                      : [option.id];
+                  setPendingSelection(next);
+                  onSelectionChange?.(next);
+                }}
               >
                 <span className="rt-poll__chart-bar-area" aria-hidden="true">
                   <span
@@ -84,6 +116,42 @@ export function PollResultChart({
           })}
         </div>
       </div>
+      {!voted ? (
+        <div className="rt-poll__legend">
+          {options.map((option) => (
+            <label key={option.id} className="rt-poll__legend-item">
+              <input
+                type={option.multiple ? "checkbox" : "radio"}
+                name="poll-selection"
+                checked={pendingSelection.includes(option.id)}
+                disabled={option.disabled}
+                onChange={() => {
+                  const next = option.multiple
+                    ? pendingSelection.includes(option.id)
+                      ? pendingSelection.filter((id) => id !== option.id)
+                      : [...pendingSelection, option.id]
+                    : [option.id];
+                  setPendingSelection(next);
+                  onSelectionChange?.(next);
+                }}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
+      <button
+        type="button"
+        className="rt-poll__submit"
+        disabled={voted || pendingSelection.length === 0 || options.every((option) => option.disabled)}
+        onClick={() => {
+          if (pendingSelection.length === 0 || voted) return;
+          if (onSubmit) onSubmit(pendingSelection);
+          else pendingSelection.forEach((optionId) => onVote?.(optionId));
+        }}
+      >
+        {voted ? "已投票" : submitLabel}
+      </button>
     </div>
   );
 }

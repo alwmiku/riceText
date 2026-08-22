@@ -191,7 +191,7 @@ describe('RichTextViewer', () => {
         onReplyGateRequest,
         getAttachmentState: (attrs) => ({ available: attrs.attachmentId === 'file-2', pending: false }),
         onAttachmentActivate,
-        getPollState: () => ({ selectedOptionIds: ['two'], votesByOption: { one: 4, two: 7 }, canVote: true, pending: false }),
+        getPollState: () => ({ selectedOptionIds: [], votesByOption: { one: 4, two: 7 }, canVote: true, pending: false }),
         onPollVote,
         onLinkActivate,
       }}
@@ -207,6 +207,7 @@ describe('RichTextViewer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reply to unlock' }))
     fireEvent.click(screen.getByText('archive.zip').closest('button') as HTMLButtonElement)
     fireEvent.click(screen.getByRole('button', { name: /One\s*4 ballots/u }))
+    fireEvent.click(screen.getByRole('button', { name: '投票' }))
     fireEvent.click(screen.getByRole('link', { name: 'source' }))
 
     const spoiler = document.querySelector('[data-spoiler="true"]') as HTMLElement
@@ -228,7 +229,7 @@ describe('RichTextViewer', () => {
     expect(chartBars[0]).toHaveStyle({ height: '57%' })
     expect(chartBars[1]).toHaveStyle({ height: '100%' })
     expect(onPollVote).toHaveBeenCalledWith(expect.objectContaining({ pollId: 'poll-1' }), 'one')
-    expect(screen.getByRole('button', { name: /Two\s*7 ballots/u })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /One\s*4 ballots/u })).toHaveAttribute('aria-pressed', 'true')
     expect(onLinkActivate).toHaveBeenCalledWith('https://example.com/source', expect.anything())
   })
 

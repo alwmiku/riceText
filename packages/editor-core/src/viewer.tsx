@@ -94,7 +94,9 @@ export interface RichTextViewerInteractions {
   onAttachmentActivate?: (attrs: AttachmentReferenceAttributes) => void
   /** Returns current vote totals, selection, permission, and pending state. */
   getPollState?: (attrs: PollReferenceAttributes) => ViewerPollState
-  /** Casts or replaces a vote for one option. */
+  /** Submits the complete current poll selection after the user confirms. */
+  onPollSubmit?: (attrs: PollReferenceAttributes, optionIds: readonly string[]) => void
+  /** Legacy single-option vote callback used when no submit callback is supplied. */
   onPollVote?: (attrs: PollReferenceAttributes, optionId: string) => void
   /** Observes an image being opened in the full-screen gallery. */
   onImageOpen?: (image: ViewerImage) => void
@@ -397,10 +399,19 @@ function PollNodeView({ node, viewerRef }: ViewerNodeProps) {
           label: option.label,
           votes: Math.max(0, state.votesByOption[option.id] ?? 0),
           selected: state.selectedOptionIds.includes(option.id),
-          disabled: !state.canVote || state.pending || !viewer.interactions.onPollVote,
+          disabled: !state.canVote || state.pending || (!viewer.interactions.onPollVote && !viewer.interactions.onPollSubmit),
+          multiple: attrs.multiple,
         }))}
         voteLabel={viewer.labels.votes}
+        voted={state.selectedOptionIds.length > 0}
         onVote={(optionId) => viewer.interactions.onPollVote?.(attrs, optionId)}
+        onSubmit={(optionIds) => {
+          if (viewer.interactions.onPollSubmit) {
+            viewer.interactions.onPollSubmit(attrs, optionIds);
+          } else {
+            optionIds.forEach((optionId) => viewer.interactions.onPollVote?.(attrs, optionId));
+          }
+        }}
       />
     </section>
   )
