@@ -246,15 +246,18 @@ interface ViewerContextRef {
   current: ViewerContext
 }
 
-type ViewerNodeProps = NodeViewProps & { viewerRef: ViewerContextRef }
+type ViewerNodeProps = Pick<NodeViewProps, 'node'> & { viewerRef: ViewerContextRef }
+type ViewerRichImageNodeProps = Pick<NodeViewProps, 'node' | 'getPos' | 'editor'> & { viewerRef: ViewerContextRef }
 
-function getRichImageIndex(editor: Editor, getPos: () => number): number {
+function getRichImageIndex(editor: Editor, getPos: () => number | undefined): number {
+  const currentPos = getPos()
+  if (currentPos === undefined) return 0
   let index = 0
   let found = false
   editor.state.doc.descendants((node, pos) => {
     if (found) return false
     if (node.type.name === 'richImage') {
-      if (pos === getPos()) {
+      if (pos === currentPos) {
         found = true
         return false
       }
@@ -265,7 +268,7 @@ function getRichImageIndex(editor: Editor, getPos: () => number): number {
   return found ? index : 0
 }
 
-function RichImageNodeView({ node, getPos, editor, viewerRef }: ViewerNodeProps) {
+function RichImageNodeView({ node, getPos, editor, viewerRef }: ViewerRichImageNodeProps) {
   const viewer = viewerRef.current
   const attrs = node.attrs as unknown as RichImageAttributes
   const index = getRichImageIndex(editor, getPos)
@@ -565,7 +568,8 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
 
   useEffect(() => {
     if (!editor) return undefined
-    const element = editor.options.element
+    const editorElement = editor.options.element
+    const element = editorElement instanceof HTMLElement ? editorElement : null
     if (!element) return undefined
 
     const handleClick = (event: MouseEvent) => {

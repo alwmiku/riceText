@@ -84,7 +84,9 @@ export function LongTextView({
 
     updateAttributes({ text: before });
 
-    const insertAt = getPos() + node.nodeSize;
+    const pos = getPos();
+    if (pos === undefined) return;
+    const insertAt = pos + node.nodeSize;
     editor
       .chain()
       .focus()
