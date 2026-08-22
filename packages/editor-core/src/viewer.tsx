@@ -406,6 +406,7 @@ function PollNodeView({ node, viewerRef }: ViewerNodeProps) {
         }))}
         voteLabel={viewer.labels.votes}
         voted={state.selectedOptionIds.length > 0}
+        groupName={`poll-${attrs.pollId}`}
         onVote={(optionId) => viewer.interactions.onPollVote?.(attrs, optionId)}
         onSubmit={(optionIds) => {
           if (viewer.interactions.onPollSubmit) {

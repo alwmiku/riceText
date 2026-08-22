@@ -787,9 +787,9 @@
 
 .rt-poll__chart-column {
   display: grid;
-  width: 76px;
-  min-width: 76px;
-  flex: 0 0 76px;
+  width: 88px;
+  min-width: 88px;
+  flex: 0 0 88px;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 5px;
   padding: 0;
@@ -861,6 +861,13 @@
   color: var(--rt-text);
   font-size: 12px;
   cursor: pointer;
+}
+
+.rt-poll__legend-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rt-poll__legend-item input {

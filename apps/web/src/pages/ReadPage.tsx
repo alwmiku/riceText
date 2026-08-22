@@ -74,7 +74,8 @@ export default function ReadPage() {
             [28, 19, 11][index] ?? 0,
           ]),
         ),
-        canVote: identity.role !== "author",
+        // 演示环境：所有身份均可投票，避免作者身份下选项被禁用。
+        canVote: true,
         pending: false,
       }),
       onPollSubmit: (attrs: PollReferenceAttributes, optionIds: readonly string[]) =>

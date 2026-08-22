@@ -17,6 +17,8 @@ export interface PollResultChartProps {
   onSubmit?: (optionIds: readonly string[]) => void;
   submitLabel?: string;
   voted?: boolean;
+  /** Radio 组名，多个投票并存时用于隔离同名单选。 */
+  groupName?: string;
   /** Chart plot height in CSS pixels. Defaults to a compact 160px. */
   height?: number;
   /** Shows horizontal guide lines when a quantitative grid is useful. */
@@ -36,6 +38,7 @@ export function PollResultChart({
   onSubmit,
   submitLabel = "投票",
   voted = false,
+  groupName,
 }: PollResultChartProps) {
   const [pendingSelection, setPendingSelection] = useState<readonly string[]>(
     options.filter((option) => option.selected).map((option) => option.id),
@@ -52,7 +55,7 @@ export function PollResultChart({
   const maxVotes = Math.max(0, ...options.map((option) => option.votes));
   const plotStyle: CSSProperties = { height: `${Math.max(120, height)}px` };
   const columnGridStyle: CSSProperties = {
-    gridTemplateColumns: `repeat(${Math.max(1, options.length)}, 76px)`,
+    gridTemplateColumns: `repeat(${Math.max(1, options.length)}, 88px)`,
   };
 
   return (
@@ -125,7 +128,7 @@ export function PollResultChart({
             <label key={option.id} className="rt-poll__legend-item">
               <input
                 type={option.multiple ? "checkbox" : "radio"}
-                name="poll-selection"
+                name={groupName ?? "poll-selection"}
                 checked={pendingSelection.includes(option.id)}
                 disabled={option.disabled}
                 onChange={() => {
