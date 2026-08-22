@@ -2,7 +2,7 @@ import { Node } from "@tiptap/core";
 
 import { sanitizeUrl } from "../sanitize.js";
 
-/** Tiptap inline atom for resolved and unresolved user mentions. */
+/** 用于已解析与未解析用户提及的 Tiptap 行内原子节点。 */
 export const Mention = Node.create({
   name: "mention",
   group: "inline",

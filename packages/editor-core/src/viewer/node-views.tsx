@@ -292,7 +292,7 @@ function NovelExcerptNodeView({ node, viewerRef }: ViewerNodeProps) {
   );
 }
 
-/** Build a read-only Tiptap extension set with viewer NodeViews attached. */
+/** 构建一组附加了查看器 NodeView 的只读 Tiptap 扩展。 */
 export function createViewerExtensions(
   viewerRef: ViewerContextRef,
 ): Extensions {

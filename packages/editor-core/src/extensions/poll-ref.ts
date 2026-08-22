@@ -4,7 +4,7 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import { PollEditorView } from "../poll-node-view.js";
 import { parseJsonArray } from "./helpers.js";
 
-/** Tiptap atom that references a server-hydrated poll. */
+/** 引用服务端数据填充（hydrated）投票的 Tiptap 原子节点。 */
 export const PollRef = Node.create({
   name: "pollRef",
   group: "block",

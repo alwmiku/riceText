@@ -1,19 +1,19 @@
-/** Canonical Tiptap extensions, commands, and schema factory. */
+/** 规范的 Tiptap 扩展、命令与 schema 工厂。 */
 export * from './extensions.js'
 
-/** Long-text chapter splitting helpers. */
+/** 长文本章节切分辅助函数。 */
 export * from './chapter-splitter.js'
 
-/** Document allowlists, validation, sanitization, and JSON helpers. */
+/** 文档白名单、校验、净化与 JSON 辅助函数。 */
 export * from './sanitize.js'
 
-/** Public persisted node attributes and replaceable adapter contracts. */
+/** 公开的持久化节点属性与可替换适配器契约。 */
 export * from './types.js'
 
-/** Configurable vertical poll-result chart used by viewer surfaces. */
+/** 查看器界面使用的可配置纵向投票结果图表。 */
 export * from './poll-result-chart.js'
 
-/** Pure React static viewer and its interaction controller. */
+/** 纯 React 静态查看器及其交互控制器。 */
 export * from './viewer.js'
 
 export type { Editor, Extensions, JSONContent } from '@tiptap/core'

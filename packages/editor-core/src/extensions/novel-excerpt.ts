@@ -2,7 +2,7 @@ import { Node } from "@tiptap/core";
 
 import { sanitizeUrl } from "../sanitize.js";
 
-/** Tiptap block node for searchable source-attributed novel text. */
+/** 用于可搜索、带来源标注的小说文本的 Tiptap 块节点。 */
 export const NovelExcerpt = Node.create({
   name: "novelExcerpt",
   group: "block",

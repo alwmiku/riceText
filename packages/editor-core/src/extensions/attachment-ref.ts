@@ -2,7 +2,7 @@ import { Node } from "@tiptap/core";
 
 import { parseInteger } from "./helpers.js";
 
-/** Tiptap atom that references a separately persisted downloadable file. */
+/** 引用单独持久化的可下载文件的 Tiptap 原子节点。 */
 export const AttachmentRef = Node.create({
   name: "attachmentRef",
   group: "block",

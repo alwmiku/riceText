@@ -55,7 +55,7 @@ export function CommentThread({ identity, initial = seedComments, compact = fals
     try {
       const result = await voteComment(comment.id, vote);
       setComments((current) => updateTree(current, comment.id, (item) => ({ ...item, ...result })));
-    } catch { /* Optimistic value remains visible; host may surface network status. */ }
+    } catch { /* 乐观值保持可见；宿主可自行展示网络状态。 */ }
   };
   const submit = () => {
     if (!body.trim()) return;

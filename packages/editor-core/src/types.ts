@@ -1,262 +1,262 @@
 import type { JSONContent } from '@tiptap/core'
 
-/** The current persisted Tiptap JSON schema version. */
+/** 当前持久化的 Tiptap JSON schema 版本。 */
 export const EDITOR_SCHEMA_VERSION = 1 as const
 
-/** Layout preset used by the shared editor shell. */
+/** 共享编辑器外壳使用的布局预设。 */
 export type EditorMode = 'compact' | 'full' | 'mobile'
 
-/** Placement of an inline-comment counter relative to its paragraph. */
+/** 行内评论计数器相对于其段落的摆放位置。 */
 export type InlineCommentPlacement = 'start' | 'end'
 
-/** Attributes persisted by an `inlineCommentAnchor` node. */
+/** 由 `inlineCommentAnchor` 节点持久化的属性。 */
 export interface InlineCommentAnchorAttributes {
-  /** Stable server-side thread identifier. */
+  /** 稳定的服务端会话（thread）标识。 */
   threadId: string
-  /** Cached reply count used before the thread is fetched. */
+  /** 在会话（thread）拉取前使用的缓存回复数。 */
   count: number
-  /** Whether the counter belongs at the block start or block end. */
+  /** 计数器位于块起始还是块末尾。 */
   placement: InlineCommentPlacement
 }
 
-/** Supported block alignment for rich images. */
+/** 富图片支持的块级对齐方式。 */
 export type RichImageAlignment = 'left' | 'center' | 'right'
 
-/** Attributes persisted by a `richImage` node. */
+/** 由 `richImage` 节点持久化的属性。 */
 export interface RichImageAttributes {
-  /** Stable uploaded asset identifier, or `null` for an external image. */
+  /** 稳定的已上传资源标识；外部图片为 `null`。 */
   assetId: string | null
-  /** Safe HTTP(S) or same-origin upload URL. */
+  /** 安全的 HTTP(S) 或同源上传 URL。 */
   src: string
-  /** Alternative text used by assistive technology. */
+  /** 供辅助技术使用的替代文本。 */
   alt: string
-  /** Optional visible image caption. */
+  /** 可选的可见图片说明文字。 */
   caption: string
-  /** Block alignment in the article flow. */
+  /** 文章流中的块对齐方式。 */
   align: RichImageAlignment
-  /** Width as a percentage of the available content column. */
+  /** 占可用内容列宽度的百分比。 */
   width: number
 }
 
-/** Immutable attributes returned by the dice API and stored in the document. */
+/** 由骰子 API 返回并存储在文档中的不可变属性。 */
 export interface DiceRollAttributes {
-  /** Stable identifier of this roll. */
+  /** 本次掷骰的稳定标识。 */
   rollId: string
-  /** Normalized dice notation, for example `3d5`. */
+  /** 归一化的骰子表示法，例如 `3d5`。 */
   expression: string
-  /** Individual die results in evaluation order. */
+  /** 按求值顺序排列的各个骰子结果。 */
   rolls: readonly number[]
-  /** Persisted total; renderers must never calculate a new value. */
+  /** 持久化的总计；渲染器绝不能重新计算新值。 */
   total: number
-  /** Previous roll identifier when this result is an explicit reroll. */
+  /** 当此结果是显式重掷时，上一次掷骰的标识。 */
   rerollOf: string | null
 }
 
-/** Visual template used for a searchable novel excerpt. */
+/** 用于可搜索小说摘录的视觉模板。 */
 export type NovelExcerptVariant = 'mobile-book' | 'desktop-book' | 'forum-evidence'
 
-/** Metadata persisted by a `novelExcerpt` block. */
+/** 由 `novelExcerpt` 块持久化的元数据。 */
 export interface NovelExcerptAttributes {
-  /** Source book title. */
+  /** 来源书名。 */
   bookTitle: string
-  /** Source chapter title. */
+  /** 来源章节标题。 */
   chapterTitle: string
-  /** Source author display name. */
+  /** 来源作者显示名。 */
   author: string
-  /** Optional safe source URL. */
+  /** 可选的安全来源 URL。 */
   sourceUrl: string | null
-  /** Visual template for the excerpt. */
+  /** 摘录的视觉模板。 */
   variant: NovelExcerptVariant
 }
 
-/** Attributes persisted by an inline `mention` node. */
+/** 由行内 `mention` 节点持久化的属性。 */
 export interface MentionAttributes {
-  /** Stable user identifier when resolution succeeds. */
+  /** 解析成功时的稳定用户标识。 */
   userId: string | null
-  /** Display name typed or returned by the server. */
+  /** 用户输入或由服务端返回的显示名。 */
   name: string
-  /** Whether the server resolved this mention to a user. */
+  /** 服务端是否已将此提及解析为某个用户。 */
   resolved: boolean
-  /** Optional safe avatar URL for the hover card. */
+  /** 悬停卡片使用的可选安全头像 URL。 */
   avatarUrl: string | null
 }
 
-/** Attributes persisted by a reply-gated content block. */
+/** 由回复门控内容块持久化的属性。 */
 export interface ReplyGateAttributes {
-  /** Stable gate identifier used to query viewer access. */
+  /** 用于查询读者访问权限的稳定门控标识。 */
   gateId: string
-  /** Text shown when the current reader cannot access the content. */
+  /** 当前读者无法访问内容时显示的文本。 */
   prompt: string
 }
 
-/** Attributes persisted by an attachment reference. */
+/** 由附件引用持久化的属性。 */
 export interface AttachmentReferenceAttributes {
-  /** Stable attachment identifier. */
+  /** 稳定的附件标识。 */
   attachmentId: string
-  /** Display file name. */
+  /** 展示用文件名。 */
   name: string
-  /** Declared MIME type. */
+  /** 声明的 MIME 类型。 */
   mimeType: string
-  /** File size in bytes. */
+  /** 文件大小（字节）。 */
   size: number
-  /** Purchase price in forum coins. */
+  /** 以论坛金币计价的购买价格。 */
   priceCoins: number
 }
 
-/** A persisted poll choice used for optimistic display before API hydration. */
+/** 在 API 数据填充（hydration）之前用于乐观展示的持久化投票选项。 */
 export interface PollOptionReference {
-  /** Stable option identifier. */
+  /** 稳定的选项标识。 */
   id: string
-  /** Option label. */
+  /** 选项标签。 */
   label: string
 }
 
-/** Attributes persisted by a poll reference. */
+/** 由投票引用持久化的属性。 */
 export interface PollReferenceAttributes {
-  /** Stable poll identifier. */
+  /** 稳定的投票标识。 */
   pollId: string
-  /** Poll question shown inline with the article. */
+  /** 随文章内联展示的投票问题。 */
   question: string
-  /** Whether a voter may choose more than one option. */
+  /** 投票者是否可以选择多个选项。 */
   multiple: boolean
-  /** Stable options used until fresh poll state is loaded. */
+  /** 在加载到最新投票状态之前使用的稳定选项。 */
   options: readonly PollOptionReference[]
 }
 
-/** Sanitizer or validator issue tied to a JSON path. */
+/** 与 JSON 路径关联的净化器或校验器问题。 */
 export interface DocumentValidationIssue {
-  /** Machine-readable issue category. */
+  /** 机器可读的问题类别。 */
   code: 'invalid-document' | 'invalid-structure' | 'unknown-node' | 'unknown-mark' | 'unknown-attribute' | 'invalid-attribute' | 'unsafe-url' | 'limit-exceeded'
-  /** JSON-path-like location of the issue. */
+  /** 问题的类 JSON 路径位置。 */
   path: string
-  /** Human-readable explanation suitable for diagnostics. */
+  /** 适合诊断用的人类可读说明。 */
   message: string
 }
 
-/** Result returned by document validation. */
+/** 文档校验返回的结果。 */
 export interface DocumentValidationResult {
-  /** `true` only when no content was removed or normalized. */
+  /** 仅在未删除或未归一化任何内容时为 `true`。 */
   valid: boolean
-  /** Safe document that can always be rendered or passed to Tiptap. */
+  /** 始终可渲染或可传递给 Tiptap 的安全文档。 */
   document: JSONContent
-  /** Ordered validation and sanitization diagnostics. */
+  /** 有序的校验与净化诊断信息。 */
   issues: readonly DocumentValidationIssue[]
 }
 
-/** Metadata returned after uploading a binary asset. */
+/** 上传二进制资源后返回的元数据。 */
 export interface UploadedAsset {
-  /** Stable server-side asset identifier. */
+  /** 稳定的服务端资源标识。 */
   assetId: string
-  /** Safe URL served by the application. */
+  /** 由应用提供的安全 URL。 */
   url: string
-  /** Original file name. */
+  /** 原始文件名。 */
   name: string
-  /** MIME type accepted by the server. */
+  /** 服务端接受的 MIME 类型。 */
   mimeType: string
-  /** Persisted size in bytes. */
+  /** 持久化的大小（字节）。 */
   size: number
 }
 
-/** Replaceable bridge between the editor and an asset API. */
+/** 编辑器与资源 API 之间可替换的桥接层。 */
 export interface AssetAdapter {
-  /** Uploads a binary file without embedding it into document JSON. */
+  /** 上传二进制文件而不将其嵌入文档 JSON。 */
   upload(file: File, signal?: AbortSignal): Promise<UploadedAsset>
 }
 
-/** Replaceable bridge between the editor and the immutable dice API. */
+/** 编辑器与不可变骰子 API 之间可替换的桥接层。 */
 export interface DiceAdapter {
-  /** Creates and persists a new roll for a dice expression. */
+  /** 为骰子表达式创建并持久化一次新的掷骰。 */
   roll(expression: string, signal?: AbortSignal): Promise<DiceRollAttributes>
-  /** Creates a new roll linked to the supplied persisted roll. */
+  /** 创建一次关联到所提供持久化掷骰的新掷骰。 */
   reroll(rollId: string, signal?: AbortSignal): Promise<DiceRollAttributes>
 }
 
-/** Minimal comment item shared by thread adapters and viewer integrations. */
+/** 由会话（thread）适配器与查看器集成共享的最小评论条目。 */
 export interface InlineCommentItem {
-  /** Stable reply identifier. */
+  /** 稳定的回复标识。 */
   id: string
-  /** Parent reply identifier, or `null` for a root reply. */
+  /** 父回复标识；根回复为 `null`。 */
   parentId: string | null
-  /** Author display name. */
+  /** 作者显示名。 */
   authorName: string
-  /** Plain-text reply body. */
+  /** 纯文本回复正文。 */
   body: string
-  /** Current up-votes minus down-votes. */
+  /** 当前赞数减去踩数。 */
   score: number
-  /** ISO-8601 creation timestamp. */
+  /** ISO-8601 格式的创建时间戳。 */
   createdAt: string
 }
 
-/** Replaceable bridge for lazy inline-comment trees. */
+/** 用于懒加载行内评论树的可替换桥接层。 */
 export interface InlineCommentAdapter {
-  /** Loads one cursor page of a thread. */
+  /** 加载会话（thread）的一页游标数据。 */
   loadThread(threadId: string, cursor?: string, signal?: AbortSignal): Promise<{ items: readonly InlineCommentItem[]; nextCursor: string | null }>
-  /** Adds a reply to a thread or another reply. */
+  /** 向会话（thread）或另一条回复添加回复。 */
   reply(threadId: string, body: string, parentId?: string): Promise<InlineCommentItem>
-  /** Sets the current user's vote; zero removes it. */
+  /** 设置当前用户的投票；0 表示取消投票。 */
   vote(threadId: string, replyId: string, value: -1 | 0 | 1): Promise<{ score: number; viewerVote: -1 | 0 | 1 }>
 }
 
-/** Mention candidate returned by a friend or server-side user search. */
+/** 好友或服务端用户搜索返回的提及候选。 */
 export interface MentionCandidate {
-  /** Stable user identifier. */
+  /** 稳定的用户标识。 */
   userId: string
-  /** Display name. */
+  /** 显示名。 */
   name: string
-  /** Optional safe avatar URL. */
+  /** 可选的安全头像 URL。 */
   avatarUrl: string | null
-  /** Whether this user is already a friend of the current identity. */
+  /** 该用户是否已是当前身份的好友。 */
   isFriend: boolean
 }
 
-/** Replaceable bridge for first-release mock business workflows. */
+/** 用于首发版本模拟业务流程的可替换桥接层。 */
 export interface DemoFeatureAdapter {
-  /** Searches local friends and server-side users for an `@` query. */
+  /** 针对 `@` 查询搜索本地好友与服务端用户。 */
   searchMentions(query: string, signal?: AbortSignal): Promise<readonly MentionCandidate[]>
-  /** Resolves a typed mention before publication. */
+  /** 在发布前解析用户输入的提及。 */
   resolveMention(nameOrId: string, signal?: AbortSignal): Promise<MentionAttributes>
-  /** Requests access to a reply-gated block after a successful reply. */
+  /** 在成功回复后请求访问回复门控块。 */
   unlockReplyGate(gateId: string): Promise<{ visible: boolean }>
-  /** Purchases or downloads an attachment according to server policy. */
+  /** 根据服务端策略购买或下载附件。 */
   activateAttachment(attachmentId: string): Promise<{ downloadUrl: string | null; balance: number }>
-  /** Casts or replaces the current identity's poll vote. */
+  /** 投出或替换当前身份的投票。 */
   vote(pollId: string, optionIds: readonly string[]): Promise<void>
 }
 
-/** Attributes persisted by a long-text chapter block. */
+/** 由长文本章节块持久化的属性。 */
 export interface LongTextBlockAttributes {
-  /** Stable chapter identifier. */
+  /** 稳定的章节标识。 */
   chapterId: string
-  /** Chapter title. */
+  /** 章节标题。 */
   title: string
-  /** Full chapter text. */
+  /** 完整章节文本。 */
   text: string
-  /** Display order inside the novel. */
+  /** 小说内部的展示顺序。 */
   order: number
 }
 
-/** A rich image normalized for the viewer's gallery. */
+/** 为查看器图库归一化的富图片。 */
 export interface ViewerImage extends RichImageAttributes {
-  /** Zero-based position within this document's image gallery. */
+  /** 在此文档图片图库中的从零开始的位置。 */
   index: number
 }
 
-/** Hydrated viewer state for an attachment reference. */
+/** 附件引用的已填充（hydrated）查看器状态。 */
 export interface ViewerAttachmentState {
-  /** Whether the reader already owns or may directly download the file. */
+  /** 读者是否已拥有或可直接下载该文件。 */
   available: boolean
-  /** Whether an attachment request is currently in flight. */
+  /** 当前是否有一个附件请求正在进行中。 */
   pending: boolean
 }
 
-/** Hydrated viewer state for a poll reference. */
+/** 投票引用的已填充（hydrated）查看器状态。 */
 export interface ViewerPollState {
-  /** Option identifiers selected by the current identity. */
+  /** 当前身份已选择的选项标识。 */
   selectedOptionIds: readonly string[]
-  /** Vote totals keyed by option identifier. */
+  /** 按选项标识索引的票数总计。 */
   votesByOption: Readonly<Record<string, number>>
-  /** Whether the current identity is permitted to vote. */
+  /** 当前身份是否被允许投票。 */
   canVote: boolean
-  /** Whether a vote request is currently in flight. */
+  /** 当前是否有一个投票请求正在进行中。 */
   pending: boolean
 }

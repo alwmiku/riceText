@@ -4,7 +4,7 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import { LongTextView } from "../long-text-node-view.js";
 import { parseInteger } from "./helpers.js";
 
-/** Tiptap block node for long novel chapters with a virtualized React view. */
+/** 用于长篇小说章节、带虚拟化 React 视图的 Tiptap 块节点。 */
 export const LongTextBlock = Node.create({
   name: "longTextBlock",
   group: "block",

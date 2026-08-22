@@ -42,7 +42,7 @@ export interface RichTextEditorProps {
   onChangeSteps?: (steps: unknown[]) => void;
   onSubmit?: (content: RichTextNode) => void;
   onReady?: (editor: Editor | null) => void;
-  /** Most recent successful save time, shown in the editor footer. */
+  /** 最近一次成功保存时间，显示在编辑器底部。 */
   savedAt?: string;
   onExpand?: () => void;
   onCommentAnchorOpen?: (threadId: string) => void;

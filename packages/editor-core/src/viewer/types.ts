@@ -15,125 +15,125 @@ import type {
   ViewerPollState,
 } from "../types.js";
 
-/** Current full-screen image viewer state. */
+/** 当前全屏图片查看器状态。 */
 export interface ViewerLightboxState {
-  /** Selected image index, or `null` while the lightbox is closed. */
+  /** 选中的图片索引；灯箱关闭时为 `null`。 */
   index: number | null;
-  /** Zoom scale clamped between 0.5 and 4. */
+  /** 缩放比例，限制在 0.5 到 4 之间。 */
   zoom: number;
-  /** Horizontal pan displacement in CSS pixels. */
+  /** 以 CSS 像素计的水平平移位移。 */
   offsetX: number;
-  /** Vertical pan displacement in CSS pixels. */
+  /** 以 CSS 像素计的垂直平移位移。 */
   offsetY: number;
 }
 
-/** Interaction controller returned by {@link useRichTextViewerController}. */
+/** 由 {@link useRichTextViewerController} 返回的交互控制器。 */
 export interface RichTextViewerController {
-  /** Current lightbox transform and selection. */
+  /** 当前灯箱的变换与选择状态。 */
   lightbox: ViewerLightboxState;
-  /** Spoiler render keys explicitly revealed on touch or click. */
+  /** 通过触摸或点击显式展开的剧透渲染键。 */
   revealedSpoilers: ReadonlySet<string>;
-  /** Opens an image by gallery index. */
+  /** 按图库索引打开图片。 */
   openImage: (index: number) => void;
-  /** Closes the full-screen image viewer. */
+  /** 关闭全屏图片查看器。 */
   closeImage: () => void;
-  /** Selects the previous image, wrapping at the start. */
+  /** 选择上一张图片，在起始处循环。 */
   previousImage: () => void;
-  /** Selects the next image, wrapping at the end. */
+  /** 选择下一张图片，在末尾处循环。 */
   nextImage: () => void;
-  /** Adds a zoom delta while retaining the current pan. */
+  /** 在保留当前平移的同时增加缩放增量。 */
   changeZoom: (delta: number) => void;
-  /** Resets zoom and pan for the current image. */
+  /** 重置当前图片的缩放与平移。 */
   resetTransform: () => void;
-  /** Adds a drag displacement to the current pan. */
+  /** 为当前平移增加拖拽位移。 */
   panBy: (deltaX: number, deltaY: number) => void;
-  /** Reveals or hides one spoiler instance. */
+  /** 展开或隐藏某个剧透实例。 */
   toggleSpoiler: (key: string) => void;
 }
 
-/** Application callbacks and hydrated state used by the static viewer. */
+/** 静态查看器使用的应用回调与已填充（hydrated）状态。 */
 export interface RichTextViewerInteractions {
-  /** Loads or opens the selected inline-comment thread. */
+  /** 加载或打开选中的行内评论会话（thread）。 */
   onInlineCommentActivate?: (attrs: InlineCommentAnchorAttributes) => void;
-  /** Explicitly requests a new persisted result for a dice roll. */
+  /** 显式请求骰子掷出的新持久化结果。 */
   onDiceReroll?: (attrs: DiceRollAttributes) => void;
-  /** Opens a user profile or mention action. */
+  /** 打开用户主页或执行提及操作。 */
   onMentionActivate?: (attrs: MentionAttributes) => void;
-  /** Renders detailed mention content shown on hover and keyboard focus. */
+  /** 渲染悬停与键盘聚焦时显示的提及详情内容。 */
   renderMentionCard?: (attrs: MentionAttributes) => ReactNode;
-  /** Returns whether the current identity may see a gated block. */
+  /** 返回当前身份是否可以查看门控块。 */
   isReplyGateVisible?: (attrs: ReplyGateAttributes) => boolean;
-  /** Starts the reply or sign-in flow required to reveal a gated block. */
+  /** 启动展示门控块所需的回复或登录流程。 */
   onReplyGateRequest?: (attrs: ReplyGateAttributes) => void;
-  /** Returns hydrated ownership and pending state for an attachment. */
+  /** 返回附件的已填充（hydrated）拥有状态与待处理状态。 */
   getAttachmentState?: (
     attrs: AttachmentReferenceAttributes,
   ) => ViewerAttachmentState;
-  /** Purchases or downloads the selected attachment. */
+  /** 购买或下载选中的附件。 */
   onAttachmentActivate?: (attrs: AttachmentReferenceAttributes) => void;
-  /** Returns current vote totals, selection, permission, and pending state. */
+  /** 返回当前票数总计、选择、权限与待处理状态。 */
   getPollState?: (attrs: PollReferenceAttributes) => ViewerPollState;
-  /** Submits the complete current poll selection after the user confirms. */
+  /** 在用户确认后提交完整的当前投票选择。 */
   onPollSubmit?: (
     attrs: PollReferenceAttributes,
     optionIds: readonly string[],
   ) => void;
-  /** Legacy single-option vote callback used when no submit callback is supplied. */
+  /** 未提供提交回调时使用的旧版单选投票回调。 */
   onPollVote?: (attrs: PollReferenceAttributes, optionId: string) => void;
-  /** Observes an image being opened in the full-screen gallery. */
+  /** 观察在全屏图库中打开的图片。 */
   onImageOpen?: (image: ViewerImage) => void;
-  /** Observes activation of a safe document link. */
+  /** 观察安全文档链接的激活。 */
   onLinkActivate?: (
     href: string,
     event: ReactMouseEvent<HTMLAnchorElement>,
   ) => void;
 }
 
-/** Localized text used by viewer-only controls. */
+/** 仅查看器控件使用的本地化文本。 */
 export interface RichTextViewerLabels {
-  /** Accessible label for an inline-comment counter. */
+  /** 行内评论计数器的无障碍标签。 */
   inlineComments: string;
-  /** Accessible label for explicit dice reroll. */
+  /** 显式骰子重掷的无障碍标签。 */
   rerollDice: string;
-  /** Text for a free attachment action. */
+  /** 免费附件操作的文本。 */
   download: string;
-  /** Text for a paid attachment action. */
+  /** 付费附件操作的文本。 */
   purchase: string;
-  /** Currency unit appended to attachment prices. */
+  /** 附加到附件价格后的货币单位。 */
   coins: string;
-  /** Poll vote unit appended to totals. */
+  /** 附加到票数总计后的投票单位。 */
   votes: string;
-  /** Label for the optional novel excerpt source link. */
+  /** 可选小说摘录来源链接的标签。 */
   source: string;
-  /** Lightbox close control. */
+  /** 灯箱关闭控件。 */
   closeImage: string;
-  /** Lightbox previous-image control. */
+  /** 灯箱上一张图片控件。 */
   previousImage: string;
-  /** Lightbox next-image control. */
+  /** 灯箱下一张图片控件。 */
   nextImage: string;
-  /** Lightbox zoom-in control. */
+  /** 灯箱放大控件。 */
   zoomIn: string;
-  /** Lightbox zoom-out control. */
+  /** 灯箱缩小控件。 */
   zoomOut: string;
-  /** Lightbox reset control. */
+  /** 灯箱重置控件。 */
   resetZoom: string;
 }
 
-/** Props for the static, non-editable rich-text renderer. */
+/** 静态、不可编辑的富文本渲染器 props。 */
 export interface RichTextViewerProps {
-  /** Tiptap JSON to sanitize and render. */
+  /** 需要净化并渲染的 Tiptap JSON。 */
   content: JSONContent;
-  /** Additional class applied to the viewer root. */
+  /** 应用到查看器根元素的额外 class。 */
   className?: string;
-  /** Application callbacks and externally hydrated feature state. */
+  /** 应用回调与外部填充（hydrated）的功能状态。 */
   interactions?: RichTextViewerInteractions;
-  /** Optional externally owned viewer controller. */
+  /** 可选的外部持有查看器控制器。 */
   controller?: RichTextViewerController;
-  /** Whether rich images open in the built-in lightbox. Defaults to `true`. */
+  /** 富图片是否在内置灯箱中打开。默认为 `true`。 */
   enableLightbox?: boolean;
-  /** Overrides individual control labels. */
+  /** 覆盖个别控件标签。 */
   labels?: Partial<RichTextViewerLabels>;
-  /** Receives headings extracted from the projected document for a sidebar TOC. */
+  /** 接收从投射文档中提取的标题，用于侧边栏目录。 */
   onTocChange?: (items: ViewerTocItem[]) => void;
 }
 
@@ -163,7 +163,7 @@ export const defaultLabels: RichTextViewerLabels = {
   resetZoom: "Reset zoom",
 };
 
-/** Viewer-only context passed to every custom NodeView through a stable ref. */
+/** 通过稳定 ref 传递给每个自定义 NodeView 的仅查看器上下文。 */
 export interface ViewerContext {
   interactions: RichTextViewerInteractions;
   controller: RichTextViewerController;
@@ -172,7 +172,7 @@ export interface ViewerContext {
   galleryImages: readonly ViewerImage[];
 }
 
-/** Stable ref wrapper so NodeViews always read the latest viewer context. */
+/** 稳定 ref 包装，确保 NodeView 始终读取最新的查看器上下文。 */
 export interface ViewerContextRef {
   current: ViewerContext;
 }

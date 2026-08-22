@@ -48,7 +48,7 @@ button {
   background: hsl(174 52% 82%);
 }
 
-/* Tailwind base normalization and shared page primitives */
+/* Tailwind 基础样式与共享页面原语 */
 @layer base {
   :focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
@@ -76,7 +76,7 @@ button {
   }
 }
 
-/* Application chrome and route navigation */
+/* 应用外壳与路由导航 */
 .app-shell {
   min-height: 100vh;
   background: #f7f9fa;
@@ -131,7 +131,7 @@ button {
   padding: 18px 20px 42px;
 }
 
-/* Full editor: chapter rail, writing canvas and business inspector */
+/* 完整编辑器：章节导轨、写作画布与业务检查面板 */
 .editor-workspace {
   display: grid;
   grid-template-columns: 220px minmax(480px, 1fr) 310px;
@@ -190,7 +190,7 @@ button {
   background: #c83d3d;
 }
 
-/* Web-owned Tiptap toolbar and editor wrappers */
+/* Web 自有的 Tiptap 工具栏与编辑器包装 */
 .editor-toolbar {
   position: sticky;
   top: 58px;

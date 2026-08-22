@@ -1,6 +1,6 @@
 import { Node } from "@tiptap/core";
 
-/** Tiptap block node whose content is projected according to reply access. */
+/** 内容根据回复访问权限进行投射的 Tiptap 块节点。 */
 export const ReplyGate = Node.create({
   name: "replyGate",
   group: "block",

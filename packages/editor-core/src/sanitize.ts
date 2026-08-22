@@ -15,13 +15,13 @@ import type {
   RichImageAttributes,
 } from './types.js'
 
-/** Maximum number of JSON nodes accepted in a single document. */
+/** 单个文档中可接受的 JSON 节点最大数量。 */
 export const MAX_DOCUMENT_NODES = 10_000
 
-/** Maximum nesting depth accepted by the sanitizer. */
+/** 净化器可接受的最大嵌套深度。 */
 export const MAX_DOCUMENT_DEPTH = 32
 
-/** Font families that may be persisted by `textStyle`. */
+/** `textStyle` 可持久化的字体族。 */
 export const ALLOWED_FONT_FAMILIES = Object.freeze([
   'system-ui',
   'sans-serif',
@@ -33,7 +33,7 @@ export const ALLOWED_FONT_FAMILIES = Object.freeze([
   'SimSun',
 ] as const)
 
-/** Pixel sizes that may be persisted by `textStyle`. */
+/** `textStyle` 可持久化的像素字号。 */
 export const ALLOWED_FONT_SIZES = Object.freeze([12, 14, 16, 18, 20, 24, 28, 32, 36, 48] as const)
 
 const allowedFontSet = new Set<string>(ALLOWED_FONT_FAMILIES)
@@ -143,10 +143,9 @@ function containsControlCharacter(value: string): boolean {
 }
 
 /**
- * Returns a safe URL for the requested content type, or `null` when rejected.
- * Image URLs accept HTTP(S), `/uploads/...`, `/api/assets/...`, and local
- * `blob:` object URLs; links additionally accept `mailto:`, fragments, and
- * ordinary same-origin paths.
+ * 返回所请求内容类型的安全 URL，被拒绝时返回 `null`。
+ * 图片 URL 接受 HTTP(S)、`/uploads/...`、`/api/assets/...` 以及本地
+ * `blob:` 对象 URL；链接额外接受 `mailto:`、锚点片段以及普通同源路径。
  */
 export function sanitizeUrl(value: unknown, kind: 'image' | 'link' = 'link'): string | null {
   if (typeof value !== 'string') return null
@@ -166,7 +165,7 @@ export function sanitizeUrl(value: unknown, kind: 'image' | 'link' = 'link'): st
   return null
 }
 
-/** Returns a normalized CSS color token or `null` for unsafe input. */
+/** 返回归一化的 CSS 颜色标记；不安全的输入返回 `null`。 */
 export function sanitizeColor(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const color = value.trim().toLowerCase()
@@ -178,12 +177,12 @@ export function sanitizeColor(value: unknown): string | null {
   return null
 }
 
-/** Returns a whitelisted font family, or `null` when the value is not allowed. */
+/** 返回白名单内的字体族；值不允许时返回 `null`。 */
 export function sanitizeFontFamily(value: unknown): string | null {
   return typeof value === 'string' && allowedFontSet.has(value) ? value : null
 }
 
-/** Returns a whitelisted pixel font size, or `null` when the value is not allowed. */
+/** 返回白名单内的像素字号；值不允许时返回 `null`。 */
 export function sanitizeFontSize(value: unknown): string | null {
   const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number.parseInt(value, 10) : Number.NaN
   return allowedFontSizeSet.has(numeric) ? `${numeric}px` : null
@@ -454,17 +453,17 @@ function inspectDocument(value: unknown): DocumentValidationResult {
   return { valid: context.issues.length === 0, document, issues: context.issues }
 }
 
-/** Removes unknown structures and unsafe values from untrusted JSON without mutating it. */
+/** 从不信任的 JSON 中移除未知结构与不安全值，且不修改原始输入。 */
 export function sanitizeDocument(value: unknown): JSONContent {
   return inspectDocument(value).document
 }
 
-/** Validates JSON and returns ordered diagnostics alongside a safe replacement. */
+/** 校验 JSON，并返回有序诊断信息及安全替换结果。 */
 export function validateDocument(value: unknown): DocumentValidationResult {
   return inspectDocument(value)
 }
 
-/** Parses serialized JSON and returns a safe empty document on invalid input. */
+/** 解析序列化的 JSON；输入无效时返回安全的空文档。 */
 export function parseDocumentJson(serialized: string): DocumentValidationResult {
   try {
     return inspectDocument(JSON.parse(serialized) as unknown)
@@ -474,7 +473,7 @@ export function parseDocumentJson(serialized: string): DocumentValidationResult 
   }
 }
 
-/** Serializes a sanitized document for transport or persistence. */
+/** 序列化已净化的文档，用于传输或持久化。 */
 export function stringifyDocument(value: unknown): string {
   return JSON.stringify(sanitizeDocument(value))
 }

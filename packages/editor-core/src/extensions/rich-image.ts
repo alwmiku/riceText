@@ -5,7 +5,7 @@ import { RichImageView } from "../rich-image-node-view.js";
 import { sanitizeUrl } from "../sanitize.js";
 import { parseInteger } from "./helpers.js";
 
-/** Tiptap block node for uploaded and external images. */
+/** 用于已上传图片与外部图片的 Tiptap 块节点。 */
 export const RichImage = Node.create({
   name: "richImage",
   addOptions() {

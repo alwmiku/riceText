@@ -32,8 +32,8 @@ export { useRichTextViewerController } from './viewer/controller.js'
 export { extractHeadings } from './viewer/prepare.js'
 
 /**
- * Renders sanitized Tiptap JSON with a read-only Tiptap/ProseMirror editor.
- * Custom nodes use React NodeViews so viewer interactions keep working.
+ * 使用只读的 Tiptap/ProseMirror 编辑器渲染净化后的 Tiptap JSON。
+ * 自定义节点使用 React NodeView，以便查看器交互持续生效。
  */
 export function RichTextViewer({ content, className = '', interactions = {}, controller: externalController, enableLightbox = true, labels: labelOverrides = {}, onTocChange }: RichTextViewerProps) {
   const document = useMemo(

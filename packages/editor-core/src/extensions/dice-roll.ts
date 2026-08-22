@@ -2,7 +2,7 @@ import { Node } from "@tiptap/core";
 
 import { parseInteger, parseJsonArray } from "./helpers.js";
 
-/** Tiptap inline atom for an immutable server-generated dice result. */
+/** 用于服务端生成的不可变骰子结果的 Tiptap 行内原子节点。 */
 export const DiceRoll = Node.create({
   name: "diceRoll",
   group: "inline",

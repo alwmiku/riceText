@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 
 import { countInlineCommentAnchors, parseInteger } from "./helpers.js";
 
-/** Tiptap node for paragraph-start or paragraph-end comment counters. */
+/** 用于段落起始或段落末尾评论计数器的 Tiptap 节点。 */
 export const InlineCommentAnchor = Node.create({
   name: "inlineCommentAnchor",
   group: "inline",

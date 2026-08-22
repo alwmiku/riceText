@@ -2,7 +2,7 @@ import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 
 import type { PollReferenceAttributes } from "./types.js";
 
-/** Editable poll NodeView that exposes persisted options without making them contenteditable. */
+/** 可编辑的投票 NodeView，展示持久化选项但不使其可编辑。 */
 export function PollEditorView({ node, selected }: NodeViewProps) {
   const attrs = node.attrs as unknown as PollReferenceAttributes;
   return (

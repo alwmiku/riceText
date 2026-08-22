@@ -14,7 +14,7 @@
   --rt-selected-border: #0f766e;
 }
 
-/* Accessibility helpers */
+/* 无障碍辅助 */
 .rt-sr-only {
   position: absolute;
   width: 1px;
@@ -27,7 +27,7 @@
   border: 0;
 }
 
-/* Shared editor canvas and the three layout presets */
+/* 共享编辑器画布与三种布局预设 */
 .rt-editor,
 .rt-viewer {
   color: var(--rt-text);
@@ -81,7 +81,7 @@
   pointer-events: none;
 }
 
-/* Formatting toolbar and fixed-size controls */
+/* 格式工具栏与固定尺寸控件 */
 .rt-toolbar {
   position: sticky;
   z-index: 5;
@@ -241,7 +241,7 @@
   padding: 16px 16px 80px;
 }
 
-/* Static viewer typography; this surface never becomes contenteditable */
+/* 静态阅读器排版；该表面永不进入 contenteditable */
 .rt-viewer {
   overflow-wrap: anywhere;
 }
@@ -332,7 +332,7 @@
   border-radius: 6px;
 }
 
-/* Persisted rich-text nodes and marks */
+/* 持久化富文本节点与标记 */
 .rt-inline-comment-anchor {
   display: inline-flex;
   min-width: 22px;
@@ -1004,7 +1004,7 @@
   box-shadow: 0 0 0 2px rgb(20 184 166 / 20%);
 }
 
-/* Full-screen image gallery, zoom and navigation controls */
+/* 全屏图片画廊、缩放与导航控件 */
 .rt-lightbox {
   position: fixed;
   z-index: 9999;

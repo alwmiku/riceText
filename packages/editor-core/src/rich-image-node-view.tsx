@@ -10,7 +10,7 @@ function clampWidth(value: number): number {
   return Math.min(100, Math.max(10, Math.round(value)));
 }
 
-/** Editable rich image view with drag handles that persist width percentage. */
+/** 带拖拽手柄、可持久化宽度百分比的可编辑富图片视图。 */
 export function RichImageView({
   node,
   updateAttributes,

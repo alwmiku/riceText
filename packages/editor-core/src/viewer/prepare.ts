@@ -68,7 +68,7 @@ export function addMissingParagraphAnchors(doc: JSONContent): JSONContent {
   return clone;
 }
 
-/** Removes locked reply-gate children before ProseMirror constructs reader DOM. */
+/** 在 ProseMirror 构建读者 DOM 之前移除被锁定的回复门控子内容。 */
 export function projectReplyGates(
   doc: JSONContent,
   interactions: RichTextViewerInteractions,

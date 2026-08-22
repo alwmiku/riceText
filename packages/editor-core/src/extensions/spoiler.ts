@@ -1,6 +1,6 @@
 import { Mark } from "@tiptap/core";
 
-/** Tiptap mark for hover-to-reveal and tap-to-toggle spoiler text. */
+/** 用于悬停显示与点击切换剧透文本的 Tiptap 标记。 */
 export const Spoiler = Mark.create({
   name: "spoiler",
   inclusive: false,

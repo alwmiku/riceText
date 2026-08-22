@@ -19,14 +19,14 @@ export interface PollResultChartProps {
   voted?: boolean;
   /** Radio 组名，多个投票并存时用于隔离同名单选。 */
   groupName?: string;
-  /** Chart plot height in CSS pixels. Defaults to a compact 160px. */
+  /** 图表绘图区高度（CSS 像素）。默认为紧凑的 160px。 */
   height?: number;
-  /** Shows horizontal guide lines when a quantitative grid is useful. */
+  /** 在需要定量网格时显示水平参考线。 */
   showGrid?: boolean;
   className?: string;
 }
 
-/** Reusable, accessible vertical result chart for persisted poll options. */
+/** 用于持久化投票选项的可复用、无障碍纵向结果图表。 */
 export function PollResultChart({
   options,
   voteLabel,

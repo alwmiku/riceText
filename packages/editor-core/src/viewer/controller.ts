@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { RichTextViewerController, ViewerLightboxState } from "./types.js";
 
 /**
- * Owns spoiler disclosure and full-screen gallery state without instantiating a
- * Tiptap editor. The controller can be shared with surrounding application UI.
+ * 在不实例化 Tiptap 编辑器的情况下管理剧透展开与全屏图库状态。
+ * 该控制器可与外层应用 UI 共享。
  */
 export function useRichTextViewerController(
   imageCount: number,
