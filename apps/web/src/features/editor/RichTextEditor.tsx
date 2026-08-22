@@ -47,6 +47,8 @@ import {
   ExcerptDialog,
   ImageDialog,
   MentionDialog,
+  PollDialog,
+  type PollDialogValues,
 } from "./dialogs";
 import { ChapterSidebar } from "../novel/ChapterSidebar";
 
@@ -161,6 +163,8 @@ function Toolbar({
     size: number;
     priceCoins: number;
   } | null>(null);
+  const [pollOpen, setPollOpen] = useState(false);
+  const [pollInitial, setPollInitial] = useState<PollDialogValues | null>(null);
   const [, forceSelectionRender] = useReducer((value: number) => value + 1, 0);
   useEffect(() => {
     if (!editor) return undefined;
@@ -267,6 +271,36 @@ function Toolbar({
       setAttachmentInitial(null);
     }
     setAttachmentOpen(true);
+  };
+  const openPollDialog = () => {
+    const attrs = editor.getAttributes("pollRef") as {
+      question?: unknown;
+      multiple?: unknown;
+      options?: unknown;
+    };
+    const options = Array.isArray(attrs.options)
+      ? attrs.options.flatMap((option) => {
+          if (
+            !option ||
+            typeof option !== "object" ||
+            typeof (option as { id?: unknown }).id !== "string" ||
+            typeof (option as { label?: unknown }).label !== "string"
+          )
+            return [];
+          return [
+            {
+              id: (option as { id: string }).id,
+              label: (option as { label: string }).label,
+            },
+          ];
+        })
+      : [];
+    setPollInitial(
+      pollActive && typeof attrs.question === "string" && options.length >= 2
+        ? { question: attrs.question, multiple: attrs.multiple === true, options }
+        : null,
+    );
+    setPollOpen(true);
   };
 
   return (
@@ -608,24 +642,10 @@ function Toolbar({
                 className={cn(
                   pollActive && "bg-primary/10 text-primary [&_svg]:stroke-primary",
                 )}
-                onSelect={() =>
-                  insert({
-                    type: "pollRef",
-                    attrs: {
-                      pollId: createId("poll"),
-                      question: "下一章先跟随哪位角色？",
-                      multiple: false,
-                      options: [
-                        { id: "keeper", label: "灯塔守望人" },
-                        { id: "postman", label: "失踪的邮差" },
-                        { id: "clerk", label: "港务局记录员" },
-                      ],
-                    },
-                  })
-                }
+                onSelect={openPollDialog}
               >
                 <List size={15} />
-                投票
+                {pollActive ? "编辑投票" : "投票"}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -676,6 +696,25 @@ function Toolbar({
             insert({
               type: "attachmentRef",
               attrs: { attachmentId: createId("attachment"), ...values },
+            });
+          }
+        }}
+      />
+      <PollDialog
+        open={pollOpen}
+        onOpenChange={setPollOpen}
+        {...(pollInitial ? { initial: pollInitial } : {})}
+        onInsert={(values) => {
+          if (pollInitial) {
+            editor
+              .chain()
+              .focus()
+              .updateAttributes("pollRef", values)
+              .run();
+          } else {
+            insert({
+              type: "pollRef",
+              attrs: { pollId: createId("poll"), ...values },
             });
           }
         }}

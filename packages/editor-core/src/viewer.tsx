@@ -387,12 +387,18 @@ function PollNodeView({ node, viewerRef }: ViewerNodeProps) {
   const viewer = viewerRef.current
   const attrs = node.attrs as unknown as PollReferenceAttributes
   const state = viewer.interactions.getPollState?.(attrs) ?? { selectedOptionIds: [], votesByOption: {}, canVote: true, pending: false }
+  const totalVotes = attrs.options.reduce(
+    (total, option) => total + Math.max(0, state.votesByOption[option.id] ?? 0),
+    0,
+  )
   return (
     <section className="rt-poll" aria-labelledby={`poll-${attrs.pollId}`}>
       <h3 id={`poll-${attrs.pollId}`}>{attrs.question}</h3>
       <div className="rt-poll__options">
         {attrs.options.map((option) => {
           const selected = state.selectedOptionIds.includes(option.id)
+          const votes = Math.max(0, state.votesByOption[option.id] ?? 0)
+          const percentage = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0
           return (
             <button
               key={option.id}
@@ -401,8 +407,11 @@ function PollNodeView({ node, viewerRef }: ViewerNodeProps) {
               disabled={!state.canVote || state.pending || !viewer.interactions.onPollVote}
               onClick={() => viewer.interactions.onPollVote?.(attrs, option.id)}
             >
-              <span>{option.label}</span>
-              <small>{state.votesByOption[option.id] ?? 0} {viewer.labels.votes}</small>
+              <span className="rt-poll__option-label">{option.label}</span>
+              <span className="rt-poll__histogram" aria-hidden="true">
+                <span className="rt-poll__histogram-fill" style={{ width: `${percentage}%` }} />
+              </span>
+              <small>{votes} {viewer.labels.votes} · {percentage}%</small>
             </button>
           )
         })}

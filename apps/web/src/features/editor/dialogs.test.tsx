@@ -11,6 +11,7 @@ import {
   ExcerptDialog,
   ImageDialog,
   MentionDialog,
+  PollDialog,
 } from "./dialogs";
 
 const { createDiceMock, uploadAssetMock } = vi.hoisted(() => ({
@@ -176,6 +177,41 @@ describe("editor dialogs", () => {
       sourceUrl: "https://books.example/5",
       variant: "mobile-book",
       text: "潮水漫过了石阶。",
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("创建投票时可添加选项并提交多选设置", () => {
+    const onInsert = vi.fn();
+    const onOpenChange = vi.fn();
+    render(<PollDialog open onOpenChange={onOpenChange} onInsert={onInsert} />);
+
+    const submit = screen.getByRole("button", { name: "插入投票" });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("投票问题"), {
+      target: { value: "下一章先去哪里？" },
+    });
+    fireEvent.change(screen.getByLabelText("投票选项 1"), {
+      target: { value: "钟楼" },
+    });
+    fireEvent.change(screen.getByLabelText("投票选项 2"), {
+      target: { value: "旧码头" },
+    });
+    fireEvent.click(screen.getByLabelText("允许多选"));
+    fireEvent.click(screen.getByRole("button", { name: "添加选项" }));
+    fireEvent.change(screen.getByLabelText("投票选项 3"), {
+      target: { value: "潮汐图书馆" },
+    });
+    fireEvent.click(submit);
+
+    expect(onInsert).toHaveBeenCalledWith({
+      question: "下一章先去哪里？",
+      multiple: true,
+      options: [
+        expect.objectContaining({ label: "钟楼" }),
+        expect.objectContaining({ label: "旧码头" }),
+        expect.objectContaining({ label: "潮汐图书馆" }),
+      ],
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

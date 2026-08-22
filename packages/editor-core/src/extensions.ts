@@ -11,6 +11,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 
 import { LongTextView } from "./long-text-node-view.js";
+import { PollEditorView } from "./poll-node-view.js";
 import { RichImageView } from "./rich-image-node-view.js";
 
 import { sanitizeUrl } from "./sanitize.js";
@@ -652,6 +653,9 @@ export const PollRef = Node.create({
         ({ commands }) =>
           commands.insertContent({ type: this.name, attrs }),
     };
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(PollEditorView);
   },
 });
 
