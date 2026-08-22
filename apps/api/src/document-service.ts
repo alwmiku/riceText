@@ -444,7 +444,7 @@ export class DocumentService {
     authorId: string,
   ): { envelope: DocumentEnvelope; created: boolean } {
     const content = sanitizeDocument(request.content);
-    return this.#write(
+    const result = this.#write(
       documentId,
       request.baseRevision,
       request.clientMutationId,
@@ -455,6 +455,13 @@ export class DocumentService {
       "update",
       null,
     );
+    // 每章独立版本：保存真正生效时，只递增本次编辑章节的 revision。
+    if (result.created && request.chapterId) {
+      this.#db
+        .prepare("UPDATE chapters SET revision = revision + 1 WHERE id = ?")
+        .run(request.chapterId);
+    }
+    return result;
   }
 
   /** 回滚到指定历史版本并创建新修订。 */

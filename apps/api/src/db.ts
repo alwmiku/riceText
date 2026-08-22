@@ -226,6 +226,11 @@ function runMigration(db: DatabaseSync, version: number, sql: string): void {
   }
 }
 
+/** 章节独立版本号：每次保存该章节时递增。 */
+const migrationV2 = `
+ALTER TABLE chapters ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+`;
+
 /** 幂等写入开发身份、正文和演示业务数据，重复启动不会覆盖用户修改。 */
 function seed(db: DatabaseSync): void {
   const now = new Date().toISOString();
@@ -247,7 +252,7 @@ function seed(db: DatabaseSync): void {
 
     // 章节目录为演示数据，每次启动重置为与正文一致的五章大纲。
     db.prepare("DELETE FROM chapters WHERE document_id = 'demo-post'").run();
-    const insertChapter = db.prepare("INSERT INTO chapters(id, title, sort_order, document_id) VALUES (?, ?, ?, 'demo-post')");
+    const insertChapter = db.prepare("INSERT INTO chapters(id, title, sort_order, document_id, revision) VALUES (?, ?, ?, 'demo-post', 1)");
     insertChapter.run("chapter-0", "楔子 · 雨季之前", 0);
     insertChapter.run("chapter-1", "第一章 · 潮汐表", 1);
     insertChapter.run("chapter-2", "第二章 · 陌生船票", 2);
@@ -282,6 +287,7 @@ export function createDatabase(options: DatabaseOptions): DatabaseSync {
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)");
   runMigration(db, 1, migrationV1);
+  runMigration(db, 2, migrationV2);
   if (options.seed !== false) seed(db);
   return db;
 }

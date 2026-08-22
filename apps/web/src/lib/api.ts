@@ -82,6 +82,22 @@ export async function getDocument(
   }
 }
 
+/** 演示章节目录项。 */
+export interface DemoChapterItem {
+  id: string;
+  title: string;
+  order: number;
+  documentId: string;
+  /** 该章节独立的保存版本号。 */
+  revision: number;
+}
+
+/** 读取演示章节目录（含每章独立版本号）。 */
+export async function listDemoChapters(): Promise<DemoChapterItem[]> {
+  const result = await request<{ items: DemoChapterItem[] }>("/demo/chapters");
+  return result.items;
+}
+
 /**
  * 使用 baseRevision 保存完整 Tiptap JSON。
  *
@@ -95,6 +111,8 @@ export async function saveDocument(
     baseRevision: number;
     clientMutationId: string;
     content: RichTextNode;
+    /** 本次编辑的章节 id；服务端保存成功后递增该章节版本号。 */
+    chapterId?: string;
   },
 ): Promise<DocumentEnvelope> {
   try {

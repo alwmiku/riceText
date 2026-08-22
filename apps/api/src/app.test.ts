@@ -53,6 +53,26 @@ describe("RiceText API", () => {
     expect(history.json().pageInfo.nextCursor).toBe("2");
   });
 
+  it("保存时仅递增本次编辑章节的版本号", async () => {
+    const directoryBefore = (await app.inject({ method: "GET", url: "/api/demo/chapters" })).json().items as Array<{ id: string; revision: number }>;
+    const chapterOneBefore = directoryBefore.find((item) => item.id === "chapter-1")!;
+    const chapterTwoBefore = directoryBefore.find((item) => item.id === "chapter-2")!;
+    expect(chapterOneBefore.revision).toBe(1);
+    expect(chapterTwoBefore.revision).toBe(1);
+
+    const saved = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-demo-user": "author" },
+      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "chapter-save", chapterId: "chapter-1", content: validContent() },
+    });
+    expect(saved.statusCode).toBe(201);
+
+    const directoryAfter = (await app.inject({ method: "GET", url: "/api/demo/chapters" })).json().items as Array<{ id: string; revision: number }>;
+    expect(directoryAfter.find((item) => item.id === "chapter-1")!.revision).toBe(2);
+    expect(directoryAfter.find((item) => item.id === "chapter-2")!.revision).toBe(1);
+  });
+
   it("拒绝 reader 写入和不安全正文", async () => {
     const forbidden = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-demo-user": "reader" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "reader-save", content: validContent() } });
     expect(forbidden.statusCode).toBe(403);

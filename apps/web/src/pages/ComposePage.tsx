@@ -19,7 +19,12 @@ import { CommentThread } from "../features/comments/CommentThread";
 import { ChapterRail, DemoBusinessPanel } from "../features/demo/DemoPanels";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
 import { useAutosave } from "../features/editor/useAutosave";
-import { getCommentThread, getDocument, restoreRevision } from "../lib/api";
+import {
+  getCommentThread,
+  getDocument,
+  listDemoChapters,
+  restoreRevision,
+} from "../lib/api";
 import { mergeChapter, splitDocumentByHeadings } from "../lib/chapters";
 import { defaultDocument } from "../lib/seed";
 import type {
@@ -91,6 +96,10 @@ export default function ComposePage() {
   );
   const [threadId, setThreadId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const { data: chapterDirectory = [] } = useQuery({
+    queryKey: ["demo", "chapters"],
+    queryFn: () => listDemoChapters(),
+  });
   const { data: comments = [] } = useQuery<CommentReply[]>({
     queryKey: ["comments", document.id, threadId],
     queryFn: () => getCommentThread(document.id, threadId!),
@@ -121,6 +130,7 @@ export default function ComposePage() {
     document,
     content,
     generation,
+    ...(chapters[activeIndex] ? { chapterId: chapters[activeIndex]!.id } : {}),
     onSaved: (next) => {
       setDocument((current) => ({
         ...current,
@@ -132,6 +142,10 @@ export default function ComposePage() {
       queryClient.setQueryData<DocumentEnvelope>(["document", next.id], next);
       void queryClient.invalidateQueries({
         queryKey: ["revisions", next.id],
+      });
+      // 章节独立版本：保存后刷新章节目录，更新当前章节的版本号。
+      void queryClient.invalidateQueries({
+        queryKey: ["demo", "chapters"],
       });
     },
   });
@@ -179,7 +193,10 @@ export default function ComposePage() {
         setGeneration(generationRef.current);
       }
     }
-    const saved = await autosave.flush(contentRef.current, generationRef.current);
+    const saved = await autosave.flush(
+      contentRef.current,
+      generationRef.current,
+    );
     if (!saved) return;
     setNotice(
       mode === "compact"
@@ -296,10 +313,14 @@ export default function ComposePage() {
           <section className="editor-column">
             <div className="document-bar surface mb-2">
               <div className="min-w-0">
-                <p className="document-title">{document.title}</p>
+                <p className="document-title">
+                  {chapters[activeIndex]?.title ?? document.title}
+                </p>
                 <SaveStatus
                   state={isPlaceholderData ? "loading" : autosave.state}
-                  revision={autosave.revision}
+                  revision={
+                    chapterDirectory[activeIndex]?.revision ?? autosave.revision
+                  }
                   savedAt={autosave.savedAt}
                 />
               </div>

@@ -581,6 +581,11 @@ button {
   font-size: 17px;
   line-height: 1.95;
 }
+/* 阅读器不是写作画布：去掉编辑器专属的留白与最小高度，正文从卡片顶部开始。 */
+.viewer-article .rt-viewer .tiptap {
+  min-height: 0;
+  padding: 0;
+}
 .viewer-article .rt-viewer h1 {
   font-size: 32px;
   line-height: 1.35;

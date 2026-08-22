@@ -42,9 +42,9 @@ export class DemoService {
   }
 
   /** 演示章节目录。 */
-  chapters(): Array<{ id: string; title: string; order: number; documentId: string }> {
-    const rows = this.#db.prepare("SELECT id, title, sort_order, document_id FROM chapters ORDER BY sort_order").all() as Array<{ id: string; title: string; sort_order: number; document_id: string }>;
-    return rows.map((row) => ({ id: row.id, title: row.title, order: row.sort_order, documentId: row.document_id }));
+  chapters(): Array<{ id: string; title: string; order: number; documentId: string; revision: number }> {
+    const rows = this.#db.prepare("SELECT id, title, sort_order, document_id, revision FROM chapters ORDER BY sort_order").all() as Array<{ id: string; title: string; sort_order: number; document_id: string; revision: number }>;
+    return rows.map((row) => ({ id: row.id, title: row.title, order: row.sort_order, documentId: row.document_id, revision: row.revision }));
   }
 
   /** 按身份过滤纠错建议。 */

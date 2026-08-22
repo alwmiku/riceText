@@ -119,23 +119,25 @@ function InlineCommentAnchorNodeView({ node, viewerRef }: ViewerNodeProps) {
   const attrs = node.attrs as unknown as InlineCommentAnchorAttributes;
   const empty = attrs.count <= 0;
   return (
-    <button
-      type="button"
-      className={`rt-inline-comment-anchor rt-inline-comment-anchor--${attrs.placement}${empty ? " rt-inline-comment-anchor--empty" : ""}`}
-      data-node-type="inline-comment-anchor"
-      data-thread-id={attrs.threadId}
-      data-count={attrs.count}
-      data-placement={attrs.placement}
-      aria-label={`${viewer.labels.inlineComments}: ${attrs.count}`}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        viewer.interactions.onInlineCommentActivate?.(attrs);
-      }}
-    >
-      {empty ? "" : attrs.count}
-    </button>
+    <NodeViewWrapper as="span" className="rt-inline-comment-anchor-wrap">
+      <button
+        type="button"
+        className={`rt-inline-comment-anchor rt-inline-comment-anchor--${attrs.placement}${empty ? " rt-inline-comment-anchor--empty" : ""}`}
+        data-node-type="inline-comment-anchor"
+        data-thread-id={attrs.threadId}
+        data-count={attrs.count}
+        data-placement={attrs.placement}
+        aria-label={`${viewer.labels.inlineComments}: ${attrs.count}`}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          viewer.interactions.onInlineCommentActivate?.(attrs);
+        }}
+      >
+        {empty ? "" : attrs.count}
+      </button>
+    </NodeViewWrapper>
   );
 }
 

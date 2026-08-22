@@ -31,6 +31,8 @@ export interface AutosaveOptions {
   content: RichTextNode;
   /** 单调递增的本地编辑代次，避免使用昂贵的全文 Hash。 */
   generation: number;
+  /** 本次编辑的章节 id；服务端保存成功后递增该章节版本号。 */
+  chapterId?: string;
   /** 成功保存后的宿主同步回调。 */
   onSaved?: (next: DocumentEnvelope) => void;
 }
@@ -44,6 +46,7 @@ export function useAutosave({
   document,
   content,
   generation,
+  chapterId,
   onSaved,
 }: AutosaveOptions): AutosaveResult {
   const [state, setState] = useState<SaveState>("saved");
@@ -57,17 +60,18 @@ export function useAutosave({
   const queueRef = useRef(Promise.resolve());
   const timerRef = useRef<number | null>(null);
   const onSavedRef = useRef(onSaved);
+  const chapterIdRef = useRef(chapterId);
 
   // 回调与正文必须保持最新，但它们不应重建 enqueue 或清空正在执行的保存队列。
   latestRef.current = { content, generation };
   onSavedRef.current = onSaved;
+  chapterIdRef.current = chapterId;
 
   // 宿主收到服务端/本地保存结果时，同步 revision 基线并解除旧失败代次。
   // 保存回调已通过 revisionRef 记录新基线；只有外部同步（回滚/刷新装载）才重置
   // savedGeneration，避免把保存期间产生的新编辑代次误标记为“已保存”。
   useEffect(() => {
-    const baselineChangedExternally =
-      revisionRef.current !== document.revision;
+    const baselineChangedExternally = revisionRef.current !== document.revision;
     revisionRef.current = document.revision;
     setRevision(document.revision);
     setSavedAt(document.savedAt);
@@ -78,59 +82,68 @@ export function useAutosave({
     setState(document.storage === "local-demo" ? "offline" : "saved");
   }, [document.id, document.revision, document.savedAt, document.storage]);
 
-  const enqueue = useCallback(async (force = false, override?: { content: RichTextNode; generation: number }): Promise<boolean> => {
-    const snapshot = override ?? latestRef.current;
-    // 同一代已经保存时不重复提交；自动保存会跳过明确失败的代次，显式 flush 可重试。
-    if (
-      snapshot.generation <= savedGeneration.current ||
-      (!force && snapshot.generation === failedGeneration.current)
-    )
-      return true;
-    setState("saving");
-    let succeeded = true;
-    // Promise 链保证任意时刻只有一个 PUT；catch 先清除上一请求的拒绝状态。
-    queueRef.current = queueRef.current
-      .catch(() => undefined)
-      .then(async () => {
-        const result = await saveDocument(document.id, {
-          schemaVersion: document.schemaVersion,
-          baseRevision: revisionRef.current,
-          clientMutationId: createId("save"),
-          content: snapshot.content,
+  const enqueue = useCallback(
+    async (
+      force = false,
+      override?: { content: RichTextNode; generation: number },
+    ): Promise<boolean> => {
+      const snapshot = override ?? latestRef.current;
+      // 同一代已经保存时不重复提交；自动保存会跳过明确失败的代次，显式 flush 可重试。
+      if (
+        snapshot.generation <= savedGeneration.current ||
+        (!force && snapshot.generation === failedGeneration.current)
+      )
+        return true;
+      setState("saving");
+      let succeeded = true;
+      // Promise 链保证任意时刻只有一个 PUT；catch 先清除上一请求的拒绝状态。
+      queueRef.current = queueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          const result = await saveDocument(document.id, {
+            schemaVersion: document.schemaVersion,
+            baseRevision: revisionRef.current,
+            clientMutationId: createId("save"),
+            content: snapshot.content,
+            ...(chapterIdRef.current
+              ? { chapterId: chapterIdRef.current }
+              : {}),
+          });
+          revisionRef.current = result.revision;
+          savedGeneration.current = snapshot.generation;
+          failedGeneration.current = null;
+          setRevision(result.revision);
+          setSavedAt(result.savedAt);
+          setState(
+            result.storage === "local-demo"
+              ? "offline"
+              : snapshot.generation === latestRef.current.generation
+                ? "saved"
+                : "dirty",
+          );
+          onSavedRef.current?.(result);
+        })
+        .catch((error: unknown) => {
+          succeeded = false;
+          if (error instanceof ApiError && error.status === 409) {
+            // 409 必须保留本地正文并等待用户决策，绝不自动覆盖服务器版本。
+            setConflictMessage(
+              "服务器已有更新版本。本地内容仍保留，请比较后选择加载最新版或继续复制。",
+            );
+            setState("conflict");
+          } else {
+            failedGeneration.current = snapshot.generation;
+            setConflictMessage(
+              error instanceof Error ? error.message : "自动保存失败",
+            );
+            setState("error");
+          }
         });
-        revisionRef.current = result.revision;
-        savedGeneration.current = snapshot.generation;
-        failedGeneration.current = null;
-        setRevision(result.revision);
-        setSavedAt(result.savedAt);
-        setState(
-          result.storage === "local-demo"
-            ? "offline"
-            : snapshot.generation === latestRef.current.generation
-              ? "saved"
-              : "dirty",
-        );
-        onSavedRef.current?.(result);
-      })
-      .catch((error: unknown) => {
-        succeeded = false;
-        if (error instanceof ApiError && error.status === 409) {
-          // 409 必须保留本地正文并等待用户决策，绝不自动覆盖服务器版本。
-          setConflictMessage(
-            "服务器已有更新版本。本地内容仍保留，请比较后选择加载最新版或继续复制。",
-          );
-          setState("conflict");
-        } else {
-          failedGeneration.current = snapshot.generation;
-          setConflictMessage(
-            error instanceof Error ? error.message : "自动保存失败",
-          );
-          setState("error");
-        }
-      });
-    await queueRef.current;
-    return succeeded;
-  }, [document.id, document.schemaVersion]);
+      await queueRef.current;
+      return succeeded;
+    },
+    [document.id, document.schemaVersion],
+  );
 
   // 新编辑代在静默 1.2 秒后入队；卸载或继续输入会取消旧定时器。
   useEffect(() => {

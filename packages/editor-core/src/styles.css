@@ -333,6 +333,10 @@
 }
 
 /* 持久化富文本节点与标记 */
+.rt-inline-comment-anchor-wrap {
+  display: inline;
+}
+
 .rt-inline-comment-anchor {
   display: inline-flex;
   min-width: 22px;
