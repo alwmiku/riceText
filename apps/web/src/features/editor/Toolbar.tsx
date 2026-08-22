@@ -17,24 +17,23 @@ import {
   List,
   ListOrdered,
   MessageCirclePlus,
-  MoreHorizontal,
   Quote,
   Redo2,
   TextQuote,
   Underline as UnderlineIcon,
   Undo2,
   UnlockKeyhole,
+  XCircle,
 } from "lucide-react";
 import { useEffect, useReducer, useState } from "react";
 import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
   IconButton,
 } from "../../components/ui";
-import { cn, createId } from "../../lib/utils";
+import { createId } from "../../lib/utils";
 import {
   cmd,
   isContainerNodeActive,
@@ -104,7 +103,6 @@ export function Toolbar({
   const excerptActive = isContainerNodeActive(editor, "novelExcerpt");
   const replyGateActive = isContainerNodeActive(editor, "replyGate");
   const pollActive = isRichNodeActive(editor, "pollRef");
-  const moreInsertActive = excerptActive || replyGateActive || pollActive;
 
   const insert = (node: Record<string, unknown>) =>
     editor.chain().focus().insertContent(node).run();
@@ -519,79 +517,39 @@ export function Toolbar({
               </IconButton>
             </>
           )}
-        </span>
-        {!condensed && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className={cn(
-                  "h-8 w-8 text-[#54616b]",
-                  moreInsertActive &&
-                    "bg-primary/10 text-primary ring-1 ring-primary/30 [&_svg]:stroke-primary",
-                )}
-                aria-label="更多插入"
-                aria-pressed={moreInsertActive}
+          {!condensed && (
+            <>
+              <IconButton
+                label="小说摘录"
+                active={excerptActive}
+                onClick={() => setExcerptOpen(true)}
               >
-                <MoreHorizontal size={17} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                className={cn(
-                  excerptActive &&
-                    "bg-primary/10 text-primary [&_svg]:stroke-primary",
-                )}
-                onSelect={() => setExcerptOpen(true)}
+                <TextQuote size={16} />
+              </IconButton>
+              <IconButton
+                label="回复后可见"
+                active={replyGateActive}
+                onClick={insertGate}
               >
-                <TextQuote size={15} />
-                小说摘录
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={cn(
-                  replyGateActive &&
-                    "bg-primary/10 text-primary [&_svg]:stroke-primary",
-                )}
-                onSelect={insertGate}
-              >
-                <UnlockKeyhole size={15} />
-                回复后可见
-              </DropdownMenuItem>
-              <DropdownMenuItem
+                <UnlockKeyhole size={16} />
+              </IconButton>
+              <IconButton
+                label="取消回复可见"
                 disabled={!replyGateActive}
-                className={cn(
-                  replyGateActive &&
-                    "bg-primary/10 text-primary [&_svg]:stroke-primary",
-                )}
-                onSelect={() => unwrapOutermostReplyGate(editor)}
+                onClick={() => unwrapOutermostReplyGate(editor)}
               >
-                <UnlockKeyhole size={15} />
-                取消回复可见
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={cn(
-                  attachmentActive &&
-                    "bg-primary/10 text-primary [&_svg]:stroke-primary",
-                )}
-                onSelect={openAttachmentDialog}
+                <XCircle size={16} />
+              </IconButton>
+              <IconButton
+                label={pollActive ? "编辑投票" : "投票"}
+                active={pollActive}
+                onClick={openPollDialog}
               >
-                <FileText size={15} />
-                附件引用
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={cn(
-                  pollActive &&
-                    "bg-primary/10 text-primary [&_svg]:stroke-primary",
-                )}
-                onSelect={openPollDialog}
-              >
-                <List size={15} />
-                {pollActive ? "编辑投票" : "投票"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+                <List size={16} />
+              </IconButton>
+            </>
+          )}
+        </span>
       </div>
       <DiceDialog
         open={diceOpen}
