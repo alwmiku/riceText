@@ -178,7 +178,9 @@ function isRichNodeActive(editor: Editor, nodeName: string): boolean {
 
 function isContainerNodeActive(editor: Editor, nodeName: string): boolean {
   const selectedNodeName = getSelectedNodeName(editor);
-  return selectedNodeName ? selectedNodeName === nodeName : editor.isActive(nodeName);
+  return selectedNodeName
+    ? selectedNodeName === nodeName
+    : editor.isActive(nodeName);
 }
 
 function unwrapOutermostReplyGate(editor: Editor): boolean {
@@ -200,9 +202,11 @@ function unwrapOutermostReplyGate(editor: Editor): boolean {
       .run();
   }
 
-  const selectedNode = (selection as {
-    node?: { type?: { name?: string }; content: unknown };
-  }).node;
+  const selectedNode = (
+    selection as {
+      node?: { type?: { name?: string }; content: unknown };
+    }
+  ).node;
   if (selectedNode?.type?.name === "replyGate") {
     return editor
       .chain()
@@ -382,7 +386,11 @@ function Toolbar({
       : [];
     setPollInitial(
       pollActive && typeof attrs.question === "string" && options.length >= 2
-        ? { question: attrs.question, multiple: attrs.multiple === true, options }
+        ? {
+            question: attrs.question,
+            multiple: attrs.multiple === true,
+            options,
+          }
         : null,
     );
     setPollOpen(true);
@@ -626,13 +634,25 @@ function Toolbar({
               <Link2 size={16} />
             </IconButton>
           )}
-          <IconButton label="图片" active={imageActive} onClick={openImageDialog}>
+          <IconButton
+            label="图片"
+            active={imageActive}
+            onClick={openImageDialog}
+          >
             <ImagePlus size={16} />
           </IconButton>
-          <IconButton label="骰子" active={diceActive} onClick={() => setDiceOpen(true)}>
+          <IconButton
+            label="骰子"
+            active={diceActive}
+            onClick={() => setDiceOpen(true)}
+          >
             <Dice5 size={16} />
           </IconButton>
-          <IconButton label="附件" active={attachmentActive} onClick={openAttachmentDialog}>
+          <IconButton
+            label="附件"
+            active={attachmentActive}
+            onClick={openAttachmentDialog}
+          >
             <FileText size={16} />
           </IconButton>
           {!condensed && (
@@ -655,7 +675,11 @@ function Toolbar({
               >
                 <MessageCirclePlus size={16} />
               </IconButton>
-              <IconButton label="@ 用户" active={mentionActive} onClick={() => setMentionOpen(true)}>
+              <IconButton
+                label="@ 用户"
+                active={mentionActive}
+                onClick={() => setMentionOpen(true)}
+              >
                 <AtSign size={16} />
               </IconButton>
               <IconButton
@@ -688,7 +712,8 @@ function Toolbar({
             <DropdownMenuContent align="end">
               <DropdownMenuItem
                 className={cn(
-                  excerptActive && "bg-primary/10 text-primary [&_svg]:stroke-primary",
+                  excerptActive &&
+                    "bg-primary/10 text-primary [&_svg]:stroke-primary",
                 )}
                 onSelect={() => setExcerptOpen(true)}
               >
@@ -697,7 +722,8 @@ function Toolbar({
               </DropdownMenuItem>
               <DropdownMenuItem
                 className={cn(
-                  replyGateActive && "bg-primary/10 text-primary [&_svg]:stroke-primary",
+                  replyGateActive &&
+                    "bg-primary/10 text-primary [&_svg]:stroke-primary",
                 )}
                 onSelect={insertGate}
               >
@@ -707,7 +733,8 @@ function Toolbar({
               <DropdownMenuItem
                 disabled={!replyGateActive}
                 className={cn(
-                  replyGateActive && "bg-primary/10 text-primary [&_svg]:stroke-primary",
+                  replyGateActive &&
+                    "bg-primary/10 text-primary [&_svg]:stroke-primary",
                 )}
                 onSelect={() => unwrapOutermostReplyGate(editor)}
               >
@@ -716,7 +743,8 @@ function Toolbar({
               </DropdownMenuItem>
               <DropdownMenuItem
                 className={cn(
-                  attachmentActive && "bg-primary/10 text-primary [&_svg]:stroke-primary",
+                  attachmentActive &&
+                    "bg-primary/10 text-primary [&_svg]:stroke-primary",
                 )}
                 onSelect={openAttachmentDialog}
               >
@@ -725,7 +753,8 @@ function Toolbar({
               </DropdownMenuItem>
               <DropdownMenuItem
                 className={cn(
-                  pollActive && "bg-primary/10 text-primary [&_svg]:stroke-primary",
+                  pollActive &&
+                    "bg-primary/10 text-primary [&_svg]:stroke-primary",
                 )}
                 onSelect={openPollDialog}
               >
@@ -791,11 +820,7 @@ function Toolbar({
         {...(pollInitial ? { initial: pollInitial } : {})}
         onInsert={(values) => {
           if (pollInitial) {
-            editor
-              .chain()
-              .focus()
-              .updateAttributes("pollRef", values)
-              .run();
+            editor.chain().focus().updateAttributes("pollRef", values).run();
           } else {
             insert({
               type: "pollRef",
@@ -905,9 +930,12 @@ export function RichTextEditor({
     if (!editor) return undefined;
     const onTransaction = (payload: unknown) => {
       const transaction = (payload as { transaction?: unknown }).transaction;
-      const steps = (transaction as {
-        steps?: readonly { toJSON(): StepJson }[];
-      })?.steps ?? [];
+      const steps =
+        (
+          transaction as {
+            steps?: readonly { toJSON(): StepJson }[];
+          }
+        )?.steps ?? [];
       setLastTransactionAt(Date.now());
       setLastAction(describeSteps(steps));
     };
@@ -936,10 +964,7 @@ export function RichTextEditor({
   useEffect(() => () => editor?.destroy(), [editor]);
 
   const wordCount = useMemo(
-    () =>
-      editor
-        ? editor.getText().replace(/\s+/g, "").length
-        : 0,
+    () => (editor ? editor.getText().replace(/\s+/g, "").length : 0),
     [editor, lastTransactionAt],
   );
 
@@ -951,7 +976,12 @@ export function RichTextEditor({
             <p className="document-title">长文本编辑</p>
           </div>
           {onSubmit ? (
-            <Button size="sm" onClick={() => editor && onSubmit(editor.getJSON() as RichTextNode)}>
+            <Button
+              size="sm"
+              onClick={() =>
+                editor && onSubmit(editor.getJSON() as RichTextNode)
+              }
+            >
               <Send size={14} />
               保存
             </Button>
@@ -992,7 +1022,12 @@ export function RichTextEditor({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button size="sm" onClick={() => editor && onSubmit?.(editor.getJSON() as RichTextNode)}>
+          <Button
+            size="sm"
+            onClick={() =>
+              editor && onSubmit?.(editor.getJSON() as RichTextNode)
+            }
+          >
             <Send size={15} />
             发布回复
           </Button>
@@ -1041,7 +1076,9 @@ export function RichTextEditor({
             <Button
               size="icon"
               aria-label="发布"
-              onClick={() => editor && onSubmit?.(editor.getJSON() as RichTextNode)}
+              onClick={() =>
+                editor && onSubmit?.(editor.getJSON() as RichTextNode)
+              }
             >
               <Send size={18} />
             </Button>
@@ -1070,10 +1107,7 @@ export function RichTextEditor({
           字数 <strong>{wordCount.toLocaleString()}</strong>
         </span>
         <span>
-          最近保存{" "}
-          <strong>
-            {savedAt ? formatTime(savedAt) : "—"}
-          </strong>
+          最近保存 <strong>{savedAt ? formatTime(savedAt) : "—"}</strong>
         </span>
         <span>
           最近更新{" "}
