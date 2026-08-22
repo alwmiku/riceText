@@ -5,6 +5,7 @@ import {
   type JSONContent,
   type PollReferenceAttributes,
   type RichTextViewerInteractions,
+  type ViewerTocItem,
 } from "@ricetext/editor-core";
 import { BookOpen, Clock3, Eye, MessageCircle, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -26,6 +27,7 @@ export default function ReadPage() {
   const [pollVotes, setPollVotes] = useState<Record<string, readonly string[]>>(
     {},
   );
+  const [tocItems, setTocItems] = useState<readonly ViewerTocItem[]>([]);
   const { data: document = defaultDocument } = useQuery({
     queryKey: ["document", "demo-post"],
     queryFn: ({ signal }) => getDocument("demo-post", signal),
@@ -134,8 +136,30 @@ export default function ReadPage() {
             content={document.content as JSONContent}
             interactions={interactions}
             labels={labels}
+            onTocChange={setTocItems}
           />
         </article>
+        {tocItems.length > 0 ? (
+          <nav className="viewer-toc surface p-4" aria-label="正文目录">
+            <p className="section-label">目录</p>
+            <ol className="viewer-toc__list">
+              {tocItems.map((item) => (
+                <li key={item.index} className={`viewer-toc__item viewer-toc__item--h${item.level}`}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      globalThis.document
+                        .querySelector(`[data-toc-index="${item.index}"]`)
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                    }
+                  >
+                    {item.text}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </nav>
+        ) : null}
         <aside className="viewer-aside">
           <div className="surface p-4">
             <p className="section-label">阅读位置</p>

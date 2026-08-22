@@ -458,14 +458,64 @@ button {
 }
 
 .viewer-page {
-  max-width: 1280px;
+  max-width: 1320px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 920px) 280px;
-  gap: 40px;
+  grid-template-columns: 200px minmax(0, 920px) 280px;
+  gap: 32px;
   align-items: start;
 }
+.viewer-toc {
+  position: sticky;
+  top: 80px;
+  grid-column: 1;
+  align-self: start;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+.viewer-toc__list {
+  display: grid;
+  gap: 2px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.viewer-toc__item button {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  padding: 4px 8px;
+  color: #5b6670;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.viewer-toc__item button:hover {
+  color: #14766d;
+  background: #eef5f3;
+}
+.viewer-toc__item--h1 button { font-weight: 700; }
+.viewer-toc__item--h2 button { padding-inline-start: 16px; }
+.viewer-toc__item--h3 button { padding-inline-start: 28px; font-size: 12.5px; }
+.viewer-toc__item--h4 button,
+.viewer-toc__item--h5 button,
+.viewer-toc__item--h6 button { padding-inline-start: 38px; font-size: 12px; }
+.viewer-article .rt-viewer h1,
+.viewer-article .rt-viewer h2,
+.viewer-article .rt-viewer h3,
+.viewer-article .rt-viewer h4,
+.viewer-article .rt-viewer h5,
+.viewer-article .rt-viewer h6 {
+  scroll-margin-top: 90px;
+}
 .viewer-article {
+  grid-column: 2;
   min-width: 0;
   padding: clamp(28px, 6vw, 72px);
   background: white;
@@ -508,6 +558,11 @@ button {
 .viewer-aside {
   position: sticky;
   top: 80px;
+  grid-column: 3;
+}
+.viewer-article .rt-viewer h1 {
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 .comment-tree {
@@ -669,6 +724,12 @@ button {
   .editor-workspace > .workspace-rail:first-child {
     display: none;
   }
+  .viewer-page {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+  .viewer-toc {
+    display: none;
+  }
 }
 @media (max-width: 840px) {
   .app-header-inner {
@@ -689,6 +750,9 @@ button {
   }
   .viewer-article {
     padding: 30px 22px;
+  }
+  .viewer-toc {
+    display: none;
   }
   .viewer-aside {
     display: none;

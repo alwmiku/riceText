@@ -4,7 +4,7 @@ import type { JSONContent } from '@tiptap/core'
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { RichTextViewer, useRichTextViewerController } from './viewer.js'
+import { RichTextViewer, extractHeadings, useRichTextViewerController } from './viewer.js'
 
 beforeAll(() => {
   Object.defineProperty(Range.prototype, 'getClientRects', {
@@ -53,6 +53,24 @@ const interactiveDocument: JSONContent = {
     { type: 'richImage', attrs: { assetId: 'a2', src: '/uploads/beta.png', alt: 'Beta image', caption: '', align: 'right', width: 80 } },
   ],
 }
+
+describe('extractHeadings', () => {
+  it('按文档顺序收集非空标题', () => {
+    const items = extractHeadings({
+      type: 'doc',
+      content: [
+        { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: '第一章' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: '正文' }] },
+        { type: 'heading', attrs: { level: 2 }, content: [] },
+        { type: 'heading', attrs: { level: 3 }, content: [{ type: 'text', text: '小节' }] },
+      ],
+    })
+    expect(items).toEqual([
+      { index: 0, level: 1, text: '第一章' },
+      { index: 1, level: 3, text: '小节' },
+    ])
+  })
+})
 
 describe('RichTextViewer', () => {
   it('renders read-only ProseMirror content without editor surfaces', async () => {

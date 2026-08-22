@@ -148,6 +148,8 @@ export interface RichTextViewerProps {
   enableLightbox?: boolean
   /** Overrides individual control labels. */
   labels?: Partial<RichTextViewerLabels>
+  /** Receives headings extracted from the projected document for a sidebar TOC. */
+  onTocChange?: (items: ViewerTocItem[]) => void
 }
 
 const defaultLabels: RichTextViewerLabels = {
@@ -559,16 +561,48 @@ function ImageLightbox({ controller, images, labels }: ImageLightboxProps) {
   )
 }
 
+/** 由阅读器正文标题生成的目录条目。 */
+export interface ViewerTocItem {
+  /** 标题在正文中的文档顺序索引，用于 DOM 定位。 */
+  index: number
+  /** 标题级别（1–6）。 */
+  level: number
+  /** 标题可见文本。 */
+  text: string
+}
+
+/** 按正文顺序收集标题，供目录快速跳转。 */
+export function extractHeadings(doc: JSONContent): ViewerTocItem[] {
+  const items: ViewerTocItem[] = []
+  const visit = (node: JSONContent): void => {
+    if (typeof node.type === 'string' && node.type.startsWith('heading')) {
+      const level = Number(node.attrs?.level ?? 1)
+      const text = (node.content ?? [])
+        .map((child) => (child.type === 'text' && typeof child.text === 'string' ? child.text : ''))
+        .join('')
+        .trim()
+      if (text) items.push({ index: items.length, level, text })
+    }
+    node.content?.forEach(visit)
+  }
+  visit(doc)
+  return items
+}
+
 /**
  * Renders sanitized Tiptap JSON with a read-only Tiptap/ProseMirror editor.
  * Custom nodes use React NodeViews so viewer interactions keep working.
  */
-export function RichTextViewer({ content, className = '', interactions = {}, controller: externalController, enableLightbox = true, labels: labelOverrides = {} }: RichTextViewerProps) {
+export function RichTextViewer({ content, className = '', interactions = {}, controller: externalController, enableLightbox = true, labels: labelOverrides = {}, onTocChange }: RichTextViewerProps) {
   const document = useMemo(
     () => addMissingParagraphAnchors(projectReplyGates(sanitizeDocument(content), interactions)),
     [content, interactions],
   )
   const gallery = useMemo(() => collectGallery(document), [document])
+  const tocItems = useMemo(() => extractHeadings(document), [document])
+  useEffect(() => {
+    onTocChange?.(tocItems)
+  }, [onTocChange, tocItems])
   const internalController = useRichTextViewerController(gallery.images.length)
   const controller = externalController ?? internalController
   const labels = useMemo(() => ({ ...defaultLabels, ...labelOverrides }), [labelOverrides])
@@ -598,6 +632,13 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
     const editorElement = editor.options.element
     const element = editorElement instanceof HTMLElement ? editorElement : null
     if (!element) return undefined
+
+    // 按文档顺序给标题 DOM 打索引标记，供宿主目录快速跳转。
+    element
+      .querySelectorAll('h1, h2, h3, h4, h5, h6')
+      .forEach((heading, index) => {
+        heading.setAttribute('data-toc-index', String(index))
+      })
 
     const handleClick = (event: MouseEvent) => {
       const current = viewerContextRef.current
