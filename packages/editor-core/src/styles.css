@@ -10,6 +10,8 @@
   --rt-success: #18794e;
   --rt-dice: #b45309;
   --rt-focus: #14b8a6;
+  --rt-selected-bg: #dff3ef;
+  --rt-selected-border: #0f766e;
 }
 
 /* Accessibility helpers */
@@ -125,6 +127,24 @@
   color: var(--rt-primary-strong);
   background: #e7f5f2;
   border-color: #b4dcd5;
+}
+
+.rt-toolbar__button[aria-pressed="true"] {
+  color: var(--rt-primary);
+  background: #dff3ef;
+  border-color: var(--rt-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rt-primary) 28%, transparent);
+}
+
+.rt-toolbar__button svg,
+.rt-toolbar__button svg * {
+  stroke: currentColor;
+}
+
+.rt-toolbar__button[aria-pressed="true"] svg,
+.rt-toolbar__button[aria-pressed="true"] svg * {
+  color: currentColor;
+  stroke: currentColor;
 }
 
 .rt-toolbar button:focus-visible,
@@ -354,9 +374,11 @@
 
 .rt-rich-image.ProseMirror-selectednode,
 .rt-rich-image--selected {
-  outline: 2px solid var(--rt-primary);
-  outline-offset: 2px;
+  background: var(--rt-selected-bg);
+  outline: 2px solid var(--rt-selected-border);
+  outline-offset: 3px;
   border-radius: 4px;
+  box-shadow: 0 0 0 4px rgb(15 118 110 / 12%);
 }
 
 .rt-rich-image__resize {
@@ -450,8 +472,11 @@
 
 .rt-dice-roll.ProseMirror-selectednode,
 .rt-dice-roll__button.ProseMirror-selectednode {
+  color: #7a2e0e;
+  background: #ffe3ad;
   border-width: 2px;
   border-color: #dd9a1f;
+  box-shadow: 0 0 0 2px rgb(221 154 31 / 20%);
   padding: 0 6px;
 }
 
@@ -467,6 +492,14 @@
   padding: 18px 20px;
   background: var(--rt-subtle);
   border-left: 4px solid var(--rt-primary);
+}
+
+.rt-novel-excerpt.ProseMirror-selectednode {
+  background: var(--rt-selected-bg);
+  border-left-color: var(--rt-selected-border);
+  outline: 2px solid var(--rt-selected-border);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgb(15 118 110 / 12%);
 }
 
 .rt-novel-excerpt header {
@@ -503,6 +536,14 @@
   color: var(--rt-primary-strong);
   font-weight: 650;
   cursor: pointer;
+}
+
+.rt-mention.ProseMirror-selectednode {
+  color: var(--rt-primary-strong);
+  background: var(--rt-selected-bg);
+  outline: 2px solid var(--rt-selected-border);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .rt-mention__card {
@@ -559,8 +600,11 @@
 }
 
 .rt-attachment.ProseMirror-selectednode {
-  outline: 2px solid var(--rt-primary);
+  background: var(--rt-selected-bg);
+  border-color: var(--rt-selected-border);
+  outline: 2px solid var(--rt-selected-border);
   outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgb(15 118 110 / 12%);
 }
 
 .rt-attachment__name,
@@ -579,6 +623,14 @@
   padding: 16px 0;
   border-top: 1px solid var(--rt-border);
   border-bottom: 1px solid var(--rt-border);
+}
+
+.rt-poll.ProseMirror-selectednode {
+  background: var(--rt-selected-bg);
+  border-color: var(--rt-selected-border);
+  outline: 2px solid var(--rt-selected-border);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgb(15 118 110 / 12%);
 }
 
 .rt-poll h3 {
@@ -619,6 +671,11 @@
   box-decoration-break: clone;
   cursor: pointer;
   transition: color 120ms ease;
+}
+
+.rt-spoiler::selection {
+  color: #ffffff;
+  background: var(--rt-selected-border);
 }
 
 .rt-spoiler:hover,

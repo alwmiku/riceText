@@ -65,7 +65,11 @@ export function IconButton({ label, active, className, ...props }: ButtonProps &
         variant="ghost"
         aria-label={label}
         aria-pressed={active}
-        className={cn('h-8 w-8 text-[#54616b]', active && 'bg-accent text-accent-foreground', className)}
+        className={cn(
+          'h-8 w-8 text-[#54616b]',
+          active && 'bg-primary/10 text-primary ring-1 ring-primary/30 [&_svg]:stroke-primary',
+          className,
+        )}
         {...props}
       />
     </Tooltip>

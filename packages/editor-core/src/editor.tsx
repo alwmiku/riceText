@@ -393,6 +393,7 @@ export function EditorToolbar({
             {requests.onRequestImage ? (
               <ToolbarButton
                 label="Insert image"
+                active={editor.isActive("richImage")}
                 disabled={preventDisabled}
                 onPress={request(requests.onRequestImage)}
               >
@@ -402,6 +403,7 @@ export function EditorToolbar({
             {requests.onRequestDice ? (
               <ToolbarButton
                 label="Roll dice"
+                active={editor.isActive("diceRoll")}
                 disabled={preventDisabled}
                 onPress={request(requests.onRequestDice)}
               >
@@ -411,6 +413,7 @@ export function EditorToolbar({
             {requests.onRequestNovelExcerpt ? (
               <ToolbarButton
                 label="Novel excerpt"
+                active={editor.isActive("novelExcerpt")}
                 disabled={preventDisabled}
                 onPress={request(requests.onRequestNovelExcerpt)}
               >
@@ -420,6 +423,7 @@ export function EditorToolbar({
             {requests.onRequestMention ? (
               <ToolbarButton
                 label="Mention user"
+                active={editor.isActive("mention")}
                 disabled={preventDisabled}
                 onPress={request(requests.onRequestMention)}
               >
@@ -438,6 +442,7 @@ export function EditorToolbar({
             {requests.onRequestAttachment ? (
               <ToolbarButton
                 label="Attachment"
+                active={editor.isActive("attachmentRef")}
                 disabled={preventDisabled}
                 onPress={request(requests.onRequestAttachment)}
               >
@@ -447,6 +452,7 @@ export function EditorToolbar({
             {requests.onRequestPoll ? (
               <ToolbarButton
                 label="Poll"
+                active={editor.isActive("pollRef")}
                 disabled={preventDisabled}
                 onPress={request(requests.onRequestPoll)}
               >

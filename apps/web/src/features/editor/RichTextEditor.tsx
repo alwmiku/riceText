@@ -39,7 +39,7 @@ import {
   IconButton,
 } from "../../components/ui";
 import type { EditorMode, RichTextNode } from "../../lib/types";
-import { createId } from "../../lib/utils";
+import { cn, createId } from "../../lib/utils";
 import {
   AttachmentDialog,
   DiceDialog,
@@ -74,6 +74,13 @@ function cmd(
   return () => {
     if (editor) action(editor);
   };
+}
+
+function isRichNodeActive(editor: Editor, nodeName: string): boolean {
+  const selection = editor.state.selection as {
+    node?: { type?: { name?: string } };
+  };
+  return editor.isActive(nodeName) || selection.node?.type?.name === nodeName;
 }
 
 /** 完整/移动 Sheet 共用的格式与业务节点工具栏。 */
@@ -117,6 +124,15 @@ function Toolbar({
   if (!editor)
     return <div className="editor-toolbar h-[46px]" aria-hidden="true" />;
   const spoilerActive = editor.isActive("spoiler");
+  const imageActive = isRichNodeActive(editor, "richImage");
+  const diceActive = isRichNodeActive(editor, "diceRoll");
+  const attachmentActive = isRichNodeActive(editor, "attachmentRef");
+  const mentionActive = isRichNodeActive(editor, "mention");
+  const commentAnchorActive = isRichNodeActive(editor, "inlineCommentAnchor");
+  const excerptActive = isRichNodeActive(editor, "novelExcerpt");
+  const replyGateActive = isRichNodeActive(editor, "replyGate");
+  const pollActive = isRichNodeActive(editor, "pollRef");
+  const moreInsertActive = excerptActive || replyGateActive || pollActive;
 
   const insert = (node: Record<string, unknown>) =>
     editor.chain().focus().insertContent(node).run();
@@ -432,19 +448,20 @@ function Toolbar({
               <Link2 size={16} />
             </IconButton>
           )}
-          <IconButton label="图片" onClick={openImageDialog}>
+          <IconButton label="图片" active={imageActive} onClick={openImageDialog}>
             <ImagePlus size={16} />
           </IconButton>
-          <IconButton label="骰子" onClick={() => setDiceOpen(true)}>
+          <IconButton label="骰子" active={diceActive} onClick={() => setDiceOpen(true)}>
             <Dice5 size={16} />
           </IconButton>
-          <IconButton label="附件" onClick={openAttachmentDialog}>
+          <IconButton label="附件" active={attachmentActive} onClick={openAttachmentDialog}>
             <FileText size={16} />
           </IconButton>
           {!condensed && (
             <>
               <IconButton
                 label="间贴锚点"
+                active={commentAnchorActive}
                 onClick={() =>
                   insert({
                     type: "inlineCommentAnchor",
@@ -458,7 +475,7 @@ function Toolbar({
               >
                 <MessageCirclePlus size={16} />
               </IconButton>
-              <IconButton label="@ 用户" onClick={() => setMentionOpen(true)}>
+              <IconButton label="@ 用户" active={mentionActive} onClick={() => setMentionOpen(true)}>
                 <AtSign size={16} />
               </IconButton>
               <IconButton
@@ -477,26 +494,49 @@ function Toolbar({
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-8 w-8"
+                className={cn(
+                  "h-8 w-8 text-[#54616b]",
+                  moreInsertActive &&
+                    "bg-primary/10 text-primary ring-1 ring-primary/30 [&_svg]:stroke-primary",
+                )}
                 aria-label="更多插入"
+                aria-pressed={moreInsertActive}
               >
                 <MoreHorizontal size={17} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setExcerptOpen(true)}>
+              <DropdownMenuItem
+                className={cn(
+                  excerptActive && "bg-primary/10 text-primary [&_svg]:stroke-primary",
+                )}
+                onSelect={() => setExcerptOpen(true)}
+              >
                 <TextQuote size={15} />
                 小说摘录
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={insertGate}>
+              <DropdownMenuItem
+                className={cn(
+                  replyGateActive && "bg-primary/10 text-primary [&_svg]:stroke-primary",
+                )}
+                onSelect={insertGate}
+              >
                 <UnlockKeyhole size={15} />
                 回复后可见
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={openAttachmentDialog}>
+              <DropdownMenuItem
+                className={cn(
+                  attachmentActive && "bg-primary/10 text-primary [&_svg]:stroke-primary",
+                )}
+                onSelect={openAttachmentDialog}
+              >
                 <FileText size={15} />
                 附件引用
               </DropdownMenuItem>
               <DropdownMenuItem
+                className={cn(
+                  pollActive && "bg-primary/10 text-primary [&_svg]:stroke-primary",
+                )}
                 onSelect={() =>
                   insert({
                     type: "pollRef",
@@ -750,12 +790,14 @@ export function RichTextEditor({
             </IconButton>
             <IconButton
               label="插入图片"
+              active={editor ? isRichNodeActive(editor, "richImage") : false}
               onClick={() => setMobileToolsOpen(true)}
             >
               <ImagePlus size={18} />
             </IconButton>
             <IconButton
               label="插入骰子"
+              active={editor ? isRichNodeActive(editor, "diceRoll") : false}
               onClick={() => setMobileToolsOpen(true)}
             >
               <Dice5 size={18} />
