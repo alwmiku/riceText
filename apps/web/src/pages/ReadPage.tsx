@@ -5,7 +5,6 @@ import {
   type JSONContent,
   type PollReferenceAttributes,
   type RichTextViewerInteractions,
-  type ViewerTocItem,
 } from "@ricetext/editor-core";
 import { BookOpen, Clock3, Eye, MessageCircle, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -14,6 +13,7 @@ import { Badge, Dialog } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
 import { TocSidebar } from "../features/viewer/TocSidebar";
 import { getCommentThread, getDocument } from "../lib/api";
+import { splitDocumentByHeadings } from "../lib/chapters";
 import { defaultDocument } from "../lib/seed";
 import type { CommentReply } from "../lib/types";
 import { formatTime } from "../lib/utils";
@@ -28,12 +28,21 @@ export default function ReadPage() {
   const [pollVotes, setPollVotes] = useState<Record<string, readonly string[]>>(
     {},
   );
-  const [tocItems, setTocItems] = useState<readonly ViewerTocItem[]>([]);
+  const [chapterIndex, setChapterIndex] = useState(1);
   const { data: document = defaultDocument } = useQuery({
     queryKey: ["document", "demo-post"],
     queryFn: ({ signal }) => getDocument("demo-post", signal),
     placeholderData: defaultDocument,
   });
+  const { chapters } = useMemo(
+    () => splitDocumentByHeadings(document.content as JSONContent),
+    [document.content],
+  );
+  const activeIndex = Math.min(chapterIndex, Math.max(0, chapters.length - 1));
+  const chapterDoc = useMemo<JSONContent>(
+    () => ({ type: "doc", content: chapters[activeIndex]?.blocks ?? [] }),
+    [chapters, activeIndex],
+  );
   const { data: comments = [] } = useQuery<CommentReply[]>({
     queryKey: ["comments", document.id, threadId],
     queryFn: () => getCommentThread(document.id, threadId!),
@@ -135,13 +144,16 @@ export default function ReadPage() {
             </Badge>
           </div>
           <RichTextViewer
-            content={document.content as JSONContent}
+            content={chapterDoc}
             interactions={interactions}
             labels={labels}
-            onTocChange={setTocItems}
           />
         </article>
-        <TocSidebar items={tocItems} />
+        <TocSidebar
+          chapters={chapters}
+          currentIndex={activeIndex}
+          onSelect={setChapterIndex}
+        />
         <aside className="viewer-aside">
           <div className="surface p-4">
             <p className="section-label">阅读位置</p>
@@ -152,7 +164,7 @@ export default function ReadPage() {
               <div>
                 <strong className="block text-sm">雾港来信</strong>
                 <small className="text-xs text-muted-foreground">
-                  第三章 · 连载中
+                  {chapters[activeIndex]?.title ?? "连载中"} · 连载中
                 </small>
               </div>
             </div>

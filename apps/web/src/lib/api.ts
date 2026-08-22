@@ -1,4 +1,3 @@
-import type { NovelChapter, NovelChapterList } from "@ricetext/contracts";
 import { createId } from "./utils";
 import { defaultDocument, seedComments, seedRevisions } from "./seed";
 import type {
@@ -148,23 +147,6 @@ export async function restoreRevision(
       baseRevision,
       clientMutationId: createId("restore"),
     }),
-  });
-}
-
-/** 读取小说章节列表。 */
-export async function listNovelChapters(novelId: string): Promise<NovelChapterList> {
-  return request<NovelChapterList>(`/novels/${novelId}/chapters`);
-}
-
-/** 保存整个小说章节（后续可切换为章节级增量）。 */
-export async function updateNovelChapter(
-  novelId: string,
-  chapterId: string,
-  input: { baseRevision: number; clientMutationId: string; content: RichTextNode },
-): Promise<NovelChapter> {
-  return request<NovelChapter>(`/novels/${novelId}/chapters/${chapterId}`, {
-    method: "PUT",
-    body: JSON.stringify(input),
   });
 }
 

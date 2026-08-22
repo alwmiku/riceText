@@ -517,6 +517,19 @@ button {
   color: #14766d;
   background: #eef5f3;
 }
+.viewer-toc__item--active button {
+  color: #14766d;
+  background: #e7f5f2;
+  font-weight: 700;
+}
+.viewer-toc__number {
+  color: #9aa3ac;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.viewer-toc__item--active .viewer-toc__number {
+  color: #14766d;
+}
 .viewer-toc__item--h1 button {
   font-weight: 700;
   color: #37414b;

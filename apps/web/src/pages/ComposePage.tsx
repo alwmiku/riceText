@@ -12,7 +12,7 @@ import {
   Smartphone,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../app-context";
 import { Button, Dialog, Segmented } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
@@ -20,6 +20,7 @@ import { ChapterRail, DemoBusinessPanel } from "../features/demo/DemoPanels";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
 import { useAutosave } from "../features/editor/useAutosave";
 import { getCommentThread, getDocument, restoreRevision } from "../lib/api";
+import { mergeChapter, splitDocumentByHeadings } from "../lib/chapters";
 import { defaultDocument } from "../lib/seed";
 import type {
   CommentReply,
@@ -84,6 +85,7 @@ export default function ComposePage() {
   const contentRef = useRef<RichTextNode>(data.content);
   const generationRef = useRef(0);
   const editorRef = useRef<Editor | null>(null);
+  const [chapterIndex, setChapterIndex] = useState(1);
   const [mode, setMode] = useState<EditorMode>(() =>
     window.matchMedia("(max-width: 600px)").matches ? "mobile" : "full",
   );
@@ -105,6 +107,16 @@ export default function ComposePage() {
     generationRef.current = 0;
     setContent(data.content);
   }, [data, generation, document.revision]);
+  // 一章一界面：把完整文档按二级标题切分为章节，编辑器只编辑当前章节片段。
+  const { chapters } = useMemo(
+    () => splitDocumentByHeadings(content),
+    [content],
+  );
+  const activeIndex = Math.min(chapterIndex, Math.max(0, chapters.length - 1));
+  const editorContent = useMemo<RichTextNode>(
+    () => ({ type: "doc", content: chapters[activeIndex]?.blocks ?? [] }),
+    [chapters, activeIndex],
+  );
   const autosave = useAutosave({
     document,
     content,
@@ -124,11 +136,13 @@ export default function ComposePage() {
     },
   });
   // Tiptap 初始化时可能规范化 JSON；服务器查询完成前忽略这类非用户更新，避免错误 baseRevision。
+  // 编辑器只编辑当前章节片段，变更合并回完整文档后再进入保存链路。
   const updateContent = (next: RichTextNode) => {
     if (isPlaceholderData) return;
-    contentRef.current = next;
+    const merged = mergeChapter(contentRef.current, activeIndex, next);
+    contentRef.current = merged;
     generationRef.current += 1;
-    setContent(next);
+    setContent(merged);
     setGeneration(generationRef.current);
   };
   // 回滚响应已经是一个新 revision；编辑器通过受控 content 同步显示该快照。
@@ -153,16 +167,17 @@ export default function ComposePage() {
   // 显式发布先 flush，保证提示出现时最新正文已经进入保存队列。
   const publish = async (latestContent?: RichTextNode) => {
     if (isPlaceholderData) return;
-    const contentToSave = latestContent ??
+    const snapshot =
+      latestContent ??
       (editorRef.current?.getJSON() as RichTextNode | undefined);
-    if (
-      contentToSave &&
-      JSON.stringify(contentToSave) !== JSON.stringify(contentRef.current)
-    ) {
-      contentRef.current = contentToSave;
-      generationRef.current += 1;
-      setContent(contentToSave);
-      setGeneration(generationRef.current);
+    if (snapshot) {
+      const merged = mergeChapter(contentRef.current, activeIndex, snapshot);
+      if (JSON.stringify(merged) !== JSON.stringify(contentRef.current)) {
+        contentRef.current = merged;
+        generationRef.current += 1;
+        setContent(merged);
+        setGeneration(generationRef.current);
+      }
     }
     const saved = await autosave.flush(contentRef.current, generationRef.current);
     if (!saved) return;
@@ -175,7 +190,7 @@ export default function ComposePage() {
 
   const editor = (
     <RichTextEditor
-      content={content}
+      content={editorContent}
       mode={mode}
       editable={!isPlaceholderData}
       onChange={updateContent}
@@ -271,7 +286,11 @@ export default function ComposePage() {
       )}
       {mode === "full" ? (
         <div className="editor-workspace">
-          <ChapterRail />
+          <ChapterRail
+            chapters={chapters}
+            currentIndex={activeIndex}
+            onSelect={setChapterIndex}
+          />
           <section className="editor-column">
             <div className="document-bar surface mb-2">
               <div className="min-w-0">

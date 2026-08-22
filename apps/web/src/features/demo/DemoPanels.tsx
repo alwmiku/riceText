@@ -21,15 +21,16 @@ import { getRevisions } from "../../lib/api";
 import type { RevisionSummary, SeedIdentity } from "../../lib/types";
 import { formatTime } from "../../lib/utils";
 
-/** 完整创作模式左侧的章节目录与统计演示。 */
-export function ChapterRail() {
-  const chapters = [
-    ["楔子", "雨季之前"],
-    ["第一章", "潮汐表"],
-    ["第二章", "陌生船票"],
-    ["第三章", "没有寄件人的信"],
-    ["第四章", "待发布"],
-  ];
+/** 完整创作模式左侧的章节目录：点击切换当前编辑章节。 */
+export function ChapterRail({
+  chapters,
+  currentIndex,
+  onSelect,
+}: {
+  chapters: readonly { id: string; title: string }[];
+  currentIndex: number;
+  onSelect: (index: number) => void;
+}) {
   return (
     <aside className="workspace-rail surface" aria-label="章节目录">
       <div className="side-section">
@@ -41,27 +42,34 @@ export function ChapterRail() {
           <Badge tone="teal">创作中</Badge>
         </div>
         <nav>
-          {chapters.map(([index, title], order) => (
-            <button
-              type="button"
-              className="chapter-item"
-              data-active={order === 3}
-              key={index}
-            >
-              <span className="chapter-number">
-                {String(order).padStart(2, "0")}
-              </span>
-              <span className="min-w-0 flex-1">
-                <strong className="block truncate font-semibold">
-                  {index}
-                </strong>
-                <small className="block truncate text-[10px] text-muted-foreground">
-                  {title}
-                </small>
-              </span>
-              <ChevronRight size={13} />
-            </button>
-          ))}
+          {chapters.map((chapter, order) => {
+            const [main, sub] = chapter.title.split(" · ");
+            const active = order === currentIndex;
+            return (
+              <button
+                type="button"
+                className="chapter-item"
+                data-active={active}
+                key={chapter.id}
+                onClick={() => onSelect(order)}
+              >
+                <span className="chapter-number">
+                  {String(order).padStart(2, "0")}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate font-semibold">
+                    {main}
+                  </strong>
+                  {sub ? (
+                    <small className="block truncate text-[10px] text-muted-foreground">
+                      {sub}
+                    </small>
+                  ) : null}
+                </span>
+                <ChevronRight size={13} />
+              </button>
+            );
+          })}
         </nav>
       </div>
       <div className="side-section">

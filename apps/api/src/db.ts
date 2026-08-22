@@ -186,14 +186,25 @@ CREATE TABLE poll_vote_options (
 );
 `;
 
-/** 与 Web fallback 对齐的规范 Tiptap 种子文档。 */
+/** 与章节目录一致的五章规范种子文档。 */
 const seedDocument = {
   type: "doc" as const,
   content: [
     { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "雾港来信" }] },
+    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "楔子 雨季之前" }] },
+    { type: "paragraph", content: [{ type: "text", text: "雨季开始前的第七天，港口送走了最后一班客船。雾线从海面爬上来，把整条长街泡得发软。" }] },
+    { type: "paragraph", content: [{ type: "text", text: "邮差在码头边捡到一封没有署名、也没有邮票的信。信封被雨水浸透，只留下一个模糊的地址：灯塔脚下，第三扇窗。" }] },
+    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "第一章 潮汐表" }] },
     { type: "paragraph", content: [{ type: "text", text: "潮声沿着旧城墙漫上来，旅人把未寄出的信压在灯下。" }, { type: "inlineCommentAnchor", attrs: { threadId: "anchor-opening", count: 2, placement: "end" } }] },
-    { type: "novelExcerpt", attrs: { variant: "desktop-book", bookTitle: "雾港来信", chapterTitle: "第一章 潮汐", author: "林见", sourceUrl: "https://example.com/books/mist-harbor" }, content: [{ type: "paragraph", content: [{ type: "text", text: "如果明天仍有雾，就沿着钟声的方向走。" }] }] },
-    { type: "paragraph", content: [{ type: "text", text: "黑幕后的句子需要悬停或点击才会显现。", marks: [{ type: "spoiler" }] }] },
+    { type: "paragraph", content: [{ type: "text", text: "灯塔管理员翻着泛黄的潮汐表说，今夜没有雾，却有风。船不该出港的，可船还是出了。" }] },
+    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "第二章 陌生船票" }] },
+    { type: "paragraph", content: [{ type: "text", text: "他在抽屉底层找到一张陌生的船票。日期是明天，航线却早已停运多年。票根背面用铅笔写着：如果你看到这封信，请把它送回钟楼。" }] },
+    { type: "paragraph", content: [{ type: "text", text: "调查检定 " }, { type: "diceRoll", attrs: { rollId: "roll_seed", expression: "3d5", rolls: [4, 3, 5], total: 12, rerollOf: null } }, { type: "text", text: "，线索足够。" }] },
+    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "第三章 没有寄件人的信" }] },
+    { type: "novelExcerpt", attrs: { variant: "desktop-book", bookTitle: "雾港来信", chapterTitle: "第三章 没有寄件人的信", author: "林见", sourceUrl: "https://example.com/books/mist-harbor" }, content: [{ type: "paragraph", content: [{ type: "text", text: "如果明天仍有雾，就沿着钟声的方向走。" }] }] },
+    { type: "paragraph", content: [{ type: "text", text: "第三扇窗的窗台积着薄灰，玻璃内侧贴着一封没有寄件人的信。这一句包含结局线索，请谨慎查看。", marks: [{ type: "spoiler" }] }] },
+    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "第四章 待发布" }] },
+    { type: "paragraph", content: [{ type: "text", text: "这一章还躺在作者的抽屉里，只有一张潮汐表的复印件，和一句没来得及写下的开头。" }] },
     { type: "replyGate", attrs: { gateId: "gate-bonus", prompt: "回复后查看番外片段" }, content: [{ type: "paragraph", content: [{ type: "text", text: "番外内容由服务端权限投影。" }] }] },
     { type: "attachmentRef", attrs: { attachmentId: "attachment-sample", name: "雾港设定集.txt", mimeType: "text/plain", size: 2048, priceCoins: 10 } },
     { type: "pollRef", attrs: { pollId: "poll-route", question: "下一章先去哪里？", multiple: false, options: [{ id: "poll-option-tower", label: "钟楼" }, { id: "poll-option-dock", label: "旧码头" }, { id: "poll-option-library", label: "潮汐图书馆" }] } },
@@ -234,8 +245,14 @@ function seed(db: DatabaseSync): void {
     db.prepare("INSERT OR IGNORE INTO comment_replies(id, document_id, anchor_id, parent_id, author_id, body, created_at) VALUES ('comment-child', 'demo-post', 'anchor-opening', 'comment-root', 'author', '会在第三章解释钟楼的来历。', ?)").run(now);
     db.prepare("INSERT OR IGNORE INTO comment_votes(reply_id, user_id, value, created_at) VALUES ('comment-root', 'author', 1, ?)").run(now);
 
-    db.prepare("INSERT OR IGNORE INTO chapters(id, title, sort_order, document_id) VALUES ('chapter-1', '第一章 潮汐', 1, 'demo-post')").run();
-    db.prepare("INSERT OR IGNORE INTO chapters(id, title, sort_order, document_id) VALUES ('chapter-2', '第二章 钟楼', 2, 'demo-post')").run();
+    // 章节目录为演示数据，每次启动重置为与正文一致的五章大纲。
+    db.prepare("DELETE FROM chapters WHERE document_id = 'demo-post'").run();
+    const insertChapter = db.prepare("INSERT INTO chapters(id, title, sort_order, document_id) VALUES (?, ?, ?, 'demo-post')");
+    insertChapter.run("chapter-0", "楔子 · 雨季之前", 0);
+    insertChapter.run("chapter-1", "第一章 · 潮汐表", 1);
+    insertChapter.run("chapter-2", "第二章 · 陌生船票", 2);
+    insertChapter.run("chapter-3", "第三章 · 没有寄件人的信", 3);
+    insertChapter.run("chapter-4", "第四章 · 待发布", 4);
     db.prepare("INSERT OR IGNORE INTO reply_gates(id, document_id, content_json) VALUES ('gate-bonus', 'demo-post', ?)").run(JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "番外：邮差其实在第一封信到来前就见过旅人。" }] }] }));
 
     db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('author', 100)").run();

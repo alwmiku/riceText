@@ -14,6 +14,14 @@ function renderWithQuery(ui: ReactNode) {
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
 
+const chaptersFixture = [
+  { id: 'chapter-0', title: '楔子 · 雨季之前' },
+  { id: 'chapter-1', title: '第一章 · 潮汐表' },
+  { id: 'chapter-2', title: '第二章 · 陌生船票' },
+  { id: 'chapter-3', title: '第三章 · 没有寄件人的信' },
+  { id: 'chapter-4', title: '第四章 · 待发布' },
+];
+
 describe('DemoPanels', () => {
   beforeEach(() => {
     getRevisionsMock.mockReset();
@@ -21,11 +29,23 @@ describe('DemoPanels', () => {
   });
 
   it('展示章节目录、当前章节和统计', () => {
-    render(<ChapterRail />);
+    renderWithQuery(
+      <ChapterRail chapters={chaptersFixture} currentIndex={1} onSelect={vi.fn()} />,
+    );
     expect(screen.getByRole('complementary', { name: '章节目录' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /第三章.*没有寄件人的信/ })).toHaveAttribute('data-active', 'true');
+    expect(screen.getByRole('button', { name: /第一章.*潮汐表/ })).toHaveAttribute('data-active', 'true');
+    expect(screen.getByRole('button', { name: /第三章.*没有寄件人的信/ })).toBeInTheDocument();
     expect(screen.getByText('3,842')).toBeInTheDocument();
     expect(screen.getByText('创作中')).toBeInTheDocument();
+  });
+
+  it('点击章节触发切换回调', () => {
+    const onSelect = vi.fn();
+    renderWithQuery(
+      <ChapterRail chapters={chaptersFixture} currentIndex={1} onSelect={onSelect} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /第二章.*陌生船票/ }));
+    expect(onSelect).toHaveBeenCalledWith(2);
   });
 
   it('接受和拒绝校订建议后显示最终状态', () => {
