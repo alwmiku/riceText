@@ -18,7 +18,7 @@ export interface AutosaveResult {
   /** 冲突或普通保存错误的用户可读信息。 */
   conflictMessage: string;
   /** 立即把最新编辑代次排入串行保存队列，可传入当前编辑器快照强制使用最新正文。 */
-  flush: (content?: RichTextNode, generation?: number) => Promise<void>;
+  flush: (content?: RichTextNode, generation?: number) => Promise<boolean>;
   /** 用户确认采用服务器 revision 后解除冲突阻塞。 */
   acceptLatest: (latestRevision: number) => void;
 }
@@ -78,15 +78,16 @@ export function useAutosave({
     setState(document.storage === "local-demo" ? "offline" : "saved");
   }, [document.id, document.revision, document.savedAt, document.storage]);
 
-  const enqueue = useCallback(async (force = false, override?: { content: RichTextNode; generation: number }) => {
+  const enqueue = useCallback(async (force = false, override?: { content: RichTextNode; generation: number }): Promise<boolean> => {
     const snapshot = override ?? latestRef.current;
     // 同一代已经保存时不重复提交；自动保存会跳过明确失败的代次，显式 flush 可重试。
     if (
       snapshot.generation <= savedGeneration.current ||
       (!force && snapshot.generation === failedGeneration.current)
     )
-      return;
+      return true;
     setState("saving");
+    let succeeded = true;
     // Promise 链保证任意时刻只有一个 PUT；catch 先清除上一请求的拒绝状态。
     queueRef.current = queueRef.current
       .catch(() => undefined)
@@ -112,6 +113,7 @@ export function useAutosave({
         onSavedRef.current?.(result);
       })
       .catch((error: unknown) => {
+        succeeded = false;
         if (error instanceof ApiError && error.status === 409) {
           // 409 必须保留本地正文并等待用户决策，绝不自动覆盖服务器版本。
           setConflictMessage(
@@ -127,6 +129,7 @@ export function useAutosave({
         }
       });
     await queueRef.current;
+    return succeeded;
   }, [document.id, document.schemaVersion]);
 
   // 新编辑代在静默 1.2 秒后入队；卸载或继续输入会取消旧定时器。

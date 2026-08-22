@@ -142,7 +142,7 @@ describe("useAutosave", () => {
     );
 
     rerender({ content: changedContent, generation: 1 });
-    let firstFlush!: Promise<void>;
+    let firstFlush!: Promise<boolean>;
     act(() => {
       firstFlush = result.current.flush();
     });
@@ -158,7 +158,7 @@ describe("useAutosave", () => {
       ],
     };
     rerender({ content: newestContent, generation: 2 });
-    let secondFlush!: Promise<void>;
+    let secondFlush!: Promise<boolean>;
     act(() => {
       secondFlush = result.current.flush();
     });

@@ -40,8 +40,7 @@ export default function ReadPage() {
   const interactions = useMemo<RichTextViewerInteractions>(
     () => ({
       onInlineCommentActivate: (attrs) => setThreadId(attrs.threadId),
-      isReplyGateVisible: () =>
-        identity.role === "reader" && identity.replied,
+      isReplyGateVisible: () => false,
       onReplyGateRequest: () => setThreadId("thread_1"),
       renderMentionCard: (attrs) => (
         <span>

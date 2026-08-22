@@ -433,6 +433,16 @@ function sanitizeNode(value: unknown, path: string, depth: number, context: Sani
   return node
 }
 
+function removeInlineCommentAnchorsInsideReplyGate(node: JSONContent, insideReplyGate = false): void {
+  const nextInsideReplyGate = insideReplyGate || node.type === 'replyGate'
+  if (Array.isArray(node.content)) {
+    if (nextInsideReplyGate) {
+      node.content = node.content.filter((child) => child.type !== 'inlineCommentAnchor')
+    }
+    for (const child of node.content) removeInlineCommentAnchorsInsideReplyGate(child, nextInsideReplyGate)
+  }
+}
+
 function inspectDocument(value: unknown): DocumentValidationResult {
   const context: SanitizerContext = { issues: [], nodeCount: 0 }
   if (!isRecord(value) || value.type !== 'doc') {
@@ -440,6 +450,7 @@ function inspectDocument(value: unknown): DocumentValidationResult {
     return { valid: false, document: { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'left' } }] }, issues: context.issues }
   }
   const document = sanitizeNode(value, '$', 0, context, null) ?? { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'left' } }] }
+  removeInlineCommentAnchorsInsideReplyGate(document)
   return { valid: context.issues.length === 0, document, issues: context.issues }
 }
 

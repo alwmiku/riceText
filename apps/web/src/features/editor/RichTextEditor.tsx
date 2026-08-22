@@ -521,7 +521,9 @@ function Toolbar({
               <IconButton
                 label="间贴锚点"
                 active={commentAnchorActive}
-                onClick={() =>
+                disabled={replyGateActive}
+                onClick={() => {
+                  if (replyGateActive) return;
                   insert({
                     type: "inlineCommentAnchor",
                     attrs: {
@@ -529,8 +531,8 @@ function Toolbar({
                       count: 0,
                       placement: "end",
                     },
-                  })
-                }
+                  });
+                }}
               >
                 <MessageCirclePlus size={16} />
               </IconButton>

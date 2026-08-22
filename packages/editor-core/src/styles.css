@@ -634,6 +634,14 @@
   box-shadow: 0 0 0 4px rgb(15 118 110 / 12%);
 }
 
+.rt-editor .rt-reply-gate .rt-inline-comment-anchor,
+.rt-editor__content .rt-reply-gate .rt-inline-comment-anchor,
+.rt-editor .tiptap .rt-reply-gate .rt-inline-comment-anchor,
+.tiptap .rt-reply-gate .rt-inline-comment-anchor,
+.ProseMirror .rt-reply-gate .rt-inline-comment-anchor {
+  display: none;
+}
+
 .rt-reply-gate--locked {
   padding: 18px;
   text-align: center;

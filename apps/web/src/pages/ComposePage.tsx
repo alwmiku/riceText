@@ -28,8 +28,7 @@ import type {
   RichTextNode,
   SaveState,
 } from "../lib/types";
-import { formatTime } from "../lib/utils";
-import { cn } from "../lib/utils";
+import { cn, formatTime } from "../lib/utils";
 
 const statusLabels: Record<SaveState, string> = {
   loading: "正在载入",
@@ -165,7 +164,8 @@ export default function ComposePage() {
       setContent(contentToSave);
       setGeneration(generationRef.current);
     }
-    await autosave.flush(contentRef.current, generationRef.current);
+    const saved = await autosave.flush(contentRef.current, generationRef.current);
+    if (!saved) return;
     setNotice(
       mode === "compact"
         ? "回复已进入演示发布队列"
