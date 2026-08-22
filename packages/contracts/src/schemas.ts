@@ -108,6 +108,8 @@ export const UpdateDocumentRequestSchema = z
     baseRevision: z.number().int().nonnegative(),
     clientMutationId: EntityIdSchema,
     content: TiptapDocumentSchema,
+    /** 可选：本次编辑的章节 id，保存成功后该章节 revision 递增。 */
+    chapterId: EntityIdSchema.optional(),
   })
   .strict();
 /** 文档写入请求。 */
@@ -395,6 +397,8 @@ export const ChapterSchema = z
     title: z.string(),
     order: z.number().int().positive(),
     documentId: EntityIdSchema,
+    /** 该章节独立的保存版本号。 */
+    revision: z.number().int().nonnegative(),
   })
   .strict();
 /** 纠错建议。 */

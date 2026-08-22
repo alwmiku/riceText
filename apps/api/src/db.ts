@@ -266,6 +266,10 @@ function seed(db: DatabaseSync): void {
     db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('wanderer', 20)").run();
     db.prepare("INSERT OR IGNORE INTO attachments(id, name, mime_type, price, author_id, download_url) VALUES ('attachment-sample', '雾港设定集.txt', 'text/plain', 10, 'author', '/demo-downloads/mist-harbor.txt')").run();
 
+    // 待审核校订建议：与正文用词一致的演示条目。
+    db.prepare("INSERT OR IGNORE INTO suggestions(id, document_id, from_text, to_text, reason, status, author_id, reviewer_id, created_at, reviewed_at) VALUES ('suggestion-1', 'demo-post', '渡口的汽笛', '港口的汽笛', '与第一章地名保持一致', 'pending', 'reader', NULL, ?, NULL)").run(now);
+    db.prepare("INSERT OR IGNORE INTO suggestions(id, document_id, from_text, to_text, reason, status, author_id, reviewer_id, created_at, reviewed_at) VALUES ('suggestion-2', 'demo-post', '她握紧信封', '她攥紧信封', '减少相邻段落用词重复', 'pending', 'wanderer', NULL, ?, NULL)").run(now);
+
     db.prepare("INSERT OR IGNORE INTO polls(id, question, multiple, minimum_role) VALUES ('poll-route', '下一章先去哪里？', 0, 'reader')").run();
     db.prepare("INSERT OR IGNORE INTO poll_options(id, poll_id, label, sort_order) VALUES ('poll-option-tower', 'poll-route', '钟楼', 1)").run();
     db.prepare("INSERT OR IGNORE INTO poll_options(id, poll_id, label, sort_order) VALUES ('poll-option-dock', 'poll-route', '旧码头', 2)").run();

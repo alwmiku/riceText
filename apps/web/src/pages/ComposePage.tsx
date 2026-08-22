@@ -338,6 +338,7 @@ export default function ComposePage() {
           <DemoBusinessPanel
             identity={identity}
             documentId={document.id}
+            baseRevision={autosave.revision}
             onRestore={(revision) => void rollback(revision)}
           />
         </div>

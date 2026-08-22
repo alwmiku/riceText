@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   Check,
@@ -6,7 +6,6 @@ import {
   Coins,
   Download,
   FileArchive,
-  FileText,
   History,
   MessageSquareText,
   Paperclip,
@@ -17,7 +16,16 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button } from "../../components/ui";
-import { getRevisions } from "../../lib/api";
+import {
+  getAttachment,
+  getPoll,
+  getPollVotes,
+  getRevisions,
+  listSuggestions,
+  purchaseAttachment,
+  reviewSuggestion,
+  votePoll,
+} from "../../lib/api";
 import type { RevisionSummary, SeedIdentity } from "../../lib/types";
 import { formatTime } from "../../lib/utils";
 
@@ -87,46 +95,62 @@ export function ChapterRail({
 }
 
 /** 读者纠错建议的待审、接受和拒绝状态演示。 */
-function SuggestionPanel() {
-  const [items, setItems] = useState([
-    {
-      id: "s1",
-      user: "晚风翻页",
-      from: "渡口的汽笛",
-      to: "港口的汽笛",
-      reason: "与第一章地名保持一致",
-      status: "pending",
-    },
-    {
-      id: "s2",
-      user: "纸页留声",
-      from: "她握紧信封",
-      to: "她攥紧信封",
-      reason: "减少相邻段落用词重复",
-      status: "pending",
-    },
-  ]);
-  const decide = (id: string, status: "accepted" | "rejected") =>
-    setItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, status } : item)),
-    );
+function SuggestionPanel({
+  documentId,
+  baseRevision,
+}: {
+  documentId: string;
+  baseRevision: number;
+}) {
+  const queryClient = useQueryClient();
+  const { data: items = [], isLoading } = useQuery({
+    queryKey: ["demo", "suggestions", documentId],
+    queryFn: ({ signal }) => listSuggestions(documentId, signal),
+  });
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const decide = async (id: string, decision: "approve" | "reject") => {
+    setBusyId(id);
+    setError("");
+    try {
+      await reviewSuggestion(id, decision, baseRevision);
+      await queryClient.invalidateQueries({
+        queryKey: ["demo", "suggestions", documentId],
+      });
+      // 接受会合并正文并创建新修订：刷新文档与历史。
+      await queryClient.invalidateQueries({ queryKey: ["document", documentId] });
+      await queryClient.invalidateQueries({ queryKey: ["revisions", documentId] });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "审核失败");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (isLoading) return <p className="text-xs text-muted-foreground">加载中…</p>;
+  if (items.length === 0) return <p className="text-xs text-muted-foreground">暂无待处理的校订建议</p>;
+
   return (
     <div className="space-y-3">
+      {error ? (
+        <p className="rounded bg-[#fdf1f0] px-2 py-1.5 text-[11px] text-[#8f2b24]">{error}</p>
+      ) : null}
       {items.map((item) => (
         <article key={item.id} className="rounded-md border border-border p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-bold">{item.user}</span>
+            <span className="text-xs font-bold">{item.authorId}</span>
             {item.status === "pending" ? (
               <Badge tone="amber">待审核</Badge>
             ) : (
-              <Badge tone={item.status === "accepted" ? "green" : "red"}>
-                {item.status === "accepted" ? "已合并并建版" : "已拒绝并通知"}
+              <Badge tone={item.status === "approved" ? "green" : "red"}>
+                {item.status === "approved" ? "已合并并建版" : "已拒绝并通知"}
               </Badge>
             )}
           </div>
           <div className="space-y-1 rounded bg-muted p-2 font-mono text-[11px]">
-            <p className="text-[#aa3f3f] line-through">{item.from}</p>
-            <p className="text-[#18704b]">{item.to}</p>
+            <p className="text-[#aa3f3f] line-through">{item.fromText}</p>
+            <p className="text-[#18704b]">{item.toText}</p>
           </div>
           <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
             {item.reason}
@@ -136,7 +160,8 @@ function SuggestionPanel() {
               <Button
                 size="sm"
                 className="flex-1"
-                onClick={() => decide(item.id, "accepted")}
+                disabled={busyId === item.id}
+                onClick={() => void decide(item.id, "approve")}
               >
                 <Check size={13} />
                 接受
@@ -145,7 +170,8 @@ function SuggestionPanel() {
                 size="sm"
                 variant="outline"
                 className="flex-1"
-                onClick={() => decide(item.id, "rejected")}
+                disabled={busyId === item.id}
+                onClick={() => void decide(item.id, "reject")}
               >
                 <X size={13} />
                 拒绝
@@ -158,37 +184,67 @@ function SuggestionPanel() {
   );
 }
 
-/** 附件金币购买与 70% 作者分成的前端演示状态。 */
+/** 附件金币购买与 70% 作者分成，数据来自服务端。 */
 function AttachmentPanel({ identity }: { identity: SeedIdentity }) {
-  const [purchased, setPurchased] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: attachment, isLoading } = useQuery({
+    queryKey: ["demo", "attachment", "attachment-sample"],
+    queryFn: ({ signal }) => getAttachment("attachment-sample", signal),
+  });
+  const [purchasing, setPurchasing] = useState(false);
+  const [error, setError] = useState("");
+
+  const buy = async () => {
+    setPurchasing(true);
+    setError("");
+    try {
+      await purchaseAttachment("attachment-sample");
+      await queryClient.invalidateQueries({
+        queryKey: ["demo", "attachment", "attachment-sample"],
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "购买失败");
+    } finally {
+      setPurchasing(false);
+    }
+  };
+
+  if (isLoading || !attachment)
+    return <p className="text-xs text-muted-foreground">加载中…</p>;
+  const purchased = attachment.purchased;
+  const affordable = identity.coins >= attachment.price;
+
   return (
     <div className="space-y-3">
+      {error ? (
+        <p className="rounded bg-[#fdf1f0] px-2 py-1.5 text-[11px] text-[#8f2b24]">{error}</p>
+      ) : null}
       <article className="rounded-md border border-border p-3">
         <div className="flex gap-3">
           <span className="grid h-10 w-10 place-items-center rounded bg-[#edf2f3] text-[#59656f]">
             <FileArchive size={19} />
           </span>
           <div className="min-w-0 flex-1">
-            <strong className="block truncate text-xs">
-              雾港设定资料集.zip
-            </strong>
+            <strong className="block truncate text-xs">{attachment.name}</strong>
             <small className="text-[10px] text-muted-foreground">
-              2.7 MB · ZIP
+              {attachment.mimeType}
             </small>
           </div>
         </div>
         <div className="mt-3 flex items-center justify-between rounded bg-[#fff8e8] px-2 py-2 text-xs">
           <span className="flex items-center gap-1 font-bold text-[#825209]">
             <Coins size={14} />
-            20 金币
+            {attachment.price} 金币
           </span>
-          <span className="text-[10px] text-[#8a682b]">作者获得 14（70%）</span>
+          <span className="text-[10px] text-[#8a682b]">
+            作者获得 {Math.floor(attachment.price * 0.7)}（70%）
+          </span>
         </div>
         <Button
           className="mt-3 w-full"
           size="sm"
-          disabled={purchased || identity.coins < 20}
-          onClick={() => setPurchased(true)}
+          disabled={purchased || !affordable || purchasing}
+          onClick={() => void buy()}
         >
           {purchased ? (
             <>
@@ -198,71 +254,89 @@ function AttachmentPanel({ identity }: { identity: SeedIdentity }) {
           ) : (
             <>
               <Coins size={14} />
-              购买附件
+              {affordable ? "购买附件" : "金币不足"}
             </>
           )}
-        </Button>
-      </article>
-      <article className="flex items-center gap-3 rounded-md border border-border p-3">
-        <FileText size={18} className="text-primary" />
-        <span className="min-w-0 flex-1">
-          <strong className="block truncate text-xs">时间线勘误.txt</strong>
-          <small className="text-[10px] text-muted-foreground">
-            12 KB · 免费
-          </small>
-        </span>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8"
-          aria-label="下载时间线勘误"
-        >
-          <Download size={15} />
         </Button>
       </article>
     </div>
   );
 }
 
-/** 投票资格、选择和实名明细的前端演示状态。 */
-function PollPanel({ identity }: { identity: SeedIdentity }) {
-  const [choice, setChoice] = useState(
-    identity.role === "author" ? "灯塔守望人" : "",
-  );
+/** 投票资格、选择和实名明细，数据来自服务端。 */
+function PollPanel({ identity, pollId }: { identity: SeedIdentity; pollId: string }) {
+  const queryClient = useQueryClient();
+  const { data: poll, isLoading } = useQuery({
+    queryKey: ["demo", "poll", pollId],
+    queryFn: ({ signal }) => getPoll(pollId, signal),
+  });
   const [detail, setDetail] = useState(false);
-  const options = [
-    { name: "灯塔守望人", votes: 28 },
-    { name: "失踪的邮差", votes: 19 },
-    { name: "港务局记录员", votes: 11 },
-  ];
-  const total =
-    options.reduce((sum, item) => sum + item.votes, 0) +
-    (choice && identity.role !== "author" ? 1 : 0);
+  const [voting, setVoting] = useState(false);
+  const [error, setError] = useState("");
+  const [detailItems, setDetailItems] = useState<
+    Array<{ user: { id: string; name: string; role: string }; optionIds: string[]; createdAt: string }>
+  >([]);
+
+  const toggleDetail = async () => {
+    const next = !detail;
+    setDetail(next);
+    if (next && detailItems.length === 0) {
+      try {
+        const result = await getPollVotes(pollId);
+        setDetailItems(result.items);
+      } catch {
+        setDetailItems([]);
+      }
+    }
+  };
+
+  const choose = async (optionId: string) => {
+    if (!poll || voting) return;
+    setVoting(true);
+    setError("");
+    try {
+      await votePoll(pollId, [optionId]);
+      await queryClient.invalidateQueries({ queryKey: ["demo", "poll", pollId] });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "投票失败");
+    } finally {
+      setVoting(false);
+    }
+  };
+
+  if (isLoading || !poll)
+    return <p className="text-xs text-muted-foreground">加载中…</p>;
+  const total = poll.options.reduce((sum, item) => sum + item.votes, 0) || 1;
+
   return (
     <div>
-      <h3 className="text-sm font-bold">下一章先跟随哪位角色？</h3>
+      <h3 className="text-sm font-bold">{poll.question}</h3>
       <p className="mt-1 text-[11px] text-muted-foreground">
         注册满 7 天且发布过 1 条回复可投票
       </p>
+      {error ? (
+        <p className="mt-2 rounded bg-[#fdf1f0] px-2 py-1.5 text-[11px] text-[#8f2b24]">{error}</p>
+      ) : null}
       <div className="mt-3 space-y-2">
-        {options.map((option) => {
-          const votes =
-            option.votes +
-            (choice === option.name && identity.role !== "author" ? 1 : 0);
+        {poll.options.map((option) => {
+          const selected = poll.viewerOptionIds.includes(option.id);
+          const width = `${Math.round((option.votes / total) * 100)}%`;
           return (
             <button
               type="button"
-              key={option.name}
+              key={option.id}
               className="relative block h-10 w-full overflow-hidden rounded-md border border-border bg-white text-left"
-              onClick={() => setChoice(option.name)}
+              onClick={() => void choose(option.id)}
             >
               <span
                 className="absolute inset-y-0 left-0 bg-[#e5f4f1]"
-                style={{ width: `${(votes / total) * 100}%` }}
+                style={{ width }}
               />
               <span className="relative flex items-center justify-between px-3 text-xs">
-                <span className="font-semibold">{option.name}</span>
-                <span>{votes} 票</span>
+                <span className="font-semibold">{option.label}</span>
+                <span>
+                  {option.votes} 票{selected ? " · 已选" : ""}
+                </span>
               </span>
             </button>
           );
@@ -272,16 +346,26 @@ function PollPanel({ identity }: { identity: SeedIdentity }) {
         variant="ghost"
         size="sm"
         className="mt-2 w-full"
-        onClick={() => setDetail((current) => !current)}
+        onClick={() => void toggleDetail()}
       >
         <Users size={14} />
         {detail ? "收起实名明细" : "查看实名投票明细"}
       </Button>
       {detail && (
         <div className="mt-2 rounded bg-muted p-2 text-[11px] leading-6 text-muted-foreground">
-          <p>晚风翻页 → 灯塔守望人</p>
-          <p>纸页留声 → 失踪的邮差</p>
-          <p>版务小禾 → 港务局记录员</p>
+          {detailItems.length === 0 ? (
+            <p>暂无实名投票记录</p>
+          ) : (
+            detailItems.map((item) => (
+              <p key={`${item.user.id}-${item.createdAt}`}>
+                {item.user.name} →{" "}
+                {poll.options
+                  .filter((option) => item.optionIds.includes(option.id))
+                  .map((option) => option.label)
+                  .join("、")}
+              </p>
+            ))
+          )}
         </div>
       )}
     </div>
@@ -332,14 +416,17 @@ export function HistoryPanel({
   );
 }
 
-/** 汇总首版 mock 业务面板；所有标签都明确标示为演示数据。 */
+/** 汇总首版 mock 业务面板；所有标签都对接演示 API。 */
 export function DemoBusinessPanel({
   identity,
   documentId,
+  baseRevision,
   onRestore,
 }: {
   identity: SeedIdentity;
   documentId: string;
+  /** 当前文档 revision，作为审核建议合并的基线。 */
+  baseRevision: number;
   onRestore: (revision: number) => void;
 }) {
   const [tab, setTab] = useState<
@@ -376,9 +463,11 @@ export function DemoBusinessPanel({
         ))}
       </div>
       <div className="p-3">
-        {tab === "suggestions" && <SuggestionPanel />}
+        {tab === "suggestions" && (
+          <SuggestionPanel documentId={documentId} baseRevision={baseRevision} />
+        )}
         {tab === "attachment" && <AttachmentPanel identity={identity} />}
-        {tab === "poll" && <PollPanel identity={identity} />}
+        {tab === "poll" && <PollPanel identity={identity} pollId="poll-route" />}
         {tab === "history" && (
           <HistoryPanel revisions={revisions} onRestore={onRestore} />
         )}

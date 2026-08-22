@@ -266,3 +266,106 @@ export async function voteComment(
     };
   }
 }
+
+/** 纠错建议（服务端真实状态）。 */
+export interface DemoSuggestion {
+  id: string;
+  documentId: string;
+  fromText: string;
+  toText: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  authorId: string;
+  reviewerId: string | null;
+  createdAt: string;
+}
+
+/** 读取文档的纠错建议（读者仅见自己的）。 */
+export async function listSuggestions(
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<DemoSuggestion[]> {
+  const result = await request<{ items: DemoSuggestion[] }>(
+    `/demo/documents/${documentId}/suggestions`,
+    signal ? { signal } : undefined,
+  );
+  return result.items;
+}
+
+/** 审核建议；approve 会替换正文并创建新修订。 */
+export async function reviewSuggestion(
+  suggestionId: string,
+  decision: "approve" | "reject",
+  baseRevision: number,
+): Promise<{ suggestion: DemoSuggestion; document: DocumentEnvelope | null }> {
+  return request(`/demo/suggestions/${suggestionId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ decision, baseRevision }),
+  });
+}
+
+/** 演示附件（含购买状态与下载地址）。 */
+export interface DemoAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  price: number;
+  purchased: boolean;
+  downloadUrl: string | null;
+}
+
+/** 读取附件及当前身份的购买状态。 */
+export async function getAttachment(
+  attachmentId: string,
+  signal?: AbortSignal,
+): Promise<DemoAttachment> {
+  return request(`/demo/attachments/${attachmentId}`, signal ? { signal } : undefined);
+}
+
+/** 购买附件（幂等），返回附件与余额变化。 */
+export async function purchaseAttachment(
+  attachmentId: string,
+): Promise<{ attachment: DemoAttachment; buyerBalance: number; authorIncome: number; alreadyPurchased: boolean }> {
+  return request(`/demo/attachments/${attachmentId}/purchase`, {
+    method: "POST",
+  });
+}
+
+/** 演示投票（含选项票数与当前身份选择）。 */
+export interface DemoPoll {
+  id: string;
+  question: string;
+  multiple: boolean;
+  eligible: boolean;
+  options: Array<{ id: string; label: string; votes: number }>;
+  viewerOptionIds: string[];
+}
+
+/** 读取投票。 */
+export async function getPoll(pollId: string, signal?: AbortSignal): Promise<DemoPoll> {
+  return request(`/demo/polls/${pollId}`, signal ? { signal } : undefined);
+}
+
+/** 提交或覆盖投票选择，返回更新后的投票。 */
+export async function votePoll(
+  pollId: string,
+  optionIds: string[],
+): Promise<DemoPoll> {
+  return request(`/demo/polls/${pollId}/votes`, {
+    method: "POST",
+    body: JSON.stringify({ optionIds }),
+  });
+}
+
+/** 分页读取实名投票明细。 */
+export async function getPollVotes(
+  pollId: string,
+  cursor?: string,
+): Promise<{
+  items: Array<{ user: { id: string; name: string; role: string }; optionIds: string[]; createdAt: string }>;
+  pageInfo: { nextCursor: string | null };
+}> {
+  return request(
+    `/demo/polls/${pollId}/votes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+  );
+}
