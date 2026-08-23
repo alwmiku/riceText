@@ -43,6 +43,8 @@ describe("createLongTextDocument", () => {
 
     expect(blocks).toHaveLength(2);
     expect(blocks.every((block) => block.type === "longTextBlock")).toBe(true);
-    expect(blocks.every((block) => block.attrs.text.length <= 50_000)).toBe(true);
+    expect(blocks.every((block) => block.attrs.text.length <= 50_000)).toBe(
+      true,
+    );
   });
 });
