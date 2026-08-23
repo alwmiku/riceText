@@ -48,17 +48,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers,
   });
-  const body = (await response.json().catch(() => null)) as
-    T | { message?: string } | null;
   if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as
+      { message?: string } | null;
     throw new ApiError(
-      (body as { message?: string } | null)?.message ??
-        `请求失败 (${response.status})`,
+      body?.message ?? `请求失败 (${response.status})`,
       response.status,
       body,
     );
   }
-  return body as T;
+
+  // 静态托管的 SPA fallback 会以 200 text/html 返回 index.html。它不是 API
+  // 成功响应，须作为传输失败交给调用方的本地演示降级逻辑处理。
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    throw new TypeError(`API 返回了非 JSON 内容 (${contentType || "未知类型"})`);
+  }
+
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new TypeError("API 返回了无法解析的 JSON 内容");
+  }
 }
 
 /** 读取服务端文档；断网时按“本地副本 -> 内置种子”顺序降级。 */

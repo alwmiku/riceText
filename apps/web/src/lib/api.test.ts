@@ -57,6 +57,17 @@ describe('web api client', () => {
     await expect(getDocument('missing')).resolves.toBe(defaultDocument);
   });
 
+  it('Pages 将不存在的 API 路径回退为 HTML 时使用种子文档', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('<!doctype html><html><body><div id="root"></div></body></html>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=UTF-8' },
+      }),
+    );
+
+    await expect(getDocument('demo-post')).resolves.toBe(defaultDocument);
+  });
+
   it('不会把 AbortError 降级成本地文档', async () => {
     const aborted = new DOMException('aborted', 'AbortError');
     fetchMock.mockRejectedValueOnce(aborted);
