@@ -38,6 +38,25 @@ describe('splitChapters', () => {
     expect(chapters[0]!.text).toContain('番外：相遇之后')
   })
 
+  it('splits chapter headings with leading whitespace', () => {
+    const chapters = splitChapters('  第二章 最初之眼\n光芒\n第三章 进化\n正文')
+    expect(chapters).toHaveLength(2)
+    expect(chapters[0]).toMatchObject({ title: '第二章 最初之眼', text: '光芒' })
+    expect(chapters[1]).toMatchObject({ title: '第三章 进化', text: '正文' })
+    expect(chapters[0]!.start).toBe(0)
+    expect(chapters[1]!.start).toBe(chapters[0]!.end)
+  })
+
+  it('does not treat ad lines as chapter headings', () => {
+    const chapters = splitChapters(
+      '第一章 最初的细胞\n正文一\n第一章 最初的细胞免费阅读.https://www.biqugexx.com\n第二章 最初之眼\n正文二',
+    )
+    expect(chapters).toHaveLength(2)
+    expect(chapters[0]).toMatchObject({ title: '第一章 最初的细胞' })
+    expect(chapters[0]!.text).toContain('免费阅读')
+    expect(chapters[1]).toMatchObject({ title: '第二章 最初之眼', text: '正文二' })
+  })
+
   it('splits oversized chapters locally at the upload boundary', () => {
     const source = `第一章 长章\n${'字'.repeat(MAX_CHAPTER_LENGTH + 12)}`
     const chapters = splitChaptersByStyle(source)

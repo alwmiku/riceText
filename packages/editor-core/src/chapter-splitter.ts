@@ -8,6 +8,8 @@ export interface ChapterSplit {
   start: number;
   /** 在原文本中的结束偏移。 */
   end: number;
+  /** 标题行（含行首空白）在原文本中的结束偏移。 */
+  titleEnd?: number;
 }
 
 /** 章节切分选项。 */
@@ -22,14 +24,26 @@ export const MAX_CHAPTER_LENGTH = 50_000;
 /** 支持的章节标题风格。 */
 export type ChapterTitleStyle = "auto" | "chinese" | "english" | "numeric";
 
+/** 判断一行文本是否像站点广告/推广（不应作为章节标题）。 */
+export function isAdHeadingLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length > 60) return true;
+  if (/https?:\/\//i.test(trimmed)) return true;
+  if (/www\./i.test(trimmed)) return true;
+  if (/\.(com|net|org|cn|cc|info|top|xyz|vip|me)\b/i.test(trimmed)) return true;
+  if (/免费阅读|最新章节|手机阅读|全文阅读|无弹窗|txt下载|更新通知|小说阅读/.test(trimmed))
+    return true;
+  return false;
+}
+
 /** 章节标题样式对应的识别规则。 */
 export const chapterTitlePatterns: Record<
   Exclude<ChapterTitleStyle, "auto">,
   RegExp[]
 > = {
-  chinese: [/^第[0-9一二三四五六七八九十百千万零两]+[章节回卷].*$/gm],
-  english: [/^Chapter\s+\d+.*$/gim],
-  numeric: [/^\d+\s*[、.．]\s*\S.*$/gm],
+  chinese: [/^\s*第[0-9一二三四五六七八九十百千万零两]+[章节回卷].*$/gm],
+  english: [/^\s*Chapter\s+\d+.*$/gim],
+  numeric: [/^\s*\d+\s*[、.．]\s*\S.*$/gm],
 };
 
 const defaultPatterns = Object.values(chapterTitlePatterns).flat();
@@ -41,7 +55,7 @@ function splitOversizedChapter(
 ): ChapterSplit[] {
   if (chapter.text.length <= MAX_CHAPTER_LENGTH) return [chapter];
 
-  const bodyStart = chapter.start + chapter.title.length;
+  const bodyStart = chapter.titleEnd ?? chapter.start + chapter.title.length;
   const rawBody = source.slice(bodyStart, chapter.end);
   const parts: ChapterSplit[] = [];
   let offset = bodyStart;
@@ -142,7 +156,11 @@ export function splitChapters(
   options: ChapterSplitOptions = {},
 ): ChapterSplit[] {
   const patterns = options.patterns ?? defaultPatterns;
-  const matches: Array<{ index: number; title: string }> = [];
+  const matches: Array<{
+    index: number;
+    title: string;
+    titleEnd: number;
+  }> = [];
 
   for (const pattern of patterns) {
     const regex = new RegExp(
@@ -151,7 +169,15 @@ export function splitChapters(
     );
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
-      matches.push({ index: match.index, title: match[0].trim() });
+      if (isAdHeadingLine(match[0])) {
+        if (match.index === regex.lastIndex) regex.lastIndex += 1;
+        continue;
+      }
+      matches.push({
+        index: match.index,
+        title: match[0].trim(),
+        titleEnd: match.index + match[0].length,
+      });
       if (match.index === regex.lastIndex) regex.lastIndex += 1;
     }
   }
@@ -177,8 +203,9 @@ export function splitChapters(
     const start = matches[i]!.index;
     const end = i + 1 < matches.length ? matches[i + 1]!.index : text.length;
     const title = matches[i]!.title;
-    const body = text.slice(start + title.length, end).trim();
-    result.push({ title, text: body, start, end });
+    const titleEnd = matches[i]!.titleEnd;
+    const body = text.slice(titleEnd, end).trim();
+    result.push({ title, text: body, start, end, titleEnd });
   }
 
   if (result.length === 0 && text.trim()) {

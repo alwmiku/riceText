@@ -22,9 +22,13 @@ import { Button, Dialog, Segmented } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
 import { ChapterRail, DemoBusinessPanel } from "../features/demo/DemoPanels";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
+import { EditorErrorBoundary } from "../features/editor/EditorErrorBoundary";
 import { createLongTextDocument } from "../features/editor/long-text-import";
 import { useAutosave } from "../features/editor/useAutosave";
-import { ChapterSidebar, type ChapterSummary } from "../features/novel/ChapterSidebar";
+import {
+  ChapterSidebar,
+  type ChapterSummary,
+} from "../features/novel/ChapterSidebar";
 import {
   ChapterCoverageDialog,
   type CoverageChapter,
@@ -56,12 +60,13 @@ import { cn, formatTime } from "../lib/utils";
 const LOCAL_LONG_TEXT_KEY = "ricetext:local-long-text:demo-post";
 const LOCAL_LONG_TEXT_RAW_KEY = "ricetext:local-long-text-raw:demo-post";
 
-const chapterStyleOptions: Array<{ value: ChapterTitleStyle; label: string }> = [
-  { value: "auto", label: "自动识别" },
-  { value: "chinese", label: "中文：第 X 章" },
-  { value: "english", label: "English: Chapter X" },
-  { value: "numeric", label: "数字：1. 标题" },
-];
+const chapterStyleOptions: Array<{ value: ChapterTitleStyle; label: string }> =
+  [
+    { value: "auto", label: "自动识别" },
+    { value: "chinese", label: "中文：第 X 章" },
+    { value: "english", label: "English: Chapter X" },
+    { value: "numeric", label: "数字：1. 标题" },
+  ];
 
 const statusLabels: Record<SaveState, string> = {
   loading: "正在载入",
@@ -171,11 +176,7 @@ export default function ComposePage() {
     };
   }, []);
   useEffect(() => {
-    if (
-      !longTextMode ||
-      !longTextDraftReadyRef.current ||
-      generation === 0
-    )
+    if (!longTextMode || !longTextDraftReadyRef.current || generation === 0)
       return;
     if (draftSaveTimerRef.current !== null)
       window.clearTimeout(draftSaveTimerRef.current);
@@ -224,10 +225,9 @@ export default function ComposePage() {
         id: String(node.attrs?.chapterId ?? `chapter-${index}`),
         title: String(node.attrs?.title ?? "未命名章节"),
         charCount: text.length,
-        start:
-          typeof node.attrs?.start === "number" ? node.attrs.start : null,
+        start: typeof node.attrs?.start === "number" ? node.attrs.start : null,
         end: typeof node.attrs?.end === "number" ? node.attrs.end : null,
-        preview: text.replace(/\s+/g, " ").slice(0, 120),
+        preview: text.slice(0, 200).replace(/\s+/g, " ").slice(0, 120),
       };
     });
   }, [content, longTextMode]);
@@ -438,8 +438,7 @@ export default function ComposePage() {
     replaceLongTextDocument({ type: "doc", content: [] });
     try {
       const raw = await loadLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY);
-      if (operation === longTextOperationRef.current)
-        setRawText(raw ?? null);
+      if (operation === longTextOperationRef.current) setRawText(raw ?? null);
       const stored = await loadLongTextDraft(LOCAL_LONG_TEXT_KEY);
       if (operation !== longTextOperationRef.current) return;
       if (stored && (stored.content ?? []).length > 0) {
@@ -462,8 +461,7 @@ export default function ComposePage() {
     longTextDraftReadyRef.current = false;
     try {
       const raw = await loadLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY);
-      if (operation === longTextOperationRef.current)
-        setRawText(raw ?? null);
+      if (operation === longTextOperationRef.current) setRawText(raw ?? null);
       const stored = await loadLongTextDraft(LOCAL_LONG_TEXT_KEY);
       if (operation !== longTextOperationRef.current) return;
       if (stored) {
@@ -484,9 +482,7 @@ export default function ComposePage() {
         longTextDraftReadyRef.current = true;
     }
   };
-  const handleLongTextImport = async (
-    event: ChangeEvent<HTMLInputElement>,
-  ) => {
+  const handleLongTextImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -574,9 +570,7 @@ export default function ComposePage() {
   const editor = (
     <RichTextEditor
       // 导入或恢复整本草稿时重建编辑器；普通输入不改变该版本，保留编辑体验。
-      key={
-        longTextMode ? `long-text-${longTextDocumentVersion}` : activeIndex
-      }
+      key={longTextMode ? `long-text-${longTextDocumentVersion}` : activeIndex}
       content={longTextMode ? longTextEditorContent : editorContent}
       mode={mode}
       editable={!isPlaceholderData}
@@ -625,13 +619,17 @@ export default function ComposePage() {
               onChange={setMode}
               ariaLabel="编辑器布局"
               options={[
-              {
-                value: "compact",
-                label: "极简",
-                icon: <MessageCircle size={14} />,
-              },
-              { value: "full", label: "完整", icon: <Monitor size={14} /> },
-              { value: "mobile", label: "移动", icon: <Smartphone size={14} /> },
+                {
+                  value: "compact",
+                  label: "极简",
+                  icon: <MessageCircle size={14} />,
+                },
+                { value: "full", label: "完整", icon: <Monitor size={14} /> },
+                {
+                  value: "mobile",
+                  label: "移动",
+                  icon: <Smartphone size={14} />,
+                },
               ]}
             />
           )}
@@ -689,7 +687,7 @@ export default function ComposePage() {
         </div>
       )}
       {longTextMode ? (
-        <section className="mx-auto max-w-[1180px]">
+        <section className="mx-auto max-w-[1680px]">
           <div className="document-bar surface mb-2">
             <div className="min-w-0">
               <p className="document-title">长文本工作台</p>
@@ -758,11 +756,7 @@ export default function ComposePage() {
               >
                 添加章节
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={closeLongTextMode}
-              >
+              <Button size="sm" variant="ghost" onClick={closeLongTextMode}>
                 退出长文本
               </Button>
             </div>
@@ -781,7 +775,9 @@ export default function ComposePage() {
               chapters={coverageChapters}
               activeIndex={activeChapterIndex}
             />
-            <div className="min-w-0">{editor}</div>
+            <div className="min-w-0">
+              <EditorErrorBoundary>{editor}</EditorErrorBoundary>
+            </div>
           </div>
         </section>
       ) : mode === "full" ? (
@@ -872,7 +868,10 @@ export default function ComposePage() {
         className="max-w-2xl"
       >
         <div className="space-y-3">
-          <label className="block text-xs font-medium" htmlFor="add-chapter-title">
+          <label
+            className="block text-xs font-medium"
+            htmlFor="add-chapter-title"
+          >
             章节标题
           </label>
           <input
@@ -882,7 +881,10 @@ export default function ComposePage() {
             onChange={(event) => setAddChapterTitle(event.target.value)}
             placeholder="例如：番外 · 雨季来信"
           />
-          <label className="block text-xs font-medium" htmlFor="add-chapter-text">
+          <label
+            className="block text-xs font-medium"
+            htmlFor="add-chapter-text"
+          >
             正文（最多 {MAX_CHAPTER_LENGTH.toLocaleString()} 字）
           </label>
           <textarea
@@ -894,7 +896,11 @@ export default function ComposePage() {
             placeholder="粘贴或输入章节内容…"
           />
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setAddChapterOpen(false)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setAddChapterOpen(false)}
+            >
               取消
             </Button>
             <Button size="sm" onClick={addChapter}>
