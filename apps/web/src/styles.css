@@ -207,7 +207,7 @@ button {
 
 .long-text-workspace {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: 360px minmax(0, 1fr);
   gap: 12px;
   padding: 12px;
   align-items: start;
@@ -232,6 +232,22 @@ button {
 
 .chapter-sidebar__item:hover {
   background: #edf7f5;
+}
+
+.chapter-sidebar__item--active {
+  background: #e2efec;
+  outline: 1px solid #9ccfc6;
+}
+
+.chapter-sidebar__title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-break: break-all;
 }
 
 .chapter-sidebar__item--dragging {

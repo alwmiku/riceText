@@ -28,9 +28,10 @@ export function LongTextView({
       order: number;
     };
   const [value, setValue] = useState(attrs.text ?? "");
-  const [isEditing, setIsEditing] = useState(selected);
+  const [isEditing, setIsEditing] = useState(
+    selected || editor.state.doc.childCount === 1,
+  );
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setValue(attrs.text ?? "");
@@ -44,12 +45,6 @@ export function LongTextView({
     if (isEditing) textareaRef.current?.focus();
   }, [isEditing]);
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    };
-  }, []);
-
   const excerpt = useMemo(
     () => value.replace(/\s+/g, " ").slice(0, 120),
     [value],
@@ -59,10 +54,7 @@ export function LongTextView({
     (next: string) => {
       const limited = next.slice(0, MAX_CHAPTER_LENGTH);
       setValue(limited);
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => {
-        updateAttributes({ text: limited });
-      }, 300);
+      updateAttributes({ text: limited });
     },
     [updateAttributes],
   );

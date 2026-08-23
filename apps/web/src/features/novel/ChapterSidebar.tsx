@@ -1,82 +1,38 @@
-import type { Editor } from "@tiptap/react";
 import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
 import { ArrowDown, ArrowUp, Combine, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-interface ChapterItem {
+/** 目录中的单个章节摘要。 */
+export interface ChapterSummary {
   id: string;
   title: string;
-  text: string;
-  order: number;
-  pos: number;
-  nodeSize: number;
+  charCount: number;
 }
 
-function collectChapters(editor: Editor): ChapterItem[] {
-  const items: ChapterItem[] = [];
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === "longTextBlock") {
-      items.push({
-        id: String(node.attrs.chapterId ?? ""),
-        title: String(node.attrs.title ?? "未命名章节"),
-        text: String(node.attrs.text ?? ""),
-        order: Number(node.attrs.order ?? 0),
-        pos,
-        nodeSize: node.nodeSize,
-      });
-    }
-    return true;
-  });
-  return items;
+interface ChapterSidebarProps {
+  /** 全部章节摘要；操作按索引进行。 */
+  chapters: readonly ChapterSummary[];
+  /** 当前正在编辑的章节索引。 */
+  activeIndex: number;
+  onSelect: (index: number) => void;
+  onDelete: (index: number) => void;
+  onMerge: (index: number) => void;
+  onMove: (from: number, to: number) => void;
 }
 
-/** 长文本模式下的章节列表侧栏：点击跳转、删除、合并、上下移动排序。 */
-export function ChapterSidebar({ editor }: { editor: Editor | null }) {
-  const [chapters, setChapters] = useState<ChapterItem[]>([]);
+/**
+ * 长文本模式的章节目录：点击切换、拖拽排序、合并、删除。
+ * 目录数据由宿主提供，本组件不接触编辑器实例，避免遍历大文档。
+ */
+export function ChapterSidebar({
+  chapters,
+  activeIndex,
+  onSelect,
+  onDelete,
+  onMerge,
+  onMove,
+}: ChapterSidebarProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!editor) return;
-    const update = () => setChapters(collectChapters(editor));
-    update();
-    editor.on("transaction", update);
-    editor.on("selectionUpdate", update);
-    return () => {
-      editor.off("transaction", update);
-      editor.off("selectionUpdate", update);
-    };
-  }, [editor]);
-
-  const focusChapter = (item: ChapterItem) => {
-    if (!editor) return;
-    editor
-      .chain()
-      .focus()
-      .setNodeSelection(item.pos)
-      .scrollIntoView()
-      .run();
-    window.requestAnimationFrame(() => {
-      for (const element of editor.view.dom.querySelectorAll<HTMLElement>(
-        "[data-chapter-id]",
-      )) {
-        if (element.dataset.chapterId === item.id) {
-          element.scrollIntoView({ block: "start", behavior: "smooth" });
-          break;
-        }
-      }
-    });
-  };
-
-  const deleteChapter = (index: number) => {
-    if (!editor) return;
-    const item = chapters[index];
-    if (!item) return;
-    editor
-      .chain()
-      .focus()
-      .deleteRange({ from: item.pos, to: item.pos + item.nodeSize })
-      .run();
-  };
 
   const canMergeChapter = (index: number) => {
     if (index <= 0) return false;
@@ -85,64 +41,9 @@ export function ChapterSidebar({ editor }: { editor: Editor | null }) {
     return Boolean(
       current &&
         previous &&
-        previous.text.length + current.text.length + 2 <= MAX_CHAPTER_LENGTH,
+        previous.charCount + current.charCount + 2 <= MAX_CHAPTER_LENGTH,
     );
   };
-
-  const mergeChapter = (index: number) => {
-    if (!editor || !canMergeChapter(index)) return;
-    const current = chapters[index];
-    const previous = chapters[index - 1];
-    if (!current || !previous) return;
-    const combinedText = `${previous.text}\n\n${current.text}`;
-    editor
-      .chain()
-      .focus()
-      .command(({ tr }) => {
-        const prevNode = tr.doc.nodeAt(previous.pos);
-        if (prevNode) {
-          tr.setNodeMarkup(previous.pos, undefined, {
-            ...prevNode.attrs,
-            text: combinedText,
-          });
-        }
-        tr.delete(current.pos, current.pos + current.nodeSize);
-        return true;
-      })
-      .run();
-  };
-
-  const moveChapterTo = (fromIndex: number, toIndex: number) => {
-    if (!editor) return;
-    if (fromIndex === toIndex) return;
-    if (toIndex < 0 || toIndex >= chapters.length) return;
-    const moving = chapters[fromIndex];
-    const target = chapters[toIndex];
-    if (!moving || !target) return;
-
-    const from = moving.pos;
-    const to = moving.pos + moving.nodeSize;
-    const nodeJson = editor.state.doc.nodeAt(moving.pos)?.toJSON();
-    if (!nodeJson) return;
-
-    const insertAt =
-      toIndex > fromIndex ? target.pos + target.nodeSize : target.pos;
-
-    editor
-      .chain()
-      .focus()
-      .command(({ tr }) => {
-        tr.delete(from, to);
-        const adjustedInsert =
-          insertAt > from ? insertAt - (to - from) : insertAt;
-        const node = tr.doc.type.schema.nodeFromJSON(nodeJson);
-        tr.insert(adjustedInsert, node);
-        return true;
-      })
-      .run();
-  };
-
-  if (!editor) return null;
 
   return (
     <aside className="chapter-sidebar surface" aria-label="章节列表">
@@ -160,15 +61,15 @@ export function ChapterSidebar({ editor }: { editor: Editor | null }) {
           {chapters.map((chapter, index) => (
             <div
               key={chapter.id || index}
-              className={`chapter-sidebar__item${dragIndex === index ? " chapter-sidebar__item--dragging" : ""}`}
+              className={`chapter-sidebar__item${index === activeIndex ? " chapter-sidebar__item--active" : ""}${dragIndex === index ? " chapter-sidebar__item--dragging" : ""}`}
               role="button"
               tabIndex={0}
               draggable
-              onClick={() => focusChapter(chapter)}
+              onClick={() => onSelect(index)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  focusChapter(chapter);
+                  onSelect(index);
                 }
               }}
               onDragStart={(event) => {
@@ -182,18 +83,18 @@ export function ChapterSidebar({ editor }: { editor: Editor | null }) {
                 const source =
                   dragIndex ?? Number(event.dataTransfer.getData("text/plain"));
                 if (Number.isFinite(source) && source !== index) {
-                  moveChapterTo(source, index);
+                  onMove(source, index);
                 }
                 setDragIndex(null);
               }}
               onDragEnd={() => setDragIndex(null)}
             >
               <div className="min-w-0 flex-1">
-                <strong className="block truncate text-xs">
+                <strong className="chapter-sidebar__title">
                   {chapter.title}
                 </strong>
                 <small className="text-[10px] text-muted-foreground">
-                  {chapter.text.length.toLocaleString()} 字
+                  {chapter.charCount.toLocaleString()} 字
                 </small>
               </div>
 
@@ -204,7 +105,7 @@ export function ChapterSidebar({ editor }: { editor: Editor | null }) {
                   disabled={index === 0}
                   onClick={(event) => {
                     event.stopPropagation();
-                    moveChapterTo(index, index - 1);
+                    onMove(index, index - 1);
                   }}
                 >
                   <ArrowUp size={13} />
@@ -215,7 +116,7 @@ export function ChapterSidebar({ editor }: { editor: Editor | null }) {
                   disabled={index === chapters.length - 1}
                   onClick={(event) => {
                     event.stopPropagation();
-                    moveChapterTo(index, index + 1);
+                    onMove(index, index + 1);
                   }}
                 >
                   <ArrowDown size={13} />
@@ -231,7 +132,7 @@ export function ChapterSidebar({ editor }: { editor: Editor | null }) {
                   disabled={!canMergeChapter(index)}
                   onClick={(event) => {
                     event.stopPropagation();
-                    mergeChapter(index);
+                    onMerge(index);
                   }}
                 >
                   <Combine size={13} />
@@ -241,7 +142,7 @@ export function ChapterSidebar({ editor }: { editor: Editor | null }) {
                   aria-label="删除章节"
                   onClick={(event) => {
                     event.stopPropagation();
-                    deleteChapter(index);
+                    onDelete(index);
                   }}
                 >
                   <Trash2 size={13} />

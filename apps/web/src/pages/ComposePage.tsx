@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import type { ChapterTitleStyle } from "@ricetext/editor-core";
+import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -23,6 +24,7 @@ import { ChapterRail, DemoBusinessPanel } from "../features/demo/DemoPanels";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
 import { createLongTextDocument } from "../features/editor/long-text-import";
 import { useAutosave } from "../features/editor/useAutosave";
+import { ChapterSidebar, type ChapterSummary } from "../features/novel/ChapterSidebar";
 import {
   getCommentThread,
   getDocument,
@@ -114,6 +116,10 @@ export default function ComposePage() {
   const [longTextMode, setLongTextMode] = useState(false);
   const [hasLocalDraft, setHasLocalDraft] = useState(false);
   const [longTextDocumentVersion, setLongTextDocumentVersion] = useState(0);
+  const [activeChapterIndex, setActiveChapterIndex] = useState(0);
+  const activeChapterIndexRef = useRef(0);
+  const longTextPendingRef = useRef<RichTextNode | null>(null);
+  const longTextWriteTimerRef = useRef<number | null>(null);
   const [chapterTitleStyle, setChapterTitleStyle] =
     useState<ChapterTitleStyle>("auto");
   const [chapterIndex, setChapterIndex] = useState(1);
@@ -143,6 +149,14 @@ export default function ComposePage() {
     setContent(data.content);
   }, [data, generation, document.revision]);
   const draftSaveTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (longTextWriteTimerRef.current !== null)
+        window.clearTimeout(longTextWriteTimerRef.current);
+      if (draftSaveTimerRef.current !== null)
+        window.clearTimeout(draftSaveTimerRef.current);
+    };
+  }, []);
   useEffect(() => {
     if (
       !longTextMode ||
@@ -180,6 +194,22 @@ export default function ComposePage() {
     () => ({ type: "doc", content: chapters[activeIndex]?.blocks ?? [] }),
     [chapters, activeIndex],
   );
+  // 长文本模式：目录摘要只来自完整章节 JSON 的轻量字段，编辑器只加载当前一章。
+  const chapterSummaries = useMemo<ChapterSummary[]>(() => {
+    if (!longTextMode) return [];
+    return (content.content ?? []).map((node, index) => ({
+      id: String(node.attrs?.chapterId ?? `chapter-${index}`),
+      title: String(node.attrs?.title ?? "未命名章节"),
+      charCount: String(node.attrs?.text ?? "").length,
+    }));
+  }, [content, longTextMode]);
+  const longTextEditorContent = useMemo<RichTextNode>(() => {
+    if (!longTextMode) return { type: "doc", content: [] };
+    const block = content.content?.[activeChapterIndex];
+    return block
+      ? { type: "doc", content: [block] }
+      : { type: "doc", content: [] };
+  }, [content, longTextMode, activeChapterIndex]);
   const autosave = useAutosave({
     document,
     content,
@@ -216,18 +246,108 @@ export default function ComposePage() {
     replaceContent(next);
     setLongTextDocumentVersion((version) => version + 1);
   };
+  /** 把编辑器返回的章节块写回完整文档；编辑器内新增章节（切章）时跳到新章并重建。 */
+  const commitPendingLongText = () => {
+    if (longTextWriteTimerRef.current !== null) {
+      window.clearTimeout(longTextWriteTimerRef.current);
+      longTextWriteTimerRef.current = null;
+    }
+    const pending = longTextPendingRef.current;
+    longTextPendingRef.current = null;
+    if (!pending) return;
+    const blocks = pending.content ?? [];
+    const list = [...(contentRef.current.content ?? [])];
+    const start = activeChapterIndexRef.current;
+    list.splice(start, blocks.length, ...blocks);
+    const gainedChapters = blocks.length > 1;
+    if (gainedChapters) {
+      activeChapterIndexRef.current = start + blocks.length - 1;
+    }
+    replaceContent({ type: "doc", content: list });
+    if (gainedChapters) {
+      setActiveChapterIndex(activeChapterIndexRef.current);
+      setLongTextDocumentVersion((version) => version + 1);
+    }
+  };
   const updateContent = (next: RichTextNode) => {
     if (isPlaceholderData) return;
     if (longTextMode) {
-      replaceContent(next);
+      longTextPendingRef.current = next;
+      if (longTextWriteTimerRef.current !== null)
+        window.clearTimeout(longTextWriteTimerRef.current);
+      longTextWriteTimerRef.current = window.setTimeout(
+        commitPendingLongText,
+        300,
+      );
       return;
     }
     const merged = mergeChapter(contentRef.current, activeIndex, next);
     replaceContent(merged);
   };
+  const selectChapter = (index: number) => {
+    if (index === activeChapterIndexRef.current) return;
+    commitPendingLongText();
+    activeChapterIndexRef.current = index;
+    setActiveChapterIndex(index);
+    replaceLongTextDocument(contentRef.current);
+  };
+
+  const deleteChapter = (index: number) => {
+    commitPendingLongText();
+    const list = [...(contentRef.current.content ?? [])];
+    if (index < 0 || index >= list.length) return;
+    list.splice(index, 1);
+    activeChapterIndexRef.current = Math.min(
+      activeChapterIndexRef.current,
+      Math.max(0, list.length - 1),
+    );
+    replaceLongTextDocument({ type: "doc", content: list });
+    setActiveChapterIndex(activeChapterIndexRef.current);
+  };
+
+  const mergeChapterAt = (index: number) => {
+    if (index <= 0) return;
+    commitPendingLongText();
+    const list = [...(contentRef.current.content ?? [])];
+    const previous = list[index - 1];
+    const current = list[index];
+    if (!previous || !current) return;
+    const previousText = String(previous.attrs?.text ?? "");
+    const currentText = String(current.attrs?.text ?? "");
+    if (previousText.length + currentText.length + 2 > MAX_CHAPTER_LENGTH)
+      return;
+    list.splice(index - 1, 2, {
+      ...previous,
+      attrs: {
+        ...previous.attrs,
+        text: `${previousText}\n\n${currentText}`,
+      },
+    });
+    activeChapterIndexRef.current = index - 1;
+    replaceLongTextDocument({ type: "doc", content: list });
+    setActiveChapterIndex(activeChapterIndexRef.current);
+  };
+
+  const moveChapter = (from: number, to: number) => {
+    if (from === to) return;
+    commitPendingLongText();
+    const list = [...(contentRef.current.content ?? [])];
+    const [moving] = list.splice(from, 1);
+    if (!moving) return;
+    list.splice(to, 0, moving);
+    activeChapterIndexRef.current = to;
+    replaceLongTextDocument({ type: "doc", content: list });
+    setActiveChapterIndex(activeChapterIndexRef.current);
+  };
+
   const closeLongTextMode = () => {
     longTextOperationRef.current += 1;
     longTextDraftReadyRef.current = false;
+    commitPendingLongText();
+    if (longTextWriteTimerRef.current !== null) {
+      window.clearTimeout(longTextWriteTimerRef.current);
+      longTextWriteTimerRef.current = null;
+    }
     if (draftSaveTimerRef.current !== null) {
       window.clearTimeout(draftSaveTimerRef.current);
       draftSaveTimerRef.current = null;
@@ -249,6 +369,8 @@ export default function ComposePage() {
     const operation = ++longTextOperationRef.current;
     normalContentRef.current = contentRef.current;
     longTextDraftReadyRef.current = false;
+    activeChapterIndexRef.current = 0;
+    setActiveChapterIndex(0);
     setHasLocalDraft(false);
     setLongTextMode(true);
     replaceLongTextDocument({ type: "doc", content: [] });
@@ -277,6 +399,8 @@ export default function ComposePage() {
       const stored = await loadLongTextDraft(LOCAL_LONG_TEXT_KEY);
       if (operation !== longTextOperationRef.current) return;
       if (stored) {
+        activeChapterIndexRef.current = 0;
+        setActiveChapterIndex(0);
         replaceLongTextDocument(stored);
         setHasLocalDraft(false);
         setNotice("已恢复本机草稿");
@@ -309,6 +433,8 @@ export default function ComposePage() {
       longTextOperationRef.current += 1;
       longTextDraftReadyRef.current = true;
       setHasLocalDraft(false);
+      activeChapterIndexRef.current = 0;
+      setActiveChapterIndex(0);
       replaceLongTextDocument(imported);
       setLongTextMode(true);
       setNotice(`已导入 ${file.name}，共 ${text.length.toLocaleString()} 字`);
@@ -338,8 +464,8 @@ export default function ComposePage() {
   // 显式发布先 flush，保证提示出现时最新正文已经进入保存队列。
   const publish = async (latestContent?: RichTextNode) => {
     if (longTextMode) {
-      const snapshot = latestContent ?? contentRef.current;
-      replaceContent(snapshot);
+      commitPendingLongText();
+      const snapshot = contentRef.current;
       try {
         await saveLongTextDraft(LOCAL_LONG_TEXT_KEY, snapshot);
         setHasLocalDraft(false);
@@ -379,7 +505,7 @@ export default function ComposePage() {
       key={
         longTextMode ? `long-text-${longTextDocumentVersion}` : activeIndex
       }
-      content={longTextMode ? content : editorContent}
+      content={longTextMode ? longTextEditorContent : editorContent}
       mode={mode}
       editable={!isPlaceholderData}
       longTextMode={longTextMode}
@@ -553,7 +679,17 @@ export default function ComposePage() {
               </Button>
             </div>
           </div>
-          {editor}
+          <div className="long-text-workspace">
+            <ChapterSidebar
+              chapters={chapterSummaries}
+              activeIndex={activeChapterIndex}
+              onSelect={selectChapter}
+              onDelete={deleteChapter}
+              onMerge={mergeChapterAt}
+              onMove={moveChapter}
+            />
+            <div className="min-w-0">{editor}</div>
+          </div>
         </section>
       ) : mode === "full" ? (
         <div className="editor-workspace">

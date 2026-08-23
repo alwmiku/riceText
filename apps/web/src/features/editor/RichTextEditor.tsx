@@ -22,7 +22,6 @@ import {
 } from "../../components/ui";
 import type { EditorMode, RichTextNode } from "../../lib/types";
 import { formatTime } from "../../lib/utils";
-import { ChapterSidebar } from "../novel/ChapterSidebar";
 import {
   describeSteps,
   cmd,
@@ -171,11 +170,8 @@ export function RichTextEditor({
             </Button>
           ) : null}
         </div>
-        <div className="long-text-workspace">
-          <ChapterSidebar editor={editor} />
-          <div className="editor-content-wrap">
-            <EditorContent editor={editor} />
-          </div>
+        <div className="editor-content-wrap">
+          <EditorContent editor={editor} />
         </div>
       </div>
     );
