@@ -979,6 +979,7 @@
   white-space: nowrap;
 }
 
+.rt-long-text__header {
   display: flex;
   align-items: center;
   gap: 10px;

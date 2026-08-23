@@ -1,11 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { MAX_CHAPTER_LENGTH } from "./chapter-splitter.js";
 
 /**
  * 长文本块 NodeView。
  *
- * 当前先使用 textarea 作为可用原型，后续可替换为虚拟滚动/按需渲染组件。
+ * 未选中章节只渲染轻量预览，选中章节才挂载 textarea；切换章节会卸载上一章。
  * 输入会防抖同步回 ProseMirror 的 longTextBlock 属性。
  */
 export function LongTextView({
@@ -15,12 +21,12 @@ export function LongTextView({
   getPos,
   selected,
 }: NodeViewProps) {
-  const attrs = node.attrs as unknown as {
-    chapterId: string;
-    title: string;
-    text: string;
-    order: number;
-  };
+    const attrs = node.attrs as unknown as {
+      chapterId: string;
+      title: string;
+      text: string;
+      order: number;
+    };
   const [value, setValue] = useState(attrs.text ?? "");
   const [isEditing, setIsEditing] = useState(selected);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -43,6 +49,11 @@ export function LongTextView({
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
   }, []);
+
+  const excerpt = useMemo(
+    () => value.replace(/\s+/g, " ").slice(0, 120),
+    [value],
+  );
 
   const handleChange = useCallback(
     (next: string) => {
@@ -107,7 +118,6 @@ export function LongTextView({
   }
 
   if (!isEditing) {
-    const excerpt = value.replace(/\s+/g, " ").slice(0, 120);
     return (
       <NodeViewWrapper
         as="section"

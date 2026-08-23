@@ -134,17 +134,22 @@ export function RichTextEditor({
     editor?.setEditable(editable);
   }, [editable, editor]);
   // 回滚/远端装载属于受控更新；emitUpdate=false 防止被误判为新的用户编辑代次。
+  // 长文本模式通过 key 重建实例装载整本文档，不需要对超大 JSON 做全量比较。
   useEffect(() => {
+    if (longTextMode) return;
     if (!editor || JSON.stringify(editor.getJSON()) === JSON.stringify(content))
       return;
     editor.commands.setContent(content, { emitUpdate: false });
-  }, [content, editor]);
+  }, [content, editor, longTextMode]);
   // 显式销毁 EditorView，避免路由切换后残留 DOM 监听器。
   useEffect(() => () => editor?.destroy(), [editor]);
 
   const wordCount = useMemo(
-    () => (editor ? editor.getText().replace(/\s+/g, "").length : 0),
-    [editor, lastTransactionAt],
+    () =>
+      editor && !longTextMode
+        ? editor.getText().replace(/\s+/g, "").length
+        : 0,
+    [editor, lastTransactionAt, longTextMode],
   );
 
   if (longTextMode)

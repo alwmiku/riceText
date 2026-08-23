@@ -110,7 +110,9 @@ export default function ComposePage() {
   const editorRef = useRef<Editor | null>(null);
   const longTextDraftReadyRef = useRef(false);
   const longTextOperationRef = useRef(0);
+  const normalContentRef = useRef<RichTextNode | null>(null);
   const [longTextMode, setLongTextMode] = useState(false);
+  const [hasLocalDraft, setHasLocalDraft] = useState(false);
   const [longTextDocumentVersion, setLongTextDocumentVersion] = useState(0);
   const [chapterTitleStyle, setChapterTitleStyle] =
     useState<ChapterTitleStyle>("auto");
@@ -140,6 +142,7 @@ export default function ComposePage() {
     generationRef.current = 0;
     setContent(data.content);
   }, [data, generation, document.revision]);
+  const draftSaveTimerRef = useRef<number | null>(null);
   useEffect(() => {
     if (
       !longTextMode ||
@@ -147,15 +150,30 @@ export default function ComposePage() {
       generation === 0
     )
       return;
-    void saveLongTextDraft(LOCAL_LONG_TEXT_KEY, content).catch(() => {
-      setNotice("本机草稿保存失败，请检查浏览器存储空间");
-    });
+    if (draftSaveTimerRef.current !== null)
+      window.clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      void saveLongTextDraft(LOCAL_LONG_TEXT_KEY, contentRef.current).catch(
+        () => {
+          setNotice("本机草稿保存失败，请检查浏览器存储空间");
+        },
+      );
+    }, 1500);
+    return () => {
+      if (draftSaveTimerRef.current !== null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+    };
   }, [content, generation, longTextMode]);
 
-  // 一章一界面：把完整文档按二级标题切分为章节，编辑器只编辑当前章节片段。
+  // 一章一界面：普通模式把完整文档按二级标题切分为章节；长文本模式不经过该切分。
   const { chapters } = useMemo(
-    () => splitDocumentByHeadings(content),
-    [content],
+    () =>
+      longTextMode
+        ? { lead: [], chapters: [] }
+        : splitDocumentByHeadings(content),
+    [content, longTextMode],
   );
   const activeIndex = Math.min(chapterIndex, Math.max(0, chapters.length - 1));
   const editorContent = useMemo<RichTextNode>(
@@ -210,24 +228,65 @@ export default function ComposePage() {
   const closeLongTextMode = () => {
     longTextOperationRef.current += 1;
     longTextDraftReadyRef.current = false;
+    if (draftSaveTimerRef.current !== null) {
+      window.clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+    if (generationRef.current > 0) {
+      void saveLongTextDraft(LOCAL_LONG_TEXT_KEY, contentRef.current).catch(
+        () => {
+          setNotice("本机草稿保存失败，请检查浏览器存储空间");
+        },
+      );
+    }
+    if (normalContentRef.current) {
+      replaceContent(normalContentRef.current);
+      normalContentRef.current = null;
+    }
     setLongTextMode(false);
   };
   const openLongTextMode = async () => {
     const operation = ++longTextOperationRef.current;
+    normalContentRef.current = contentRef.current;
     longTextDraftReadyRef.current = false;
+    setHasLocalDraft(false);
     setLongTextMode(true);
+    replaceLongTextDocument({ type: "doc", content: [] });
+    try {
+      const stored = await loadLongTextDraft(LOCAL_LONG_TEXT_KEY);
+      if (operation !== longTextOperationRef.current) return;
+      if (stored && (stored.content ?? []).length > 0) {
+        setHasLocalDraft(true);
+        setNotice("检测到本机草稿，可点击“恢复本机草稿”");
+      } else {
+        setNotice("长文本工作台已就绪，可导入 .txt 或开始写作");
+      }
+    } catch {
+      if (operation === longTextOperationRef.current)
+        setNotice("无法读取本机草稿，已打开空白长文本工作台");
+    } finally {
+      if (operation === longTextOperationRef.current)
+        longTextDraftReadyRef.current = true;
+    }
+  };
+
+  const restoreLongTextDraft = async () => {
+    const operation = ++longTextOperationRef.current;
+    longTextDraftReadyRef.current = false;
     try {
       const stored = await loadLongTextDraft(LOCAL_LONG_TEXT_KEY);
       if (operation !== longTextOperationRef.current) return;
       if (stored) {
         replaceLongTextDocument(stored);
-        setNotice("已恢复本机长文本副本");
+        setHasLocalDraft(false);
+        setNotice("已恢复本机草稿");
       } else {
-        replaceLongTextDocument({ type: "doc", content: [] });
+        setHasLocalDraft(false);
+        setNotice("没有可恢复的本机草稿");
       }
     } catch {
       if (operation === longTextOperationRef.current)
-        setNotice("无法读取本机草稿，已打开空白长文本工作台");
+        setNotice("无法读取本机草稿，请检查浏览器存储");
     } finally {
       if (operation === longTextOperationRef.current)
         longTextDraftReadyRef.current = true;
@@ -249,6 +308,7 @@ export default function ComposePage() {
       const imported = createLongTextDocument(text, chapterTitleStyle);
       longTextOperationRef.current += 1;
       longTextDraftReadyRef.current = true;
+      setHasLocalDraft(false);
       replaceLongTextDocument(imported);
       setLongTextMode(true);
       setNotice(`已导入 ${file.name}，共 ${text.length.toLocaleString()} 字`);
@@ -282,6 +342,7 @@ export default function ComposePage() {
       replaceContent(snapshot);
       try {
         await saveLongTextDraft(LOCAL_LONG_TEXT_KEY, snapshot);
+        setHasLocalDraft(false);
         setNotice("长文本已保存在本机；上传时将按章节分别提交");
       } catch {
         setNotice("本机草稿保存失败，请检查浏览器存储空间");
@@ -474,6 +535,15 @@ export default function ComposePage() {
                 <FileUp size={14} />
                 导入 .txt
               </Button>
+              {hasLocalDraft && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void restoreLongTextDraft()}
+                >
+                  恢复本机草稿
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="ghost"
