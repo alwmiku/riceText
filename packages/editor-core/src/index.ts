@@ -17,3 +17,6 @@ export * from './poll-result-chart.js'
 export * from './viewer.js'
 
 export type { Editor, Extensions, JSONContent } from '@tiptap/core'
+
+/** 供宿主编辑器清理事务使用的 PM 选择类型。 */
+export { NodeSelection } from '@tiptap/pm/state'

@@ -28,6 +28,7 @@ export function LongTextView({
       order: number;
     };
   const [value, setValue] = useState(attrs.text ?? "");
+  const [titleValue, setTitleValue] = useState(attrs.title ?? "");
   const [isEditing, setIsEditing] = useState(
     selected || editor.state.doc.childCount === 1,
   );
@@ -36,6 +37,10 @@ export function LongTextView({
   useEffect(() => {
     setValue(attrs.text ?? "");
   }, [attrs.text]);
+
+  useEffect(() => {
+    setTitleValue(attrs.title ?? "");
+  }, [attrs.title]);
 
   useEffect(() => {
     setIsEditing(selected);
@@ -50,28 +55,40 @@ export function LongTextView({
     [value],
   );
 
+  // 修改通过引用回调交给宿主，宿主负责写回整体数据；节点属性保持不变。
+  const chapterEditHandler = useCallback(
+    (patch: { title?: string; text?: string }) => {
+      const handler = (
+        editor.storage as unknown as {
+          longTextBlock?: {
+            onChapterEdit?: null | ((
+              chapterId: string,
+              patch: { title?: string; text?: string },
+            ) => void);
+          };
+        }
+      ).longTextBlock?.onChapterEdit;
+      handler?.(attrs.chapterId, patch);
+    },
+    [editor, attrs.chapterId],
+  );
+
   const handleChange = useCallback(
     (next: string) => {
       const limited = next.slice(0, MAX_CHAPTER_LENGTH);
       setValue(limited);
-      try {
-        updateAttributes({ text: limited });
-      } catch {
-        // 节点可能正被销毁或位置失效；本地 value 已更新，重建时会带上。
-      }
+      chapterEditHandler({ text: limited });
     },
-    [updateAttributes],
+    [chapterEditHandler],
   );
 
   const handleTitleChange = useCallback(
     (next: string) => {
-      try {
-        updateAttributes({ title: next.slice(0, 500) });
-      } catch {
-        // 同上：标题输入失败不中断编辑。
-      }
+      const limited = next.slice(0, 500);
+      setTitleValue(limited);
+      chapterEditHandler({ title: limited });
     },
-    [updateAttributes],
+    [chapterEditHandler],
   );
 
   const splitHere = useCallback(() => {
@@ -178,7 +195,7 @@ export function LongTextView({
       <div className="rt-long-text__header">
         <input
           className="rt-long-text__title"
-          value={attrs.title ?? ""}
+          value={titleValue}
           onChange={(event) => handleTitleChange(event.target.value)}
           placeholder="章节标题"
           aria-label="章节标题"

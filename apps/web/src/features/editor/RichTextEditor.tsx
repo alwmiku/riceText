@@ -1,5 +1,5 @@
 import Placeholder from "@tiptap/extension-placeholder";
-import { editorExtensions } from "@ricetext/editor-core";
+import { editorExtensions, NodeSelection } from "@ricetext/editor-core";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import {
   Bold,
@@ -41,6 +41,8 @@ export interface RichTextEditorProps {
   onChangeSteps?: (steps: unknown[]) => void;
   /** 光标处切章：宿主负责把章节拆为两章并重建编辑器。 */
   onSplitChapter?: (before: string, after: string) => void;
+  /** 章节编辑（标题/正文）：宿主把修改写回整体数据，节点属性保持不变。 */
+  onChapterEdit?: (chapterId: string, patch: { title?: string; text?: string }) => void;
   onSubmit?: (content: RichTextNode) => void;
   onReady?: (editor: Editor | null) => void;
   /** 最近一次成功保存时间，显示在编辑器底部。 */
@@ -59,6 +61,7 @@ export function RichTextEditor({
   onChange,
   onChangeSteps,
   onSplitChapter,
+  onChapterEdit,
   onSubmit,
   onReady,
   savedAt,
@@ -131,23 +134,85 @@ export function RichTextEditor({
     return () => onReady?.(null);
   }, [editor, onReady]);
 
-  // 把宿主的“光标处切章”处理器注册到 longTextBlock 扩展存储，
-  // 使切章由宿主重排章节并重建编辑器，编辑器内始终保持单章节。
+  // 把宿主的“光标处切章”和“章节编辑”处理器注册到 longTextBlock 扩展存储，
+  // 节点视图只通过回调与宿主通信，不直接修改节点属性。
   useEffect(() => {
     if (!editor) return undefined;
     const storage = (
       editor.storage as unknown as {
         longTextBlock?: {
           onSplit?: null | ((before: string, after: string) => void);
+          onChapterEdit?: null | ((
+            chapterId: string,
+            patch: { title?: string; text?: string },
+          ) => void);
         };
       }
     ).longTextBlock;
     if (!storage) return undefined;
     storage.onSplit = onSplitChapter ?? null;
+    storage.onChapterEdit = onChapterEdit ?? null;
     return () => {
       storage.onSplit = null;
+      storage.onChapterEdit = null;
     };
-  }, [editor, onSplitChapter]);
+  }, [editor, onSplitChapter, onChapterEdit]);
+
+  // 长文本模式：编辑器文档被污染为多个节点时，用事务直接删除多余节点，
+  // 只保留第一个章节节点，并把选区固定到该节点（避免编辑器切回预览态）。
+  useEffect(() => {
+    if (!editor || !longTextMode) return undefined;
+    const handler = () => {
+      if (editor.state.doc.childCount <= 1) return;
+      const nodes = [] as Array<{
+        type: string;
+        title: string;
+        chapterId: string;
+        chars: number;
+      }>;
+      editor.state.doc.forEach((node) => {
+        nodes.push({
+          type: node.type.name,
+          title: String(node.attrs.title ?? ""),
+          chapterId: String(node.attrs.chapterId ?? ""),
+          chars: String(node.attrs.text ?? "").length,
+        });
+      });
+      console.warn("[长文本] 自动清理多节点编辑器文档", nodes);
+      let keepFrom = -1;
+      let keepTo = -1;
+      editor.state.doc.forEach((node, offset) => {
+        if (keepFrom < 0 && node.type.name === "longTextBlock") {
+          keepFrom = offset;
+          keepTo = offset + node.nodeSize;
+        }
+      });
+      if (keepFrom < 0) return;
+      const { tr } = editor.state;
+      if (keepTo < editor.state.doc.content.size) {
+        tr.delete(keepTo, editor.state.doc.content.size);
+      }
+      if (keepFrom > 0) {
+        tr.delete(0, keepFrom);
+      }
+      tr.setSelection(NodeSelection.create(tr.doc, 0));
+      editor.view.dispatch(tr);
+      console.warn(
+        "[长文本] 清理后立即 childCount=",
+        editor.state.doc.childCount,
+      );
+      window.setTimeout(() => {
+        console.warn(
+          "[长文本] 清理后 300ms childCount=",
+          editor.state.doc.childCount,
+        );
+      }, 300);
+    };
+    editor.on("update", handler);
+    return () => {
+      editor.off("update", handler);
+    };
+  }, [editor, longTextMode]);
 
   // 权限或首屏加载状态变化时，只切换编辑能力，不重建 ProseMirror 实例。
   useEffect(() => {

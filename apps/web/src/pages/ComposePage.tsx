@@ -132,9 +132,13 @@ export default function ComposePage() {
   const [longTextDocumentVersion, setLongTextDocumentVersion] = useState(0);
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
   const activeChapterIndexRef = useRef(0);
-  const editorPollutedRef = useRef(false);
   const longTextPendingRef = useRef<RichTextNode | null>(null);
   const longTextWriteTimerRef = useRef<number | null>(null);
+  const chapterEditTimerRef = useRef<number | null>(null);
+  const chapterEditPendingRef = useRef<{
+    chapterId: string;
+    patch: { title?: string; text?: string };
+  } | null>(null);
   const [chapterTitleStyle, setChapterTitleStyle] =
     useState<ChapterTitleStyle>("auto");
   const [chapterIndex, setChapterIndex] = useState(1);
@@ -183,6 +187,8 @@ export default function ComposePage() {
     return () => {
       if (longTextWriteTimerRef.current !== null)
         window.clearTimeout(longTextWriteTimerRef.current);
+      if (chapterEditTimerRef.current !== null)
+        window.clearTimeout(chapterEditTimerRef.current);
       if (draftSaveTimerRef.current !== null)
         window.clearTimeout(draftSaveTimerRef.current);
     };
@@ -308,25 +314,19 @@ export default function ComposePage() {
       if (blocks.length > 1) {
         console.warn(
           "[长文本] 编辑器多节点文档",
-          blocks.map((node) => ({
-            type: node.type,
-            title: node.attrs?.title,
-            chapterId: node.attrs?.chapterId,
-            chars: String(node.attrs?.text ?? "").length,
-          })),
+          blocks
+            .map(
+              (node) =>
+                `${node.type}|${String(node.attrs?.title ?? "")}|${String(node.attrs?.chapterId ?? "")}|${String(node.attrs?.text ?? "").length}`,
+            )
+            .join(" ; "),
         );
-        if (!editorPollutedRef.current) {
-          // 编辑器被污染（历史插入残留）：写回首块并重建一次，回到单章节。
-          editorPollutedRef.current = true;
-          const first = blocks[0];
-          if (first) {
-            longTextPendingRef.current = { type: "doc", content: [first] };
-            setLongTextDocumentVersion((version) => version + 1);
-          }
-          return;
+        // 防御：只写回首块；编辑器文档由 RichTextEditor 自动清理回单章。
+        const first = blocks[0];
+        if (first) {
+          longTextPendingRef.current = { type: "doc", content: [first] };
         }
-      } else {
-        editorPollutedRef.current = false;
+        return;
       }
       longTextPendingRef.current = next;
       if (longTextWriteTimerRef.current !== null)
@@ -481,6 +481,51 @@ export default function ComposePage() {
     replaceLongTextDocument({ type: "doc", content: list });
     setActiveChapterIndex(activeChapterIndexRef.current);
     setNotice(`已在光标处拆分为“${String(current.attrs?.title ?? "当前章")}”与“第 ${index + 2} 章”`);
+  };
+
+  /** 把防抖中的章节编辑写回整体文档（按章节 id 定位，不动其他章节）。 */
+  const commitChapterEdit = () => {
+    const pending = chapterEditPendingRef.current;
+    chapterEditPendingRef.current = null;
+    if (!pending) return;
+    const list = contentRef.current.content ?? [];
+    const index = list.findIndex(
+      (node) => String(node.attrs?.chapterId) === pending.chapterId,
+    );
+    if (index < 0) return;
+    const current = list[index];
+    if (!current) return;
+    const updated = {
+      ...current,
+      attrs: {
+        ...current.attrs,
+        ...(pending.patch.title !== undefined
+          ? { title: pending.patch.title }
+          : {}),
+        ...(pending.patch.text !== undefined
+          ? { text: pending.patch.text }
+          : {}),
+      },
+    };
+    replaceContent({
+      type: "doc",
+      content: [
+        ...list.slice(0, index),
+        updated,
+        ...list.slice(index + 1),
+      ],
+    });
+  };
+
+  /** 章节编辑回调（来自节点视图的引用修改）：防抖后写回整体数据。 */
+  const handleChapterEdit = (
+    chapterId: string,
+    patch: { title?: string; text?: string },
+  ) => {
+    chapterEditPendingRef.current = { chapterId, patch };
+    if (chapterEditTimerRef.current !== null)
+      window.clearTimeout(chapterEditTimerRef.current);
+    chapterEditTimerRef.current = window.setTimeout(commitChapterEdit, 300);
   };
 
   const closeLongTextMode = () => {
@@ -714,11 +759,11 @@ export default function ComposePage() {
       longTextMode={longTextMode}
       onChange={updateContent}
       onSplitChapter={splitCurrentChapter}
+      onChapterEdit={handleChapterEdit}
       onSubmit={(latestContent) => void publish(latestContent)}
       savedAt={autosave.savedAt}
       onReady={(editorInstance) => {
         editorRef.current = editorInstance;
-        editorPollutedRef.current = false;
       }}
       onExpand={() => setMode("full")}
       onModeToolsOpen={() => setMode("full")}

@@ -77,6 +77,9 @@ export const LongTextBlock = Node.create({
     return {
       /** 宿主注册的光标处切章处理器；未注册时节点视图走内置插入路径。 */
       onSplit: null as null | ((before: string, after: string) => void),
+      /** 宿主注册的章节编辑回调：修改通过引用传回宿主，不直接改节点属性。 */
+      onChapterEdit:
+        null as null | ((chapterId: string, patch: { title?: string; text?: string }) => void),
     };
   },
   addNodeView() {
