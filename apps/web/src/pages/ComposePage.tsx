@@ -109,7 +109,9 @@ export default function ComposePage() {
   const generationRef = useRef(0);
   const editorRef = useRef<Editor | null>(null);
   const longTextDraftReadyRef = useRef(false);
+  const longTextOperationRef = useRef(0);
   const [longTextMode, setLongTextMode] = useState(false);
+  const [longTextDocumentVersion, setLongTextDocumentVersion] = useState(0);
   const [chapterTitleStyle, setChapterTitleStyle] =
     useState<ChapterTitleStyle>("auto");
   const [chapterIndex, setChapterIndex] = useState(1);
@@ -192,6 +194,10 @@ export default function ComposePage() {
     setContent(next);
     setGeneration(generationRef.current);
   };
+  const replaceLongTextDocument = (next: RichTextNode) => {
+    replaceContent(next);
+    setLongTextDocumentVersion((version) => version + 1);
+  };
   const updateContent = (next: RichTextNode) => {
     if (isPlaceholderData) return;
     if (longTextMode) {
@@ -202,24 +208,29 @@ export default function ComposePage() {
     replaceContent(merged);
   };
   const closeLongTextMode = () => {
+    longTextOperationRef.current += 1;
     longTextDraftReadyRef.current = false;
     setLongTextMode(false);
   };
   const openLongTextMode = async () => {
+    const operation = ++longTextOperationRef.current;
     longTextDraftReadyRef.current = false;
     setLongTextMode(true);
     try {
       const stored = await loadLongTextDraft(LOCAL_LONG_TEXT_KEY);
+      if (operation !== longTextOperationRef.current) return;
       if (stored) {
-        replaceContent(stored);
+        replaceLongTextDocument(stored);
         setNotice("已恢复本机长文本副本");
       } else {
-        replaceContent({ type: "doc", content: [] });
+        replaceLongTextDocument({ type: "doc", content: [] });
       }
     } catch {
-      setNotice("无法读取本机草稿，已打开空白长文本工作台");
+      if (operation === longTextOperationRef.current)
+        setNotice("无法读取本机草稿，已打开空白长文本工作台");
     } finally {
-      longTextDraftReadyRef.current = true;
+      if (operation === longTextOperationRef.current)
+        longTextDraftReadyRef.current = true;
     }
   };
   const handleLongTextImport = async (
@@ -236,8 +247,9 @@ export default function ComposePage() {
         return;
       }
       const imported = createLongTextDocument(text, chapterTitleStyle);
+      longTextOperationRef.current += 1;
       longTextDraftReadyRef.current = true;
-      replaceContent(imported);
+      replaceLongTextDocument(imported);
       setLongTextMode(true);
       setNotice(`已导入 ${file.name}，共 ${text.length.toLocaleString()} 字`);
     } catch (error) {
@@ -302,8 +314,10 @@ export default function ComposePage() {
 
   const editor = (
     <RichTextEditor
-      // 切章时重建编辑器，保证新章节内容一定被加载（独立 undo 历史更合理）。
-      key={longTextMode ? "long-text" : activeIndex}
+      // 导入或恢复整本草稿时重建编辑器；普通输入不改变该版本，保留编辑体验。
+      key={
+        longTextMode ? `long-text-${longTextDocumentVersion}` : activeIndex
+      }
       content={longTextMode ? content : editorContent}
       mode={mode}
       editable={!isPlaceholderData}

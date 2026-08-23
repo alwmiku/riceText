@@ -13,6 +13,7 @@ export function LongTextView({
   updateAttributes,
   editor,
   getPos,
+  selected,
 }: NodeViewProps) {
   const attrs = node.attrs as unknown as {
     chapterId: string;
@@ -21,12 +22,21 @@ export function LongTextView({
     order: number;
   };
   const [value, setValue] = useState(attrs.text ?? "");
+  const [isEditing, setIsEditing] = useState(selected);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setValue(attrs.text ?? "");
   }, [attrs.text]);
+
+  useEffect(() => {
+    setIsEditing(selected);
+  }, [selected]);
+
+  useEffect(() => {
+    if (isEditing) textareaRef.current?.focus();
+  }, [isEditing]);
 
   useEffect(() => {
     return () => {
@@ -80,6 +90,7 @@ export function LongTextView({
         as="section"
         className="rt-long-text"
         data-node-type="long-text-block"
+        data-chapter-id={attrs.chapterId}
         contentEditable={false}
       >
         <div className="rt-long-text__header">
@@ -91,6 +102,34 @@ export function LongTextView({
           </span>
         </div>
         <div className="rt-long-text__content">{value}</div>
+      </NodeViewWrapper>
+    );
+  }
+
+  if (!isEditing) {
+    const excerpt = value.replace(/\s+/g, " ").slice(0, 120);
+    return (
+      <NodeViewWrapper
+        as="section"
+        className="rt-long-text rt-long-text--preview"
+        data-node-type="long-text-block"
+        data-chapter-id={attrs.chapterId}
+        contentEditable={false}
+      >
+        <button
+          type="button"
+          className="rt-long-text__preview"
+          onClick={() => setIsEditing(true)}
+          aria-label={`编辑章节 ${attrs.title || "未命名章节"}`}
+        >
+          <strong className="rt-long-text__title">
+            {attrs.title || "未命名章节"}
+          </strong>
+          <span className="rt-long-text__meta">
+            {value.length.toLocaleString()} 字
+          </span>
+          {excerpt && <span className="rt-long-text__excerpt">{excerpt}</span>}
+        </button>
       </NodeViewWrapper>
     );
   }

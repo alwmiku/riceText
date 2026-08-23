@@ -55,6 +55,16 @@ export function ChapterSidebar({ editor }: { editor: Editor | null }) {
       .setNodeSelection(item.pos)
       .scrollIntoView()
       .run();
+    window.requestAnimationFrame(() => {
+      for (const element of editor.view.dom.querySelectorAll<HTMLElement>(
+        "[data-chapter-id]",
+      )) {
+        if (element.dataset.chapterId === item.id) {
+          element.scrollIntoView({ block: "start", behavior: "smooth" });
+          break;
+        }
+      }
+    });
   };
 
   const deleteChapter = (index: number) => {
