@@ -55,10 +55,12 @@ export function ChapterRawPreview({
   rawText,
   chapters,
   activeIndex,
+  onCreateFromGap,
 }: {
   rawText: string | null;
   chapters: readonly CoverageChapter[];
   activeIndex: number;
+  onCreateFromGap?: (text: string, start: number, end: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -215,27 +217,47 @@ export function ChapterRawPreview({
       {gaps.length > 0 && (
         <div className="chapter-raw-preview__gaps">
           {gaps.map((gap, index) => (
-            <button
+            <div
               key={`${gap.start}-${gap.end}`}
-              type="button"
               className={`chapter-raw-preview__gap${focusedGap === index ? " chapter-raw-preview__gap--active" : ""}`}
-              onClick={() => {
-                setFocusedGap(index);
-                const blockIndex = Math.floor(gap.start / BLOCK_CHARS);
-                scrollToOffset(
-                  offsets[Math.min(blockIndex, offsets.length - 1)] ?? 0,
-                );
-              }}
-              title="滚动到该段原文"
             >
-              <span className="font-mono">
-                [{gap.start.toLocaleString()}, {gap.end.toLocaleString()})
-              </span>
-              <span>{gap.chars.toLocaleString()} 字</span>
-              <span className="truncate">
-                {rawText?.slice(gap.start, gap.start + 60) ?? ""}
-              </span>
-            </button>
+              <button
+                type="button"
+                className="chapter-raw-preview__gap-main"
+                onClick={() => {
+                  setFocusedGap(index);
+                  const blockIndex = Math.floor(gap.start / BLOCK_CHARS);
+                  scrollToOffset(
+                    offsets[Math.min(blockIndex, offsets.length - 1)] ?? 0,
+                  );
+                }}
+                title="滚动到该段原文"
+              >
+                <span className="font-mono">
+                  [{gap.start.toLocaleString()}, {gap.end.toLocaleString()})
+                </span>
+                <span>{gap.chars.toLocaleString()} 字</span>
+                <span className="truncate">
+                  {rawText?.slice(gap.start, gap.start + 60) ?? ""}
+                </span>
+              </button>
+              {onCreateFromGap ? (
+                <button
+                  type="button"
+                  className="chapter-raw-preview__gap-action"
+                  title="把这 1 段未切分文字创建为新章节"
+                  onClick={() =>
+                    onCreateFromGap(
+                      rawText?.slice(gap.start, gap.end) ?? "",
+                      gap.start,
+                      gap.end,
+                    )
+                  }
+                >
+                  + 建章
+                </button>
+              ) : null}
+            </div>
           ))}
         </div>
       )}

@@ -39,6 +39,8 @@ export interface RichTextEditorProps {
   onChange: (content: RichTextNode) => void;
   /** 每次事务产生 ProseMirror steps 时回调，供增量同步使用。 */
   onChangeSteps?: (steps: unknown[]) => void;
+  /** 光标处切章：宿主负责把章节拆为两章并重建编辑器。 */
+  onSplitChapter?: (before: string, after: string) => void;
   onSubmit?: (content: RichTextNode) => void;
   onReady?: (editor: Editor | null) => void;
   /** 最近一次成功保存时间，显示在编辑器底部。 */
@@ -56,6 +58,7 @@ export function RichTextEditor({
   longTextMode = false,
   onChange,
   onChangeSteps,
+  onSplitChapter,
   onSubmit,
   onReady,
   savedAt,
@@ -127,6 +130,24 @@ export function RichTextEditor({
     onReady?.(editor ?? null);
     return () => onReady?.(null);
   }, [editor, onReady]);
+
+  // 把宿主的“光标处切章”处理器注册到 longTextBlock 扩展存储，
+  // 使切章由宿主重排章节并重建编辑器，编辑器内始终保持单章节。
+  useEffect(() => {
+    if (!editor) return undefined;
+    const storage = (
+      editor.storage as unknown as {
+        longTextBlock?: {
+          onSplit?: null | ((before: string, after: string) => void);
+        };
+      }
+    ).longTextBlock;
+    if (!storage) return undefined;
+    storage.onSplit = onSplitChapter ?? null;
+    return () => {
+      storage.onSplit = null;
+    };
+  }, [editor, onSplitChapter]);
 
   // 权限或首屏加载状态变化时，只切换编辑能力，不重建 ProseMirror 实例。
   useEffect(() => {

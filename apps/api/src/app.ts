@@ -25,7 +25,7 @@ import {
   type RequestIdentity,
 } from "./auth.js";
 import { createDatabase } from "./db.js";
-import { DocumentService } from "./document-service.js";
+import { DocumentService, sanitizeDocument } from "./document-service.js";
 import { DiceService } from "./dice-service.js";
 import { CommentService } from "./comment-service.js";
 import { DemoService } from "./demo-service.js";
@@ -425,6 +425,61 @@ export async function createApp(
     "/api/demo/chapters",
     { schema: getFastifySchema("listChapters") },
     async () => ({ items: demo.chapters() }),
+  );
+  // 章节差异同步：客户端上传本地章节清单（id + 内容哈希），
+  // 服务器只返回内容已变化的章节 id，实现最小改动上传。
+  app.post(
+    "/api/demo/novels/:novelId/chapters/sync",
+    async (request) => {
+      const body = request.body as {
+        chapters?: Array<{
+          id: string;
+          title: string;
+          order: number;
+          hash: string;
+        }>;
+      };
+      const items = body.chapters ?? [];
+      const serverHashes = demo.chapterHashes(params(request).novelId!);
+      const toUpdate = items
+        .filter((chapter) => serverHashes.get(chapter.id) !== chapter.hash)
+        .map((chapter) => chapter.id);
+      return { toUpdate, existing: [...serverHashes.keys()] };
+    },
+  );
+  app.put(
+    "/api/demo/novels/:novelId/chapters/:chapterId",
+    async (request, reply) => {
+      const user = requireEditor(request);
+      void user;
+      const body = request.body as {
+        title?: unknown;
+        order?: unknown;
+        content?: unknown;
+        hash?: unknown;
+        baseRevision?: unknown;
+      };
+      if (
+        typeof body.title !== "string" ||
+        typeof body.order !== "number" ||
+        typeof body.hash !== "string" ||
+        typeof body.baseRevision !== "number"
+      )
+        throw new HttpError(422, "INVALID_CHAPTER_SAVE", "章节保存字段无效");
+      const content = sanitizeDocument(body.content);
+      const saved = demo.saveChapter(
+        params(request).novelId!,
+        params(request).chapterId!,
+        {
+          title: body.title,
+          order: body.order,
+          content,
+          hash: body.hash,
+          baseRevision: body.baseRevision,
+        },
+      );
+      return reply.status(201).send(saved);
+    },
   );
   app.get(
     "/api/demo/documents/:documentId/suggestions",

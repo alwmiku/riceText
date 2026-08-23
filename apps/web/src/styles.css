@@ -270,11 +270,10 @@ button {
 }
 
 .chapter-raw-preview__gap {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  gap: 6px;
+  display: flex;
   align-items: center;
-  padding: 4px 6px;
+  gap: 6px;
+  padding: 0;
   font-size: 11px;
   color: #8f2b24;
   text-align: start;
@@ -287,6 +286,38 @@ button {
 .chapter-raw-preview__gap:hover,
 .chapter-raw-preview__gap--active {
   background: #fbe3e1;
+}
+
+.chapter-raw-preview__gap-main {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0 4px 6px;
+  color: inherit;
+  text-align: start;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.chapter-raw-preview__gap-action {
+  margin-right: 4px;
+  padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #176e66;
+  white-space: nowrap;
+  background: #e2efec;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.chapter-raw-preview__gap-action:hover {
+  background: #cfe6df;
 }
 
 .chapter-raw-preview__scroll {

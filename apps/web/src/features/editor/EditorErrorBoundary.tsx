@@ -15,6 +15,7 @@ export class EditorErrorBoundary extends Component<
   state: EditorErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): EditorErrorBoundaryState {
+    console.error("[长文本编辑区错误]", error);
     return { error };
   }
 

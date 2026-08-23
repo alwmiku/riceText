@@ -231,6 +231,12 @@ const migrationV2 = `
 ALTER TABLE chapters ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
 `;
 
+/** 章节内容与内容哈希：支持“对比差异、最小上传”的章节同步。 */
+const migrationV3 = `
+ALTER TABLE chapters ADD COLUMN content_json TEXT;
+ALTER TABLE chapters ADD COLUMN content_hash TEXT;
+`;
+
 /** 幂等写入开发身份、正文和演示业务数据，重复启动不会覆盖用户修改。 */
 function seed(db: DatabaseSync): void {
   const now = new Date().toISOString();
@@ -292,6 +298,7 @@ export function createDatabase(options: DatabaseOptions): DatabaseSync {
   db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)");
   runMigration(db, 1, migrationV1);
   runMigration(db, 2, migrationV2);
+  runMigration(db, 3, migrationV3);
   if (options.seed !== false) seed(db);
   return db;
 }

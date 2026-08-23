@@ -54,7 +54,22 @@ export function LongTextView({
     (next: string) => {
       const limited = next.slice(0, MAX_CHAPTER_LENGTH);
       setValue(limited);
-      updateAttributes({ text: limited });
+      try {
+        updateAttributes({ text: limited });
+      } catch {
+        // 节点可能正被销毁或位置失效；本地 value 已更新，重建时会带上。
+      }
+    },
+    [updateAttributes],
+  );
+
+  const handleTitleChange = useCallback(
+    (next: string) => {
+      try {
+        updateAttributes({ title: next.slice(0, 500) });
+      } catch {
+        // 同上：标题输入失败不中断编辑。
+      }
     },
     [updateAttributes],
   );
@@ -67,6 +82,23 @@ export function LongTextView({
     const after = textarea.value.slice(cursor);
     if (!after.trim()) return;
 
+    // 宿主已注册切章处理器时由宿主重排章节并重建编辑器（编辑器保持单章节）。
+    const splitHandler = (
+      editor.storage as unknown as {
+        longTextBlock?: {
+          onSplit?: null | ((before: string, after: string) => void);
+        };
+      }
+    ).longTextBlock?.onSplit;
+    if (splitHandler) {
+      splitHandler(before, after);
+      return;
+    }
+    console.warn(
+      "[长文本] 切章未找到宿主处理器，走编辑器内插入路径（会导致多节点）",
+    );
+
+    // 兜底路径：直接在文档中插入新章节节点。
     updateAttributes({ text: before });
 
     const pos = getPos();
@@ -147,7 +179,7 @@ export function LongTextView({
         <input
           className="rt-long-text__title"
           value={attrs.title ?? ""}
-          onChange={(event) => updateAttributes({ title: event.target.value })}
+          onChange={(event) => handleTitleChange(event.target.value)}
           placeholder="章节标题"
           aria-label="章节标题"
         />

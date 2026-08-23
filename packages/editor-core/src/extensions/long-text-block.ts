@@ -73,6 +73,12 @@ export const LongTextBlock = Node.create({
           commands.insertContent({ type: this.name, attrs }),
     };
   },
+  addStorage() {
+    return {
+      /** 宿主注册的光标处切章处理器；未注册时节点视图走内置插入路径。 */
+      onSplit: null as null | ((before: string, after: string) => void),
+    };
+  },
   addNodeView() {
     return ReactNodeViewRenderer(LongTextView);
   },

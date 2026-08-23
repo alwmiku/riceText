@@ -33,12 +33,13 @@ import {
   ChapterCoverageDialog,
   type CoverageChapter,
 } from "../features/novel/ChapterCoverageDialog";
-import { ChapterRawPreview } from "../features/novel/ChapterRawPreview";
+import { ChapterRawPreview, collectRawGaps } from "../features/novel/ChapterRawPreview";
 import {
   getCommentThread,
   getDocument,
   listDemoChapters,
   restoreRevision,
+  uploadLongTextChapter,
 } from "../lib/api";
 import { mergeChapter, splitDocumentByHeadings } from "../lib/chapters";
 import {
@@ -55,7 +56,7 @@ import type {
   RichTextNode,
   SaveState,
 } from "../lib/types";
-import { cn, formatTime } from "../lib/utils";
+import { cn, formatTime, sha256Hex } from "../lib/utils";
 
 const LOCAL_LONG_TEXT_KEY = "ricetext:local-long-text:demo-post";
 const LOCAL_LONG_TEXT_RAW_KEY = "ricetext:local-long-text-raw:demo-post";
@@ -131,6 +132,7 @@ export default function ComposePage() {
   const [longTextDocumentVersion, setLongTextDocumentVersion] = useState(0);
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
   const activeChapterIndexRef = useRef(0);
+  const editorPollutedRef = useRef(false);
   const longTextPendingRef = useRef<RichTextNode | null>(null);
   const longTextWriteTimerRef = useRef<number | null>(null);
   const [chapterTitleStyle, setChapterTitleStyle] =
@@ -144,6 +146,16 @@ export default function ComposePage() {
   const [coverageOpen, setCoverageOpen] = useState(false);
   const [rawText, setRawText] = useState<string | null>(null);
   const [addChapterOpen, setAddChapterOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadDiff, setUploadDiff] = useState<{
+    total: number;
+    toUpdate: number;
+    added: number;
+    modified: number;
+    gaps: number;
+    rows: Array<{ id: string; title: string; status: "新增" | "修改" | "未变化" }>;
+  } | null>(null);
   const [addChapterTitle, setAddChapterTitle] = useState("");
   const [addChapterText, setAddChapterText] = useState("");
   const { data: chapterDirectory = [] } = useQuery({
@@ -175,25 +187,9 @@ export default function ComposePage() {
         window.clearTimeout(draftSaveTimerRef.current);
     };
   }, []);
-  useEffect(() => {
-    if (!longTextMode || !longTextDraftReadyRef.current || generation === 0)
-      return;
-    if (draftSaveTimerRef.current !== null)
-      window.clearTimeout(draftSaveTimerRef.current);
-    draftSaveTimerRef.current = window.setTimeout(() => {
-      void saveLongTextDraft(LOCAL_LONG_TEXT_KEY, contentRef.current).catch(
-        () => {
-          setNotice("本机草稿保存失败，请检查浏览器存储空间");
-        },
-      );
-    }, 1500);
-    return () => {
-      if (draftSaveTimerRef.current !== null) {
-        window.clearTimeout(draftSaveTimerRef.current);
-        draftSaveTimerRef.current = null;
-      }
-    };
-  }, [content, generation, longTextMode]);
+
+  // 长文本模式不做自动保存：所有改动只存在本页内存，
+  // 由“保存本机草稿”或“确定并上传”显式提交。
 
   // 一章一界面：普通模式把完整文档按二级标题切分为章节；长文本模式不经过该切分。
   const { chapters } = useMemo(
@@ -283,7 +279,15 @@ export default function ComposePage() {
     const pending = longTextPendingRef.current;
     longTextPendingRef.current = null;
     if (!pending) return;
-    const blocks = pending.content ?? [];
+    let blocks = pending.content ?? [];
+    if (blocks.length > 1) {
+      // 编辑器理论上只含当前一章；出现多节点说明文档被污染。
+      // 只写回首块，防止普通编辑（如改标题）被误判为新增章节。
+      console.warn("[长文本] 编辑器多节点文档，仅保留当前章", blocks.length);
+      const first = blocks[0];
+      if (!first) return;
+      blocks = [first];
+    }
     const list = [...(contentRef.current.content ?? [])];
     const start = activeChapterIndexRef.current;
     list.splice(start, blocks.length, ...blocks);
@@ -300,6 +304,30 @@ export default function ComposePage() {
   const updateContent = (next: RichTextNode) => {
     if (isPlaceholderData) return;
     if (longTextMode) {
+      const blocks = next.content ?? [];
+      if (blocks.length > 1) {
+        console.warn(
+          "[长文本] 编辑器多节点文档",
+          blocks.map((node) => ({
+            type: node.type,
+            title: node.attrs?.title,
+            chapterId: node.attrs?.chapterId,
+            chars: String(node.attrs?.text ?? "").length,
+          })),
+        );
+        if (!editorPollutedRef.current) {
+          // 编辑器被污染（历史插入残留）：写回首块并重建一次，回到单章节。
+          editorPollutedRef.current = true;
+          const first = blocks[0];
+          if (first) {
+            longTextPendingRef.current = { type: "doc", content: [first] };
+            setLongTextDocumentVersion((version) => version + 1);
+          }
+          return;
+        }
+      } else {
+        editorPollutedRef.current = false;
+      }
       longTextPendingRef.current = next;
       if (longTextWriteTimerRef.current !== null)
         window.clearTimeout(longTextWriteTimerRef.current);
@@ -402,6 +430,59 @@ export default function ComposePage() {
     setNotice(`已添加章节“${title || "未命名章节"}”`);
   };
 
+  /** 从未切分到任何章节的原文段落创建新章节（本地核对修正）。 */
+  const createChapterFromGap = (text: string) => {
+    if (!text.trim()) return;
+    commitPendingLongText();
+    const list = [...(contentRef.current.content ?? [])];
+    const node: RichTextNode = {
+      type: "longTextBlock",
+      attrs: {
+        chapterId: `gap-chapter-${Date.now()}`,
+        title: "未命名章节",
+        text: text.slice(0, MAX_CHAPTER_LENGTH),
+        order: list.length,
+        start: null,
+        end: null,
+      },
+    };
+    list.push(node);
+    activeChapterIndexRef.current = list.length - 1;
+    replaceLongTextDocument({ type: "doc", content: list });
+    setActiveChapterIndex(activeChapterIndexRef.current);
+    setNotice("已把未切分段落创建为新章节，请补充标题并核对内容");
+  };
+
+  /** 光标处切章：把当前章节拆为两章，编辑器重建后只加载新章。 */
+  const splitCurrentChapter = (before: string, after: string) => {
+    commitPendingLongText();
+    const list = [...(contentRef.current.content ?? [])];
+    const index = activeChapterIndexRef.current;
+    const current = list[index];
+    if (!current) return;
+    const newNode: RichTextNode = {
+      type: "longTextBlock",
+      attrs: {
+        chapterId: `chapter-${Date.now()}`,
+        title: `第 ${index + 2} 章`,
+        text: after,
+        order: index + 1,
+        start: null,
+        end: null,
+      },
+    };
+    list.splice(
+      index,
+      1,
+      { ...current, attrs: { ...current.attrs, text: before } },
+      newNode,
+    );
+    activeChapterIndexRef.current = index + 1;
+    replaceLongTextDocument({ type: "doc", content: list });
+    setActiveChapterIndex(activeChapterIndexRef.current);
+    setNotice(`已在光标处拆分为“${String(current.attrs?.title ?? "当前章")}”与“第 ${index + 2} 章”`);
+  };
+
   const closeLongTextMode = () => {
     longTextOperationRef.current += 1;
     longTextDraftReadyRef.current = false;
@@ -413,13 +494,6 @@ export default function ComposePage() {
     if (draftSaveTimerRef.current !== null) {
       window.clearTimeout(draftSaveTimerRef.current);
       draftSaveTimerRef.current = null;
-    }
-    if (generationRef.current > 0) {
-      void saveLongTextDraft(LOCAL_LONG_TEXT_KEY, contentRef.current).catch(
-        () => {
-          setNotice("本机草稿保存失败，请检查浏览器存储空间");
-        },
-      );
     }
     if (normalContentRef.current) {
       replaceContent(normalContentRef.current);
@@ -529,6 +603,69 @@ export default function ComposePage() {
       setNotice(error instanceof Error ? error.message : "版本回退失败");
     }
   };
+  /** 准备分章上传：先展示本地核对结果（未切分段落），再逐章上传。 */
+  const prepareUpload = async () => {
+    commitPendingLongText();
+    const nodes = contentRef.current.content ?? [];
+    if (nodes.length === 0) {
+      setNotice("当前没有可上传的章节");
+      return;
+    }
+    const gaps = collectRawGaps(coverageChapters);
+    setUploadDiff({
+      total: nodes.length,
+      toUpdate: nodes.length,
+      added: nodes.length,
+      modified: 0,
+      gaps: gaps.length,
+      rows: nodes.map((node, index) => ({
+        id: String(node.attrs?.chapterId ?? `chapter-${index}`),
+        title: String(node.attrs?.title ?? "未命名章节"),
+        status: "新增" as const,
+      })),
+    });
+    setUploadOpen(true);
+  };
+
+  /** 确认后分章上传：每个章节一个请求（含内容与哈希）。 */
+  const confirmUpload = async () => {
+    if (!uploadDiff) return;
+    const nodes = contentRef.current.content ?? [];
+    setUploading(true);
+    let uploaded = 0;
+    try {
+      const directory = await listDemoChapters();
+      const revisionById = new Map(
+        directory.map((chapter) => [chapter.id, chapter.revision]),
+      );
+      for (let index = 0; index < nodes.length; index += 1) {
+        const node = nodes[index];
+        if (!node) continue;
+        const chapterId = String(
+          node.attrs?.chapterId ?? `chapter-${index}`,
+        );
+        const hash = await sha256Hex(String(node.attrs?.text ?? ""));
+        await uploadLongTextChapter("demo-post", chapterId, {
+          title: String(node.attrs?.title ?? "未命名章节"),
+          order: index,
+          content: { type: "doc", content: [{ ...node }] },
+          hash,
+          baseRevision: revisionById.get(chapterId) ?? 0,
+        });
+        uploaded += 1;
+      }
+      setUploadOpen(false);
+      setUploadDiff(null);
+      setNotice(`已分章上传 ${uploaded} 章`);
+      void queryClient.invalidateQueries({ queryKey: ["demo", "chapters"] });
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? `上传失败：${error.message}` : "上传失败",
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
   // 显式发布先 flush，保证提示出现时最新正文已经进入保存队列。
   const publish = async (latestContent?: RichTextNode) => {
     if (longTextMode) {
@@ -576,10 +713,12 @@ export default function ComposePage() {
       editable={!isPlaceholderData}
       longTextMode={longTextMode}
       onChange={updateContent}
+      onSplitChapter={splitCurrentChapter}
       onSubmit={(latestContent) => void publish(latestContent)}
       savedAt={autosave.savedAt}
       onReady={(editorInstance) => {
         editorRef.current = editorInstance;
+        editorPollutedRef.current = false;
       }}
       onExpand={() => setMode("full")}
       onModeToolsOpen={() => setMode("full")}
@@ -756,6 +895,14 @@ export default function ComposePage() {
               >
                 添加章节
               </Button>
+              <Button
+                size="sm"
+                disabled={uploading}
+                onClick={() => void prepareUpload()}
+              >
+                <Save size={14} />
+                {uploading ? "上传中…" : "确定并上传"}
+              </Button>
               <Button size="sm" variant="ghost" onClick={closeLongTextMode}>
                 退出长文本
               </Button>
@@ -774,6 +921,7 @@ export default function ComposePage() {
               rawText={rawText}
               chapters={coverageChapters}
               activeIndex={activeChapterIndex}
+              onCreateFromGap={createChapterFromGap}
             />
             <div className="min-w-0">
               <EditorErrorBoundary>{editor}</EditorErrorBoundary>
@@ -908,6 +1056,76 @@ export default function ComposePage() {
             </Button>
           </div>
         </div>
+      </Dialog>
+      <Dialog
+        open={uploadOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setUploadOpen(false);
+            setUploadDiff(null);
+          }
+        }}
+        title="确定并分章上传"
+        description="每个章节作为一个独立内容上传到服务器。"
+        className="max-w-2xl"
+      >
+        {uploadDiff ? (
+          <div className="space-y-3">
+            {uploadDiff.gaps > 0 ? (
+              <div className="rounded-md border border-[#f0b4b0] bg-[#fdf1f0] px-3 py-2 text-xs text-[#8f2b24]">
+                ⚠ 本地核对发现仍有{" "}
+                <strong>{uploadDiff.gaps}</strong> 段文字未切分进任何章节，
+                建议先在上方原文对照列核对并处理，再上传。
+              </div>
+            ) : (
+              <div className="rounded-md border border-[#add4cb] bg-[#edf8f5] px-3 py-2 text-xs text-[#185f57]">
+                ✓ 本地核对通过：全部原文已连续切分进章节，无未切分段落。
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              将分章上传 <strong>{uploadDiff.total}</strong> 个章节（新增{" "}
+              {uploadDiff.added}，修改 {uploadDiff.modified}）。未变化的章节
+              不会重复上传。
+            </p>
+            <div className="max-h-64 overflow-auto rounded-md border p-2">
+              {uploadDiff.rows.map((row, index) => (
+                <div
+                  key={row.id || index}
+                  className="flex items-center justify-between gap-2 border-b py-1 text-xs last:border-b-0"
+                >
+                  <span className="truncate">
+                    {index + 1}. {row.title}
+                  </span>
+                  <span
+                    className={
+                      row.status === "未变化"
+                        ? "text-muted-foreground"
+                        : "text-[#176e66]"
+                    }
+                  >
+                    {row.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={uploading}
+                onClick={() => {
+                  setUploadOpen(false);
+                  setUploadDiff(null);
+                }}
+              >
+                取消
+              </Button>
+              <Button size="sm" disabled={uploading} onClick={() => void confirmUpload()}>
+                {uploading ? "上传中…" : "确认分章上传"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Dialog>
     </main>
   );

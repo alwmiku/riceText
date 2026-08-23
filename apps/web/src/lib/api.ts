@@ -98,6 +98,44 @@ export async function listDemoChapters(): Promise<DemoChapterItem[]> {
   return result.items;
 }
 
+/** 服务器端章节内容哈希清单中的一项。 */
+export interface ChapterSyncItem {
+  id: string;
+  title: string;
+  order: number;
+  /** 章节正文的内容哈希（SHA-256）。 */
+  hash: string;
+}
+
+/** 对比本地章节清单与服务器，返回需要上传的章节 id。 */
+export async function syncLongTextChapters(
+  novelId: string,
+  chapters: readonly ChapterSyncItem[],
+): Promise<{ toUpdate: string[]; existing: string[] }> {
+  return request(`/demo/novels/${novelId}/chapters/sync`, {
+    method: "POST",
+    body: JSON.stringify({ chapters }),
+  });
+}
+
+/** 上传单个章节（含内容与哈希）；baseRevision 冲突时抛出 409。 */
+export async function uploadLongTextChapter(
+  novelId: string,
+  chapterId: string,
+  input: {
+    title: string;
+    order: number;
+    content: RichTextNode;
+    hash: string;
+    baseRevision: number;
+  },
+): Promise<{ id: string; title: string; order: number; revision: number }> {
+  return request(`/demo/novels/${novelId}/chapters/${chapterId}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
 /**
  * 使用 baseRevision 保存完整 Tiptap JSON。
  *
