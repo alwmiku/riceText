@@ -2,8 +2,10 @@ import type { Editor } from "@tiptap/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  BookOpen,
   Check,
   CloudOff,
+  FileUp,
   LoaderCircle,
   Maximize2,
   MessageCircle,
@@ -12,12 +14,13 @@ import {
   Smartphone,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useAppContext } from "../app-context";
 import { Button, Dialog, Segmented } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
 import { ChapterRail, DemoBusinessPanel } from "../features/demo/DemoPanels";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
+import { createLongTextDocument } from "../features/editor/long-text-import";
 import { useAutosave } from "../features/editor/useAutosave";
 import {
   getCommentThread,
@@ -88,8 +91,10 @@ export default function ComposePage() {
   const [content, setContent] = useState<RichTextNode>(data.content);
   const [generation, setGeneration] = useState(0);
   const contentRef = useRef<RichTextNode>(data.content);
+  const longTextFileInputRef = useRef<HTMLInputElement | null>(null);
   const generationRef = useRef(0);
   const editorRef = useRef<Editor | null>(null);
+  const [longTextMode, setLongTextMode] = useState(false);
   const [chapterIndex, setChapterIndex] = useState(1);
   const [mode, setMode] = useState<EditorMode>(() =>
     window.matchMedia("(max-width: 600px)").matches ? "mobile" : "full",
@@ -150,14 +155,42 @@ export default function ComposePage() {
     },
   });
   // Tiptap 初始化时可能规范化 JSON；服务器查询完成前忽略这类非用户更新，避免错误 baseRevision。
-  // 编辑器只编辑当前章节片段，变更合并回完整文档后再进入保存链路。
+  // 普通模式只合并当前章节；长文本模式直接维护完整的 longTextBlock 文档。
+  const replaceContent = (next: RichTextNode) => {
+    contentRef.current = next;
+    generationRef.current += 1;
+    setContent(next);
+    setGeneration(generationRef.current);
+  };
   const updateContent = (next: RichTextNode) => {
     if (isPlaceholderData) return;
+    if (longTextMode) {
+      replaceContent(next);
+      return;
+    }
     const merged = mergeChapter(contentRef.current, activeIndex, next);
-    contentRef.current = merged;
-    generationRef.current += 1;
-    setContent(merged);
-    setGeneration(generationRef.current);
+    replaceContent(merged);
+  };
+  const handleLongTextImport = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      if (!text.trim()) {
+        setNotice("未导入空白文本");
+        return;
+      }
+      const imported = createLongTextDocument(text);
+      replaceContent(imported);
+      setLongTextMode(true);
+      setNotice(`已导入 ${file.name}，共 ${text.length.toLocaleString()} 字`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "文本导入失败");
+    }
   };
   // 回滚响应已经是一个新 revision；编辑器通过受控 content 同步显示该快照。
   const rollback = async (revision: number) => {
@@ -185,12 +218,11 @@ export default function ComposePage() {
       latestContent ??
       (editorRef.current?.getJSON() as RichTextNode | undefined);
     if (snapshot) {
-      const merged = mergeChapter(contentRef.current, activeIndex, snapshot);
-      if (JSON.stringify(merged) !== JSON.stringify(contentRef.current)) {
-        contentRef.current = merged;
-        generationRef.current += 1;
-        setContent(merged);
-        setGeneration(generationRef.current);
+      const next = longTextMode
+        ? snapshot
+        : mergeChapter(contentRef.current, activeIndex, snapshot);
+      if (JSON.stringify(next) !== JSON.stringify(contentRef.current)) {
+        replaceContent(next);
       }
     }
     const saved = await autosave.flush(
@@ -208,10 +240,11 @@ export default function ComposePage() {
   const editor = (
     <RichTextEditor
       // 切章时重建编辑器，保证新章节内容一定被加载（独立 undo 历史更合理）。
-      key={activeIndex}
-      content={editorContent}
+      key={longTextMode ? "long-text" : activeIndex}
+      content={longTextMode ? content : editorContent}
       mode={mode}
       editable={!isPlaceholderData}
+      longTextMode={longTextMode}
       onChange={updateContent}
       onSubmit={(latestContent) => void publish(latestContent)}
       savedAt={autosave.savedAt}
@@ -237,11 +270,21 @@ export default function ComposePage() {
             · {identity.name}
           </p>
         </div>
-        <Segmented
-          value={mode}
-          onChange={setMode}
-          ariaLabel="编辑器布局"
-          options={[
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            size="sm"
+            variant={longTextMode ? "secondary" : "outline"}
+            aria-pressed={longTextMode}
+            onClick={() => setLongTextMode((current) => !current)}
+          >
+            <BookOpen size={14} />
+            长文本
+          </Button>
+          <Segmented
+            value={mode}
+            onChange={setMode}
+            ariaLabel="编辑器布局"
+            options={[
             {
               value: "compact",
               label: "极简",
@@ -249,8 +292,9 @@ export default function ComposePage() {
             },
             { value: "full", label: "完整", icon: <Monitor size={14} /> },
             { value: "mobile", label: "移动", icon: <Smartphone size={14} /> },
-          ]}
-        />
+            ]}
+          />
+        </div>
       </div>
       {(autosave.state === "conflict" ||
         (autosave.state === "error" && autosave.conflictMessage)) && (
@@ -303,7 +347,47 @@ export default function ComposePage() {
           </button>
         </div>
       )}
-      {mode === "full" ? (
+      {longTextMode ? (
+        <section className="mx-auto max-w-[1180px]">
+          <div className="document-bar surface mb-2">
+            <div className="min-w-0">
+              <p className="document-title">长文本工作台</p>
+              <SaveStatus
+                state={isPlaceholderData ? "loading" : autosave.state}
+                revision={autosave.revision}
+                savedAt={autosave.savedAt}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                ref={longTextFileInputRef}
+                type="file"
+                accept="text/plain,.txt"
+                className="sr-only"
+                aria-label="导入长文本文件"
+                onChange={(event) => void handleLongTextImport(event)}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isPlaceholderData}
+                onClick={() => longTextFileInputRef.current?.click()}
+              >
+                <FileUp size={14} />
+                导入 .txt
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setLongTextMode(false)}
+              >
+                退出长文本
+              </Button>
+            </div>
+          </div>
+          {editor}
+        </section>
+      ) : mode === "full" ? (
         <div className="editor-workspace">
           <ChapterRail
             chapters={chapters}
