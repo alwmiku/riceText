@@ -233,6 +233,10 @@ export interface LongTextBlockAttributes {
   text: string
   /** 小说内部的展示顺序。 */
   order: number
+  /** 在导入原文中的起始偏移；手动添加的章节为 null。 */
+  start: number | null
+  /** 在导入原文中的结束偏移（不含）；手动添加的章节为 null。 */
+  end: number | null
 }
 
 /** 为查看器图库归一化的富图片。 */

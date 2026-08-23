@@ -20,6 +20,8 @@ export function createLongTextDocument(
         title: chapter.title,
         text: chapter.text,
         order: index,
+        start: chapter.start,
+        end: chapter.end,
       },
     })),
   };

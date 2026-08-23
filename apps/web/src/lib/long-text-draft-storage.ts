@@ -69,3 +69,18 @@ export function saveLongTextDraft(
     await requestResult(store.put(content, key));
   });
 }
+
+/** 读取导入时的原始全文；用于章节切割的原文对照审计。 */
+export function loadLongTextRaw(key: string): Promise<string | undefined> {
+  return withStore("readonly", async (store) => {
+    const value = await requestResult(store.get(key));
+    return typeof value === "string" ? value : undefined;
+  });
+}
+
+/** 保存导入时的原始全文；仅在重新导入时覆盖。 */
+export function saveLongTextRaw(key: string, text: string): Promise<void> {
+  return withStore("readwrite", async (store) => {
+    await requestResult(store.put(text, key));
+  });
+}

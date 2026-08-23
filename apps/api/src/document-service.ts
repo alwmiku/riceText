@@ -63,7 +63,7 @@ const allowedNodeAttrs: Record<string, ReadonlySet<string>> = {
     "priceCoins",
   ]),
   pollRef: new Set(["pollId", "question", "multiple", "options"]),
-  longTextBlock: new Set(["chapterId", "title", "text", "order"]),
+  longTextBlock: new Set(["chapterId", "title", "text", "order", "start", "end"]),
 };
 
 /** mark 属性白名单独立于节点，避免任意 style/class/on* 进入正文。 */
@@ -364,6 +364,21 @@ function validateNode(node: TiptapNode, depth: number): void {
         "INVALID_LONG_TEXT_ORDER",
         "长文本章节顺序必须是非负整数",
       );
+    for (const key of ["start", "end"] as const) {
+      const value = attrs[key];
+      if (
+        value !== null &&
+        value !== undefined &&
+        (typeof value !== "number" ||
+          !Number.isInteger(value) ||
+          value < 0)
+      )
+        throw new HttpError(
+          422,
+          "INVALID_LONG_TEXT_RANGE",
+          "长文本章节原文区间必须是非负整数或 null",
+        );
+    }
   }
   if (node.type === "pollRef") {
     stringAttr(attrs, "pollId", true);

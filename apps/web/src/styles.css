@@ -207,7 +207,7 @@ button {
 
 .long-text-workspace {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-columns: 340px minmax(360px, 1fr) minmax(0, 1.3fr);
   gap: 12px;
   padding: 12px;
   align-items: start;
@@ -249,6 +249,107 @@ button {
   -webkit-line-clamp: 2;
   word-break: break-all;
 }
+
+.chapter-raw-preview {
+  position: sticky;
+  top: 116px;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  padding: 10px;
+}
+
+.chapter-raw-preview__gaps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.chapter-raw-preview__gap {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  padding: 4px 6px;
+  font-size: 11px;
+  color: #8f2b24;
+  text-align: start;
+  background: #fdf1f0;
+  border: 1px solid #f0b4b0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.chapter-raw-preview__gap:hover,
+.chapter-raw-preview__gap--active {
+  background: #fbe3e1;
+}
+
+.chapter-raw-preview__back {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #176e66;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.chapter-raw-preview__mark {
+  margin: 4px 0;
+  padding: 3px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.chapter-raw-preview__mark--start {
+  color: #176e66;
+  background: #e2efec;
+  border-left: 3px solid #209065;
+}
+
+.chapter-raw-preview__mark--end {
+  color: #5b6670;
+  background: #eef1f4;
+  border-left: 3px solid #9aa4ad;
+}
+
+.chapter-raw-preview__segment {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.7;
+  padding: 4px 6px;
+}
+
+.chapter-raw-preview__segment--chapter {
+  color: #1d2a33;
+  background: #e9f6f1;
+  border-left: 3px solid #209065;
+}
+
+.chapter-raw-preview__segment--gap {
+  color: #8f2b24;
+  background: #fdf1f0;
+  border-left: 3px solid #c83d3d;
+  text-decoration: line-through;
+  text-decoration-color: #e5a3a0;
+}
+
+.chapter-raw-preview__segment--context {
+  color: #8b959c;
+  background: #fafbfc;
+  border-left: 3px solid #d7dde0;
+}
+
+.chapter-raw-preview__info {
+  margin-top: 6px;
+  padding: 4px 6px;
+  font-size: 11px;
+  color: #8f2b24;
+}
+
 
 .chapter-sidebar__item--dragging {
   opacity: 0.5;

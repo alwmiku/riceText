@@ -23,6 +23,21 @@ describe('splitChapters', () => {
     expect(chapters[0]).toMatchObject({ title: 'Chapter 1 Keep', text: 'body' })
   })
 
+  it('keeps leading extra material as front matter instead of dropping it', () => {
+    const chapters = splitChapters('番外：雨季的来信\n番外正文\n第一章 相遇\n正文一')
+    expect(chapters).toHaveLength(2)
+    expect(chapters[0]).toMatchObject({ title: '卷首', start: 0 })
+    expect(chapters[0]!.text).toContain('番外：雨季的来信')
+    expect(chapters[1]).toMatchObject({ title: '第一章 相遇', text: '正文一' })
+    expect(chapters[1]!.start).toBe(chapters[0]!.end)
+  })
+
+  it('does not auto-split side-story headings inside the body', () => {
+    const chapters = splitChapters('第一章 相遇\n正文一\n番外：相遇之后\n番外正文')
+    expect(chapters).toHaveLength(1)
+    expect(chapters[0]!.text).toContain('番外：相遇之后')
+  })
+
   it('splits oversized chapters locally at the upload boundary', () => {
     const source = `第一章 长章\n${'字'.repeat(MAX_CHAPTER_LENGTH + 12)}`
     const chapters = splitChaptersByStyle(source)

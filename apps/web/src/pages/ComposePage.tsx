@@ -26,6 +26,11 @@ import { createLongTextDocument } from "../features/editor/long-text-import";
 import { useAutosave } from "../features/editor/useAutosave";
 import { ChapterSidebar, type ChapterSummary } from "../features/novel/ChapterSidebar";
 import {
+  ChapterCoverageDialog,
+  type CoverageChapter,
+} from "../features/novel/ChapterCoverageDialog";
+import { ChapterRawPreview } from "../features/novel/ChapterRawPreview";
+import {
   getCommentThread,
   getDocument,
   listDemoChapters,
@@ -34,7 +39,9 @@ import {
 import { mergeChapter, splitDocumentByHeadings } from "../lib/chapters";
 import {
   loadLongTextDraft,
+  loadLongTextRaw,
   saveLongTextDraft,
+  saveLongTextRaw,
 } from "../lib/long-text-draft-storage";
 import { defaultDocument } from "../lib/seed";
 import type {
@@ -47,6 +54,7 @@ import type {
 import { cn, formatTime } from "../lib/utils";
 
 const LOCAL_LONG_TEXT_KEY = "ricetext:local-long-text:demo-post";
+const LOCAL_LONG_TEXT_RAW_KEY = "ricetext:local-long-text-raw:demo-post";
 
 const chapterStyleOptions: Array<{ value: ChapterTitleStyle; label: string }> = [
   { value: "auto", label: "自动识别" },
@@ -128,6 +136,11 @@ export default function ComposePage() {
   );
   const [threadId, setThreadId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [coverageOpen, setCoverageOpen] = useState(false);
+  const [rawText, setRawText] = useState<string | null>(null);
+  const [addChapterOpen, setAddChapterOpen] = useState(false);
+  const [addChapterTitle, setAddChapterTitle] = useState("");
+  const [addChapterText, setAddChapterText] = useState("");
   const { data: chapterDirectory = [] } = useQuery({
     queryKey: ["demo", "chapters"],
     queryFn: () => listDemoChapters(),
@@ -202,6 +215,21 @@ export default function ComposePage() {
       title: String(node.attrs?.title ?? "未命名章节"),
       charCount: String(node.attrs?.text ?? "").length,
     }));
+  }, [content, longTextMode]);
+  const coverageChapters = useMemo<CoverageChapter[]>(() => {
+    if (!longTextMode) return [];
+    return (content.content ?? []).map((node, index) => {
+      const text = String(node.attrs?.text ?? "");
+      return {
+        id: String(node.attrs?.chapterId ?? `chapter-${index}`),
+        title: String(node.attrs?.title ?? "未命名章节"),
+        charCount: text.length,
+        start:
+          typeof node.attrs?.start === "number" ? node.attrs.start : null,
+        end: typeof node.attrs?.end === "number" ? node.attrs.end : null,
+        preview: text.replace(/\s+/g, " ").slice(0, 120),
+      };
+    });
   }, [content, longTextMode]);
   const longTextEditorContent = useMemo<RichTextNode>(() => {
     if (!longTextMode) return { type: "doc", content: [] };
@@ -321,6 +349,12 @@ export default function ComposePage() {
       attrs: {
         ...previous.attrs,
         text: `${previousText}\n\n${currentText}`,
+        end:
+          typeof current.attrs?.end === "number"
+            ? current.attrs.end
+            : typeof previous.attrs?.end === "number"
+              ? previous.attrs.end
+              : null,
       },
     });
     activeChapterIndexRef.current = index - 1;
@@ -338,6 +372,34 @@ export default function ComposePage() {
     activeChapterIndexRef.current = to;
     replaceLongTextDocument({ type: "doc", content: list });
     setActiveChapterIndex(activeChapterIndexRef.current);
+  };
+
+  /** 管理员手动添加章节（番外、作者说、短章等），追加到目录末尾。 */
+  const addChapter = () => {
+    const title = addChapterTitle.trim();
+    const text = addChapterText.slice(0, MAX_CHAPTER_LENGTH);
+    if (!title && !text) return;
+    commitPendingLongText();
+    const list = [...(contentRef.current.content ?? [])];
+    const node: RichTextNode = {
+      type: "longTextBlock",
+      attrs: {
+        chapterId: `manual-chapter-${Date.now()}`,
+        title: title || "未命名章节",
+        text,
+        order: list.length,
+        start: null,
+        end: null,
+      },
+    };
+    list.push(node);
+    activeChapterIndexRef.current = list.length - 1;
+    replaceLongTextDocument({ type: "doc", content: list });
+    setActiveChapterIndex(activeChapterIndexRef.current);
+    setAddChapterOpen(false);
+    setAddChapterTitle("");
+    setAddChapterText("");
+    setNotice(`已添加章节“${title || "未命名章节"}”`);
   };
 
   const closeLongTextMode = () => {
@@ -375,6 +437,9 @@ export default function ComposePage() {
     setLongTextMode(true);
     replaceLongTextDocument({ type: "doc", content: [] });
     try {
+      const raw = await loadLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY);
+      if (operation === longTextOperationRef.current)
+        setRawText(raw ?? null);
       const stored = await loadLongTextDraft(LOCAL_LONG_TEXT_KEY);
       if (operation !== longTextOperationRef.current) return;
       if (stored && (stored.content ?? []).length > 0) {
@@ -396,6 +461,9 @@ export default function ComposePage() {
     const operation = ++longTextOperationRef.current;
     longTextDraftReadyRef.current = false;
     try {
+      const raw = await loadLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY);
+      if (operation === longTextOperationRef.current)
+        setRawText(raw ?? null);
       const stored = await loadLongTextDraft(LOCAL_LONG_TEXT_KEY);
       if (operation !== longTextOperationRef.current) return;
       if (stored) {
@@ -435,6 +503,10 @@ export default function ComposePage() {
       setHasLocalDraft(false);
       activeChapterIndexRef.current = 0;
       setActiveChapterIndex(0);
+      setRawText(text);
+      void saveLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY, text).catch(() => {
+        setNotice("原文快照保存失败，原文对照列可能不可用");
+      });
       replaceLongTextDocument(imported);
       setLongTextMode(true);
       setNotice(`已导入 ${file.name}，共 ${text.length.toLocaleString()} 字`);
@@ -547,20 +619,22 @@ export default function ComposePage() {
             <BookOpen size={14} />
             长文本
           </Button>
-          <Segmented
-            value={mode}
-            onChange={setMode}
-            ariaLabel="编辑器布局"
-            options={[
-            {
-              value: "compact",
-              label: "极简",
-              icon: <MessageCircle size={14} />,
-            },
-            { value: "full", label: "完整", icon: <Monitor size={14} /> },
-            { value: "mobile", label: "移动", icon: <Smartphone size={14} /> },
-            ]}
-          />
+          {!longTextMode && (
+            <Segmented
+              value={mode}
+              onChange={setMode}
+              ariaLabel="编辑器布局"
+              options={[
+              {
+                value: "compact",
+                label: "极简",
+                icon: <MessageCircle size={14} />,
+              },
+              { value: "full", label: "完整", icon: <Monitor size={14} /> },
+              { value: "mobile", label: "移动", icon: <Smartphone size={14} /> },
+              ]}
+            />
+          )}
         </div>
       </div>
       {(autosave.state === "conflict" ||
@@ -672,6 +746,20 @@ export default function ComposePage() {
               )}
               <Button
                 size="sm"
+                variant="outline"
+                onClick={() => setCoverageOpen(true)}
+              >
+                全文对比
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setAddChapterOpen(true)}
+              >
+                添加章节
+              </Button>
+              <Button
+                size="sm"
                 variant="ghost"
                 onClick={closeLongTextMode}
               >
@@ -687,6 +775,11 @@ export default function ComposePage() {
               onDelete={deleteChapter}
               onMerge={mergeChapterAt}
               onMove={moveChapter}
+            />
+            <ChapterRawPreview
+              rawText={rawText}
+              chapters={coverageChapters}
+              activeIndex={activeChapterIndex}
             />
             <div className="min-w-0">{editor}</div>
           </div>
@@ -758,6 +851,57 @@ export default function ComposePage() {
         className="max-w-2xl"
       >
         <CommentThread identity={identity} initial={comments} compact />
+      </Dialog>
+      {coverageOpen && (
+        <ChapterCoverageDialog
+          chapters={coverageChapters}
+          onClose={() => setCoverageOpen(false)}
+        />
+      )}
+      <Dialog
+        open={addChapterOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddChapterOpen(false);
+            setAddChapterTitle("");
+            setAddChapterText("");
+          }
+        }}
+        title="添加章节"
+        description="用于番外、作者说、短章等手动补充的内容。"
+        className="max-w-2xl"
+      >
+        <div className="space-y-3">
+          <label className="block text-xs font-medium" htmlFor="add-chapter-title">
+            章节标题
+          </label>
+          <input
+            id="add-chapter-title"
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            value={addChapterTitle}
+            onChange={(event) => setAddChapterTitle(event.target.value)}
+            placeholder="例如：番外 · 雨季来信"
+          />
+          <label className="block text-xs font-medium" htmlFor="add-chapter-text">
+            正文（最多 {MAX_CHAPTER_LENGTH.toLocaleString()} 字）
+          </label>
+          <textarea
+            id="add-chapter-text"
+            className="h-40 w-full rounded-md border px-3 py-2 text-sm"
+            value={addChapterText}
+            maxLength={MAX_CHAPTER_LENGTH}
+            onChange={(event) => setAddChapterText(event.target.value)}
+            placeholder="粘贴或输入章节内容…"
+          />
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setAddChapterOpen(false)}>
+              取消
+            </Button>
+            <Button size="sm" onClick={addChapter}>
+              添加并编辑
+            </Button>
+          </div>
+        </div>
       </Dialog>
     </main>
   );

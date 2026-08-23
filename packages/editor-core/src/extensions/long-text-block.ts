@@ -33,12 +33,24 @@ export const LongTextBlock = Node.create({
         parseHTML: (element) =>
           parseInteger(element.getAttribute("data-order"), 0, 0, 1_000_000),
       },
+      start: {
+        default: null,
+        parseHTML: (element) =>
+          parseInteger(element.getAttribute("data-start"), null, 0, 10_000_000_000),
+      },
+      end: {
+        default: null,
+        parseHTML: (element) =>
+          parseInteger(element.getAttribute("data-end"), null, 0, 10_000_000_000),
+      },
     };
   },
   parseHTML() {
     return [{ tag: 'section[data-node-type="long-text-block"]' }];
   },
   renderHTML({ node }) {
+    const start = node.attrs.start;
+    const end = node.attrs.end;
     return [
       "section",
       {
@@ -47,6 +59,8 @@ export const LongTextBlock = Node.create({
         "data-chapter-id": String(node.attrs.chapterId ?? ""),
         "data-title": String(node.attrs.title ?? ""),
         "data-order": String(node.attrs.order ?? 0),
+        ...(start === null ? {} : { "data-start": String(start) }),
+        ...(end === null ? {} : { "data-end": String(end) }),
       },
       String(node.attrs.text ?? ""),
     ];

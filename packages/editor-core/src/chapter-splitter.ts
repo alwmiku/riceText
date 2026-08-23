@@ -34,23 +34,27 @@ export const chapterTitlePatterns: Record<
 
 const defaultPatterns = Object.values(chapterTitlePatterns).flat();
 
-/** 按自然换行优先切开超长正文，避免一章超过上传限制。 */
-function splitOversizedChapter(chapter: ChapterSplit): ChapterSplit[] {
+/** 按自然换行优先切开超长正文，避免一章超过上传限制；区间基于原文偏移。 */
+function splitOversizedChapter(
+  chapter: ChapterSplit,
+  source: string,
+): ChapterSplit[] {
   if (chapter.text.length <= MAX_CHAPTER_LENGTH) return [chapter];
 
+  const bodyStart = chapter.start + chapter.title.length;
+  const rawBody = source.slice(bodyStart, chapter.end);
   const parts: ChapterSplit[] = [];
-  let remaining = chapter.text;
-  let offset = chapter.start + chapter.title.length;
+  let offset = bodyStart;
+  let remaining = rawBody;
   let continuation = 1;
 
   while (remaining.length > MAX_CHAPTER_LENGTH) {
     const window = remaining.slice(0, MAX_CHAPTER_LENGTH + 1);
     const newline = window.lastIndexOf("\n");
     const cutAt = newline > MAX_CHAPTER_LENGTH / 2 ? newline + 1 : MAX_CHAPTER_LENGTH;
-    const body = remaining.slice(0, cutAt).trim();
     parts.push({
       title: continuation === 1 ? chapter.title : `${chapter.title}（续${continuation}）`,
-      text: body,
+      text: remaining.slice(0, cutAt).trim(),
       start: offset,
       end: offset + cutAt,
     });
@@ -75,7 +79,9 @@ export function splitChaptersByStyle(
 ): ChapterSplit[] {
   const patterns =
     style === "auto" ? defaultPatterns : chapterTitlePatterns[style];
-  return splitChapters(text, { patterns }).flatMap(splitOversizedChapter);
+  return splitChapters(text, { patterns }).flatMap((chapter) =>
+    splitOversizedChapter(chapter, text),
+  );
 }
 
 
@@ -153,6 +159,20 @@ export function splitChapters(
   matches.sort((a, b) => a.index - b.index);
 
   const result: ChapterSplit[] = [];
+  // 第一个标题之前的内容（如开头的番外、序言）不能丢失：作为“卷首”章节保留，
+  // 番外/序/楔子等附加内容不做自动切分，由用户在原文对照中手动切分。
+  if (matches.length > 0 && matches[0]!.index > 0) {
+    const trimmedLead = text.slice(0, matches[0]!.index).trim();
+    if (trimmedLead) {
+      result.push({
+        title: "卷首",
+        text: trimmedLead,
+        start: 0,
+        end: matches[0]!.index,
+      });
+    }
+  }
+
   for (let i = 0; i < matches.length; i += 1) {
     const start = matches[i]!.index;
     const end = i + 1 < matches.length ? matches[i + 1]!.index : text.length;

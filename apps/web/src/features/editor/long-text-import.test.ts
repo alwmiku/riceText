@@ -18,6 +18,8 @@ describe("createLongTextDocument", () => {
             title: "第一章 起点",
             text: "第一章正文",
             order: 0,
+            start: 0,
+            end: 13,
           },
         },
         {
@@ -27,10 +29,26 @@ describe("createLongTextDocument", () => {
             title: "第二章 终点",
             text: "第二章正文",
             order: 1,
+            start: 13,
+            end: 25,
           },
         },
       ],
     });
+  });
+
+  it("keeps leading extra material with its original range", () => {
+    const document = createLongTextDocument(
+      "番外：序曲\n番外正文\n第一章 起点\n正文",
+    );
+    const blocks = document.content as Array<{
+      attrs: { title: string; start: number; end: number };
+    }>;
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.attrs.title).toBe("卷首");
+    expect(blocks[0]?.attrs.start).toBe(0);
+    expect(blocks[1]?.attrs.start).toBe(blocks[0]?.attrs.end);
   });
 
   it("splits an oversized chapter without expanding it into paragraphs", () => {

@@ -86,7 +86,7 @@ const nodeAttributeAllowlist: Readonly<Record<string, readonly string[]>> = {
   replyGate: ['gateId', 'prompt'],
   attachmentRef: ['attachmentId', 'name', 'mimeType', 'size', 'priceCoins'],
   pollRef: ['pollId', 'question', 'multiple', 'options'],
-  longTextBlock: ['chapterId', 'title', 'text', 'order'],
+  longTextBlock: ['chapterId', 'title', 'text', 'order', 'start', 'end'],
 }
 
 const markAttributeAllowlist: Readonly<Record<string, readonly string[]>> = {
@@ -352,6 +352,14 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
         title: stringValue(raw.title, 500),
         text: stringValue(raw.text, 100_000_000),
         order: finiteInteger(raw.order, 0, 0, 1_000_000),
+        start:
+          raw.start === null || raw.start === undefined
+            ? null
+            : finiteInteger(raw.start, 0, 0, 10_000_000_000),
+        end:
+          raw.end === null || raw.end === undefined
+            ? null
+            : finiteInteger(raw.end, 0, 0, 10_000_000_000),
       }
       return attrs as unknown as Record<string, unknown>
     }

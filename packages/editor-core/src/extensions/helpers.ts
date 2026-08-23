@@ -3,10 +3,10 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 /** 解析 HTML 属性为限定范围的整数，失败时返回 fallback。 */
 export function parseInteger(
   value: string | null,
-  fallback: number,
+  fallback: number | null,
   min: number,
   max: number,
-): number {
+): number | null {
   const numeric = value === null ? Number.NaN : Number.parseInt(value, 10);
   return Number.isFinite(numeric)
     ? Math.min(max, Math.max(min, numeric))
