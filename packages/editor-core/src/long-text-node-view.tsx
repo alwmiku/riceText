@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import { MAX_CHAPTER_LENGTH } from "./chapter-splitter.js";
 
 /**
  * 长文本块 NodeView。
@@ -22,13 +23,6 @@ export function LongTextView({
   const [value, setValue] = useState(attrs.text ?? "");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const timerRef = useRef<number | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-
-  const lineHeight = 24;
-  const viewportHeight = 480;
-  const lines = useMemo(() => value.split("\n"), [value]);
-  const totalHeight = Math.max(1, lines.length) * lineHeight;
 
   useEffect(() => {
     setValue(attrs.text ?? "");
@@ -42,37 +36,15 @@ export function LongTextView({
 
   const handleChange = useCallback(
     (next: string) => {
-      setValue(next);
+      const limited = next.slice(0, MAX_CHAPTER_LENGTH);
+      setValue(limited);
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       timerRef.current = window.setTimeout(() => {
-        updateAttributes({ text: next });
+        updateAttributes({ text: limited });
       }, 300);
     },
     [updateAttributes],
   );
-
-  const syncScrollFromContainer = useCallback(() => {
-    const container = containerRef.current;
-    const textarea = textareaRef.current;
-    if (!container || !textarea) return;
-    textarea.scrollTop = container.scrollTop;
-    setScrollTop(container.scrollTop);
-  }, []);
-
-  const syncScrollFromTextarea = useCallback(() => {
-    const container = containerRef.current;
-    const textarea = textareaRef.current;
-    if (!container || !textarea) return;
-    container.scrollTop = textarea.scrollTop;
-    setScrollTop(textarea.scrollTop);
-  }, []);
-
-  const startLine = Math.max(0, Math.floor(scrollTop / lineHeight) - 5);
-  const endLine = Math.min(
-    lines.length,
-    Math.ceil((scrollTop + viewportHeight) / lineHeight) + 5,
-  );
-  const visibleLines = lines.slice(startLine, endLine);
 
   const splitHere = useCallback(() => {
     const textarea = textareaRef.current;
@@ -139,20 +111,22 @@ export function LongTextView({
           aria-label="章节标题"
         />
         <span className="rt-long-text__meta">
-          {value.length.toLocaleString()} 字
+          {value.length.toLocaleString()} / {MAX_CHAPTER_LENGTH.toLocaleString()} 字
         </span>
         <button
           type="button"
           className="rt-long-text__split"
           onClick={splitHere}
+          title="在当前光标位置创建新章节"
         >
-          从这里切分章节
+          光标处切章
         </button>
       </div>
       <textarea
         ref={textareaRef}
         className="rt-long-text__editor"
         value={value}
+        maxLength={MAX_CHAPTER_LENGTH}
         onChange={(event) => handleChange(event.target.value)}
         placeholder="开始写作…"
         aria-label="长文本正文"

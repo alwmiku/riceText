@@ -16,11 +16,68 @@ export interface ChapterSplitOptions {
   patterns?: RegExp[];
 }
 
-const defaultPatterns: RegExp[] = [
-  /^第[0-9一二三四五六七八九十百千万零两]+[章节回卷].*$/gm,
-  /^Chapter\s+\d+.*$/gim,
-  /^\d+\s*[、.．]\s*\S.*$/gm,
-];
+/** 单章正文最大字符数；上传和本地编辑都以此为边界。 */
+export const MAX_CHAPTER_LENGTH = 50_000;
+
+/** 支持的章节标题风格。 */
+export type ChapterTitleStyle = "auto" | "chinese" | "english" | "numeric";
+
+/** 章节标题样式对应的识别规则。 */
+export const chapterTitlePatterns: Record<
+  Exclude<ChapterTitleStyle, "auto">,
+  RegExp[]
+> = {
+  chinese: [/^第[0-9一二三四五六七八九十百千万零两]+[章节回卷].*$/gm],
+  english: [/^Chapter\s+\d+.*$/gim],
+  numeric: [/^\d+\s*[、.．]\s*\S.*$/gm],
+};
+
+const defaultPatterns = Object.values(chapterTitlePatterns).flat();
+
+/** 按自然换行优先切开超长正文，避免一章超过上传限制。 */
+function splitOversizedChapter(chapter: ChapterSplit): ChapterSplit[] {
+  if (chapter.text.length <= MAX_CHAPTER_LENGTH) return [chapter];
+
+  const parts: ChapterSplit[] = [];
+  let remaining = chapter.text;
+  let offset = chapter.start + chapter.title.length;
+  let continuation = 1;
+
+  while (remaining.length > MAX_CHAPTER_LENGTH) {
+    const window = remaining.slice(0, MAX_CHAPTER_LENGTH + 1);
+    const newline = window.lastIndexOf("\n");
+    const cutAt = newline > MAX_CHAPTER_LENGTH / 2 ? newline + 1 : MAX_CHAPTER_LENGTH;
+    const body = remaining.slice(0, cutAt).trim();
+    parts.push({
+      title: continuation === 1 ? chapter.title : `${chapter.title}（续${continuation}）`,
+      text: body,
+      start: offset,
+      end: offset + cutAt,
+    });
+    offset += cutAt;
+    remaining = remaining.slice(cutAt);
+    continuation += 1;
+  }
+
+  parts.push({
+    title: continuation === 1 ? chapter.title : `${chapter.title}（续${continuation}）`,
+    text: remaining.trim(),
+    start: offset,
+    end: chapter.end,
+  });
+  return parts;
+}
+
+/** 以指定风格切分长文本，并保证每章不超过最大字符数。 */
+export function splitChaptersByStyle(
+  text: string,
+  style: ChapterTitleStyle = "auto",
+): ChapterSplit[] {
+  const patterns =
+    style === "auto" ? defaultPatterns : chapterTitlePatterns[style];
+  return splitChapters(text, { patterns }).flatMap(splitOversizedChapter);
+}
+
 
 /** 章节切分适配器，后续可替换为 C++ Addon / WASM / 独立服务。 */
 export interface ChapterSplitterAdapter {

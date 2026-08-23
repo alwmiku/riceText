@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/react";
+import type { ChapterTitleStyle } from "@ricetext/editor-core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -29,6 +30,10 @@ import {
   restoreRevision,
 } from "../lib/api";
 import { mergeChapter, splitDocumentByHeadings } from "../lib/chapters";
+import {
+  loadLongTextDraft,
+  saveLongTextDraft,
+} from "../lib/long-text-draft-storage";
 import { defaultDocument } from "../lib/seed";
 import type {
   CommentReply,
@@ -38,6 +43,15 @@ import type {
   SaveState,
 } from "../lib/types";
 import { cn, formatTime } from "../lib/utils";
+
+const LOCAL_LONG_TEXT_KEY = "ricetext:local-long-text:demo-post";
+
+const chapterStyleOptions: Array<{ value: ChapterTitleStyle; label: string }> = [
+  { value: "auto", label: "自动识别" },
+  { value: "chinese", label: "中文：第 X 章" },
+  { value: "english", label: "English: Chapter X" },
+  { value: "numeric", label: "数字：1. 标题" },
+];
 
 const statusLabels: Record<SaveState, string> = {
   loading: "正在载入",
@@ -94,7 +108,10 @@ export default function ComposePage() {
   const longTextFileInputRef = useRef<HTMLInputElement | null>(null);
   const generationRef = useRef(0);
   const editorRef = useRef<Editor | null>(null);
+  const longTextDraftReadyRef = useRef(false);
   const [longTextMode, setLongTextMode] = useState(false);
+  const [chapterTitleStyle, setChapterTitleStyle] =
+    useState<ChapterTitleStyle>("auto");
   const [chapterIndex, setChapterIndex] = useState(1);
   const [mode, setMode] = useState<EditorMode>(() =>
     window.matchMedia("(max-width: 600px)").matches ? "mobile" : "full",
@@ -121,6 +138,18 @@ export default function ComposePage() {
     generationRef.current = 0;
     setContent(data.content);
   }, [data, generation, document.revision]);
+  useEffect(() => {
+    if (
+      !longTextMode ||
+      !longTextDraftReadyRef.current ||
+      generation === 0
+    )
+      return;
+    void saveLongTextDraft(LOCAL_LONG_TEXT_KEY, content).catch(() => {
+      setNotice("本机草稿保存失败，请检查浏览器存储空间");
+    });
+  }, [content, generation, longTextMode]);
+
   // 一章一界面：把完整文档按二级标题切分为章节，编辑器只编辑当前章节片段。
   const { chapters } = useMemo(
     () => splitDocumentByHeadings(content),
@@ -135,6 +164,7 @@ export default function ComposePage() {
     document,
     content,
     generation,
+    enabled: !longTextMode,
     ...(chapters[activeIndex] ? { chapterId: chapters[activeIndex]!.id } : {}),
     onSaved: (next) => {
       setDocument((current) => ({
@@ -171,6 +201,27 @@ export default function ComposePage() {
     const merged = mergeChapter(contentRef.current, activeIndex, next);
     replaceContent(merged);
   };
+  const closeLongTextMode = () => {
+    longTextDraftReadyRef.current = false;
+    setLongTextMode(false);
+  };
+  const openLongTextMode = async () => {
+    longTextDraftReadyRef.current = false;
+    setLongTextMode(true);
+    try {
+      const stored = await loadLongTextDraft(LOCAL_LONG_TEXT_KEY);
+      if (stored) {
+        replaceContent(stored);
+        setNotice("已恢复本机长文本副本");
+      } else {
+        replaceContent({ type: "doc", content: [] });
+      }
+    } catch {
+      setNotice("无法读取本机草稿，已打开空白长文本工作台");
+    } finally {
+      longTextDraftReadyRef.current = true;
+    }
+  };
   const handleLongTextImport = async (
     event: ChangeEvent<HTMLInputElement>,
   ) => {
@@ -184,7 +235,8 @@ export default function ComposePage() {
         setNotice("未导入空白文本");
         return;
       }
-      const imported = createLongTextDocument(text);
+      const imported = createLongTextDocument(text, chapterTitleStyle);
+      longTextDraftReadyRef.current = true;
       replaceContent(imported);
       setLongTextMode(true);
       setNotice(`已导入 ${file.name}，共 ${text.length.toLocaleString()} 字`);
@@ -213,6 +265,17 @@ export default function ComposePage() {
   };
   // 显式发布先 flush，保证提示出现时最新正文已经进入保存队列。
   const publish = async (latestContent?: RichTextNode) => {
+    if (longTextMode) {
+      const snapshot = latestContent ?? contentRef.current;
+      replaceContent(snapshot);
+      try {
+        await saveLongTextDraft(LOCAL_LONG_TEXT_KEY, snapshot);
+        setNotice("长文本已保存在本机；上传时将按章节分别提交");
+      } catch {
+        setNotice("本机草稿保存失败，请检查浏览器存储空间");
+      }
+      return;
+    }
     if (isPlaceholderData) return;
     const snapshot =
       latestContent ??
@@ -275,7 +338,10 @@ export default function ComposePage() {
             size="sm"
             variant={longTextMode ? "secondary" : "outline"}
             aria-pressed={longTextMode}
-            onClick={() => setLongTextMode((current) => !current)}
+            onClick={() => {
+              if (longTextMode) closeLongTextMode();
+              else openLongTextMode();
+            }}
           >
             <BookOpen size={14} />
             长文本
@@ -367,6 +433,24 @@ export default function ComposePage() {
                 aria-label="导入长文本文件"
                 onChange={(event) => void handleLongTextImport(event)}
               />
+              <label className="sr-only" htmlFor="long-text-heading-style">
+                章节标题风格
+              </label>
+              <select
+                id="long-text-heading-style"
+                className="h-8 border bg-background px-2 text-xs"
+                value={chapterTitleStyle}
+                onChange={(event) =>
+                  setChapterTitleStyle(event.target.value as ChapterTitleStyle)
+                }
+                aria-label="章节标题风格"
+              >
+                {chapterStyleOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
               <Button
                 size="sm"
                 variant="outline"
@@ -379,7 +463,7 @@ export default function ComposePage() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setLongTextMode(false)}
+                onClick={closeLongTextMode}
               >
                 退出长文本
               </Button>

@@ -1,4 +1,5 @@
-import { Editor } from "@tiptap/react";
+import type { Editor } from "@tiptap/react";
+import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
 import { ArrowDown, ArrowUp, Combine, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -51,7 +52,8 @@ export function ChapterSidebar({ editor }: { editor: Editor | null }) {
     editor
       .chain()
       .focus()
-      .setTextSelection({ from: item.pos, to: item.pos + item.nodeSize })
+      .setNodeSelection(item.pos)
+      .scrollIntoView()
       .run();
   };
 
@@ -66,8 +68,19 @@ export function ChapterSidebar({ editor }: { editor: Editor | null }) {
       .run();
   };
 
+  const canMergeChapter = (index: number) => {
+    if (index <= 0) return false;
+    const current = chapters[index];
+    const previous = chapters[index - 1];
+    return Boolean(
+      current &&
+        previous &&
+        previous.text.length + current.text.length + 2 <= MAX_CHAPTER_LENGTH,
+    );
+  };
+
   const mergeChapter = (index: number) => {
-    if (!editor || index <= 0) return;
+    if (!editor || !canMergeChapter(index)) return;
     const current = chapters[index];
     const previous = chapters[index - 1];
     if (!current || !previous) return;
@@ -200,7 +213,12 @@ export function ChapterSidebar({ editor }: { editor: Editor | null }) {
                 <button
                   type="button"
                   aria-label="合并到上一章"
-                  disabled={index === 0}
+                  title={
+                    canMergeChapter(index)
+                      ? "合并到上一章"
+                      : "合并后将超过 50000 字"
+                  }
+                  disabled={!canMergeChapter(index)}
                   onClick={(event) => {
                     event.stopPropagation();
                     mergeChapter(index);

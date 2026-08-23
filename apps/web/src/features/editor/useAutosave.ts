@@ -33,6 +33,8 @@ export interface AutosaveOptions {
   generation: number;
   /** 本次编辑的章节 id；服务端保存成功后递增该章节版本号。 */
   chapterId?: string;
+  /** 关闭时保留状态接口，但不安排任何网络保存。 */
+  enabled?: boolean;
   /** 成功保存后的宿主同步回调。 */
   onSaved?: (next: DocumentEnvelope) => void;
 }
@@ -47,6 +49,7 @@ export function useAutosave({
   content,
   generation,
   chapterId,
+  enabled = true,
   onSaved,
 }: AutosaveOptions): AutosaveResult {
   const [state, setState] = useState<SaveState>("saved");
@@ -88,6 +91,7 @@ export function useAutosave({
       override?: { content: RichTextNode; generation: number },
     ): Promise<boolean> => {
       const snapshot = override ?? latestRef.current;
+      if (!enabled) return true;
       // 同一代已经保存时不重复提交；自动保存会跳过明确失败的代次，显式 flush 可重试。
       if (
         snapshot.generation <= savedGeneration.current ||
@@ -142,12 +146,13 @@ export function useAutosave({
       await queueRef.current;
       return succeeded;
     },
-    [document.id, document.schemaVersion],
+    [document.id, document.schemaVersion, enabled],
   );
 
   // 新编辑代在静默 1.2 秒后入队；卸载或继续输入会取消旧定时器。
   useEffect(() => {
     if (
+      !enabled ||
       generation <= savedGeneration.current ||
       state === "conflict" ||
       (state === "error" && generation === failedGeneration.current)
@@ -159,7 +164,7 @@ export function useAutosave({
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
-  }, [enqueue, generation, state]);
+  }, [enabled, enqueue, generation, state]);
 
   return {
     state,

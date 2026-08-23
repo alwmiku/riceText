@@ -130,10 +130,15 @@ function stringAttr(
   attrs: Record<string, JsonValue>,
   key: string,
   required = false,
+  maxLength = 2_000,
 ): string | undefined {
   const value = attrs[key];
   if ((value === undefined || value === null) && !required) return undefined;
-  if (typeof value !== "string" || value.length === 0 || value.length > 2_000)
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maxLength
+  )
     throw new HttpError(422, "INVALID_ATTRIBUTE", `${key} 必须是有效字符串`);
   return value;
 }
@@ -348,7 +353,7 @@ function validateNode(node: TiptapNode, depth: number): void {
   if (node.type === "longTextBlock") {
     stringAttr(attrs, "chapterId", true);
     stringAttr(attrs, "title", true);
-    stringAttr(attrs, "text", true);
+    stringAttr(attrs, "text", true, 50_000);
     if (
       typeof attrs.order !== "number" ||
       !Number.isInteger(attrs.order) ||
