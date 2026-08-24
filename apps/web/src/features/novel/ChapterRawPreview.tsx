@@ -99,12 +99,24 @@ interface RowLayout {
   segments: readonly RowSegment[];
 }
 
-/** 惰性行测量器：只计算被访问的行（可见行/跳转目标），
- *  避免超大文本进入界面时一次性全量 prepare + layout 阻塞主线程。 */
+/** 未测量行的估算行高（首次实测前使用，随后由实测平均接管）。 */
+const FALLBACK_ROW_HEIGHT = Math.max(
+  TEXT_LINE_HEIGHT,
+  Math.ceil(BLOCK_CHARS / 40) * TEXT_LINE_HEIGHT,
+);
+
+/** 惰性行测量器：只有被访问的行（可见行/跳转目标）才执行 pretext 的
+ *  prepare + layout；未测量行用平均高度估算（O(1)），
+ *  超大文本的打开、滚动与跳转都不会触发全量同步计算。 */
 interface RowMeasure {
-  getRowLayout(index: number): RowLayout;
-  /** 行顶部在全文中的像素偏移（前缀和，按需计算并缓存）。 */
+  /** 精确测量并缓存指定行（渲染与跳转目标使用）。 */
+  ensureRowLayout(index: number): RowLayout;
+  /** 只读高度：已测行返回精确值，未测行返回平均估算。 */
+  getRowHeightEstimate(index: number): number;
+  /** 行顶部在全文中的像素偏移：已测前缀精确，未测区域按平均估算。 */
   getRowOffset(index: number): number;
+  /** 行偏移是否落在连续已测前缀内（精确，无需 DOM 校正）。 */
+  isRowOffsetPrecise(index: number): boolean;
 }
 
 interface RawRowProps {
@@ -200,7 +212,8 @@ function computeBlockSegments(
   return segments;
 }
 
-/** 创建惰性行测量器：每行的 prepare/layout/段切分都在首次访问时计算并缓存。 */
+/** 创建惰性行测量器：每行的 prepare/layout/段切分在首次访问时计算并缓存，
+ *  未测行按已测平均高度估算，避免滚动与跳转触发全量同步计算。 */
 function createRowMeasure(
   blocks: readonly RawBlock[],
   chapter: CoverageChapter | undefined,
@@ -211,7 +224,15 @@ function createRowMeasure(
   const preparedCache = new Map<number, PreparedText>();
   const segmentCache = new Map<number, RawSegment[]>();
   const layoutCache = new Map<number, RowLayout>();
-  const offsets: number[] = [];
+  /** offsets[i] = 行 i 顶部偏移，仅对连续已测前缀有效。 */
+  const offsets: number[] = [0];
+  /** 连续已测前缀长度（行 0..preciseUpTo-1 已精确测量）。 */
+  let preciseUpTo = 0;
+  let heightSum = 0;
+  let measuredCount = 0;
+
+  const averageHeight = () =>
+    measuredCount > 0 ? heightSum / measuredCount : FALLBACK_ROW_HEIGHT;
 
   const getPrepared = (index: number): PreparedText => {
     let prepared = preparedCache.get(index);
@@ -238,20 +259,16 @@ function createRowMeasure(
     return segments;
   };
 
-  const getRowLayout = (index: number): RowLayout => {
-    let layout = layoutCache.get(index);
-    if (layout) return layout;
+  const computeRowLayout = (index: number): RowLayout => {
     const block = blocks[index];
     if (!block) {
-      layout = {
+      return {
         index,
         blockStart: 0,
         blockEnd: 0,
         height: 0,
         segments: [],
       };
-      layoutCache.set(index, layout);
-      return layout;
     }
     const segments = getSegments(index);
     const rowSegments: RowSegment[] = [];
@@ -311,7 +328,7 @@ function createRowMeasure(
       });
       top = rowSegments[rowSegments.length - 1]!.bottom;
     }
-    layout = {
+    return {
       index,
       blockStart: block.start,
       blockEnd: block.end,
@@ -321,19 +338,39 @@ function createRowMeasure(
           : rowSegments[rowSegments.length - 1]!.bottom,
       segments: rowSegments,
     };
+  };
+
+  const ensureRowLayout = (index: number): RowLayout => {
+    let layout = layoutCache.get(index);
+    if (layout) return layout;
+    layout = computeRowLayout(index);
     layoutCache.set(index, layout);
+    // 只有连续前缀扩展（滚动顺序测量）更新估算平均：跳转目标的孤立
+    // 测量属于含章节/空洞标记的特殊行，不应污染常规行的平均高度。
+    while (preciseUpTo < blocks.length && layoutCache.has(preciseUpTo)) {
+      const height = layoutCache.get(preciseUpTo)!.height;
+      offsets[preciseUpTo + 1] = (offsets[preciseUpTo] ?? 0) + height;
+      preciseUpTo += 1;
+      heightSum += height;
+      measuredCount += 1;
+    }
     return layout;
   };
 
-  const getRowOffset = (index: number): number => {
-    for (let i = offsets.length; i <= index; i += 1) {
-      offsets[i] =
-        (i === 0 ? 0 : (offsets[i - 1] ?? 0)) + getRowLayout(i - 1).height;
-    }
-    return offsets[index] ?? 0;
+  const getRowHeightEstimate = (index: number): number => {
+    const layout = layoutCache.get(index);
+    return layout ? layout.height : averageHeight();
   };
 
-  return { getRowLayout, getRowOffset };
+  const getRowOffset = (index: number): number => {
+    if (index < preciseUpTo) return offsets[index] ?? 0;
+    const precise = offsets[preciseUpTo] ?? 0;
+    return precise + (index - preciseUpTo) * averageHeight();
+  };
+
+  const isRowOffsetPrecise = (index: number): boolean => index < preciseUpTo;
+
+  return { ensureRowLayout, getRowHeightEstimate, getRowOffset, isRowOffsetPrecise };
 }
 
 /** 单行渲染：章高亮、空洞删除线、章首/章尾标记与空洞标签。 */
@@ -343,7 +380,8 @@ function RawRow({
   ariaAttributes,
   measure,
 }: RowComponentProps<RawRowProps>) {
-  const layout = measure.getRowLayout(index);
+  // 渲染行时精确化测量（缓存命中为 O(1)），滚动过程逐行渐进精化。
+  const layout = measure.ensureRowLayout(index);
   if (layout.height === 0 && layout.segments.length === 0) return null;
   return (
     <div style={style} {...ariaAttributes} className="px-2">
@@ -447,6 +485,16 @@ export function ChapterRawPreview({
     [blocks, chapter, gaps, activeIndex, contentWidth],
   );
 
+  // 预测量初始可见行：让 react-window 首次 bounds 计算即为精确值，
+  // 避免 fallback 估算高度导致首屏行位置错乱。只测一个视口的行，开销可忽略。
+  const initialRowCount = useMemo(() => {
+    const estimated = Math.ceil(containerHeight / FALLBACK_ROW_HEIGHT) + 8;
+    return Math.min(blocks.length, estimated);
+  }, [blocks.length, containerHeight]);
+  for (let index = 0; index < initialRowCount; index += 1) {
+    measure.ensureRowLayout(index);
+  }
+
   const rowIndexOf = useCallback(
     (rawIndex: number) =>
       blocks.length === 0
@@ -479,29 +527,50 @@ export function ChapterRawPreview({
     [listRef],
   );
 
+  // 估算前缀的落位校正：跳转后读取目标行在视口内的实际位置，
+  // 把偏差修正回期望位置（估算平均误差无累积，一次迭代即可）。
+  const correctScroll = useCallback(
+    (rowIndex: number, expectedRowTopInViewport: number) => {
+      requestAnimationFrame(() => {
+        const element = listRef.current?.element;
+        const rowElement = element?.querySelector<HTMLElement>(
+          `[data-react-window-index="${rowIndex}"]`,
+        );
+        if (!element || !rowElement) return;
+        const containerRect = element.getBoundingClientRect();
+        // jsdom/无布局环境下 rect 全 0，无法测量时跳过校正。
+        if (containerRect.width === 0 && containerRect.height === 0) return;
+        const rowTop =
+          rowElement.getBoundingClientRect().top - containerRect.top;
+        const delta = expectedRowTopInViewport - rowTop;
+        if (Math.abs(delta) > 1) element.scrollTop += delta;
+      });
+    },
+    [listRef],
+  );
+
   const scrollToStartAnchor = useCallback(
     (rawIndex: number) => {
       const rowIndex = rowIndexOf(rawIndex);
-      const row = measure.getRowLayout(rowIndex);
+      const row = measure.ensureRowLayout(rowIndex);
       const segment = row.segments.find((item) => item.start === rawIndex);
       if (!segment) return;
-      scrollToPixel(
-        measure.getRowOffset(rowIndex) +
-          segment.top +
-          segment.gapLabelHeight -
-          8,
-      );
+      const inRowTop = segment.top + segment.gapLabelHeight;
+      scrollToPixel(measure.getRowOffset(rowIndex) + inRowTop - 8);
+      // 仅估算偏移需要 DOM 校正；精确偏移（如文档顶部的章首）不得画蛇添足。
+      if (!measure.isRowOffsetPrecise(rowIndex))
+        correctScroll(rowIndex, 8 - inRowTop);
     },
-    [measure, rowIndexOf, scrollToPixel],
+    [measure, rowIndexOf, scrollToPixel, correctScroll],
   );
 
   const scrollToEndAnchor = useCallback(
     (chapterEnd: number) => {
       const rowIndex = rowIndexOf(Math.max(0, chapterEnd - 1));
-      const row = measure.getRowLayout(rowIndex);
+      const row = measure.ensureRowLayout(rowIndex);
       const segment = row.segments.find((item) => item.end === chapterEnd);
       if (!segment) return;
-      const anchorTop =
+      const inRowTop =
         segment.top +
         segment.gapLabelHeight +
         segment.markStartHeight +
@@ -510,22 +579,24 @@ export function ChapterRawPreview({
         8,
         containerHeight - segment.markEndHeight - 56,
       );
-      scrollToPixel(
-        measure.getRowOffset(rowIndex) + anchorTop - viewportTop,
-      );
+      scrollToPixel(measure.getRowOffset(rowIndex) + inRowTop - viewportTop);
+      if (!measure.isRowOffsetPrecise(rowIndex))
+        correctScroll(rowIndex, viewportTop - inRowTop);
     },
-    [measure, rowIndexOf, containerHeight, scrollToPixel],
+    [measure, rowIndexOf, containerHeight, scrollToPixel, correctScroll],
   );
 
   const scrollToGap = useCallback(
     (gapStart: number) => {
       const rowIndex = rowIndexOf(gapStart);
-      const row = measure.getRowLayout(rowIndex);
+      const row = measure.ensureRowLayout(rowIndex);
       const segment = row.segments.find((item) => item.start === gapStart);
       if (!segment) return;
       scrollToPixel(measure.getRowOffset(rowIndex) + segment.top - 8);
+      if (!measure.isRowOffsetPrecise(rowIndex))
+        correctScroll(rowIndex, 8 - segment.top);
     },
-    [measure, rowIndexOf, scrollToPixel],
+    [measure, rowIndexOf, scrollToPixel, correctScroll],
   );
 
   // 点击章节（或首次载入）时滚动到该章在原文中的位置。
@@ -552,8 +623,10 @@ export function ChapterRawPreview({
     [blocks],
   );
 
+  // 高度估算：已测行精确、未测行按平均估算——react-window 的 bounds
+  // 计算与滚动条拖动因此是 O(1)/行的，不会被 pretext 全量测量卡住。
   const rowHeight = useCallback(
-    (index: number) => measure.getRowLayout(index).height,
+    (index: number) => measure.getRowHeightEstimate(index),
     [measure],
   );
 
