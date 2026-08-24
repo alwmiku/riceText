@@ -1,4 +1,3 @@
-import type { Editor } from '@tiptap/core'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { useEffect, useMemo, useRef } from 'react'
@@ -113,7 +112,7 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
 
       const spoiler = target.closest<HTMLElement>('[data-spoiler="true"]')
       if (spoiler) {
-        let pos = 0
+        let pos: number
         try {
           pos = editor.view.posAtDOM(spoiler, 0) ?? 0
         } catch {
@@ -134,7 +133,7 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
       if (!spoiler) return
       event.preventDefault()
       const current = viewerContextRef.current
-      let pos = 0
+      let pos: number
       try {
         pos = editor.view.posAtDOM(spoiler, 0) ?? 0
       } catch {

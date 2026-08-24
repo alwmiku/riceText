@@ -47,3 +47,41 @@ test('作者编辑后通过 revision 自动保存', async ({ page }) => {
   await expect(status).toContainText(/正在保存|等待保存/);
   await expect(status).toContainText('已保存', { timeout: 10_000 });
 });
+
+test('长文本原文对照基于 pretext 测量与 react-window 虚拟滚动', async ({ page, isMobile }) => {
+  test.skip(isMobile, '长文本工作台为桌面三栏布局，移动端不在本次验收范围');
+  // 第一章正文 3000 字：跨越 2 个虚拟块，章尾可滚动离开首屏。
+  const fixture = `第一章 起点\n${'这'.repeat(3000)}\n\n第二章 远行\n第二章正文。`;
+
+  await page.goto('/compose');
+  await page.getByRole('button', { name: '长文本' }).click();
+  await page.getByLabel('导入长文本文件').setInputFiles({
+    name: 'novel.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from(fixture, 'utf8'),
+  });
+
+  const panel = page.getByLabel('原文对照');
+  await expect(panel).toBeVisible();
+  await expect(page.getByText('原文对照（虚拟滚动）')).toBeVisible();
+  await expect(page.getByText(/已加载原文 3,022 字 · 共 2 块/)).toBeVisible();
+  // 切分器把换行符计入下一章标题行，故第一章区间为 [0, 3,008)。
+  await expect(page.getByText(/▼ 第 1 章「第一章 起点」开始 \[0, 3,008\)/)).toBeVisible();
+  await expect(page.getByText('▲ 第 1 章结束')).toBeVisible();
+
+  const area = page.getByLabel('完整原文滚动区');
+  await expect(area).toContainText('这这这');
+
+  // 章尾：结束标记所在行被渲染且滚动区下移。
+  await page.getByRole('button', { name: '章尾' }).click();
+  await expect(page.getByText('▲ 第 1 章结束')).toBeVisible();
+  await expect
+    .poll(() => area.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(0);
+
+  // 章首：回到顶部。
+  await page.getByRole('button', { name: '章首' }).click();
+  await expect
+    .poll(() => area.evaluate((el) => el.scrollTop))
+    .toBeLessThanOrEqual(1);
+});

@@ -7,7 +7,6 @@ import type {
   DiceRollAttributes,
   InlineCommentAnchorAttributes,
   MentionAttributes,
-  NovelExcerptAttributes,
   PollReferenceAttributes,
   ReplyGateAttributes,
   ViewerAttachmentState,

@@ -1,12 +1,12 @@
 import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
+import { prepare, layout, type PreparedText } from "@chenglou/pretext";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+  List,
+  getScrollbarSize,
+  type ListImperativeAPI,
+  type RowComponentProps,
+} from "react-window";
 import { analyzeCoverage, type CoverageChapter } from "./ChapterCoverageDialog";
 
 /** 未切分到任何章节的原文区间。 */
@@ -34,14 +34,34 @@ export function collectRawGaps(chapters: readonly CoverageChapter[]): RawGap[] {
   return gaps;
 }
 
-/** 原文分块参数：每块字符数与估算的行高，用于虚拟滚动。 */
+/** 原文分块参数：每块字符数。行高/行数由 @chenglou/pretext 精确测量，不再手工估算。 */
 const BLOCK_CHARS = 2000;
-const LINE_HEIGHT = 22;
-const FONT_SIZE = 13;
+/** 与面板 CSS 一致的测量字体串（canvas 与 DOM 走同一字体回退链）。 */
+const TEXT_FONT =
+  '13px Inter, "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif';
+const TEXT_LINE_HEIGHT = 22;
+const MARKER_FONT =
+  '600 11px Inter, "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif';
+const MARKER_LINE_HEIGHT = 16;
+const GAP_LABEL_FONT =
+  '600 10px Inter, "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif';
+const GAP_LABEL_LINE_HEIGHT = 14;
+/** 行包装 px-2 的水平内边距。 */
+const ROW_PADDING_X = 16;
+/** 章标记 px-1.5 + border-l-[3px] 的水平占位。 */
+const MARKER_PADDING_X = 12;
+const MARKER_BORDER_LEFT = 3;
+/** 章标记 my-[3px] + py-[3px] 的垂直占位。 */
+const MARKER_VERTICAL = 12;
+/** 空洞标签 px-1.5 的水平占位。 */
+const GAP_PADDING_X = 12;
+/** 空洞标签 my-[3px] + py-px 的垂直占位。 */
+const GAP_VERTICAL = 8;
 const FALLBACK_CONTAINER_WIDTH = 520;
 const FALLBACK_CONTAINER_HEIGHT = 360;
-const SCROLL_WINDOW_HEIGHT = 8_000_000;
-const SCROLL_WINDOW_PADDING = 1_000_000;
+const MIN_TEXT_WIDTH = 40;
+
+const PREPARE_OPTIONS = { whiteSpace: "pre-wrap" } as const;
 
 interface RawBlock {
   index: number;
@@ -60,8 +80,261 @@ interface RawSegment {
   gapLabel: string | null;
 }
 
+/** 单个段落（段文本 + 标记 chrome）在行内的几何布局。 */
+interface RowSegment extends RawSegment {
+  top: number;
+  bottom: number;
+  textHeight: number;
+  gapLabelHeight: number;
+  markStartHeight: number;
+  markEndHeight: number;
+}
+
+/** 一行（一个原文分块）的整体布局：高度、行首偏移与段几何。 */
+interface RowLayout {
+  index: number;
+  blockStart: number;
+  blockEnd: number;
+  offset: number;
+  height: number;
+  segments: readonly RowSegment[];
+}
+
+interface RawRowProps {
+  layouts: readonly RowLayout[];
+}
+
+/** 测量文本高度：至少占一行，避免空行塌缩。 */
+function measureHeight(
+  prepared: PreparedText,
+  width: number,
+  lineHeight: number,
+): number {
+  return Math.max(lineHeight, layout(prepared, width, lineHeight).height);
+}
+
+/** 测量标记块高度：垂直占位 + pretext 测量的文本行高。 */
+function measureMarkup(
+  text: string,
+  font: string,
+  lineHeight: number,
+  width: number,
+  verticalChrome: number,
+): number {
+  return (
+    verticalChrome +
+    measureHeight(prepare(text, font), width, lineHeight)
+  );
+}
+
+/** 把原文块切为带章节/空洞标记的段（纯文本切分，不含测量）。 */
+function computeBlockSegments(
+  block: RawBlock,
+  chapter: CoverageChapter | undefined,
+  gaps: readonly RawGap[],
+  activeIndex: number,
+): RawSegment[] {
+  const points = new Set<number>([block.start, block.end]);
+  if (chapter && chapter.start !== null && chapter.end !== null) {
+    if (chapter.start > block.start && chapter.start < block.end)
+      points.add(chapter.start);
+    if (chapter.end > block.start && chapter.end < block.end)
+      points.add(chapter.end);
+  }
+  for (const gap of gaps) {
+    if (gap.start > block.start && gap.start < block.end)
+      points.add(gap.start);
+    if (gap.end > block.start && gap.end < block.end) points.add(gap.end);
+  }
+
+  const sorted = [...points].sort((a, b) => a - b);
+  const segments: RawSegment[] = [];
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const start = sorted[index] ?? block.start;
+    const end = sorted[index + 1] ?? block.end;
+    if (end <= start) continue;
+    const insideChapter =
+      chapter !== undefined &&
+      chapter.start !== null &&
+      chapter.end !== null &&
+      start >= chapter.start &&
+      end <= chapter.end;
+    const gap = gaps.find((item) => start < item.end && end > item.start);
+    segments.push({
+      start,
+      end,
+      text: block.text.slice(start - block.start, end - block.start),
+      kind: insideChapter ? "chapter" : gap ? "gap" : "plain",
+      markStart:
+        chapter && chapter.start === start && chapter.end !== null
+          ? `▼ 第 ${activeIndex + 1} 章「${chapter.title}」开始 [${chapter.start.toLocaleString()}, ${chapter.end.toLocaleString()})`
+          : null,
+      markEnd:
+        chapter && chapter.end === end
+          ? `▲ 第 ${activeIndex + 1} 章结束`
+          : null,
+      gapLabel:
+        gap && Math.max(gap.start, block.start) === start
+          ? `未切分 [${gap.start.toLocaleString()}, ${gap.end.toLocaleString()}) ${gap.chars.toLocaleString()} 字`
+          : null,
+    });
+  }
+  if (
+    chapter &&
+    chapter.end === block.end &&
+    segments.length > 0 &&
+    segments[segments.length - 1]?.markEnd === null
+  ) {
+    segments[segments.length - 1] = {
+      ...segments[segments.length - 1]!,
+      markEnd: `▲ 第 ${activeIndex + 1} 章结束`,
+    };
+  }
+  return segments;
+}
+
+/** 计算每行的 pretext 文本高度（宽度相关，与 prepare 分离以便复用）。 */
+function computeRowLayouts(
+  blocks: readonly RawBlock[],
+  preparedBlocks: readonly PreparedText[],
+  segmentsByRow: readonly RawSegment[][],
+  blockTextHeights: readonly number[],
+  contentWidth: number,
+): RowLayout[] {
+  const layouts: RowLayout[] = [];
+  let offset = 0;
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (!block) continue;
+    const segments = segmentsByRow[index] ?? [];
+    const rowSegments: RowSegment[] = [];
+    let top = 0;
+    for (const segment of segments) {
+      const textHeight =
+        segment.text === block.text
+          ? (blockTextHeights[index] ?? TEXT_LINE_HEIGHT)
+          : measureHeight(
+              prepare(segment.text, TEXT_FONT, PREPARE_OPTIONS),
+              contentWidth,
+              TEXT_LINE_HEIGHT,
+            );
+      const gapLabelHeight =
+        segment.gapLabel === null
+          ? 0
+          : measureMarkup(
+              segment.gapLabel,
+              GAP_LABEL_FONT,
+              GAP_LABEL_LINE_HEIGHT,
+              contentWidth - GAP_PADDING_X,
+              GAP_VERTICAL,
+            );
+      const markStartHeight =
+        segment.markStart === null
+          ? 0
+          : measureMarkup(
+              segment.markStart,
+              MARKER_FONT,
+              MARKER_LINE_HEIGHT,
+              contentWidth - MARKER_PADDING_X - MARKER_BORDER_LEFT,
+              MARKER_VERTICAL,
+            );
+      const markEndHeight =
+        segment.markEnd === null
+          ? 0
+          : measureMarkup(
+              segment.markEnd,
+              MARKER_FONT,
+              MARKER_LINE_HEIGHT,
+              contentWidth - MARKER_PADDING_X - MARKER_BORDER_LEFT,
+              MARKER_VERTICAL,
+            );
+      rowSegments.push({
+        ...segment,
+        top,
+        textHeight,
+        gapLabelHeight,
+        markStartHeight,
+        markEndHeight,
+        bottom:
+          top +
+          gapLabelHeight +
+          markStartHeight +
+          textHeight +
+          markEndHeight,
+      });
+      top = rowSegments[rowSegments.length - 1]!.bottom;
+    }
+    const height =
+      rowSegments.length === 0 ? 0 : rowSegments[rowSegments.length - 1]!.bottom;
+    layouts.push({
+      index,
+      blockStart: block.start,
+      blockEnd: block.end,
+      offset,
+      height,
+      segments: rowSegments,
+    });
+    offset += height;
+  }
+  return layouts;
+}
+
+/** 单行渲染：章高亮、空洞删除线、章首/章尾标记与空洞标签。 */
+function RawRow({
+  index,
+  style,
+  ariaAttributes,
+  layouts,
+}: RowComponentProps<RawRowProps>) {
+  const layout = layouts[index];
+  if (!layout) return null;
+  return (
+    <div style={style} {...ariaAttributes} className="px-2">
+      {layout.segments.map((segment) => {
+        const kindClass =
+          segment.kind === "chapter"
+            ? "bg-[#e9f6f1]"
+            : segment.kind === "gap"
+              ? "bg-[#fdf1f0] text-[#8f2b24] line-through decoration-[#e5a3a0]"
+              : "bg-[#fbfcfc]";
+        return (
+          <div key={`${segment.start}-${segment.end}`}>
+            {segment.gapLabel ? (
+              <div className="my-[3px] inline-block rounded-[3px] bg-[#fbe3e1] px-1.5 py-px text-[10px] leading-[14px] font-semibold text-[#8f2b24]">
+                {segment.gapLabel}
+              </div>
+            ) : null}
+            {segment.markStart ? (
+              <div
+                className="my-[3px] rounded border-l-[3px] border-[#209065] bg-[#e2efec] px-1.5 py-[3px] text-[11px] leading-[16px] font-semibold text-[#176e66]"
+                data-raw-anchor={`start-${segment.start}`}
+              >
+                {segment.markStart}
+              </div>
+            ) : null}
+            <div
+              className={`text-[13px] leading-[22px] whitespace-pre-wrap break-words text-[#1d2a33] ${kindClass}`}
+            >
+              {segment.text}
+            </div>
+            {segment.markEnd ? (
+              <div
+                className="my-[3px] rounded border-l-[3px] border-[#9aa4ad] bg-[#eef1f4] px-1.5 py-[3px] text-[11px] leading-[16px] font-semibold text-[#5b6670]"
+                data-raw-anchor={`end-${segment.end}`}
+              >
+                {segment.markEnd}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
- * 中间完整原文列：全文按块虚拟滚动显示，当前章节在原文中对齐高亮，
+ * 中间完整原文列：@chenglou/pretext 精确测量每块行高，
+ * react-window List 负责虚拟滚动；当前章节在原文中对齐高亮，
  * 切割起止标记与未切分区间（空洞）以 diff 风格直观展示。
  */
 export function ChapterRawPreview({
@@ -75,21 +348,15 @@ export function ChapterRawPreview({
   activeIndex: number;
   onCreateFromGap?: (text: string, start: number, end: number) => void;
 }) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const scrollOriginTopRef = useRef(0);
-  const containerHeightRef = useRef(FALLBACK_CONTAINER_HEIGHT);
-  const anchorCorrectionCountRef = useRef(0);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [scrollOriginTop, setScrollOriginTop] = useState(0);
+  const listRef = useRef<ListImperativeAPI>(null);
   const [containerWidth, setContainerWidth] = useState(
     FALLBACK_CONTAINER_WIDTH,
   );
   const [containerHeight, setContainerHeight] = useState(
     FALLBACK_CONTAINER_HEIGHT,
   );
+  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
   const [focusedGap, setFocusedGap] = useState<number | null>(null);
-  const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
 
   const gaps = useMemo(() => collectRawGaps(chapters), [chapters]);
   const analysis = useMemo(() => analyzeCoverage(chapters), [chapters]);
@@ -108,310 +375,150 @@ export function ChapterRawPreview({
     return list;
   }, [rawText]);
 
-  const charsPerLine = Math.max(
-    10,
-    Math.floor((containerWidth - 24) / FONT_SIZE),
+  const contentWidth = Math.max(
+    MIN_TEXT_WIDTH,
+    containerWidth - ROW_PADDING_X - getScrollbarSize(),
   );
 
-  const blockMetrics = useMemo(() => {
-    const offsets: number[] = [];
-    let totalHeight = 0;
-    for (const block of blocks) {
-      offsets.push(totalHeight);
-      const lines = Math.max(1, Math.ceil(block.text.length / charsPerLine));
-      totalHeight += lines * LINE_HEIGHT + 8;
+  // prepare 只依赖文本（宽度无关）；layout 依赖宽度，两者分离以复用。
+  const preparedBlocks = useMemo(
+    () => blocks.map((block) => prepare(block.text, TEXT_FONT, PREPARE_OPTIONS)),
+    [blocks],
+  );
+
+  const blockTextHeights = useMemo(() => {
+    const heights: number[] = [];
+    for (let index = 0; index < blocks.length; index += 1) {
+      const prepared = preparedBlocks[index];
+      if (!prepared) continue;
+      heights.push(measureHeight(prepared, contentWidth, TEXT_LINE_HEIGHT));
     }
-    return { offsets, totalHeight };
-  }, [blocks, charsPerLine]);
-  const { offsets, totalHeight } = blockMetrics;
-
-  useLayoutEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    const update = () => {
-      const rect = element.getBoundingClientRect();
-      const width = element.clientWidth || rect.width;
-      const height = element.clientHeight || rect.height;
-      if (width > 0) setContainerWidth(width);
-      if (height > 0) {
-        setContainerHeight(height);
-        containerHeightRef.current = height;
-      }
-    };
-    update();
-    const frame = requestAnimationFrame(update);
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, []);
-
-  const handleScroll = () => {
-    if (rafRef.current !== null) return;
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      setScrollTop(scrollRef.current?.scrollTop ?? 0);
-    });
-  };
-  useEffect(
-    () => () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    },
-    [],
-  );
-
-  const scrollToOffset = useCallback((offset: number) => {
-    const element = scrollRef.current;
-    const currentOrigin = scrollOriginTopRef.current;
-    const maxLocalOffset =
-      SCROLL_WINDOW_HEIGHT -
-      Math.max(containerHeightRef.current, LINE_HEIGHT);
-    const needsRebase =
-      offset < currentOrigin || offset - currentOrigin > maxLocalOffset;
-    const nextOrigin = needsRebase
-      ? Math.max(0, offset - SCROLL_WINDOW_PADDING)
-      : currentOrigin;
-    const nextScrollTop = Math.max(0, offset - nextOrigin);
-
-    if (nextOrigin !== currentOrigin) {
-      scrollOriginTopRef.current = nextOrigin;
-      setScrollOriginTop(nextOrigin);
-    }
-    if (element) element.scrollTop = nextScrollTop;
-    setScrollTop(element?.scrollTop ?? nextScrollTop);
-  }, []);
-
-  const rawIndexToScrollTop = useCallback(
-    (rawIndex: number) => {
-      if (offsets.length === 0 || blocks.length === 0) return 0;
-      const normalized = Math.max(
-        0,
-        Math.min(rawIndex, (rawText?.length ?? 1) - 1),
-      );
-      const blockIndex = Math.min(
-        Math.floor(normalized / BLOCK_CHARS),
-        offsets.length - 1,
-      );
-      const block = blocks[blockIndex];
-      if (!block) return 0;
-      const charsBeforeTarget = Math.max(0, normalized - block.start);
-      const lineInBlock = Math.floor(charsBeforeTarget / charsPerLine);
-      return (offsets[blockIndex] ?? 0) + lineInBlock * LINE_HEIGHT;
-    },
-    [blocks, charsPerLine, offsets, rawText],
-  );
-
-  const scrollToRawIndex = useCallback(
-    (rawIndex: number) => scrollToOffset(rawIndexToScrollTop(rawIndex)),
-    [rawIndexToScrollTop, scrollToOffset],
-  );
-
-  const scrollToRawAnchor = useCallback(
-    (rawIndex: number, anchor: string) => {
-      anchorCorrectionCountRef.current = 0;
-      setPendingAnchor(anchor);
-      scrollToRawIndex(rawIndex);
-    },
-    [scrollToRawIndex],
-  );
+    return heights;
+  }, [blocks, preparedBlocks, contentWidth]);
 
   const chapter = chapters[activeIndex];
   const chapterStart = chapter?.start ?? null;
 
+  const segmentsByRow = useMemo(
+    () =>
+      blocks.map((block) =>
+        computeBlockSegments(block, chapter, gaps, activeIndex),
+      ),
+    [blocks, chapter, gaps, activeIndex],
+  );
+
+  const rowLayouts = useMemo(
+    () =>
+      computeRowLayouts(
+        blocks,
+        preparedBlocks,
+        segmentsByRow,
+        blockTextHeights,
+        contentWidth,
+      ),
+    [blocks, preparedBlocks, segmentsByRow, blockTextHeights, contentWidth],
+  );
+
+  const rowIndexOf = useCallback(
+    (rawIndex: number) =>
+      blocks.length === 0
+        ? 0
+        : Math.min(
+            blocks.length - 1,
+            Math.max(0, Math.floor(rawIndex / BLOCK_CHARS)),
+          ),
+    [blocks.length],
+  );
+
+  const scrollToPixel = useCallback(
+    (offset: number) => {
+      const element = listRef.current?.element;
+      if (!element) return;
+      const target = Math.max(0, offset);
+      const maxScroll = element.scrollHeight - element.clientHeight;
+      // spacer 按已知行均值外推时可能暂时小于目标；先顶到当前最大，
+      // 下一帧 react-window 补全 bounds 后再落位。
+      if (element.scrollHeight > 0 && target > maxScroll) {
+        element.scrollTop = Math.max(0, maxScroll);
+        requestAnimationFrame(() => {
+          const next = listRef.current?.element;
+          if (next) next.scrollTop = target;
+        });
+        return;
+      }
+      element.scrollTop = target;
+    },
+    [listRef],
+  );
+
+  const scrollToStartAnchor = useCallback(
+    (rawIndex: number) => {
+      const row = rowLayouts[rowIndexOf(rawIndex)];
+      const segment = row?.segments.find((item) => item.start === rawIndex);
+      if (!row || !segment) return;
+      scrollToPixel(row.offset + segment.top + segment.gapLabelHeight - 8);
+    },
+    [rowLayouts, rowIndexOf, scrollToPixel],
+  );
+
+  const scrollToEndAnchor = useCallback(
+    (chapterEnd: number) => {
+      const row = rowLayouts[rowIndexOf(Math.max(0, chapterEnd - 1))];
+      const segment = row?.segments.find((item) => item.end === chapterEnd);
+      if (!row || !segment) return;
+      const anchorTop =
+        segment.top +
+        segment.gapLabelHeight +
+        segment.markStartHeight +
+        segment.textHeight;
+      const viewportTop = Math.max(
+        8,
+        containerHeight - segment.markEndHeight - 56,
+      );
+      scrollToPixel(row.offset + anchorTop - viewportTop);
+    },
+    [rowLayouts, rowIndexOf, containerHeight, scrollToPixel],
+  );
+
+  const scrollToGap = useCallback(
+    (gapStart: number) => {
+      const row = rowLayouts[rowIndexOf(gapStart)];
+      const segment = row?.segments.find((item) => item.start === gapStart);
+      if (!row || !segment) return;
+      scrollToPixel(row.offset + segment.top - 8);
+    },
+    [rowLayouts, rowIndexOf, scrollToPixel],
+  );
+
   // 点击章节（或首次载入）时滚动到该章在原文中的位置。
   useEffect(() => {
     if (chapterStart === null) return;
-    scrollToRawAnchor(chapterStart, `start-${chapterStart}`);
+    scrollToStartAnchor(chapterStart);
     setFocusedGap(null);
-  }, [activeIndex, chapterStart, scrollToRawAnchor]);
+  }, [activeIndex, chapterStart, scrollToStartAnchor]);
 
-  const findBlockIndexByScrollTop = useCallback(
-    (targetScrollTop: number) => {
-      if (blocks.length === 0 || offsets.length === 0) return 0;
-      let low = 0;
-      let high = offsets.length - 1;
-      while (low < high) {
-        const mid = (low + high + 1) >> 1;
-        if ((offsets[mid] ?? 0) <= targetScrollTop) low = mid;
-        else high = mid - 1;
-      }
-      return low;
+  const handleResize = useCallback(
+    (size: { height: number; width: number }) => {
+      if (size.width > 0) setContainerWidth(size.width);
+      if (size.height > 0) setContainerHeight(size.height);
     },
-    [blocks.length, offsets],
+    [],
   );
 
-  const logicalScrollTop = scrollOriginTop + scrollTop;
-
-  const pendingBlockIndex = useMemo(() => {
-    if (pendingAnchor === null) return null;
-    const rawAnchor = Number(pendingAnchor.slice(pendingAnchor.indexOf("-") + 1));
-    if (!Number.isFinite(rawAnchor)) return null;
-    const rawIndex = pendingAnchor.startsWith("end-")
-      ? Math.max(0, rawAnchor - 1)
-      : Math.max(0, rawAnchor);
-    return Math.min(blocks.length - 1, Math.floor(rawIndex / BLOCK_CHARS));
-  }, [blocks.length, pendingAnchor]);
-
-  // 跳转校准期间固定目标块；普通滚动仅保留一个前置块，避免估算误差累积。
-  const viewRange = useMemo(() => {
-    if (blocks.length === 0 || offsets.length === 0)
-      return { start: 0, end: 0 };
-    const low =
-      pendingBlockIndex ?? findBlockIndexByScrollTop(logicalScrollTop);
-    return {
-      start: Math.max(0, low - 1),
-      end: Math.min(blocks.length, low + 42),
-    };
-  }, [
-    logicalScrollTop,
-    blocks,
-    offsets,
-    findBlockIndexByScrollTop,
-    pendingBlockIndex,
-  ]);
-
-  const scrollTopToRawIndex = useCallback(
-    (targetScrollTop: number) => {
-      if (blocks.length === 0 || offsets.length === 0) return 0;
-      const blockIndex = findBlockIndexByScrollTop(targetScrollTop);
-      const block = blocks[blockIndex];
-      if (!block) return 0;
-      const withinBlockTop = Math.max(
-        0,
-        targetScrollTop - (offsets[blockIndex] ?? 0),
-      );
-      const lineInBlock = Math.floor(withinBlockTop / LINE_HEIGHT);
-      return Math.min(block.end, block.start + lineInBlock * charsPerLine);
+  const handleRowsRendered = useCallback(
+    (visible: { startIndex: number; stopIndex: number }) => {
+      const start = blocks[visible.startIndex]?.start ?? 0;
+      const end = blocks[visible.stopIndex]?.end ?? 0;
+      setVisibleRange({ start, end });
     },
-    [blocks, charsPerLine, findBlockIndexByScrollTop, offsets],
+    [blocks],
   );
 
-  const viewportRange = useMemo(() => {
-    if (blocks.length === 0 || offsets.length === 0)
-      return { start: 0, end: 0 };
-    return {
-      start: scrollTopToRawIndex(logicalScrollTop),
-      end: scrollTopToRawIndex(
-        logicalScrollTop + Math.max(containerHeight, LINE_HEIGHT),
-      ),
-    };
-  }, [
-    blocks.length,
-    containerHeight,
-    offsets.length,
-    logicalScrollTop,
-    scrollTopToRawIndex,
-  ]);
-
-  useEffect(() => {
-    if (pendingAnchor === null) return;
-    const frame = requestAnimationFrame(() => {
-      const container = scrollRef.current;
-      const target = container?.querySelector(
-        `[data-raw-anchor="${pendingAnchor}"]`,
-      );
-      if (
-        !(container instanceof HTMLElement) ||
-        !(target instanceof HTMLElement)
-      )
-        return;
-      const containerRect = container.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
-      const isEndAnchor = pendingAnchor.startsWith("end-");
-      const viewportHeight =
-        container.clientHeight || containerHeightRef.current;
-      const targetHeight = targetRect.height || LINE_HEIGHT;
-      const anchorViewportTop = isEndAnchor
-        ? containerRect.top +
-          Math.max(8, viewportHeight - targetHeight - 56)
-        : containerRect.top + 8;
-      const anchorDelta = targetRect.top - anchorViewportTop;
-      if (
-        Math.abs(anchorDelta) <= 2 ||
-        anchorCorrectionCountRef.current >= 2
-      ) {
-        anchorCorrectionCountRef.current = 0;
-        setPendingAnchor(null);
-        return;
-      }
-      anchorCorrectionCountRef.current += 1;
-      const localNextTop = container.scrollTop + anchorDelta;
-      scrollToOffset(scrollOriginTop + Math.max(0, localNextTop));
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [pendingAnchor, scrollOriginTop, scrollToOffset, viewRange]);
-
-  const getBlockSegments = useCallback(
-    (block: RawBlock): RawSegment[] => {
-      const points = new Set<number>([block.start, block.end]);
-      if (chapter && chapter.start !== null && chapter.end !== null) {
-        if (chapter.start > block.start && chapter.start < block.end)
-          points.add(chapter.start);
-        if (chapter.end > block.start && chapter.end < block.end)
-          points.add(chapter.end);
-      }
-      for (const gap of gaps) {
-        if (gap.start > block.start && gap.start < block.end)
-          points.add(gap.start);
-        if (gap.end > block.start && gap.end < block.end) points.add(gap.end);
-      }
-
-      const sorted = [...points].sort((a, b) => a - b);
-      const segments: RawSegment[] = [];
-      for (let index = 0; index < sorted.length - 1; index += 1) {
-        const start = sorted[index] ?? block.start;
-        const end = sorted[index + 1] ?? block.end;
-        if (end <= start) continue;
-        const insideChapter =
-          chapter !== undefined &&
-          chapter.start !== null &&
-          chapter.end !== null &&
-          start >= chapter.start &&
-          end <= chapter.end;
-        const gap = gaps.find((item) => start < item.end && end > item.start);
-        segments.push({
-          start,
-          end,
-          text: block.text.slice(start - block.start, end - block.start),
-          kind: insideChapter ? "chapter" : gap ? "gap" : "plain",
-          markStart:
-            chapter && chapter.start === start && chapter.end !== null
-              ? `▼ 第 ${activeIndex + 1} 章「${chapter.title}」开始 [${chapter.start.toLocaleString()}, ${chapter.end.toLocaleString()})`
-              : null,
-          markEnd:
-            chapter && chapter.end === end
-              ? `▲ 第 ${activeIndex + 1} 章结束`
-              : null,
-          gapLabel:
-            gap && Math.max(gap.start, block.start) === start
-              ? `未切分 [${gap.start.toLocaleString()}, ${gap.end.toLocaleString()}) ${gap.chars.toLocaleString()} 字`
-              : null,
-        });
-      }
-      if (
-        chapter &&
-        chapter.end === block.end &&
-        segments.length > 0 &&
-        segments[segments.length - 1]?.markEnd === null
-      ) {
-        segments[segments.length - 1] = {
-          ...segments[segments.length - 1]!,
-          markEnd: `▲ 第 ${activeIndex + 1} 章结束`,
-        };
-      }
-      return segments;
-    },
-    [chapter, gaps, activeIndex],
+  const rowHeight = useCallback(
+    (index: number) => rowLayouts[index]?.height ?? 0,
+    [rowLayouts],
   );
 
-  const visibleStart = viewportRange.start;
-  const visibleEnd = viewportRange.end;
-  const scrollableHeight = Math.max(
-    containerHeight + LINE_HEIGHT,
-    Math.min(SCROLL_WINDOW_HEIGHT, totalHeight - scrollOriginTop),
-  );
   const chapterRangeStart = chapter?.start ?? null;
   const chapterRangeEnd = chapter?.end ?? null;
   const hasChapterRange =
@@ -446,7 +553,7 @@ export function ChapterRawPreview({
           <div>
             已加载原文 {rawText ? rawText.length.toLocaleString() : "0"} 字 · 共{" "}
             {blocks.length.toLocaleString()} 块 · 当前显示 [
-            {visibleStart.toLocaleString()}, {visibleEnd.toLocaleString()})
+            {visibleRange.start.toLocaleString()}, {visibleRange.end.toLocaleString()})
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <span>
@@ -462,10 +569,7 @@ export function ChapterRawPreview({
               disabled={!hasChapterRange}
               onClick={() => {
                 if (chapterRangeStart !== null)
-                  scrollToRawAnchor(
-                    chapterRangeStart,
-                    `start-${chapterRangeStart}`,
-                  );
+                  scrollToStartAnchor(chapterRangeStart);
               }}
             >
               章首
@@ -475,11 +579,7 @@ export function ChapterRawPreview({
               className="rounded border border-[#cfd9d6] bg-white px-1.5 py-[1px] text-[10px] text-[#176e66] disabled:cursor-not-allowed disabled:text-muted-foreground"
               disabled={!hasChapterRange}
               onClick={() => {
-                if (chapterRangeEnd !== null)
-                  scrollToRawAnchor(
-                    Math.max(0, chapterRangeEnd - 1),
-                    `end-${chapterRangeEnd}`,
-                  );
+                if (chapterRangeEnd !== null) scrollToEndAnchor(chapterRangeEnd);
               }}
             >
               章尾
@@ -504,7 +604,7 @@ export function ChapterRawPreview({
                 className="grid min-w-0 flex-1 cursor-pointer grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-1.5 border-0 bg-transparent p-1 pl-1.5 text-left text-inherit"
                 onClick={() => {
                   setFocusedGap(index);
-                  scrollToRawIndex(gap.start);
+                  scrollToGap(gap.start);
                 }}
                 title="滚动到该段原文"
               >
@@ -542,71 +642,19 @@ export function ChapterRawPreview({
           无原文数据，请重新导入文件
         </p>
       ) : (
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-auto rounded-md border border-[#e3e7ea] bg-[#fbfcfc]"
-          onScroll={handleScroll}
+        <List
+          listRef={listRef}
+          className="min-h-0 flex-1 rounded-md border border-[#e3e7ea] bg-[#fbfcfc]"
           aria-label="完整原文滚动区"
-        >
-          <div style={{ height: scrollableHeight, position: "relative" }}>
-            <div
-              data-testid="raw-flow-window"
-              data-raw-start={blocks[viewRange.start]?.start ?? 0}
-              style={{
-                position: "absolute",
-                top: (offsets[viewRange.start] ?? 0) - scrollOriginTop,
-                left: 0,
-                right: 0,
-              }}
-            >
-              {blocks.slice(viewRange.start, viewRange.end).map((block) => {
-              const segments = getBlockSegments(block);
-              return (
-                <div key={block.start} className="px-2">
-                  {segments.map((segment) => {
-                    const kindClass =
-                      segment.kind === "chapter"
-                        ? "bg-[#e9f6f1]"
-                        : segment.kind === "gap"
-                          ? "bg-[#fdf1f0] text-[#8f2b24] line-through decoration-[#e5a3a0]"
-                          : "bg-[#fbfcfc]";
-                    return (
-                      <div key={`${segment.start}-${segment.end}`}>
-                        {segment.gapLabel ? (
-                          <div className="my-[3px] inline-block rounded-[3px] bg-[#fbe3e1] px-1.5 py-px text-[10px] font-semibold text-[#8f2b24]">
-                            {segment.gapLabel}
-                          </div>
-                        ) : null}
-                        {segment.markStart ? (
-                          <div
-                            className="my-[3px] rounded border-l-[3px] border-[#209065] bg-[#e2efec] px-1.5 py-[3px] text-[11px] font-semibold text-[#176e66]"
-                            data-raw-anchor={`start-${segment.start}`}
-                          >
-                            {segment.markStart}
-                          </div>
-                        ) : null}
-                        <div
-                          className={`text-[13px] leading-[22px] text-[#1d2a33] whitespace-pre-wrap break-words ${kindClass}`}
-                        >
-                          {segment.text}
-                        </div>
-                        {segment.markEnd ? (
-                          <div
-                            className="my-[3px] rounded border-l-[3px] border-[#9aa4ad] bg-[#eef1f4] px-1.5 py-[3px] text-[11px] font-semibold text-[#5b6670]"
-                            data-raw-anchor={`end-${segment.end}`}
-                          >
-                            {segment.markEnd}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-              })}
-            </div>
-          </div>
-        </div>
+          rowCount={blocks.length}
+          rowHeight={rowHeight}
+          rowComponent={RawRow}
+          rowProps={{ layouts: rowLayouts }}
+          defaultHeight={FALLBACK_CONTAINER_HEIGHT}
+          overscanCount={6}
+          onResize={handleResize}
+          onRowsRendered={handleRowsRendered}
+        />
       )}
 
       {analysis.continuous ? (
