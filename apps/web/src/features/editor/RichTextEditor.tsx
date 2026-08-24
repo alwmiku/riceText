@@ -28,6 +28,7 @@ import {
   isRichNodeActive,
   type StepJson,
 } from "./commands";
+import { SelectionFormatMenu } from "./SelectionFormatMenu";
 import { Toolbar } from "./Toolbar";
 
 /** RichTextEditor 的稳定公共属性；宿主只需持有 JSON，不接触 ProseMirror 实例。 */
@@ -257,7 +258,9 @@ export function RichTextEditor({
           ) : null}
         </div>
         <div className="editor-content-wrap">
-          <EditorContent editor={editor} />
+          <SelectionFormatMenu editor={editor}>
+            <EditorContent editor={editor} />
+          </SelectionFormatMenu>
         </div>
       </div>
     );
@@ -266,7 +269,9 @@ export function RichTextEditor({
     return (
       <div className="compact-shell surface mobile-edge">
         <div className="editor-content-wrap">
-          <EditorContent editor={editor} />
+          <SelectionFormatMenu editor={editor}>
+            <EditorContent editor={editor} />
+          </SelectionFormatMenu>
         </div>
         <div className="compact-actions">
           <DropdownMenu>
@@ -306,7 +311,9 @@ export function RichTextEditor({
       <>
         <div className="mobile-editor surface mobile-edge">
           <div className="editor-content-wrap">
-            <EditorContent editor={editor} />
+            <SelectionFormatMenu editor={editor} mobile>
+              <EditorContent editor={editor} />
+            </SelectionFormatMenu>
           </div>
           <div className="mobile-toolbar">
             <IconButton
@@ -366,7 +373,9 @@ export function RichTextEditor({
     <div className="surface mobile-edge overflow-clip">
       <Toolbar editor={editor} />
       <div className="editor-content-wrap">
-        <EditorContent editor={editor} />
+        <SelectionFormatMenu editor={editor}>
+          <EditorContent editor={editor} />
+        </SelectionFormatMenu>
       </div>
       <footer className="editor-footer">
         <span>

@@ -93,6 +93,35 @@ export function Toolbar({
       editor.off("transaction", update);
     };
   }, [editor]);
+  useEffect(() => {
+    if (!editor) return undefined;
+    const handleContextInsert = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        editor?: Editor;
+        tool?: string;
+      }>).detail;
+      if (detail?.editor !== editor) return;
+      if (detail.tool === "image") {
+        setImageInitial(null);
+        setImageAssetId(null);
+        setImageOpen(true);
+      }
+      if (detail.tool === "dice") setDiceOpen(true);
+      if (detail.tool === "attachment") {
+        setAttachmentInitial(null);
+        setAttachmentOpen(true);
+      }
+      if (detail.tool === "mention") setMentionOpen(true);
+      if (detail.tool === "poll") {
+        setPollInitial(null);
+        setPollOpen(true);
+      }
+      if (detail.tool === "excerpt") setExcerptOpen(true);
+    };
+    document.addEventListener("ricetext:context-insert", handleContextInsert);
+    return () =>
+      document.removeEventListener("ricetext:context-insert", handleContextInsert);
+  }, [editor]);
   if (!editor)
     return <div className="editor-toolbar h-[46px]" aria-hidden="true" />;
   const spoilerActive = editor.isActive("spoiler");

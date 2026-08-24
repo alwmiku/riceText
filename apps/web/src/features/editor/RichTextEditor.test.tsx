@@ -1,3 +1,4 @@
+import type { Editor } from "@tiptap/react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   afterEach,
@@ -175,6 +176,101 @@ describe("RichTextEditor presets", () => {
       await screen.findByRole("menuitem", { name: "插入图片或骰子" }),
     );
     expect(onModeToolsOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("未选中文本时右键仍显示自定义编辑命令", async () => {
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="full"
+        onChange={vi.fn()}
+      />,
+    );
+
+    const editorElement = await screen.findByLabelText("正文编辑区");
+    fireEvent.contextMenu(editorElement, { clientX: 120, clientY: 140 });
+    expect(
+      await screen.findByRole("menu", { name: "编辑上下文菜单" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "全选" })).toBeInTheDocument();
+  });
+
+  it("右键插入子菜单复用图片对话框", async () => {
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="full"
+        onChange={vi.fn()}
+      />,
+    );
+
+    const editorElement = await screen.findByLabelText("正文编辑区");
+    fireEvent.contextMenu(editorElement, { clientX: 120, clientY: 140 });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "插入内容" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "图片" }));
+    expect(
+      await screen.findByRole("dialog", { name: "插入图片" }),
+    ).toBeInTheDocument();
+  });
+
+  it("文本选区通过右键菜单提供字体、字号和颜色", async () => {
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(100, 100, 40, 24),
+    );
+    const editorRef: { current: Editor | null } = { current: null };
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="full"
+        onChange={vi.fn()}
+        onReady={(value) => {
+          editorRef.current = value;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const readyEditor = editorRef.current;
+    if (!readyEditor) throw new Error("编辑器未初始化");
+    readyEditor.commands.setTextSelection({ from: 1, to: 4 });
+    expect(
+      await screen.findByRole("toolbar", { name: "选区浮动工具栏" }),
+    ).toBeInTheDocument();
+    const editorElement = screen.getByLabelText("正文编辑区");
+    fireEvent.contextMenu(editorElement, { clientX: 120, clientY: 140 });
+
+    expect(
+      await screen.findByRole("menu", { name: "选区格式菜单" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("选区字体")).toBeInTheDocument();
+    expect(screen.getByLabelText("选区字号")).toBeInTheDocument();
+    expect(screen.getByLabelText("文字颜色 #197c73")).toBeInTheDocument();
+  });
+
+  it("移动端将选中文本预览放在工具栏上方", async () => {
+    const editorRef: { current: Editor | null } = { current: null };
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="mobile"
+        onChange={vi.fn()}
+        onReady={(value) => {
+          editorRef.current = value;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const readyEditor = editorRef.current;
+    if (!readyEditor) throw new Error("编辑器未初始化");
+    readyEditor.commands.setTextSelection({ from: 1, to: 4 });
+    expect(await screen.findByLabelText("已选择的内容")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "选区更多格式" }));
+    expect(
+      screen.getByRole("dialog", { name: "选区格式菜单" }),
+    ).toBeInTheDocument();
   });
 
   it("移动模式使用底部触控工具栏并在 Sheet 中展开完整工具", async () => {
