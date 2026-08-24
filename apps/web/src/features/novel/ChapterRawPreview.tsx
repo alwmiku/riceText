@@ -68,6 +68,7 @@ export function ChapterRawPreview({
   const rafRef = useRef<number | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
   const [focusedGap, setFocusedGap] = useState<number | null>(null);
 
   const gaps = useMemo(() => collectRawGaps(chapters), [chapters]);
@@ -107,7 +108,10 @@ export function ChapterRawPreview({
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
-    const update = () => setContainerWidth(element.clientWidth);
+    const update = () => {
+      setContainerWidth(element.clientWidth);
+      setContainerHeight(element.clientHeight);
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
@@ -134,13 +138,29 @@ export function ChapterRawPreview({
     setScrollTop(element?.scrollTop ?? 0);
   }, []);
 
-  const scrollToRawIndex = useCallback(
+  const rawIndexToScrollTop = useCallback(
     (rawIndex: number) => {
-      if (offsets.length === 0) return;
-      const blockIndex = Math.floor(Math.max(0, rawIndex) / BLOCK_CHARS);
-      scrollToOffset(offsets[Math.min(blockIndex, offsets.length - 1)] ?? 0);
+      if (offsets.length === 0 || blocks.length === 0) return 0;
+      const normalized = Math.max(
+        0,
+        Math.min(rawIndex, (rawText?.length ?? 1) - 1),
+      );
+      const blockIndex = Math.min(
+        Math.floor(normalized / BLOCK_CHARS),
+        offsets.length - 1,
+      );
+      const block = blocks[blockIndex];
+      if (!block) return 0;
+      const charsBeforeTarget = Math.max(0, normalized - block.start);
+      const lineInBlock = Math.floor(charsBeforeTarget / charsPerLine);
+      return (offsets[blockIndex] ?? 0) + lineInBlock * LINE_HEIGHT;
     },
-    [offsets, scrollToOffset],
+    [blocks, charsPerLine, offsets, rawText],
+  );
+
+  const scrollToRawIndex = useCallback(
+    (rawIndex: number) => scrollToOffset(rawIndexToScrollTop(rawIndex)),
+    [rawIndexToScrollTop, scrollToOffset],
   );
 
   const chapter = chapters[activeIndex];
@@ -153,22 +173,42 @@ export function ChapterRawPreview({
     setFocusedGap(null);
   }, [activeIndex, chapterStart, scrollToRawIndex]);
 
+  const findBlockIndexByScrollTop = useCallback(
+    (targetScrollTop: number) => {
+      if (blocks.length === 0 || offsets.length === 0) return 0;
+      let low = 0;
+      let high = offsets.length - 1;
+      while (low < high) {
+        const mid = (low + high + 1) >> 1;
+        if ((offsets[mid] ?? 0) <= targetScrollTop) low = mid;
+        else high = mid - 1;
+      }
+      return low;
+    },
+    [blocks.length, offsets],
+  );
+
   // 可见块范围：滚动位置 ± 缓冲。
   const viewRange = useMemo(() => {
     if (blocks.length === 0 || offsets.length === 0)
       return { start: 0, end: 0 };
-    let low = 0;
-    let high = offsets.length - 1;
-    while (low < high) {
-      const mid = (low + high + 1) >> 1;
-      if ((offsets[mid] ?? 0) <= scrollTop) low = mid;
-      else high = mid - 1;
-    }
+    const low = findBlockIndexByScrollTop(scrollTop);
     return {
       start: Math.max(0, low - 10),
       end: Math.min(blocks.length, low + 42),
     };
-  }, [scrollTop, blocks, offsets]);
+  }, [scrollTop, blocks, offsets, findBlockIndexByScrollTop]);
+
+  const viewportRange = useMemo(() => {
+    if (blocks.length === 0 || offsets.length === 0)
+      return { start: 0, end: 0 };
+    const start = findBlockIndexByScrollTop(scrollTop);
+    const endTop = scrollTop + Math.max(containerHeight, LINE_HEIGHT);
+    return {
+      start,
+      end: Math.min(blocks.length, findBlockIndexByScrollTop(endTop) + 1),
+    };
+  }, [blocks, containerHeight, findBlockIndexByScrollTop, offsets, scrollTop]);
 
   const getBlockSegments = useCallback(
     (block: RawBlock): RawSegment[] => {
@@ -233,9 +273,9 @@ export function ChapterRawPreview({
     [chapter, gaps, activeIndex],
   );
 
-  const visibleStart = blocks[viewRange.start]?.start ?? 0;
+  const visibleStart = blocks[viewportRange.start]?.start ?? 0;
   const visibleEnd =
-    blocks[Math.max(viewRange.start, viewRange.end - 1)]?.end ?? 0;
+    blocks[Math.max(viewportRange.start, viewportRange.end - 1)]?.end ?? 0;
   const chapterRangeStart = chapter?.start ?? null;
   const chapterRangeEnd = chapter?.end ?? null;
   const hasChapterRange =

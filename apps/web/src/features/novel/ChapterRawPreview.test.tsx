@@ -29,6 +29,17 @@ const chapters: CoverageChapter[] = [
   },
 ];
 
+const longChapter: CoverageChapter[] = [
+  {
+    id: "chapter-long",
+    title: "长章",
+    charCount: 3500,
+    start: 250,
+    end: 3750,
+    preview: "长章正文",
+  },
+];
+
 describe("ChapterRawPreview", () => {
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
@@ -54,9 +65,9 @@ describe("ChapterRawPreview", () => {
   it("jumps to the selected chapter head and tail", () => {
     render(
       <ChapterRawPreview
-        rawText={"字".repeat(6000)}
-        chapters={chapters}
-        activeIndex={1}
+        rawText={"字".repeat(5000)}
+        chapters={longChapter}
+        activeIndex={0}
       />,
     );
 
@@ -67,7 +78,7 @@ describe("ChapterRawPreview", () => {
     const headScrollTop = scrollArea.scrollTop;
 
     fireEvent.click(screen.getByRole("button", { name: "章尾" }));
-    expect(scrollArea.scrollTop).toBeGreaterThan(headScrollTop);
+    expect(scrollArea.scrollTop).toBeGreaterThan(headScrollTop + 1000);
   });
 
   it("keeps the reimport prompt when raw text is missing", () => {
