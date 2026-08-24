@@ -122,7 +122,7 @@ export default function ReadPage() {
   );
   return (
     <main className="mx-auto max-w-[1600px] px-5 pt-[18px] pb-[42px] max-[840px]:px-2.5 max-[840px]:pt-3 max-[840px]:pb-7 max-[430px]:px-0 max-[430px]:pt-2 max-[430px]:pb-5">
-      <div className="mx-auto grid max-w-[1320px] grid-cols-[200px_minmax(0,1fr)_280px] items-start gap-8 max-[1180px]:grid-cols-[minmax(0,1fr)_280px] max-[1180px]:[&>nav]:hidden max-[840px]:block max-[840px]:[&>nav]:hidden max-[840px]:[&>aside]:hidden">
+      <div className="mx-auto grid max-w-[1320px] grid-cols-[200px_minmax(0,1fr)_280px] items-start gap-8 [&>nav]:order-1 [&>article]:order-2 [&>aside]:order-3 max-[1180px]:grid-cols-[minmax(0,1fr)_280px] max-[1180px]:[&>nav]:hidden max-[840px]:block max-[840px]:[&>nav]:hidden max-[840px]:[&>aside]:hidden">
         <article className="min-w-0 border border-border bg-white p-[clamp(28px,6vw,72px)] shadow-[0_8px_32px_rgb(25_36_45/0.05)] max-[840px]:p-[30px_22px] max-[430px]:border-x-0 max-[430px]:p-[28px_18px] max-[430px]:[&_.rt-viewer]:text-base max-[430px]:[&_.rt-viewer]:leading-[1.85] max-[430px]:[&_.rt-viewer_h1]:text-[25px]">
           <div className="mb-8 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-4 font-sans text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5">
