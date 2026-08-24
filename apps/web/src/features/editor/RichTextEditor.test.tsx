@@ -192,7 +192,7 @@ describe("RichTextEditor presets", () => {
     expect(
       await screen.findByRole("menu", { name: "编辑上下文菜单" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "全选" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /全选/ })).toBeInTheDocument();
   });
 
   it("右键插入子菜单复用图片对话框", async () => {
@@ -206,10 +206,11 @@ describe("RichTextEditor presets", () => {
 
     const editorElement = await screen.findByLabelText("正文编辑区");
     fireEvent.contextMenu(editorElement, { clientX: 120, clientY: 140 });
-    fireEvent.click(
-      await screen.findByRole("button", { name: "插入内容" }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "图片" }));
+    const insertTrigger = await screen.findByRole("menuitem", {
+      name: "插入内容",
+    });
+    fireEvent.pointerMove(insertTrigger);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "图片" }));
     expect(
       await screen.findByRole("dialog", { name: "插入图片" }),
     ).toBeInTheDocument();
