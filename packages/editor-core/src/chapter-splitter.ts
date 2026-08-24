@@ -79,7 +79,7 @@ function splitOversizedChapter(
           ? chapter.title
           : `${chapter.title}（续${continuation}）`,
       text: remaining.slice(0, cutAt).trim(),
-      start: offset,
+      start: continuation === 1 ? chapter.start : offset,
       end: offset + cutAt,
     });
     offset += cutAt;

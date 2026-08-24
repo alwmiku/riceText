@@ -1,5 +1,12 @@
 import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { analyzeCoverage, type CoverageChapter } from "./ChapterCoverageDialog";
 
 /** 未切分到任何章节的原文区间。 */
@@ -31,6 +38,10 @@ export function collectRawGaps(chapters: readonly CoverageChapter[]): RawGap[] {
 const BLOCK_CHARS = 2000;
 const LINE_HEIGHT = 22;
 const FONT_SIZE = 13;
+const FALLBACK_CONTAINER_WIDTH = 520;
+const FALLBACK_CONTAINER_HEIGHT = 360;
+const SCROLL_WINDOW_HEIGHT = 8_000_000;
+const SCROLL_WINDOW_PADDING = 1_000_000;
 
 interface RawBlock {
   index: number;
@@ -66,10 +77,19 @@ export function ChapterRawPreview({
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  const scrollOriginTopRef = useRef(0);
+  const containerHeightRef = useRef(FALLBACK_CONTAINER_HEIGHT);
+  const anchorCorrectionCountRef = useRef(0);
   const [scrollTop, setScrollTop] = useState(0);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [containerHeight, setContainerHeight] = useState(0);
+  const [scrollOriginTop, setScrollOriginTop] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(
+    FALLBACK_CONTAINER_WIDTH,
+  );
+  const [containerHeight, setContainerHeight] = useState(
+    FALLBACK_CONTAINER_HEIGHT,
+  );
   const [focusedGap, setFocusedGap] = useState<number | null>(null);
+  const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
 
   const gaps = useMemo(() => collectRawGaps(chapters), [chapters]);
   const analysis = useMemo(() => analyzeCoverage(chapters), [chapters]);
@@ -105,17 +125,27 @@ export function ChapterRawPreview({
   }, [blocks, charsPerLine]);
   const { offsets, totalHeight } = blockMetrics;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
     const update = () => {
-      setContainerWidth(element.clientWidth);
-      setContainerHeight(element.clientHeight);
+      const rect = element.getBoundingClientRect();
+      const width = element.clientWidth || rect.width;
+      const height = element.clientHeight || rect.height;
+      if (width > 0) setContainerWidth(width);
+      if (height > 0) {
+        setContainerHeight(height);
+        containerHeightRef.current = height;
+      }
     };
     update();
+    const frame = requestAnimationFrame(update);
     const observer = new ResizeObserver(update);
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, []);
 
   const handleScroll = () => {
@@ -134,8 +164,23 @@ export function ChapterRawPreview({
 
   const scrollToOffset = useCallback((offset: number) => {
     const element = scrollRef.current;
-    if (element) element.scrollTop = offset;
-    setScrollTop(element?.scrollTop ?? 0);
+    const currentOrigin = scrollOriginTopRef.current;
+    const maxLocalOffset =
+      SCROLL_WINDOW_HEIGHT -
+      Math.max(containerHeightRef.current, LINE_HEIGHT);
+    const needsRebase =
+      offset < currentOrigin || offset - currentOrigin > maxLocalOffset;
+    const nextOrigin = needsRebase
+      ? Math.max(0, offset - SCROLL_WINDOW_PADDING)
+      : currentOrigin;
+    const nextScrollTop = Math.max(0, offset - nextOrigin);
+
+    if (nextOrigin !== currentOrigin) {
+      scrollOriginTopRef.current = nextOrigin;
+      setScrollOriginTop(nextOrigin);
+    }
+    if (element) element.scrollTop = nextScrollTop;
+    setScrollTop(element?.scrollTop ?? nextScrollTop);
   }, []);
 
   const rawIndexToScrollTop = useCallback(
@@ -163,15 +208,24 @@ export function ChapterRawPreview({
     [rawIndexToScrollTop, scrollToOffset],
   );
 
+  const scrollToRawAnchor = useCallback(
+    (rawIndex: number, anchor: string) => {
+      anchorCorrectionCountRef.current = 0;
+      setPendingAnchor(anchor);
+      scrollToRawIndex(rawIndex);
+    },
+    [scrollToRawIndex],
+  );
+
   const chapter = chapters[activeIndex];
   const chapterStart = chapter?.start ?? null;
 
   // 点击章节（或首次载入）时滚动到该章在原文中的位置。
   useEffect(() => {
     if (chapterStart === null) return;
-    scrollToRawIndex(chapterStart);
+    scrollToRawAnchor(chapterStart, `start-${chapterStart}`);
     setFocusedGap(null);
-  }, [activeIndex, chapterStart, scrollToRawIndex]);
+  }, [activeIndex, chapterStart, scrollToRawAnchor]);
 
   const findBlockIndexByScrollTop = useCallback(
     (targetScrollTop: number) => {
@@ -188,27 +242,106 @@ export function ChapterRawPreview({
     [blocks.length, offsets],
   );
 
-  // 可见块范围：滚动位置 ± 缓冲。
+  const logicalScrollTop = scrollOriginTop + scrollTop;
+
+  const pendingBlockIndex = useMemo(() => {
+    if (pendingAnchor === null) return null;
+    const rawAnchor = Number(pendingAnchor.slice(pendingAnchor.indexOf("-") + 1));
+    if (!Number.isFinite(rawAnchor)) return null;
+    const rawIndex = pendingAnchor.startsWith("end-")
+      ? Math.max(0, rawAnchor - 1)
+      : Math.max(0, rawAnchor);
+    return Math.min(blocks.length - 1, Math.floor(rawIndex / BLOCK_CHARS));
+  }, [blocks.length, pendingAnchor]);
+
+  // 跳转校准期间固定目标块；普通滚动仅保留一个前置块，避免估算误差累积。
   const viewRange = useMemo(() => {
     if (blocks.length === 0 || offsets.length === 0)
       return { start: 0, end: 0 };
-    const low = findBlockIndexByScrollTop(scrollTop);
+    const low =
+      pendingBlockIndex ?? findBlockIndexByScrollTop(logicalScrollTop);
     return {
-      start: Math.max(0, low - 10),
+      start: Math.max(0, low - 1),
       end: Math.min(blocks.length, low + 42),
     };
-  }, [scrollTop, blocks, offsets, findBlockIndexByScrollTop]);
+  }, [
+    logicalScrollTop,
+    blocks,
+    offsets,
+    findBlockIndexByScrollTop,
+    pendingBlockIndex,
+  ]);
+
+  const scrollTopToRawIndex = useCallback(
+    (targetScrollTop: number) => {
+      if (blocks.length === 0 || offsets.length === 0) return 0;
+      const blockIndex = findBlockIndexByScrollTop(targetScrollTop);
+      const block = blocks[blockIndex];
+      if (!block) return 0;
+      const withinBlockTop = Math.max(
+        0,
+        targetScrollTop - (offsets[blockIndex] ?? 0),
+      );
+      const lineInBlock = Math.floor(withinBlockTop / LINE_HEIGHT);
+      return Math.min(block.end, block.start + lineInBlock * charsPerLine);
+    },
+    [blocks, charsPerLine, findBlockIndexByScrollTop, offsets],
+  );
 
   const viewportRange = useMemo(() => {
     if (blocks.length === 0 || offsets.length === 0)
       return { start: 0, end: 0 };
-    const start = findBlockIndexByScrollTop(scrollTop);
-    const endTop = scrollTop + Math.max(containerHeight, LINE_HEIGHT);
     return {
-      start,
-      end: Math.min(blocks.length, findBlockIndexByScrollTop(endTop) + 1),
+      start: scrollTopToRawIndex(logicalScrollTop),
+      end: scrollTopToRawIndex(
+        logicalScrollTop + Math.max(containerHeight, LINE_HEIGHT),
+      ),
     };
-  }, [blocks, containerHeight, findBlockIndexByScrollTop, offsets, scrollTop]);
+  }, [
+    blocks.length,
+    containerHeight,
+    offsets.length,
+    logicalScrollTop,
+    scrollTopToRawIndex,
+  ]);
+
+  useEffect(() => {
+    if (pendingAnchor === null) return;
+    const frame = requestAnimationFrame(() => {
+      const container = scrollRef.current;
+      const target = container?.querySelector(
+        `[data-raw-anchor="${pendingAnchor}"]`,
+      );
+      if (
+        !(container instanceof HTMLElement) ||
+        !(target instanceof HTMLElement)
+      )
+        return;
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const isEndAnchor = pendingAnchor.startsWith("end-");
+      const viewportHeight =
+        container.clientHeight || containerHeightRef.current;
+      const targetHeight = targetRect.height || LINE_HEIGHT;
+      const anchorViewportTop = isEndAnchor
+        ? containerRect.top +
+          Math.max(8, viewportHeight - targetHeight - 56)
+        : containerRect.top + 8;
+      const anchorDelta = targetRect.top - anchorViewportTop;
+      if (
+        Math.abs(anchorDelta) <= 2 ||
+        anchorCorrectionCountRef.current >= 2
+      ) {
+        anchorCorrectionCountRef.current = 0;
+        setPendingAnchor(null);
+        return;
+      }
+      anchorCorrectionCountRef.current += 1;
+      const localNextTop = container.scrollTop + anchorDelta;
+      scrollToOffset(scrollOriginTop + Math.max(0, localNextTop));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pendingAnchor, scrollOriginTop, scrollToOffset, viewRange]);
 
   const getBlockSegments = useCallback(
     (block: RawBlock): RawSegment[] => {
@@ -273,9 +406,12 @@ export function ChapterRawPreview({
     [chapter, gaps, activeIndex],
   );
 
-  const visibleStart = blocks[viewportRange.start]?.start ?? 0;
-  const visibleEnd =
-    blocks[Math.max(viewportRange.start, viewportRange.end - 1)]?.end ?? 0;
+  const visibleStart = viewportRange.start;
+  const visibleEnd = viewportRange.end;
+  const scrollableHeight = Math.max(
+    containerHeight + LINE_HEIGHT,
+    Math.min(SCROLL_WINDOW_HEIGHT, totalHeight - scrollOriginTop),
+  );
   const chapterRangeStart = chapter?.start ?? null;
   const chapterRangeEnd = chapter?.end ?? null;
   const hasChapterRange =
@@ -326,7 +462,10 @@ export function ChapterRawPreview({
               disabled={!hasChapterRange}
               onClick={() => {
                 if (chapterRangeStart !== null)
-                  scrollToRawIndex(chapterRangeStart);
+                  scrollToRawAnchor(
+                    chapterRangeStart,
+                    `start-${chapterRangeStart}`,
+                  );
               }}
             >
               章首
@@ -337,7 +476,10 @@ export function ChapterRawPreview({
               disabled={!hasChapterRange}
               onClick={() => {
                 if (chapterRangeEnd !== null)
-                  scrollToRawIndex(Math.max(0, chapterRangeEnd - 1));
+                  scrollToRawAnchor(
+                    Math.max(0, chapterRangeEnd - 1),
+                    `end-${chapterRangeEnd}`,
+                  );
               }}
             >
               章尾
@@ -406,20 +548,21 @@ export function ChapterRawPreview({
           onScroll={handleScroll}
           aria-label="完整原文滚动区"
         >
-          <div style={{ height: totalHeight, position: "relative" }}>
-            {blocks.slice(viewRange.start, viewRange.end).map((block) => {
+          <div style={{ height: scrollableHeight, position: "relative" }}>
+            <div
+              data-testid="raw-flow-window"
+              data-raw-start={blocks[viewRange.start]?.start ?? 0}
+              style={{
+                position: "absolute",
+                top: (offsets[viewRange.start] ?? 0) - scrollOriginTop,
+                left: 0,
+                right: 0,
+              }}
+            >
+              {blocks.slice(viewRange.start, viewRange.end).map((block) => {
               const segments = getBlockSegments(block);
               return (
-                <div
-                  key={block.start}
-                  className="px-2"
-                  style={{
-                    position: "absolute",
-                    top: offsets[block.index],
-                    left: 0,
-                    right: 0,
-                  }}
-                >
+                <div key={block.start} className="px-2">
                   {segments.map((segment) => {
                     const kindClass =
                       segment.kind === "chapter"
@@ -435,7 +578,10 @@ export function ChapterRawPreview({
                           </div>
                         ) : null}
                         {segment.markStart ? (
-                          <div className="my-[3px] rounded border-l-[3px] border-[#209065] bg-[#e2efec] px-1.5 py-[3px] text-[11px] font-semibold text-[#176e66]">
+                          <div
+                            className="my-[3px] rounded border-l-[3px] border-[#209065] bg-[#e2efec] px-1.5 py-[3px] text-[11px] font-semibold text-[#176e66]"
+                            data-raw-anchor={`start-${segment.start}`}
+                          >
                             {segment.markStart}
                           </div>
                         ) : null}
@@ -445,7 +591,10 @@ export function ChapterRawPreview({
                           {segment.text}
                         </div>
                         {segment.markEnd ? (
-                          <div className="my-[3px] rounded border-l-[3px] border-[#9aa4ad] bg-[#eef1f4] px-1.5 py-[3px] text-[11px] font-semibold text-[#5b6670]">
+                          <div
+                            className="my-[3px] rounded border-l-[3px] border-[#9aa4ad] bg-[#eef1f4] px-1.5 py-[3px] text-[11px] font-semibold text-[#5b6670]"
+                            data-raw-anchor={`end-${segment.end}`}
+                          >
                             {segment.markEnd}
                           </div>
                         ) : null}
@@ -454,7 +603,8 @@ export function ChapterRawPreview({
                   })}
                 </div>
               );
-            })}
+              })}
+            </div>
           </div>
         </div>
       )}

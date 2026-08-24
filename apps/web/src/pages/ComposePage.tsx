@@ -24,6 +24,11 @@ import { ChapterRail, DemoBusinessPanel } from "../features/demo/DemoPanels";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
 import { EditorErrorBoundary } from "../features/editor/EditorErrorBoundary";
 import { createLongTextDocument } from "../features/editor/long-text-import";
+import {
+  expandRawRangeToIncludeLeadingTitle,
+  rawRangeForGapChapter,
+  splitRawRangeAtCursor,
+} from "../features/editor/long-text-ranges";
 import { useAutosave } from "../features/editor/useAutosave";
 import {
   ChapterSidebar,
@@ -33,7 +38,10 @@ import {
   ChapterCoverageDialog,
   type CoverageChapter,
 } from "../features/novel/ChapterCoverageDialog";
-import { ChapterRawPreview, collectRawGaps } from "../features/novel/ChapterRawPreview";
+import {
+  ChapterRawPreview,
+  collectRawGaps,
+} from "../features/novel/ChapterRawPreview";
 import {
   getCommentThread,
   getDocument,
@@ -98,7 +106,10 @@ function SaveStatus({
           ? "bg-[#c83d3d]"
           : "bg-[#9aa4ae]";
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs whitespace-nowrap text-[#65717e]" data-state={state}>
+    <span
+      className="inline-flex items-center gap-1.5 text-xs whitespace-nowrap text-[#65717e]"
+      data-state={state}
+    >
       {state === "saving" ? (
         <LoaderCircle size={12} className="animate-spin" />
       ) : state === "offline" ? (
@@ -166,7 +177,11 @@ export default function ComposePage() {
     added: number;
     modified: number;
     gaps: number;
-    rows: Array<{ id: string; title: string; status: "新增" | "修改" | "未变化" }>;
+    rows: Array<{
+      id: string;
+      title: string;
+      status: "新增" | "修改" | "未变化";
+    }>;
   } | null>(null);
   const [addChapterTitle, setAddChapterTitle] = useState("");
   const [addChapterText, setAddChapterText] = useState("");
@@ -229,18 +244,30 @@ export default function ComposePage() {
   }, [content, longTextMode]);
   const coverageChapters = useMemo<CoverageChapter[]>(() => {
     if (!longTextMode) return [];
+    let previousEnd = 0;
     return (content.content ?? []).map((node, index) => {
       const text = String(node.attrs?.text ?? "");
+      const title = String(node.attrs?.title ?? "未命名章节");
+      const rawStart =
+        typeof node.attrs?.start === "number" ? node.attrs.start : null;
+      const start = expandRawRangeToIncludeLeadingTitle(
+        rawText,
+        title,
+        rawStart,
+        previousEnd,
+      );
+      const end = typeof node.attrs?.end === "number" ? node.attrs.end : null;
+      if (end !== null) previousEnd = Math.max(previousEnd, end);
       return {
         id: String(node.attrs?.chapterId ?? `chapter-${index}`),
-        title: String(node.attrs?.title ?? "未命名章节"),
+        title,
         charCount: text.length,
-        start: typeof node.attrs?.start === "number" ? node.attrs.start : null,
-        end: typeof node.attrs?.end === "number" ? node.attrs.end : null,
+        start,
+        end,
         preview: text.slice(0, 200).replace(/\s+/g, " ").slice(0, 120),
       };
     });
-  }, [content, longTextMode]);
+  }, [content, longTextMode, rawText]);
   const longTextEditorContent = useMemo<RichTextNode>(() => {
     if (!longTextMode) return { type: "doc", content: [] };
     const block = content.content?.[activeChapterIndex];
@@ -439,19 +466,21 @@ export default function ComposePage() {
   };
 
   /** 从未切分到任何章节的原文段落创建新章节（本地核对修正）。 */
-  const createChapterFromGap = (text: string) => {
+  const createChapterFromGap = (text: string, start: number, end: number) => {
     if (!text.trim()) return;
     commitPendingLongText();
     const list = [...(contentRef.current.content ?? [])];
+    const limitedText = text.slice(0, MAX_CHAPTER_LENGTH);
+    const range = rawRangeForGapChapter(start, end, text);
     const node: RichTextNode = {
       type: "longTextBlock",
       attrs: {
         chapterId: `gap-chapter-${Date.now()}`,
         title: "未命名章节",
-        text: text.slice(0, MAX_CHAPTER_LENGTH),
+        text: limitedText,
         order: list.length,
-        start: null,
-        end: null,
+        start: range.start,
+        end: range.end,
       },
     };
     list.push(node);
@@ -468,6 +497,11 @@ export default function ComposePage() {
     const index = activeChapterIndexRef.current;
     const current = list[index];
     if (!current) return;
+    const ranges = splitRawRangeAtCursor(
+      current.attrs as Record<string, unknown> | undefined,
+      before,
+      after,
+    );
     const newNode: RichTextNode = {
       type: "longTextBlock",
       attrs: {
@@ -475,20 +509,30 @@ export default function ComposePage() {
         title: `第 ${index + 2} 章`,
         text: after,
         order: index + 1,
-        start: null,
-        end: null,
+        start: ranges.after.start,
+        end: ranges.after.end,
       },
     };
     list.splice(
       index,
       1,
-      { ...current, attrs: { ...current.attrs, text: before } },
+      {
+        ...current,
+        attrs: {
+          ...current.attrs,
+          text: before,
+          start: ranges.before.start,
+          end: ranges.before.end,
+        },
+      },
       newNode,
     );
     activeChapterIndexRef.current = index + 1;
     replaceLongTextDocument({ type: "doc", content: list });
     setActiveChapterIndex(activeChapterIndexRef.current);
-    setNotice(`已在光标处拆分为“${String(current.attrs?.title ?? "当前章")}”与“第 ${index + 2} 章”`);
+    setNotice(
+      `已在光标处拆分为“${String(current.attrs?.title ?? "当前章")}”与“第 ${index + 2} 章”`,
+    );
   };
 
   /** 把防抖中的章节编辑写回整体文档（按章节 id 定位，不动其他章节）。 */
@@ -517,11 +561,7 @@ export default function ComposePage() {
     };
     replaceContent({
       type: "doc",
-      content: [
-        ...list.slice(0, index),
-        updated,
-        ...list.slice(index + 1),
-      ],
+      content: [...list.slice(0, index), updated, ...list.slice(index + 1)],
     });
   };
 
@@ -694,9 +734,7 @@ export default function ComposePage() {
       for (let index = 0; index < nodes.length; index += 1) {
         const node = nodes[index];
         if (!node) continue;
-        const chapterId = String(
-          node.attrs?.chapterId ?? `chapter-${index}`,
-        );
+        const chapterId = String(node.attrs?.chapterId ?? `chapter-${index}`);
         const hash = await sha256Hex(String(node.attrs?.text ?? ""));
         await uploadLongTextChapter("demo-post", chapterId, {
           title: String(node.attrs?.title ?? "未命名章节"),
@@ -882,7 +920,9 @@ export default function ComposePage() {
         <section className="mx-auto max-w-[1680px]">
           <div className="mb-2 flex min-h-[52px] items-center justify-between gap-3 rounded-lg border border-border bg-white py-2 pr-2.5 pl-3.5 shadow-panel max-[430px]:min-h-12 max-[430px]:pr-3 max-[430px]:pl-3">
             <div className="min-w-0">
-              <p className="min-w-0 truncate text-[15px] font-bold">长文本工作台</p>
+              <p className="min-w-0 truncate text-[15px] font-bold">
+                长文本工作台
+              </p>
               <SaveStatus
                 state={isPlaceholderData ? "loading" : autosave.state}
                 revision={autosave.revision}
@@ -1126,8 +1166,8 @@ export default function ComposePage() {
           <div className="space-y-3">
             {uploadDiff.gaps > 0 ? (
               <div className="rounded-md border border-[#f0b4b0] bg-[#fdf1f0] px-3 py-2 text-xs text-[#8f2b24]">
-                ⚠ 本地核对发现仍有{" "}
-                <strong>{uploadDiff.gaps}</strong> 段文字未切分进任何章节，
+                ⚠ 本地核对发现仍有 <strong>{uploadDiff.gaps}</strong>{" "}
+                段文字未切分进任何章节，
                 建议先在上方原文对照列核对并处理，再上传。
               </div>
             ) : (
@@ -1173,7 +1213,11 @@ export default function ComposePage() {
               >
                 取消
               </Button>
-              <Button size="sm" disabled={uploading} onClick={() => void confirmUpload()}>
+              <Button
+                size="sm"
+                disabled={uploading}
+                onClick={() => void confirmUpload()}
+              >
                 {uploading ? "上传中…" : "确认分章上传"}
               </Button>
             </div>
