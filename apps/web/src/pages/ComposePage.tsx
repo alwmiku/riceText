@@ -107,7 +107,7 @@ function SaveStatus({
           : "bg-[#9aa4ae]";
   return (
     <span
-      className="inline-flex items-center gap-1.5 text-xs whitespace-nowrap text-[#65717e]"
+      className="save-status inline-flex items-center gap-1.5 text-xs whitespace-nowrap text-[#65717e]"
       data-state={state}
     >
       {state === "saving" ? (

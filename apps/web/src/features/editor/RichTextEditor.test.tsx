@@ -209,7 +209,8 @@ describe("RichTextEditor presets", () => {
     const insertTrigger = await screen.findByRole("menuitem", {
       name: "插入内容",
     });
-    fireEvent.pointerMove(insertTrigger);
+    // Radix 子菜单仅在 pointerType 为 mouse 的指针移动时打开（100ms 定时器）。
+    fireEvent.pointerMove(insertTrigger, { pointerType: "mouse" });
     fireEvent.click(await screen.findByRole("menuitem", { name: "图片" }));
     expect(
       await screen.findByRole("dialog", { name: "插入图片" }),

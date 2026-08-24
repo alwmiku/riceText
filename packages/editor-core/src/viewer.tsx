@@ -17,6 +17,7 @@ import {
   defaultLabels,
   type RichTextViewerProps,
   type ViewerContext,
+  type ViewerContextRef,
 } from './viewer/types.js'
 
 export type {
@@ -39,6 +40,10 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
     () => addMissingParagraphAnchors(projectReplyGates(sanitizeDocument(content), interactions)),
     [content, interactions],
   )
+  // 只随投影文档的“实际内容”重建编辑器：interactions 等调用方对象可能每次渲染
+  // 都是新引用（如默认空对象），但投影结果不变时不应销毁重建编辑器，
+  // 否则会触发 Tiptap 的无限重建与“Maximum update depth exceeded”。
+  const documentKey = JSON.stringify(document)
   const gallery = useMemo(() => collectGallery(document), [document])
   const tocItems = useMemo(() => extractHeadings(document), [document])
   useEffect(() => {
@@ -57,21 +62,40 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
     enableLightbox,
     galleryImages: gallery.images,
   }), [interactions, controller, labels, enableLightbox, gallery.images])
-  const viewerContextRef = useRef<ViewerContext>(viewerContext)
+  // 稳定 ref 容器：节点视图订阅它，在外部交互状态变化时重新渲染。
+  const viewerContextRef = useMemo<ViewerContextRef & { notify: () => void }>(() => {
+    const listeners = new Set<() => void>()
+    return {
+      current: viewerContext,
+      subscribe: (listener) => {
+        listeners.add(listener)
+        return () => {
+          listeners.delete(listener)
+        }
+      },
+      notify: () => {
+        for (const listener of listeners) listener()
+      },
+    }
+  }, [])
   useEffect(() => {
     viewerContextRef.current = viewerContext
-  }, [viewerContext])
+    viewerContextRef.notify()
+  }, [viewerContext, viewerContextRef])
   const extensions = useMemo(
     () => createViewerExtensions(viewerContextRef),
     [viewerContextRef],
   )
+  // 只随投影文档重建编辑器：interactions/labels/enableLightbox 都经由
+  // viewerContextRef 进入节点视图，不参与编辑器实例的生命周期；
+  // 否则默认空 interactions 对象每次渲染都是新引用，会触发无限重建。
   const editor = useEditor({
     extensions,
     content: document,
     editable: false,
     immediatelyRender: false,
     shouldRerenderOnTransaction: false,
-  }, [document, interactions, labels, enableLightbox])
+  }, [documentKey])
   const rootRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {

@@ -4,6 +4,7 @@ import {
   NodeViewWrapper,
   ReactNodeViewRenderer,
 } from "@tiptap/react";
+import { useEffect, useReducer } from "react";
 
 import {
   AttachmentRef,
@@ -30,16 +31,29 @@ import type {
 } from "../types.js";
 import { formatBytes } from "./prepare.js";
 import type {
+  ViewerContext,
   ViewerContextRef,
   ViewerNodeProps,
   ViewerRichImageNodeProps,
 } from "./types.js";
 
+/**
+ * 订阅查看器上下文：外部交互状态（附件购买、投票等）变化时，
+ * 节点视图组件必须重新渲染才能读到 viewerRef.current 的最新值。
+ */
+function useViewerContext(viewerRef: ViewerContextRef): ViewerContext {
+  const [, forceRender] = useReducer((count: number) => count + 1, 0);
+  useEffect(
+    () => viewerRef.subscribe(forceRender),
+    [viewerRef, forceRender],
+  );
+  return viewerRef.current;
+}
+
 function getRichImageIndex(
   editor: Editor,
   getPos: () => number | undefined,
-): number {
-  const currentPos = getPos();
+): number {  const currentPos = getPos();
   if (currentPos === undefined) return 0;
   let index = 0;
   let found = false;
@@ -63,7 +77,7 @@ function RichImageNodeView({
   editor,
   viewerRef,
 }: ViewerRichImageNodeProps) {
-  const viewer = viewerRef.current;
+  const viewer = useViewerContext(viewerRef);
   const attrs = node.attrs as unknown as RichImageAttributes;
   const index = getRichImageIndex(editor, getPos);
   const image = viewer.galleryImages[index];
@@ -73,7 +87,8 @@ function RichImageNodeView({
     viewer.interactions.onImageOpen?.(image);
   };
   return (
-    <figure
+    <NodeViewWrapper
+      as="figure"
       className={`rt-rich-image rt-rich-image--${attrs.align}`}
       style={{ width: `${attrs.width}%` }}
     >
@@ -87,12 +102,12 @@ function RichImageNodeView({
         <img src={attrs.src} alt={attrs.alt} loading="lazy" />
       </button>
       {attrs.caption ? <figcaption>{attrs.caption}</figcaption> : null}
-    </figure>
+    </NodeViewWrapper>
   );
 }
 
 function DiceRollNodeView({ node, viewerRef }: ViewerNodeProps) {
-  const viewer = viewerRef.current;
+  const viewer = useViewerContext(viewerRef);
   const attrs = node.attrs as unknown as DiceRollAttributes;
   const dice = (
     <span className="rt-dice-roll" title={attrs.rolls.join(" + ")}>
@@ -100,22 +115,26 @@ function DiceRollNodeView({ node, viewerRef }: ViewerNodeProps) {
       <strong>= {attrs.total}</strong>
     </span>
   );
-  return viewer.interactions.onDiceReroll ? (
-    <button
-      type="button"
-      className="rt-dice-roll__button"
-      title={viewer.labels.rerollDice}
-      onClick={() => viewer.interactions.onDiceReroll?.(attrs)}
-    >
-      {dice}
-    </button>
-  ) : (
-    dice
+  return (
+    <NodeViewWrapper as="span">
+      {viewer.interactions.onDiceReroll ? (
+        <button
+          type="button"
+          className="rt-dice-roll__button"
+          title={viewer.labels.rerollDice}
+          onClick={() => viewer.interactions.onDiceReroll?.(attrs)}
+        >
+          {dice}
+        </button>
+      ) : (
+        dice
+      )}
+    </NodeViewWrapper>
   );
 }
 
 function InlineCommentAnchorNodeView({ node, viewerRef }: ViewerNodeProps) {
-  const viewer = viewerRef.current;
+  const viewer = useViewerContext(viewerRef);
   const attrs = node.attrs as unknown as InlineCommentAnchorAttributes;
   const empty = attrs.count <= 0;
   return (
@@ -142,59 +161,63 @@ function InlineCommentAnchorNodeView({ node, viewerRef }: ViewerNodeProps) {
 }
 
 function MentionNodeView({ node, viewerRef }: ViewerNodeProps) {
-  const viewer = viewerRef.current;
+  const viewer = useViewerContext(viewerRef);
   const attrs = node.attrs as unknown as MentionAttributes;
   const interactive = Boolean(viewer.interactions.onMentionActivate);
   return (
-    <span
-      className={`rt-mention ${attrs.resolved ? "rt-mention--resolved" : "rt-mention--unresolved"}`}
-      role={interactive ? "button" : undefined}
-      tabIndex={interactive ? 0 : undefined}
-      onClick={() => viewer.interactions.onMentionActivate?.(attrs)}
-      onKeyDown={(event) => {
-        if ((event.key === "Enter" || event.key === " ") && interactive)
-          viewer.interactions.onMentionActivate?.(attrs);
-      }}
-    >
-      @{attrs.name}
-      {viewer.interactions.renderMentionCard ? (
-        <span className="rt-mention__card">
-          {viewer.interactions.renderMentionCard(attrs)}
-        </span>
-      ) : null}
-    </span>
+    <NodeViewWrapper as="span">
+      <span
+        className={`rt-mention ${attrs.resolved ? "rt-mention--resolved" : "rt-mention--unresolved"}`}
+        role={interactive ? "button" : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        onClick={() => viewer.interactions.onMentionActivate?.(attrs)}
+        onKeyDown={(event) => {
+          if ((event.key === "Enter" || event.key === " ") && interactive)
+            viewer.interactions.onMentionActivate?.(attrs);
+        }}
+      >
+        @{attrs.name}
+        {viewer.interactions.renderMentionCard ? (
+          <span className="rt-mention__card">
+            {viewer.interactions.renderMentionCard(attrs)}
+          </span>
+        ) : null}
+      </span>
+    </NodeViewWrapper>
   );
 }
 
 function AttachmentNodeView({ node, viewerRef }: ViewerNodeProps) {
-  const viewer = viewerRef.current;
+  const viewer = useViewerContext(viewerRef);
   const attrs = node.attrs as unknown as AttachmentReferenceAttributes;
   const state = viewer.interactions.getAttachmentState?.(attrs) ?? {
     available: attrs.priceCoins === 0,
     pending: false,
   };
   return (
-    <button
-      type="button"
-      className="rt-attachment"
-      disabled={state.pending || !viewer.interactions.onAttachmentActivate}
-      onClick={() => viewer.interactions.onAttachmentActivate?.(attrs)}
-    >
-      <span className="rt-attachment__name">{attrs.name}</span>
-      <small>
-        {formatBytes(attrs.size)} · {attrs.mimeType}
-      </small>
-      <strong>
-        {state.available
-          ? viewer.labels.download
-          : `${viewer.labels.purchase} · ${attrs.priceCoins} ${viewer.labels.coins}`}
-      </strong>
-    </button>
+    <NodeViewWrapper>
+      <button
+        type="button"
+        className="rt-attachment"
+        disabled={state.pending || !viewer.interactions.onAttachmentActivate}
+        onClick={() => viewer.interactions.onAttachmentActivate?.(attrs)}
+      >
+        <span className="rt-attachment__name">{attrs.name}</span>
+        <small>
+          {formatBytes(attrs.size)} · {attrs.mimeType}
+        </small>
+        <strong>
+          {state.available
+            ? viewer.labels.download
+            : `${viewer.labels.purchase} · ${attrs.priceCoins} ${viewer.labels.coins}`}
+        </strong>
+      </button>
+    </NodeViewWrapper>
   );
 }
 
 function PollNodeView({ node, viewerRef }: ViewerNodeProps) {
-  const viewer = viewerRef.current;
+  const viewer = useViewerContext(viewerRef);
   const attrs = node.attrs as unknown as PollReferenceAttributes;
   const state = viewer.interactions.getPollState?.(attrs) ?? {
     selectedOptionIds: [],
@@ -203,7 +226,11 @@ function PollNodeView({ node, viewerRef }: ViewerNodeProps) {
     pending: false,
   };
   return (
-    <section className="rt-poll" aria-labelledby={`poll-${attrs.pollId}`}>
+    <NodeViewWrapper
+      as="section"
+      className="rt-poll"
+      aria-labelledby={`poll-${attrs.pollId}`}
+    >
       <h3 id={`poll-${attrs.pollId}`}>{attrs.question}</h3>
       <PollResultChart
         options={attrs.options.map((option) => ({
@@ -232,12 +259,12 @@ function PollNodeView({ node, viewerRef }: ViewerNodeProps) {
           }
         }}
       />
-    </section>
+    </NodeViewWrapper>
   );
 }
 
 function ReplyGateNodeView({ node, viewerRef }: ViewerNodeProps) {
-  const viewer = viewerRef.current;
+  const viewer = useViewerContext(viewerRef);
   const attrs = node.attrs as unknown as ReplyGateAttributes;
   const visible = viewer.interactions.isReplyGateVisible?.(attrs) === true;
   if (!visible) {
@@ -266,7 +293,7 @@ function ReplyGateNodeView({ node, viewerRef }: ViewerNodeProps) {
 }
 
 function NovelExcerptNodeView({ node, viewerRef }: ViewerNodeProps) {
-  const viewer = viewerRef.current;
+  const viewer = useViewerContext(viewerRef);
   const attrs = node.attrs as unknown as NovelExcerptAttributes;
   return (
     <NodeViewWrapper

@@ -51,7 +51,7 @@ describe('ReadPage', () => {
     mocks.getCommentThread.mockReset().mockResolvedValue(seedComments);
   });
 
-  it('作者可取得付费附件但不会在阅读器自动看到回复可见正文，且不能参与自己的投票', async () => {
+  it('作者可取得付费附件但不会在阅读器自动看到回复可见正文，演示环境允许作者参与投票', async () => {
     renderPage(identities[0]!);
     expect(await screen.findByText('章节资料.zip')).toBeInTheDocument();
     expect(screen.queryByText(/日志坐标/)).not.toBeInTheDocument();
@@ -63,7 +63,8 @@ describe('ReadPage', () => {
     fireEvent.click(attachment);
     expect(screen.getByText('章节资料.zip').closest('button')).toHaveTextContent('下载');
 
-    expect(screen.getByRole('button', { name: /守塔人.*28 票/ })).toBeDisabled();
+    // 演示环境刻意让所有身份都可投票（见 ReadPage getPollState 注释），作者也不例外。
+    expect(screen.getByRole('button', { name: /守塔人.*28 票/ })).toBeEnabled();
   });
 
   it('读者可请求解锁、打开间贴并参与单选投票', async () => {

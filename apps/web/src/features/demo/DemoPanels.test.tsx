@@ -72,19 +72,43 @@ describe('DemoPanels', () => {
     mocks.listSuggestionsMock.mockReset();
     mocks.listSuggestionsMock.mockResolvedValue(structuredClone(pendingSuggestions));
     mocks.reviewSuggestionMock.mockReset();
-    mocks.reviewSuggestionMock.mockResolvedValue({ suggestion: { ...pendingSuggestions[0]!, status: 'approved' }, document: null });
+    mocks.reviewSuggestionMock.mockImplementation(async (id: string, decision: string) => {
+      // 真实 API 语义：审核后列表查询返回更新后的状态。
+      const reviewed = pendingSuggestions.map((suggestion) =>
+        suggestion.id === id
+          ? {
+              ...suggestion,
+              status: decision === "approve" ? ("approved" as const) : ("rejected" as const),
+              reviewerId: "author",
+            }
+          : suggestion,
+      );
+      mocks.listSuggestionsMock.mockResolvedValue(reviewed);
+      return { suggestion: reviewed.find((suggestion) => suggestion.id === id)!, document: null };
+    });
     mocks.getAttachmentMock.mockReset();
     mocks.getAttachmentMock.mockResolvedValue(structuredClone(freeAttachment));
     mocks.purchaseAttachmentMock.mockReset();
-    mocks.purchaseAttachmentMock.mockResolvedValue({ attachment: { ...freeAttachment, purchased: true }, buyerBalance: 40, authorIncome: 7, alreadyPurchased: false });
+    mocks.purchaseAttachmentMock.mockImplementation(async () => {
+      // 真实 API 语义：购买后附件查询返回已购状态。
+      mocks.getAttachmentMock.mockResolvedValue(
+        structuredClone({ ...freeAttachment, purchased: true }),
+      );
+      return { attachment: { ...freeAttachment, purchased: true }, buyerBalance: 40, authorIncome: 7, alreadyPurchased: false };
+    });
     mocks.getPollMock.mockReset();
     mocks.getPollMock.mockResolvedValue(structuredClone(demoPoll));
     mocks.votePollMock.mockReset();
-    mocks.votePollMock.mockImplementation(async (_id: string, optionIds: string[]) => ({
-      ...structuredClone(demoPoll),
-      viewerOptionIds: optionIds,
-      options: demoPoll.options.map((option) => ({ ...option, votes: option.votes + (optionIds.includes(option.id) ? 1 : 0) })),
-    }));
+    mocks.votePollMock.mockImplementation(async (_id: string, optionIds: string[]) => {
+      // 真实 API 语义：投票后轮询查询返回更新后的票数。
+      const updated = {
+        ...structuredClone(demoPoll),
+        viewerOptionIds: optionIds,
+        options: demoPoll.options.map((option) => ({ ...option, votes: option.votes + (optionIds.includes(option.id) ? 1 : 0) })),
+      };
+      mocks.getPollMock.mockResolvedValue(updated);
+      return updated;
+    });
     mocks.getPollVotesMock.mockReset();
     mocks.getPollVotesMock.mockResolvedValue({
       items: [
@@ -119,7 +143,7 @@ describe('DemoPanels', () => {
     renderWithQuery(
       <DemoBusinessPanel identity={identities[0]!} documentId="demo-post" baseRevision={18} onRestore={vi.fn()} />,
     );
-    fireEvent.click(await screen.findByRole('button', { name: /接受/ }));
+    fireEvent.click((await screen.findAllByRole('button', { name: /接受/ }))[0]!);
     await waitFor(() => expect(mocks.reviewSuggestionMock).toHaveBeenCalledWith('s1', 'approve', 18));
     expect(await screen.findByText('已合并并建版')).toBeInTheDocument();
   });

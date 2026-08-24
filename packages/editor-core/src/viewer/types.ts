@@ -174,6 +174,11 @@ export interface ViewerContext {
 /** 稳定 ref 包装，确保 NodeView 始终读取最新的查看器上下文。 */
 export interface ViewerContextRef {
   current: ViewerContext;
+  /**
+   * 订阅查看器上下文变化。NodeView 组件在外部交互状态（附件购买、
+   * 投票等）变化时依赖它触发重渲染，以读取最新的 `current`。
+   */
+  subscribe: (listener: () => void) => () => void;
 }
 
 export type ViewerNodeProps = Pick<NodeViewProps, "node"> & {

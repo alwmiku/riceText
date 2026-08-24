@@ -154,6 +154,9 @@ describe('editorExtensions', () => {
     expect(marks).not.toContainEqual({ type: 'bold' })
 
     editor.commands.selectAll()
+    // Spoiler 的 excludes 是双向互斥：已带 spoiler 的文本无法再应用斜体，
+    // 因此先移除上一轮的 spoiler，再验证「先斜体、后 spoiler」会被清理。
+    editor.commands.toggleSpoiler()
     editor.commands.toggleItalic()
     editor.commands.toggleSpoiler()
     marks = editor.getJSON().content?.[0]?.content?.[0]?.marks
@@ -161,6 +164,7 @@ describe('editorExtensions', () => {
     expect(marks).not.toContainEqual({ type: 'italic' })
 
     editor.commands.selectAll()
+    editor.commands.toggleSpoiler()
     editor.commands.setColor('#ff0000')
     editor.commands.toggleSpoiler()
     marks = editor.getJSON().content?.[0]?.content?.[0]?.marks

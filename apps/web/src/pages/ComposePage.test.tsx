@@ -69,7 +69,7 @@ describe('ComposePage', () => {
       value: vi.fn(() => ({ matches: false, media: '', addEventListener: vi.fn(), removeEventListener: vi.fn() })),
     });
     mocks.autosave.mockReset().mockReturnValue(autosaveValue());
-    mocks.flush.mockReset().mockResolvedValue(undefined);
+    mocks.flush.mockReset().mockResolvedValue(true);
     mocks.getDocument.mockReset().mockResolvedValue(defaultDocument);
     mocks.getCommentThread.mockReset().mockResolvedValue([]);
     mocks.restoreRevision.mockReset().mockResolvedValue({ ...defaultDocument, revision: 19, savedAt: '2026-08-20T12:00:00.000Z' });

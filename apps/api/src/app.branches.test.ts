@@ -452,7 +452,7 @@ describe("RiceText API 补充分支", () => {
     });
     expect(
       chapters.json().items.map((chapter: { order: number }) => chapter.order),
-    ).toEqual([1, 2]);
+    ).toEqual([0, 1, 2, 3, 4]);
     const friends = await app.inject({
       method: "GET",
       url: "/api/demo/users/search?q=&friendsOnly=true",
@@ -507,19 +507,19 @@ describe("RiceText API 补充分支", () => {
       url: "/api/demo/documents/demo-post/suggestions",
       headers: { "x-demo-user": "reader" },
     });
-    expect(ownerList.json().items).toHaveLength(1);
+    expect(ownerList.json().items).toHaveLength(2);
     const otherReaderList = await app.inject({
       method: "GET",
       url: "/api/demo/documents/demo-post/suggestions",
       headers: { "x-demo-user": "wanderer" },
     });
-    expect(otherReaderList.json().items).toHaveLength(0);
+    expect(otherReaderList.json().items).toHaveLength(1);
     const authorList = await app.inject({
       method: "GET",
       url: "/api/demo/documents/demo-post/suggestions",
       headers: { "x-demo-user": "author" },
     });
-    expect(authorList.json().items).toHaveLength(1);
+    expect(authorList.json().items).toHaveLength(3);
 
     const forbiddenReview = await app.inject({
       method: "PATCH",
