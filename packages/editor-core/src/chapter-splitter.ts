@@ -31,7 +31,11 @@ export function isAdHeadingLine(line: string): boolean {
   if (/https?:\/\//i.test(trimmed)) return true;
   if (/www\./i.test(trimmed)) return true;
   if (/\.(com|net|org|cn|cc|info|top|xyz|vip|me)\b/i.test(trimmed)) return true;
-  if (/免费阅读|最新章节|手机阅读|全文阅读|无弹窗|txt下载|更新通知|小说阅读/.test(trimmed))
+  if (
+    /免费阅读|最新章节|手机阅读|全文阅读|无弹窗|txt下载|更新通知|小说阅读/.test(
+      trimmed,
+    )
+  )
     return true;
   return false;
 }
@@ -41,7 +45,9 @@ export const chapterTitlePatterns: Record<
   Exclude<ChapterTitleStyle, "auto">,
   RegExp[]
 > = {
-  chinese: [/^\s*第[0-9一二三四五六七八九十百千万零两]+[章节回卷].*$/gm],
+  chinese: [
+    /^\s*第[0-9一二三四五六七八九十百千万零两]+[章节回卷](?:\s|[：:、.．《（(]|$).*$/gm,
+  ],
   english: [/^\s*Chapter\s+\d+.*$/gim],
   numeric: [/^\s*\d+\s*[、.．]\s*\S.*$/gm],
 };
@@ -55,7 +61,7 @@ function splitOversizedChapter(
 ): ChapterSplit[] {
   if (chapter.text.length <= MAX_CHAPTER_LENGTH) return [chapter];
 
-  const bodyStart = chapter.titleEnd ?? chapter.start + chapter.title.length;
+  const bodyStart = chapter.titleEnd ?? chapter.start;
   const rawBody = source.slice(bodyStart, chapter.end);
   const parts: ChapterSplit[] = [];
   let offset = bodyStart;
@@ -65,9 +71,13 @@ function splitOversizedChapter(
   while (remaining.length > MAX_CHAPTER_LENGTH) {
     const window = remaining.slice(0, MAX_CHAPTER_LENGTH + 1);
     const newline = window.lastIndexOf("\n");
-    const cutAt = newline > MAX_CHAPTER_LENGTH / 2 ? newline + 1 : MAX_CHAPTER_LENGTH;
+    const cutAt =
+      newline > MAX_CHAPTER_LENGTH / 2 ? newline + 1 : MAX_CHAPTER_LENGTH;
     parts.push({
-      title: continuation === 1 ? chapter.title : `${chapter.title}（续${continuation}）`,
+      title:
+        continuation === 1
+          ? chapter.title
+          : `${chapter.title}（续${continuation}）`,
       text: remaining.slice(0, cutAt).trim(),
       start: offset,
       end: offset + cutAt,
@@ -78,7 +88,10 @@ function splitOversizedChapter(
   }
 
   parts.push({
-    title: continuation === 1 ? chapter.title : `${chapter.title}（续${continuation}）`,
+    title:
+      continuation === 1
+        ? chapter.title
+        : `${chapter.title}（续${continuation}）`,
     text: remaining.trim(),
     start: offset,
     end: chapter.end,
@@ -93,11 +106,15 @@ export function splitChaptersByStyle(
 ): ChapterSplit[] {
   const patterns =
     style === "auto" ? defaultPatterns : chapterTitlePatterns[style];
-  return splitChapters(text, { patterns }).flatMap((chapter) =>
+  const chapters = splitChapters(text, { patterns });
+  const scopedChapters =
+    style === "auto" || chapters[0]?.title !== "卷首"
+      ? chapters
+      : chapters.slice(1);
+  return scopedChapters.flatMap((chapter) =>
     splitOversizedChapter(chapter, text),
   );
 }
-
 
 /** 章节切分适配器，后续可替换为 C++ Addon / WASM / 独立服务。 */
 export interface ChapterSplitterAdapter {

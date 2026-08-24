@@ -1,3 +1,4 @@
+import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { analyzeCoverage, type CoverageChapter } from "./ChapterCoverageDialog";
 
@@ -38,8 +39,11 @@ interface RawBlock {
   text: string;
 }
 
-interface BlockView {
-  kind: "chapter" | "chapter-edge" | "gap" | "plain";
+interface RawSegment {
+  start: number;
+  end: number;
+  text: string;
+  kind: "chapter" | "gap" | "plain";
   markStart: string | null;
   markEnd: string | null;
   gapLabel: string | null;
@@ -88,19 +92,17 @@ export function ChapterRawPreview({
     Math.floor((containerWidth - 24) / FONT_SIZE),
   );
 
-  /** 每块的顶部偏移（估算高度累积）。 */
-  const offsets = useMemo(() => {
-    const result: number[] = [];
-    let total = 0;
+  const blockMetrics = useMemo(() => {
+    const offsets: number[] = [];
+    let totalHeight = 0;
     for (const block of blocks) {
-      result.push(total);
+      offsets.push(totalHeight);
       const lines = Math.max(1, Math.ceil(block.text.length / charsPerLine));
-      total += lines * LINE_HEIGHT + 8;
+      totalHeight += lines * LINE_HEIGHT + 8;
     }
-    return result;
+    return { offsets, totalHeight };
   }, [blocks, charsPerLine]);
-  const totalHeight =
-    offsets.length > 0 ? (offsets[offsets.length - 1] ?? 0) + 400 : 0;
+  const { offsets, totalHeight } = blockMetrics;
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -132,16 +134,24 @@ export function ChapterRawPreview({
     setScrollTop(element?.scrollTop ?? 0);
   }, []);
 
+  const scrollToRawIndex = useCallback(
+    (rawIndex: number) => {
+      if (offsets.length === 0) return;
+      const blockIndex = Math.floor(Math.max(0, rawIndex) / BLOCK_CHARS);
+      scrollToOffset(offsets[Math.min(blockIndex, offsets.length - 1)] ?? 0);
+    },
+    [offsets, scrollToOffset],
+  );
+
   const chapter = chapters[activeIndex];
   const chapterStart = chapter?.start ?? null;
 
   // 点击章节（或首次载入）时滚动到该章在原文中的位置。
   useEffect(() => {
-    if (chapterStart === null || offsets.length === 0) return;
-    const blockIndex = Math.floor(chapterStart / BLOCK_CHARS);
-    scrollToOffset(offsets[Math.min(blockIndex, offsets.length - 1)] ?? 0);
+    if (chapterStart === null) return;
+    scrollToRawIndex(chapterStart);
     setFocusedGap(null);
-  }, [activeIndex, chapterStart]);
+  }, [activeIndex, chapterStart, scrollToRawIndex]);
 
   // 可见块范围：滚动位置 ± 缓冲。
   const viewRange = useMemo(() => {
@@ -160,61 +170,144 @@ export function ChapterRawPreview({
     };
   }, [scrollTop, blocks, offsets]);
 
-  const describeBlock = useCallback(
-    (block: RawBlock): BlockView => {
-      let kind: BlockView["kind"] = "plain";
-      let markStart: string | null = null;
-      let markEnd: string | null = null;
-      let gapLabel: string | null = null;
-
+  const getBlockSegments = useCallback(
+    (block: RawBlock): RawSegment[] => {
+      const points = new Set<number>([block.start, block.end]);
       if (chapter && chapter.start !== null && chapter.end !== null) {
-        const fullyInside =
-          block.start >= chapter.start && block.end <= chapter.end;
-        const overlap = block.start < chapter.end && block.end > chapter.start;
-        if (fullyInside) {
-          kind = "chapter";
-        } else if (overlap) {
-          kind = "chapter-edge";
-          if (block.start <= chapter.start && block.end > chapter.start) {
-            markStart = `▼ 第 ${activeIndex + 1} 章「${chapter.title}」开始 [${chapter.start.toLocaleString()}, ${chapter.end.toLocaleString()})`;
-          }
-          if (block.start < chapter.end && block.end >= chapter.end) {
-            markEnd = `▲ 第 ${activeIndex + 1} 章结束`;
-          }
-        }
+        if (chapter.start > block.start && chapter.start < block.end)
+          points.add(chapter.start);
+        if (chapter.end > block.start && chapter.end < block.end)
+          points.add(chapter.end);
       }
       for (const gap of gaps) {
-        if (block.start < gap.end && block.end > gap.start) {
-          if (kind === "plain") kind = "gap";
-          gapLabel = `未切分 [${gap.start.toLocaleString()}, ${gap.end.toLocaleString()}) ${gap.chars.toLocaleString()} 字`;
-          break;
-        }
+        if (gap.start > block.start && gap.start < block.end)
+          points.add(gap.start);
+        if (gap.end > block.start && gap.end < block.end) points.add(gap.end);
       }
-      return { kind, markStart, markEnd, gapLabel };
+
+      const sorted = [...points].sort((a, b) => a - b);
+      const segments: RawSegment[] = [];
+      for (let index = 0; index < sorted.length - 1; index += 1) {
+        const start = sorted[index] ?? block.start;
+        const end = sorted[index + 1] ?? block.end;
+        if (end <= start) continue;
+        const insideChapter =
+          chapter !== undefined &&
+          chapter.start !== null &&
+          chapter.end !== null &&
+          start >= chapter.start &&
+          end <= chapter.end;
+        const gap = gaps.find((item) => start < item.end && end > item.start);
+        segments.push({
+          start,
+          end,
+          text: block.text.slice(start - block.start, end - block.start),
+          kind: insideChapter ? "chapter" : gap ? "gap" : "plain",
+          markStart:
+            chapter && chapter.start === start && chapter.end !== null
+              ? `▼ 第 ${activeIndex + 1} 章「${chapter.title}」开始 [${chapter.start.toLocaleString()}, ${chapter.end.toLocaleString()})`
+              : null,
+          markEnd:
+            chapter && chapter.end === end
+              ? `▲ 第 ${activeIndex + 1} 章结束`
+              : null,
+          gapLabel:
+            gap && Math.max(gap.start, block.start) === start
+              ? `未切分 [${gap.start.toLocaleString()}, ${gap.end.toLocaleString()}) ${gap.chars.toLocaleString()} 字`
+              : null,
+        });
+      }
+      if (
+        chapter &&
+        chapter.end === block.end &&
+        segments.length > 0 &&
+        segments[segments.length - 1]?.markEnd === null
+      ) {
+        segments[segments.length - 1] = {
+          ...segments[segments.length - 1]!,
+          markEnd: `▲ 第 ${activeIndex + 1} 章结束`,
+        };
+      }
+      return segments;
     },
     [chapter, gaps, activeIndex],
   );
+
+  const visibleStart = blocks[viewRange.start]?.start ?? 0;
+  const visibleEnd =
+    blocks[Math.max(viewRange.start, viewRange.end - 1)]?.end ?? 0;
+  const chapterRangeStart = chapter?.start ?? null;
+  const chapterRangeEnd = chapter?.end ?? null;
+  const hasChapterRange =
+    chapterRangeStart !== null && chapterRangeEnd !== null;
+  const chapterRangeText = hasChapterRange
+    ? `[${chapterRangeStart.toLocaleString()}, ${chapterRangeEnd.toLocaleString()})`
+    : "无原文区间";
 
   return (
     <aside
       className="sticky top-[116px] flex max-h-[calc(100vh-140px)] flex-col overflow-hidden rounded-lg border border-border bg-white p-2.5 shadow-panel"
       aria-label="原文对照"
     >
-      <div className="mb-[11px] flex items-center justify-between gap-2 text-[13px] font-bold">
-        <span>原文对照（完整）</span>
-        {gaps.length > 0 ? (
-          <button
-            type="button"
-            className="text-xs font-normal text-[#b03a32] underline"
-            onClick={() => setFocusedGap(null)}
-          >
-            未切分 {gaps.length} 段
-          </button>
-        ) : (
-          <span className="text-xs font-normal text-muted-foreground">
-            全文已切分
-          </span>
-        )}
+      <div className="mb-2 flex flex-col gap-1.5 text-[13px]">
+        <div className="flex items-start justify-between gap-2 font-bold">
+          <span>原文对照（虚拟滚动）</span>
+          {gaps.length > 0 ? (
+            <button
+              type="button"
+              className="text-xs font-normal text-[#b03a32] underline"
+              onClick={() => setFocusedGap(null)}
+            >
+              未切分 {gaps.length} 段
+            </button>
+          ) : (
+            <span className="text-xs font-normal text-muted-foreground">
+              全文已切分
+            </span>
+          )}
+        </div>
+        <div className="grid gap-1 rounded-md bg-[#f5f8f8] px-2 py-1.5 text-[11px] font-normal text-muted-foreground">
+          <div>
+            已加载原文 {rawText ? rawText.length.toLocaleString() : "0"} 字 · 共{" "}
+            {blocks.length.toLocaleString()} 块 · 当前显示 [
+            {visibleStart.toLocaleString()}, {visibleEnd.toLocaleString()})
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span>
+              当前章{" "}
+              {chapter
+                ? `${(activeIndex + 1).toLocaleString()} · ${chapter.charCount.toLocaleString()} 字`
+                : "未选择"}{" "}
+              · {chapterRangeText}
+            </span>
+            <button
+              type="button"
+              className="rounded border border-[#cfd9d6] bg-white px-1.5 py-[1px] text-[10px] text-[#176e66] disabled:cursor-not-allowed disabled:text-muted-foreground"
+              disabled={!hasChapterRange}
+              onClick={() => {
+                if (chapterRangeStart !== null)
+                  scrollToRawIndex(chapterRangeStart);
+              }}
+            >
+              章首
+            </button>
+            <button
+              type="button"
+              className="rounded border border-[#cfd9d6] bg-white px-1.5 py-[1px] text-[10px] text-[#176e66] disabled:cursor-not-allowed disabled:text-muted-foreground"
+              disabled={!hasChapterRange}
+              onClick={() => {
+                if (chapterRangeEnd !== null)
+                  scrollToRawIndex(Math.max(0, chapterRangeEnd - 1));
+              }}
+            >
+              章尾
+            </button>
+          </div>
+          <div>
+            单章上限 {MAX_CHAPTER_LENGTH.toLocaleString()}{" "}
+            字，超长导入会拆为续章
+          </div>
+        </div>
       </div>
 
       {gaps.length > 0 && (
@@ -229,10 +322,7 @@ export function ChapterRawPreview({
                 className="grid min-w-0 flex-1 cursor-pointer grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-1.5 border-0 bg-transparent p-1 pl-1.5 text-left text-inherit"
                 onClick={() => {
                   setFocusedGap(index);
-                  const blockIndex = Math.floor(gap.start / BLOCK_CHARS);
-                  scrollToOffset(
-                    offsets[Math.min(blockIndex, offsets.length - 1)] ?? 0,
-                  );
+                  scrollToRawIndex(gap.start);
                 }}
                 title="滚动到该段原文"
               >
@@ -274,22 +364,15 @@ export function ChapterRawPreview({
           ref={scrollRef}
           className="flex-1 overflow-auto rounded-md border border-[#e3e7ea] bg-[#fbfcfc]"
           onScroll={handleScroll}
+          aria-label="完整原文滚动区"
         >
           <div style={{ height: totalHeight, position: "relative" }}>
             {blocks.slice(viewRange.start, viewRange.end).map((block) => {
-              const view = describeBlock(block);
-              const kindClass =
-                view.kind === "chapter"
-                  ? "bg-[#e9f6f1]"
-                  : view.kind === "chapter-edge"
-                    ? "bg-[#f0faf6]"
-                    : view.kind === "gap"
-                      ? "bg-[#fdf1f0]"
-                      : "bg-[#fbfcfc]";
+              const segments = getBlockSegments(block);
               return (
                 <div
                   key={block.start}
-                  className={`px-2 ${kindClass}`}
+                  className="px-2"
                   style={{
                     position: "absolute",
                     top: offsets[block.index],
@@ -297,26 +380,38 @@ export function ChapterRawPreview({
                     right: 0,
                   }}
                 >
-                  {view.gapLabel ? (
-                    <div className="my-[3px] inline-block rounded-[3px] bg-[#fbe3e1] px-1.5 py-px text-[10px] font-semibold text-[#8f2b24]">
-                      {view.gapLabel}
-                    </div>
-                  ) : null}
-                  {view.markStart ? (
-                    <div className="my-[3px] rounded border-l-[3px] border-[#209065] bg-[#e2efec] px-1.5 py-[3px] text-[11px] font-semibold text-[#176e66]">
-                      {view.markStart}
-                    </div>
-                  ) : null}
-                  <div
-                    className={`text-[13px] leading-[22px] text-[#1d2a33] whitespace-pre-wrap break-words ${view.kind === "gap" ? "text-[#8f2b24] line-through decoration-[#e5a3a0]" : ""}`}
-                  >
-                    {block.text}
-                  </div>
-                  {view.markEnd ? (
-                    <div className="my-[3px] rounded border-l-[3px] border-[#9aa4ad] bg-[#eef1f4] px-1.5 py-[3px] text-[11px] font-semibold text-[#5b6670]">
-                      {view.markEnd}
-                    </div>
-                  ) : null}
+                  {segments.map((segment) => {
+                    const kindClass =
+                      segment.kind === "chapter"
+                        ? "bg-[#e9f6f1]"
+                        : segment.kind === "gap"
+                          ? "bg-[#fdf1f0] text-[#8f2b24] line-through decoration-[#e5a3a0]"
+                          : "bg-[#fbfcfc]";
+                    return (
+                      <div key={`${segment.start}-${segment.end}`}>
+                        {segment.gapLabel ? (
+                          <div className="my-[3px] inline-block rounded-[3px] bg-[#fbe3e1] px-1.5 py-px text-[10px] font-semibold text-[#8f2b24]">
+                            {segment.gapLabel}
+                          </div>
+                        ) : null}
+                        {segment.markStart ? (
+                          <div className="my-[3px] rounded border-l-[3px] border-[#209065] bg-[#e2efec] px-1.5 py-[3px] text-[11px] font-semibold text-[#176e66]">
+                            {segment.markStart}
+                          </div>
+                        ) : null}
+                        <div
+                          className={`text-[13px] leading-[22px] text-[#1d2a33] whitespace-pre-wrap break-words ${kindClass}`}
+                        >
+                          {segment.text}
+                        </div>
+                        {segment.markEnd ? (
+                          <div className="my-[3px] rounded border-l-[3px] border-[#9aa4ad] bg-[#eef1f4] px-1.5 py-[3px] text-[11px] font-semibold text-[#5b6670]">
+                            {segment.markEnd}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
