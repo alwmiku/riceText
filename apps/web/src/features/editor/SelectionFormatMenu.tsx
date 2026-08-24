@@ -172,11 +172,13 @@ function FormatControls({ editor }: { editor: Editor }) {
 }
 
 function dispatchInsertRequest(editor: Editor, tool: string) {
-  document.dispatchEvent(
-    new CustomEvent("ricetext:context-insert", {
-      detail: { editor, tool },
-    }),
-  );
+  window.setTimeout(() => {
+    document.dispatchEvent(
+      new CustomEvent("ricetext:context-insert", {
+        detail: { editor, tool },
+      }),
+    );
+  }, 0);
 }
 
 function InsertContentSubmenu({ editor }: { editor: Editor }) {

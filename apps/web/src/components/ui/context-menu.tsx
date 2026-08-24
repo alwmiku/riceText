@@ -67,7 +67,7 @@ function ContextMenuContent({
       <ContextMenuPrimitive.Content
         data-slot="context-menu-content"
         className={cn(
-          "z-50 max-h-(--radix-context-menu-content-available-height) min-w-56 origin-(--radix-context-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-[14px] border border-black/10 bg-white/95 p-1.5 text-[15px] font-normal leading-none text-neutral-950 shadow-xl backdrop-blur-xl duration-100 dark:border-white/10 dark:bg-popover/95 dark:text-popover-foreground data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "z-50 max-h-[calc(100vh-16px)] min-w-56 origin-(--radix-context-menu-content-transform-origin) overflow-visible rounded-[14px] border border-black/10 bg-white/95 p-1.5 text-[15px] font-normal leading-none text-neutral-950 shadow-xl backdrop-blur-xl duration-100 dark:border-white/10 dark:bg-popover/95 dark:text-popover-foreground data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className,
         )}
         {...props}
@@ -128,16 +128,18 @@ function ContextMenuSubContent({
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.SubContent>) {
   return (
-    <ContextMenuPrimitive.SubContent
-      data-slot="context-menu-sub-content"
-      sideOffset={4}
-      alignOffset={-6}
-      className={cn(
-        "z-50 min-w-48 origin-(--radix-context-menu-content-transform-origin) overflow-hidden rounded-[14px] border border-black/10 bg-white/95 p-1.5 text-[15px] font-normal leading-none text-neutral-950 shadow-xl backdrop-blur-xl duration-100 dark:border-white/10 dark:bg-popover/95 dark:text-popover-foreground data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-        className,
-      )}
-      {...props}
-    />
+    <ContextMenuPrimitive.Portal>
+      <ContextMenuPrimitive.SubContent
+        data-slot="context-menu-sub-content"
+        sideOffset={6}
+        alignOffset={-6}
+        className={cn(
+          "z-50 min-w-48 origin-(--radix-context-menu-content-transform-origin) overflow-hidden rounded-[14px] border border-black/10 bg-white/95 p-1.5 text-[15px] font-normal leading-none text-neutral-950 shadow-xl backdrop-blur-xl duration-100 dark:border-white/10 dark:bg-popover/95 dark:text-popover-foreground data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          className,
+        )}
+        {...props}
+      />
+    </ContextMenuPrimitive.Portal>
   );
 }
 
