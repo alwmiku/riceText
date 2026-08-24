@@ -93,6 +93,27 @@ function selectionMenuPosition(editor: Editor): FloatingPosition {
   };
 }
 
+/** 移动端优先把格式菜单放在选区附近；选区太靠近顶部时改到选区下方，避免被裁掉。 */
+function mobileSelectionMenuPosition(editor: Editor): FloatingPosition {
+  const position = selectionMenuPosition(editor) ?? {
+    x: Math.min(Math.max(window.innerWidth / 2, 184), window.innerWidth - 184),
+    y: 80,
+  };
+  const nativeSelection = window.getSelection();
+  let selectionBottom = 80;
+  if (nativeSelection?.rangeCount) {
+    const rect = nativeSelection.getRangeAt(0).getBoundingClientRect();
+    if (rect.width || rect.height) selectionBottom = rect.bottom;
+  }
+  if (position.y < 220) {
+    return {
+      x: position.x,
+      y: Math.min(selectionBottom + 8, Math.max(window.innerHeight - 8, 8)),
+    };
+  }
+  return position;
+}
+
 function FormatControls({ editor }: { editor: Editor }) {
   const spoilerActive = editor.isActive("spoiler");
   const textStyle = editor.getAttributes("textStyle") as {
@@ -436,15 +457,15 @@ export function SelectionFormatMenu({
     if (!editor) return undefined;
     const update = () => {
       rerender();
-      if (
-        mobile ||
-        editor.state.selection.empty ||
-        !selectedText(editor).trim()
-      ) {
+      if (editor.state.selection.empty || !selectedText(editor).trim()) {
         setFloatingPosition(null);
         return;
       }
-      setFloatingPosition(selectionMenuPosition(editor));
+      setFloatingPosition(
+        mobile
+          ? mobileSelectionMenuPosition(editor)
+          : selectionMenuPosition(editor),
+      );
     };
     editor.on("selectionUpdate", update);
     editor.on("transaction", update);
@@ -472,11 +493,12 @@ export function SelectionFormatMenu({
           <FormatControls editor={editor} />
         </div>
       ) : null}
-      {editor && mobile && hasSelection ? (
+      {editor && mobile && hasSelection && floatingPosition ? (
         <div
-          className="fixed inset-x-2 bottom-[calc(66px+env(safe-area-inset-bottom))] z-[36] overflow-hidden rounded-lg border border-border bg-white/[0.98] p-1.5 shadow-[0_-8px_22px_rgb(15_23_42/0.1)] [&_.flex]:overflow-x-auto [&_.flex]:[scrollbar-width:none] [&_.flex::-webkit-scrollbar]:hidden [&_select:first-of-type]:w-[min(132px,36vw)] [&_select:nth-of-type(2)]:w-[74px]"
+          className="fixed z-[60] w-max max-w-[calc(100vw-16px)] overflow-visible rounded-lg border border-border bg-white/[0.98] p-1.5 shadow-[0_8px_24px_rgb(15_23_42/0.18)] -translate-x-1/2 -translate-y-[calc(100%+8px)] [&_.flex]:overflow-x-auto [&_.flex]:[scrollbar-width:none] [&_.flex::-webkit-scrollbar]:hidden [&_select:first-of-type]:w-[min(132px,36vw)] [&_select:nth-of-type(2)]:w-[74px]"
           role="toolbar"
           aria-label="选区格式菜单"
+          style={{ left: floatingPosition.x, top: floatingPosition.y }}
         >
           <FormatControls editor={editor} />
         </div>
