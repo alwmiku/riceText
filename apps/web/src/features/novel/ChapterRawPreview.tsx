@@ -90,18 +90,25 @@ interface RowSegment extends RawSegment {
   markEndHeight: number;
 }
 
-/** 一行（一个原文分块）的整体布局：高度、行首偏移与段几何。 */
+/** 一行（一个原文分块）的整体布局：高度与段几何。 */
 interface RowLayout {
   index: number;
   blockStart: number;
   blockEnd: number;
-  offset: number;
   height: number;
   segments: readonly RowSegment[];
 }
 
+/** 惰性行测量器：只计算被访问的行（可见行/跳转目标），
+ *  避免超大文本进入界面时一次性全量 prepare + layout 阻塞主线程。 */
+interface RowMeasure {
+  getRowLayout(index: number): RowLayout;
+  /** 行顶部在全文中的像素偏移（前缀和，按需计算并缓存）。 */
+  getRowOffset(index: number): number;
+}
+
 interface RawRowProps {
-  layouts: readonly RowLayout[];
+  measure: RowMeasure;
 }
 
 /** 测量文本高度：至少占一行，避免空行塌缩。 */
@@ -193,26 +200,66 @@ function computeBlockSegments(
   return segments;
 }
 
-/** 计算每行的 pretext 文本高度（宽度相关，与 prepare 分离以便复用）。 */
-function computeRowLayouts(
+/** 创建惰性行测量器：每行的 prepare/layout/段切分都在首次访问时计算并缓存。 */
+function createRowMeasure(
   blocks: readonly RawBlock[],
-  preparedBlocks: readonly PreparedText[],
-  segmentsByRow: readonly RawSegment[][],
-  blockTextHeights: readonly number[],
+  chapter: CoverageChapter | undefined,
+  gaps: readonly RawGap[],
+  activeIndex: number,
   contentWidth: number,
-): RowLayout[] {
-  const layouts: RowLayout[] = [];
-  let offset = 0;
-  for (let index = 0; index < blocks.length; index += 1) {
+): RowMeasure {
+  const preparedCache = new Map<number, PreparedText>();
+  const segmentCache = new Map<number, RawSegment[]>();
+  const layoutCache = new Map<number, RowLayout>();
+  const offsets: number[] = [];
+
+  const getPrepared = (index: number): PreparedText => {
+    let prepared = preparedCache.get(index);
+    if (!prepared) {
+      prepared = prepare(
+        blocks[index]?.text ?? "",
+        TEXT_FONT,
+        PREPARE_OPTIONS,
+      );
+      preparedCache.set(index, prepared);
+    }
+    return prepared;
+  };
+
+  const getSegments = (index: number): RawSegment[] => {
+    let segments = segmentCache.get(index);
+    if (!segments) {
+      const block = blocks[index];
+      segments = block
+        ? computeBlockSegments(block, chapter, gaps, activeIndex)
+        : [];
+      segmentCache.set(index, segments);
+    }
+    return segments;
+  };
+
+  const getRowLayout = (index: number): RowLayout => {
+    let layout = layoutCache.get(index);
+    if (layout) return layout;
     const block = blocks[index];
-    if (!block) continue;
-    const segments = segmentsByRow[index] ?? [];
+    if (!block) {
+      layout = {
+        index,
+        blockStart: 0,
+        blockEnd: 0,
+        height: 0,
+        segments: [],
+      };
+      layoutCache.set(index, layout);
+      return layout;
+    }
+    const segments = getSegments(index);
     const rowSegments: RowSegment[] = [];
     let top = 0;
     for (const segment of segments) {
       const textHeight =
         segment.text === block.text
-          ? (blockTextHeights[index] ?? TEXT_LINE_HEIGHT)
+          ? measureHeight(getPrepared(index), contentWidth, TEXT_LINE_HEIGHT)
           : measureHeight(
               prepare(segment.text, TEXT_FONT, PREPARE_OPTIONS),
               contentWidth,
@@ -264,19 +311,29 @@ function computeRowLayouts(
       });
       top = rowSegments[rowSegments.length - 1]!.bottom;
     }
-    const height =
-      rowSegments.length === 0 ? 0 : rowSegments[rowSegments.length - 1]!.bottom;
-    layouts.push({
+    layout = {
       index,
       blockStart: block.start,
       blockEnd: block.end,
-      offset,
-      height,
+      height:
+        rowSegments.length === 0
+          ? 0
+          : rowSegments[rowSegments.length - 1]!.bottom,
       segments: rowSegments,
-    });
-    offset += height;
-  }
-  return layouts;
+    };
+    layoutCache.set(index, layout);
+    return layout;
+  };
+
+  const getRowOffset = (index: number): number => {
+    for (let i = offsets.length; i <= index; i += 1) {
+      offsets[i] =
+        (i === 0 ? 0 : (offsets[i - 1] ?? 0)) + getRowLayout(i - 1).height;
+    }
+    return offsets[index] ?? 0;
+  };
+
+  return { getRowLayout, getRowOffset };
 }
 
 /** 单行渲染：章高亮、空洞删除线、章首/章尾标记与空洞标签。 */
@@ -284,10 +341,10 @@ function RawRow({
   index,
   style,
   ariaAttributes,
-  layouts,
+  measure,
 }: RowComponentProps<RawRowProps>) {
-  const layout = layouts[index];
-  if (!layout) return null;
+  const layout = measure.getRowLayout(index);
+  if (layout.height === 0 && layout.segments.length === 0) return null;
   return (
     <div style={style} {...ariaAttributes} className="px-2">
       {layout.segments.map((segment) => {
@@ -380,43 +437,14 @@ export function ChapterRawPreview({
     containerWidth - ROW_PADDING_X - getScrollbarSize(),
   );
 
-  // prepare 只依赖文本（宽度无关）；layout 依赖宽度，两者分离以复用。
-  const preparedBlocks = useMemo(
-    () => blocks.map((block) => prepare(block.text, TEXT_FONT, PREPARE_OPTIONS)),
-    [blocks],
-  );
-
-  const blockTextHeights = useMemo(() => {
-    const heights: number[] = [];
-    for (let index = 0; index < blocks.length; index += 1) {
-      const prepared = preparedBlocks[index];
-      if (!prepared) continue;
-      heights.push(measureHeight(prepared, contentWidth, TEXT_LINE_HEIGHT));
-    }
-    return heights;
-  }, [blocks, preparedBlocks, contentWidth]);
-
   const chapter = chapters[activeIndex];
   const chapterStart = chapter?.start ?? null;
 
-  const segmentsByRow = useMemo(
-    () =>
-      blocks.map((block) =>
-        computeBlockSegments(block, chapter, gaps, activeIndex),
-      ),
-    [blocks, chapter, gaps, activeIndex],
-  );
-
-  const rowLayouts = useMemo(
-    () =>
-      computeRowLayouts(
-        blocks,
-        preparedBlocks,
-        segmentsByRow,
-        blockTextHeights,
-        contentWidth,
-      ),
-    [blocks, preparedBlocks, segmentsByRow, blockTextHeights, contentWidth],
+  // 惰性测量器：只有被访问的行（可见行/跳转目标）才执行 pretext 的
+  // prepare + layout，超大文本首次进入界面不会一次性全量计算。
+  const measure = useMemo(
+    () => createRowMeasure(blocks, chapter, gaps, activeIndex, contentWidth),
+    [blocks, chapter, gaps, activeIndex, contentWidth],
   );
 
   const rowIndexOf = useCallback(
@@ -453,19 +481,26 @@ export function ChapterRawPreview({
 
   const scrollToStartAnchor = useCallback(
     (rawIndex: number) => {
-      const row = rowLayouts[rowIndexOf(rawIndex)];
-      const segment = row?.segments.find((item) => item.start === rawIndex);
-      if (!row || !segment) return;
-      scrollToPixel(row.offset + segment.top + segment.gapLabelHeight - 8);
+      const rowIndex = rowIndexOf(rawIndex);
+      const row = measure.getRowLayout(rowIndex);
+      const segment = row.segments.find((item) => item.start === rawIndex);
+      if (!segment) return;
+      scrollToPixel(
+        measure.getRowOffset(rowIndex) +
+          segment.top +
+          segment.gapLabelHeight -
+          8,
+      );
     },
-    [rowLayouts, rowIndexOf, scrollToPixel],
+    [measure, rowIndexOf, scrollToPixel],
   );
 
   const scrollToEndAnchor = useCallback(
     (chapterEnd: number) => {
-      const row = rowLayouts[rowIndexOf(Math.max(0, chapterEnd - 1))];
-      const segment = row?.segments.find((item) => item.end === chapterEnd);
-      if (!row || !segment) return;
+      const rowIndex = rowIndexOf(Math.max(0, chapterEnd - 1));
+      const row = measure.getRowLayout(rowIndex);
+      const segment = row.segments.find((item) => item.end === chapterEnd);
+      if (!segment) return;
       const anchorTop =
         segment.top +
         segment.gapLabelHeight +
@@ -475,19 +510,22 @@ export function ChapterRawPreview({
         8,
         containerHeight - segment.markEndHeight - 56,
       );
-      scrollToPixel(row.offset + anchorTop - viewportTop);
+      scrollToPixel(
+        measure.getRowOffset(rowIndex) + anchorTop - viewportTop,
+      );
     },
-    [rowLayouts, rowIndexOf, containerHeight, scrollToPixel],
+    [measure, rowIndexOf, containerHeight, scrollToPixel],
   );
 
   const scrollToGap = useCallback(
     (gapStart: number) => {
-      const row = rowLayouts[rowIndexOf(gapStart)];
-      const segment = row?.segments.find((item) => item.start === gapStart);
-      if (!row || !segment) return;
-      scrollToPixel(row.offset + segment.top - 8);
+      const rowIndex = rowIndexOf(gapStart);
+      const row = measure.getRowLayout(rowIndex);
+      const segment = row.segments.find((item) => item.start === gapStart);
+      if (!segment) return;
+      scrollToPixel(measure.getRowOffset(rowIndex) + segment.top - 8);
     },
-    [rowLayouts, rowIndexOf, scrollToPixel],
+    [measure, rowIndexOf, scrollToPixel],
   );
 
   // 点击章节（或首次载入）时滚动到该章在原文中的位置。
@@ -515,8 +553,8 @@ export function ChapterRawPreview({
   );
 
   const rowHeight = useCallback(
-    (index: number) => rowLayouts[index]?.height ?? 0,
-    [rowLayouts],
+    (index: number) => measure.getRowLayout(index).height,
+    [measure],
   );
 
   const chapterRangeStart = chapter?.start ?? null;
@@ -649,7 +687,7 @@ export function ChapterRawPreview({
           rowCount={blocks.length}
           rowHeight={rowHeight}
           rowComponent={RawRow}
-          rowProps={{ layouts: rowLayouts }}
+          rowProps={{ measure }}
           defaultHeight={FALLBACK_CONTAINER_HEIGHT}
           overscanCount={6}
           onResize={handleResize}
