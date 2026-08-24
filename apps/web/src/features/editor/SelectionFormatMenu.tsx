@@ -15,7 +15,13 @@ import {
   Undo2,
   Vote,
 } from "lucide-react";
-import { useEffect, useReducer, useState, type MouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useReducer,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -26,7 +32,7 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
   ContextMenuTrigger,
-} from "../../../@/components/ui/context-menu";
+} from "@/components/ui/context-menu";
 import { IconButton } from "../../components/ui";
 
 const colors = ["#20272c", "#197c73", "#b66a0a", "#b63434", "#6b4bb5"];
@@ -87,7 +93,9 @@ function FormatControls({ editor }: { editor: Editor }) {
           label="下划线"
           active={editor.isActive("underline")}
           onMouseDown={preventSelectionLoss}
-          onClick={run((value) => value.chain().focus().toggleUnderline().run())}
+          onClick={run((value) =>
+            value.chain().focus().toggleUnderline().run(),
+          )}
         >
           <UnderlineIcon size={16} />
         </IconButton>
@@ -109,7 +117,8 @@ function FormatControls({ editor }: { editor: Editor }) {
           value={textStyle.fontFamily ?? ""}
           onChange={(event) => {
             const chain = editor.chain().focus();
-            if (event.target.value) chain.setFontFamily(event.target.value).run();
+            if (event.target.value)
+              chain.setFontFamily(event.target.value).run();
             else chain.unsetFontFamily().run();
           }}
         >
@@ -217,21 +226,29 @@ function TextFormatSubmenu({ editor }: { editor: Editor }) {
           disabled={spoilerActive}
           onSelect={() => editor.chain().focus().toggleBold().run()}
         >
-          <Bold />加粗
+          <Bold />
+          加粗
         </ContextMenuItem>
         <ContextMenuItem
           disabled={spoilerActive}
           onSelect={() => editor.chain().focus().toggleItalic().run()}
         >
-          <Italic />斜体
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => editor.chain().focus().toggleUnderline().run()}>
-          <UnderlineIcon />下划线
+          <Italic />
+          斜体
         </ContextMenuItem>
         <ContextMenuItem
-          onSelect={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
+          onSelect={() => editor.chain().focus().toggleUnderline().run()}
         >
-          <Eraser />清除样式
+          <UnderlineIcon />
+          下划线
+        </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={() =>
+            editor.chain().focus().unsetAllMarks().clearNodes().run()
+          }
+        >
+          <Eraser />
+          清除样式
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuSub>
@@ -284,7 +301,10 @@ function TextFormatSubmenu({ editor }: { editor: Editor }) {
                 disabled={spoilerActive}
                 onSelect={() => editor.chain().focus().setColor(color).run()}
               >
-                <span className="h-3 w-3 rounded-sm" style={{ background: color }} />
+                <span
+                  className="h-3 w-3 rounded-sm"
+                  style={{ background: color }}
+                />
                 {color === textStyle.color ? "当前颜色" : color}
               </ContextMenuItem>
             ))}
@@ -295,22 +315,32 @@ function TextFormatSubmenu({ editor }: { editor: Editor }) {
   );
 }
 
-function EditorContextItems({ editor, hasSelection }: { editor: Editor; hasSelection: boolean }) {
+function EditorContextItems({
+  editor,
+  hasSelection,
+}: {
+  editor: Editor;
+  hasSelection: boolean;
+}) {
   return (
     <>
       <ContextMenuItem
         disabled={!editor.can().undo()}
         onSelect={() => editor.chain().focus().undo().run()}
       >
-        <Undo2 />撤销<ContextMenuShortcut>Ctrl+Z</ContextMenuShortcut>
+        <Undo2 />
+        撤销<ContextMenuShortcut>Ctrl+Z</ContextMenuShortcut>
       </ContextMenuItem>
       <ContextMenuItem
         disabled={!editor.can().redo()}
         onSelect={() => editor.chain().focus().redo().run()}
       >
-        <Redo2 />重做<ContextMenuShortcut>Ctrl+Y</ContextMenuShortcut>
+        <Redo2 />
+        重做<ContextMenuShortcut>Ctrl+Y</ContextMenuShortcut>
       </ContextMenuItem>
-      <ContextMenuItem onSelect={() => editor.chain().focus().selectAll().run()}>
+      <ContextMenuItem
+        onSelect={() => editor.chain().focus().selectAll().run()}
+      >
         全选<ContextMenuShortcut>Ctrl+A</ContextMenuShortcut>
       </ContextMenuItem>
       <ContextMenuSeparator />
@@ -331,7 +361,8 @@ export function SelectionFormatMenu({
   children: ReactNode;
 }) {
   const [, rerender] = useReducer((value: number) => value + 1, 0);
-  const [floatingPosition, setFloatingPosition] = useState<FloatingPosition>(null);
+  const [floatingPosition, setFloatingPosition] =
+    useState<FloatingPosition>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const text = selectedText(editor);
   const hasSelection = Boolean(text.trim());
@@ -340,7 +371,11 @@ export function SelectionFormatMenu({
     if (!editor) return undefined;
     const update = () => {
       rerender();
-      if (mobile || editor.state.selection.empty || !selectedText(editor).trim()) {
+      if (
+        mobile ||
+        editor.state.selection.empty ||
+        !selectedText(editor).trim()
+      ) {
         setFloatingPosition(null);
         return;
       }
@@ -352,7 +387,10 @@ export function SelectionFormatMenu({
       const rect = nativeSelection.getRangeAt(0).getBoundingClientRect();
       if (!rect.width && !rect.height) return;
       setFloatingPosition({
-        x: Math.min(Math.max(rect.left + rect.width / 2, 184), window.innerWidth - 184),
+        x: Math.min(
+          Math.max(rect.left + rect.width / 2, 184),
+          window.innerWidth - 184,
+        ),
         y: Math.max(rect.top, 10),
       });
     };
@@ -397,7 +435,11 @@ export function SelectionFormatMenu({
             </IconButton>
           </div>
           {mobileOpen ? (
-            <div className="mobile-selection-menu" role="dialog" aria-label="选区格式菜单">
+            <div
+              className="mobile-selection-menu"
+              role="dialog"
+              aria-label="选区格式菜单"
+            >
               <FormatControls editor={editor} />
             </div>
           ) : null}
@@ -411,7 +453,9 @@ export function SelectionFormatMenu({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
-      <ContextMenuContent aria-label={hasSelection ? "选区格式菜单" : "编辑上下文菜单"}>
+      <ContextMenuContent
+        aria-label={hasSelection ? "选区格式菜单" : "编辑上下文菜单"}
+      >
         <EditorContextItems editor={editor} hasSelection={hasSelection} />
       </ContextMenuContent>
     </ContextMenu>
