@@ -4,6 +4,18 @@ export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      fontFamily: {
+        sans: [
+          '"Noto Sans Variable"',
+          'Inter',
+          '"Noto Sans SC"',
+          '"Microsoft YaHei"',
+          'system-ui',
+          'sans-serif',
+        ],
+        serif: ['"Noto Serif SC"', '"Songti SC"', 'serif'],
+        heading: ['"Playfair Display Variable"', 'serif'],
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',

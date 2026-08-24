@@ -55,21 +55,21 @@ export function ExcerptDialog({
         <div className="grid grid-cols-2 gap-3">
           <label className="grid gap-1.5 text-xs font-semibold">
             书名
-            <input className="field" {...field("bookTitle")} />
+            <input className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15" {...field("bookTitle")} />
           </label>
           <label className="grid gap-1.5 text-xs font-semibold">
             章节
-            <input className="field" {...field("chapterTitle")} />
+            <input className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15" {...field("chapterTitle")} />
           </label>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <label className="grid gap-1.5 text-xs font-semibold">
             作者
-            <input className="field" {...field("author")} />
+            <input className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15" {...field("author")} />
           </label>
           <label className="grid gap-1.5 text-xs font-semibold">
             排版
-            <select className="field" {...field("variant")}>
+            <select className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15" {...field("variant")}>
               <option value="desktop-book">通用书站 · 桌面</option>
               <option value="mobile-book">通用书站 · 手机</option>
               <option value="forum-evidence">论坛证据</option>
@@ -79,14 +79,14 @@ export function ExcerptDialog({
         <label className="grid gap-1.5 text-xs font-semibold">
           来源链接（可选）
           <input
-            className="field"
+            className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
             {...field("sourceUrl")}
             placeholder="https://example.com/chapter"
           />
         </label>
         <label className="grid gap-1.5 text-xs font-semibold">
           摘录正文
-          <textarea className="field-area min-h-36" {...field("text")} />
+          <textarea className="h-auto min-h-36 w-full resize-y rounded-md border border-input bg-white px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15" {...field("text")} />
         </label>
       </div>
     </Dialog>

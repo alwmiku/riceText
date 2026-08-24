@@ -43,7 +43,10 @@ export interface RichTextEditorProps {
   /** 光标处切章：宿主负责把章节拆为两章并重建编辑器。 */
   onSplitChapter?: (before: string, after: string) => void;
   /** 章节编辑（标题/正文）：宿主把修改写回整体数据，节点属性保持不变。 */
-  onChapterEdit?: (chapterId: string, patch: { title?: string; text?: string }) => void;
+  onChapterEdit?: (
+    chapterId: string,
+    patch: { title?: string; text?: string },
+  ) => void;
   onSubmit?: (content: RichTextNode) => void;
   onReady?: (editor: Editor | null) => void;
   /** 最近一次成功保存时间，显示在编辑器底部。 */
@@ -143,10 +146,12 @@ export function RichTextEditor({
       editor.storage as unknown as {
         longTextBlock?: {
           onSplit?: null | ((before: string, after: string) => void);
-          onChapterEdit?: null | ((
-            chapterId: string,
-            patch: { title?: string; text?: string },
-          ) => void);
+          onChapterEdit?:
+            | null
+            | ((
+                chapterId: string,
+                patch: { title?: string; text?: string },
+              ) => void);
         };
       }
     ).longTextBlock;
@@ -232,18 +237,16 @@ export function RichTextEditor({
 
   const wordCount = useMemo(
     () =>
-      editor && !longTextMode
-        ? editor.getText().replace(/\s+/g, "").length
-        : 0,
+      editor && !longTextMode ? editor.getText().replace(/\s+/g, "").length : 0,
     [editor, lastTransactionAt, longTextMode],
   );
 
   if (longTextMode)
     return (
-      <div className="surface mobile-edge overflow-clip">
-        <div className="document-bar">
+      <div className="overflow-clip rounded-lg border border-border bg-white shadow-panel max-[430px]:rounded-none max-[430px]:border-x-0">
+        <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border py-2 pr-2.5 pl-3.5 max-[430px]:min-h-12 max-[430px]:pr-3 max-[430px]:pl-3">
           <div className="min-w-0">
-            <p className="document-title">长文本编辑</p>
+            <p className="min-w-0 truncate text-[15px] font-bold">长文本编辑</p>
           </div>
           {onSubmit ? (
             <Button
@@ -257,9 +260,12 @@ export function RichTextEditor({
             </Button>
           ) : null}
         </div>
-        <div className="editor-content-wrap">
+        <div className="min-h-[560px] bg-white">
           <SelectionFormatMenu editor={editor}>
-            <EditorContent editor={editor} />
+            <EditorContent
+              editor={editor}
+              className="tiptap min-h-[560px] px-[clamp(28px,7vw,92px)] py-[52px] pb-[100px] font-serif text-[17px] leading-[1.9] text-[#232a31] outline-none"
+            />
           </SelectionFormatMenu>
         </div>
       </div>
@@ -267,13 +273,16 @@ export function RichTextEditor({
 
   if (mode === "compact")
     return (
-      <div className="compact-shell surface mobile-edge">
-        <div className="editor-content-wrap">
+      <div className="mx-auto mt-14 max-w-[860px] rounded-lg border border-border bg-white shadow-panel max-[840px]:mt-[18px] max-[430px]:rounded-none max-[430px]:border-x-0">
+        <div className="min-h-[150px] bg-white">
           <SelectionFormatMenu editor={editor}>
-            <EditorContent editor={editor} />
+            <EditorContent
+              editor={editor}
+              className="tiptap min-h-[150px] px-5 py-[18px] font-sans text-[15px] leading-[1.7] outline-none"
+            />
           </SelectionFormatMenu>
         </div>
-        <div className="compact-actions">
+        <div className="flex items-center justify-between border-t border-border p-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm">
@@ -309,13 +318,16 @@ export function RichTextEditor({
   if (mode === "mobile")
     return (
       <>
-        <div className="mobile-editor surface mobile-edge">
-          <div className="editor-content-wrap">
+        <div className="mx-auto max-w-[680px] rounded-lg border border-border bg-white pb-[calc(74px+env(safe-area-inset-bottom))] shadow-panel max-[430px]:rounded-none max-[430px]:border-x-0">
+          <div className="min-h-[560px] bg-white">
             <SelectionFormatMenu editor={editor} mobile>
-              <EditorContent editor={editor} />
+              <EditorContent
+                editor={editor}
+                className="tiptap min-h-[calc(100vh-190px)] px-[18px] py-6 pb-[90px] font-serif text-base leading-[1.9] outline-none"
+              />
             </SelectionFormatMenu>
           </div>
-          <div className="mobile-toolbar">
+          <div className="fixed inset-x-0 bottom-0 z-[35] flex min-h-[58px] items-center justify-around gap-1 border-t border-border bg-white/[0.97] px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] backdrop-blur-xl [&_button]:min-h-11 [&_button]:min-w-11">
             <IconButton
               label="加粗"
               active={Boolean(editor?.isActive("bold"))}
@@ -370,30 +382,43 @@ export function RichTextEditor({
     );
 
   return (
-    <div className="surface mobile-edge overflow-clip">
+    <div className="overflow-clip rounded-lg border border-border bg-white shadow-panel max-[430px]:rounded-none max-[430px]:border-x-0">
       <Toolbar editor={editor} />
-      <div className="editor-content-wrap">
+      <div className="min-h-[560px] bg-white">
         <SelectionFormatMenu editor={editor}>
-          <EditorContent editor={editor} />
+          <EditorContent
+            editor={editor}
+            className="tiptap min-h-[560px] px-[clamp(28px,7vw,92px)] py-[52px] pb-[100px] font-serif text-[17px] leading-[1.9] text-[#232a31] outline-none"
+          />
         </SelectionFormatMenu>
       </div>
-      <footer className="editor-footer">
+      <footer className="flex min-h-[34px] flex-wrap items-center justify-end gap-x-5 gap-y-1 border-t border-[#e3e7ea] bg-[#fafbfc] px-3.5 py-1.5 text-xs text-[#68737d]">
         <span>
-          字数 <strong>{wordCount.toLocaleString()}</strong>
+          字数{" "}
+          <strong className="font-semibold text-[#37414b] tabular-nums">
+            {wordCount.toLocaleString()}
+          </strong>
         </span>
         <span>
-          最近保存 <strong>{savedAt ? formatTime(savedAt) : "—"}</strong>
+          最近保存{" "}
+          <strong className="font-semibold text-[#37414b] tabular-nums">
+            {savedAt ? formatTime(savedAt) : "—"}
+          </strong>
         </span>
         <span>
           最近更新{" "}
-          <strong>
+          <strong className="font-semibold text-[#37414b] tabular-nums">
             {lastTransactionAt !== null
               ? new Date(lastTransactionAt).toLocaleTimeString("zh-CN", {
                   hour12: false,
                 })
               : "—"}
           </strong>
-          {lastAction ? <em>· {lastAction}</em> : null}
+          {lastAction ? (
+            <em className="font-semibold not-italic text-[#14766d]">
+              · {lastAction}
+            </em>
+          ) : null}
         </span>
       </footer>
     </div>

@@ -11,7 +11,7 @@ export default function App() {
   return (
     <AppContext.Provider value={value}>
       <BrowserRouter>
-        <div className="app-shell">
+        <div className="min-h-screen bg-[#f7f9fa]">
           <AppHeader />
           <AppRoutes />
         </div>

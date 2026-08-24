@@ -40,14 +40,17 @@ export function ChapterSidebar({
     const previous = chapters[index - 1];
     return Boolean(
       current &&
-        previous &&
-        previous.charCount + current.charCount + 2 <= MAX_CHAPTER_LENGTH,
+      previous &&
+      previous.charCount + current.charCount + 2 <= MAX_CHAPTER_LENGTH,
     );
   };
 
   return (
-    <aside className="chapter-sidebar surface" aria-label="章节列表">
-      <div className="side-heading">
+    <aside
+      className="sticky top-[116px] max-h-[calc(100vh-140px)] overflow-auto rounded-lg border border-border bg-white p-2.5 shadow-panel"
+      aria-label="章节列表"
+    >
+      <div className="mb-[11px] flex items-center justify-between gap-2 text-[13px] font-bold">
         <span>章节列表</span>
         <span className="text-xs font-normal text-muted-foreground">
           {chapters.length} 章
@@ -61,7 +64,7 @@ export function ChapterSidebar({
           {chapters.map((chapter, index) => (
             <div
               key={chapter.id || index}
-              className={`chapter-sidebar__item${index === activeIndex ? " chapter-sidebar__item--active" : ""}${dragIndex === index ? " chapter-sidebar__item--dragging" : ""}`}
+              className={`flex cursor-pointer items-center gap-1.5 rounded-md p-1.5 hover:bg-[#edf7f5] ${index === activeIndex ? "bg-[#e2efec] outline outline-1 outline-[#9ccfc6]" : ""} ${dragIndex === index ? "opacity-50 outline-dashed outline-1 outline-[#197c73]" : ""}`}
               role="button"
               tabIndex={0}
               draggable
@@ -90,7 +93,7 @@ export function ChapterSidebar({
               onDragEnd={() => setDragIndex(null)}
             >
               <div className="min-w-0 flex-1">
-                <strong className="chapter-sidebar__title">
+                <strong className="line-clamp-2 break-all text-xs font-semibold leading-[1.35]">
                   {chapter.title}
                 </strong>
                 <small className="text-[10px] text-muted-foreground">
@@ -107,6 +110,7 @@ export function ChapterSidebar({
                     event.stopPropagation();
                     onMove(index, index - 1);
                   }}
+                  className="grid h-[22px] w-[22px] cursor-pointer place-items-center rounded border-0 bg-transparent text-[#6b7a76] hover:bg-[#e2efec] hover:text-[#176e66] disabled:cursor-not-allowed disabled:opacity-35"
                 >
                   <ArrowUp size={13} />
                 </button>
@@ -118,6 +122,7 @@ export function ChapterSidebar({
                     event.stopPropagation();
                     onMove(index, index + 1);
                   }}
+                  className="grid h-[22px] w-[22px] cursor-pointer place-items-center rounded border-0 bg-transparent text-[#6b7a76] hover:bg-[#e2efec] hover:text-[#176e66] disabled:cursor-not-allowed disabled:opacity-35"
                 >
                   <ArrowDown size={13} />
                 </button>
@@ -134,6 +139,7 @@ export function ChapterSidebar({
                     event.stopPropagation();
                     onMerge(index);
                   }}
+                  className="grid h-[22px] w-[22px] cursor-pointer place-items-center rounded border-0 bg-transparent text-[#6b7a76] hover:bg-[#e2efec] hover:text-[#176e66] disabled:cursor-not-allowed disabled:opacity-35"
                 >
                   <Combine size={13} />
                 </button>
@@ -144,6 +150,7 @@ export function ChapterSidebar({
                     event.stopPropagation();
                     onDelete(index);
                   }}
+                  className="grid h-[22px] w-[22px] cursor-pointer place-items-center rounded border-0 bg-transparent text-[#6b7a76] hover:bg-[#e2efec] hover:text-[#176e66] disabled:cursor-not-allowed disabled:opacity-35"
                 >
                   <Trash2 size={13} />
                 </button>

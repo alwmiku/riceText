@@ -40,9 +40,9 @@ export function ChapterRail({
   onSelect: (index: number) => void;
 }) {
   return (
-    <aside className="workspace-rail surface" aria-label="章节目录">
-      <div className="side-section">
-        <div className="side-heading">
+    <aside className="sticky top-[76px] max-h-[calc(100vh-92px)] overflow-auto rounded-lg border border-border bg-white shadow-panel" aria-label="章节目录">
+      <div className="border-b border-border p-3.5 last:border-b-0">
+        <div className="mb-[11px] flex items-center justify-between gap-2 text-[13px] font-bold">
           <span className="flex items-center gap-2">
             <BookOpen size={15} />
             章节目录
@@ -56,7 +56,7 @@ export function ChapterRail({
             return (
               <button
                 type="button"
-                className="chapter-item"
+                className="flex w-full cursor-pointer items-center gap-[9px] rounded-[5px] px-2.5 py-[9px] text-left text-[13px] text-[#4c5761] hover:bg-[#edf7f5] hover:text-[#176e66] data-[active=true]:bg-[#edf7f5] data-[active=true]:text-[#176e66]"
                 data-active={active}
                 key={chapter.id}
                 onClick={() => onSelect(order)}
@@ -77,8 +77,8 @@ export function ChapterRail({
           })}
         </nav>
       </div>
-      <div className="side-section">
-        <p className="section-label mb-2">本章统计</p>
+      <div className="border-b border-border p-3.5 last:border-b-0">
+        <p className="mb-2 text-xs font-semibold tracking-normal text-muted-foreground uppercase">本章统计</p>
         <dl className="grid grid-cols-2 gap-2 text-xs">
           <div>
             <dt className="text-muted-foreground">字数</dt>
@@ -264,7 +264,7 @@ function AttachmentPanel({ identity }: { identity: SeedIdentity }) {
 }
 
 /** 投票资格、选择和实名明细，数据来自服务端。 */
-function PollPanel({ identity, pollId }: { identity: SeedIdentity; pollId: string }) {
+function PollPanel({ pollId }: { pollId: string }) {
   const queryClient = useQueryClient();
   const { data: poll, isLoading } = useQuery({
     queryKey: ["demo", "poll", pollId],
@@ -443,10 +443,10 @@ export function DemoBusinessPanel({
     { id: "history" as const, label: "历史", icon: History },
   ];
   return (
-    <aside className="workspace-rail surface" aria-label="创作业务面板">
+    <aside className="sticky top-[76px] max-h-[calc(100vh-92px)] overflow-auto rounded-lg border border-border bg-white shadow-panel" aria-label="创作业务面板">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <strong className="text-sm">创作工具</strong>
-        <span className="demo-label">演示数据</span>
+        <span className="inline-flex h-5 items-center rounded border border-[#d3a859] bg-[#fff9ed] px-1.5 text-[10px] font-bold whitespace-nowrap text-[#80530a]">演示数据</span>
       </div>
       <div className="grid grid-cols-4 border-b border-border">
         {tabs.map(({ id, label, icon: Icon }) => (
@@ -467,7 +467,7 @@ export function DemoBusinessPanel({
           <SuggestionPanel documentId={documentId} baseRevision={baseRevision} />
         )}
         {tab === "attachment" && <AttachmentPanel identity={identity} />}
-        {tab === "poll" && <PollPanel identity={identity} pollId="poll-route" />}
+        {tab === "poll" && <PollPanel pollId="poll-route" />}
         {tab === "history" && (
           <HistoryPanel revisions={revisions} onRestore={onRestore} />
         )}

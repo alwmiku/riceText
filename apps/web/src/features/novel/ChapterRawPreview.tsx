@@ -9,9 +9,7 @@ export interface RawGap {
 }
 
 /** 计算全部未切分区间（前导与章节间的空洞）。 */
-export function collectRawGaps(
-  chapters: readonly CoverageChapter[],
-): RawGap[] {
+export function collectRawGaps(chapters: readonly CoverageChapter[]): RawGap[] {
   const gaps: RawGap[] = [];
   let cursor = 0;
   for (const chapter of chapters) {
@@ -85,7 +83,10 @@ export function ChapterRawPreview({
     return list;
   }, [rawText]);
 
-  const charsPerLine = Math.max(10, Math.floor((containerWidth - 24) / FONT_SIZE));
+  const charsPerLine = Math.max(
+    10,
+    Math.floor((containerWidth - 24) / FONT_SIZE),
+  );
 
   /** 每块的顶部偏移（估算高度累积）。 */
   const offsets = useMemo(() => {
@@ -169,8 +170,7 @@ export function ChapterRawPreview({
       if (chapter && chapter.start !== null && chapter.end !== null) {
         const fullyInside =
           block.start >= chapter.start && block.end <= chapter.end;
-        const overlap =
-          block.start < chapter.end && block.end > chapter.start;
+        const overlap = block.start < chapter.end && block.end > chapter.start;
         if (fullyInside) {
           kind = "chapter";
         } else if (overlap) {
@@ -196,8 +196,11 @@ export function ChapterRawPreview({
   );
 
   return (
-    <aside className="chapter-raw-preview surface" aria-label="原文对照">
-      <div className="side-heading">
+    <aside
+      className="sticky top-[116px] flex max-h-[calc(100vh-140px)] flex-col overflow-hidden rounded-lg border border-border bg-white p-2.5 shadow-panel"
+      aria-label="原文对照"
+    >
+      <div className="mb-[11px] flex items-center justify-between gap-2 text-[13px] font-bold">
         <span>原文对照（完整）</span>
         {gaps.length > 0 ? (
           <button
@@ -215,15 +218,15 @@ export function ChapterRawPreview({
       </div>
 
       {gaps.length > 0 && (
-        <div className="chapter-raw-preview__gaps">
+        <div className="mb-2 flex max-h-[30vh] flex-col gap-1 overflow-auto">
           {gaps.map((gap, index) => (
             <div
               key={`${gap.start}-${gap.end}`}
-              className={`chapter-raw-preview__gap${focusedGap === index ? " chapter-raw-preview__gap--active" : ""}`}
+              className={`flex cursor-pointer items-center gap-1.5 rounded border border-[#f0b4b0] bg-[#fdf1f0] p-0 text-[11px] text-[#8f2b24] hover:bg-[#fbe3e1] ${focusedGap === index ? "bg-[#fbe3e1]" : ""}`}
             >
               <button
                 type="button"
-                className="chapter-raw-preview__gap-main"
+                className="grid min-w-0 flex-1 cursor-pointer grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-1.5 border-0 bg-transparent p-1 pl-1.5 text-left text-inherit"
                 onClick={() => {
                   setFocusedGap(index);
                   const blockIndex = Math.floor(gap.start / BLOCK_CHARS);
@@ -244,7 +247,7 @@ export function ChapterRawPreview({
               {onCreateFromGap ? (
                 <button
                   type="button"
-                  className="chapter-raw-preview__gap-action"
+                  className="mr-1 cursor-pointer rounded border-0 bg-[#e2efec] px-1.5 py-[3px] text-[10px] font-semibold whitespace-nowrap text-[#176e66] hover:bg-[#cfe6df]"
                   title="把这 1 段未切分文字创建为新章节"
                   onClick={() =>
                     onCreateFromGap(
@@ -269,16 +272,24 @@ export function ChapterRawPreview({
       ) : (
         <div
           ref={scrollRef}
-          className="chapter-raw-preview__scroll"
+          className="flex-1 overflow-auto rounded-md border border-[#e3e7ea] bg-[#fbfcfc]"
           onScroll={handleScroll}
         >
           <div style={{ height: totalHeight, position: "relative" }}>
             {blocks.slice(viewRange.start, viewRange.end).map((block) => {
               const view = describeBlock(block);
+              const kindClass =
+                view.kind === "chapter"
+                  ? "bg-[#e9f6f1]"
+                  : view.kind === "chapter-edge"
+                    ? "bg-[#f0faf6]"
+                    : view.kind === "gap"
+                      ? "bg-[#fdf1f0]"
+                      : "bg-[#fbfcfc]";
               return (
                 <div
                   key={block.start}
-                  className={`chapter-raw-preview__block chapter-raw-preview__block--${view.kind}`}
+                  className={`px-2 ${kindClass}`}
                   style={{
                     position: "absolute",
                     top: offsets[block.index],
@@ -287,20 +298,22 @@ export function ChapterRawPreview({
                   }}
                 >
                   {view.gapLabel ? (
-                    <div className="chapter-raw-preview__gap-tag">
+                    <div className="my-[3px] inline-block rounded-[3px] bg-[#fbe3e1] px-1.5 py-px text-[10px] font-semibold text-[#8f2b24]">
                       {view.gapLabel}
                     </div>
                   ) : null}
                   {view.markStart ? (
-                    <div className="chapter-raw-preview__mark chapter-raw-preview__mark--start">
+                    <div className="my-[3px] rounded border-l-[3px] border-[#209065] bg-[#e2efec] px-1.5 py-[3px] text-[11px] font-semibold text-[#176e66]">
                       {view.markStart}
                     </div>
                   ) : null}
-                  <div className="chapter-raw-preview__block-text">
+                  <div
+                    className={`text-[13px] leading-[22px] text-[#1d2a33] whitespace-pre-wrap break-words ${view.kind === "gap" ? "text-[#8f2b24] line-through decoration-[#e5a3a0]" : ""}`}
+                  >
                     {block.text}
                   </div>
                   {view.markEnd ? (
-                    <div className="chapter-raw-preview__mark chapter-raw-preview__mark--end">
+                    <div className="my-[3px] rounded border-l-[3px] border-[#9aa4ad] bg-[#eef1f4] px-1.5 py-[3px] text-[11px] font-semibold text-[#5b6670]">
                       {view.markEnd}
                     </div>
                   ) : null}
@@ -312,9 +325,11 @@ export function ChapterRawPreview({
       )}
 
       {analysis.continuous ? (
-        <p className="chapter-raw-preview__status">切割连续，无缺失</p>
+        <p className="mt-1.5 px-1.5 py-1 text-[11px] text-[#176e66]">
+          切割连续，无缺失
+        </p>
       ) : (
-        <p className="chapter-raw-preview__status chapter-raw-preview__status--warn">
+        <p className="mt-1.5 px-1.5 py-1 text-[11px] text-[#8f2b24]">
           存在未切分或重叠内容，请检查上方红色标记
         </p>
       )}

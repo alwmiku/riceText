@@ -21,17 +21,17 @@ function CommentNode({ comment, onVote, onReply, depth = 0 }: {
   depth?: number;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  return <article className="comment-node" aria-label={`${comment.author.name} 的回复`}>
-    <span className="comment-avatar" aria-hidden="true">{comment.author.avatar}</span>
-    <div className="comment-meta"><span className="comment-author">{comment.author.name}</span><span>·</span><time dateTime={comment.createdAt}>{formatTime(comment.createdAt)}</time>{comment.author.role === 'author' && <span className="rounded bg-accent px-1 text-[9px] font-bold text-accent-foreground">作者</span>}</div>
-    {!collapsed && <><p className="comment-body">{comment.body}</p><div className="comment-actions">
+  return <article className="relative pl-[30px] before:absolute before:left-[11px] before:top-7 before:-bottom-3 before:w-px before:bg-[#dfe5e7] last:before:bottom-[calc(100%-30px)]" aria-label={`${comment.author.name} 的回复`}>
+    <span className="absolute left-0 top-0 z-[1] grid h-6 w-6 place-items-center rounded-full bg-[#368c84] text-[10px] font-extrabold text-white" aria-hidden="true">{comment.author.avatar}</span>
+    <div className="flex min-h-6 flex-wrap items-center gap-[5px] text-[11px] text-[#7c8790]"><span className="font-bold text-[#334049]">{comment.author.name}</span><span>·</span><time dateTime={comment.createdAt}>{formatTime(comment.createdAt)}</time>{comment.author.role === 'author' && <span className="rounded bg-accent px-1 text-[9px] font-bold text-accent-foreground">作者</span>}</div>
+    {!collapsed && <><p className="my-1 mb-[7px] text-[13px] leading-[1.55] text-[#3e4850]">{comment.body}</p><div className="flex items-center gap-0.5">
       <IconButton className="h-7 w-7" label={comment.myVote === 1 ? '取消赞' : '赞'} active={comment.myVote === 1} onClick={() => onVote(comment, comment.myVote === 1 ? 0 : 1)}><ThumbsUp size={13} /></IconButton><span className="min-w-4 text-center text-[10px] text-muted-foreground">{comment.upvotes}</span>
       <IconButton className="h-7 w-7" label={comment.myVote === -1 ? '取消踩' : '踩'} active={comment.myVote === -1} onClick={() => onVote(comment, comment.myVote === -1 ? 0 : -1)}><ThumbsDown size={13} /></IconButton><span className="min-w-4 text-center text-[10px] text-muted-foreground">{comment.downvotes}</span>
       <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onReply(comment)}><CornerDownRight size={13} />回复</Button>
       {comment.children.length > 0 && <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setCollapsed(true)}><Minus size={13} />折叠</Button>}
     </div></>}
     {collapsed && <Button variant="ghost" size="sm" className="mt-1 h-7 px-2" onClick={() => setCollapsed(false)}><ChevronDown size={13} />展开 {comment.children.length} 条回复</Button>}
-    {!collapsed && comment.children.length > 0 && <div className="comment-children comment-tree">{comment.children.map((child) => <CommentNode key={child.id} comment={child} onVote={onVote} onReply={onReply} depth={depth + 1} />)}</div>}
+    {!collapsed && comment.children.length > 0 && <div className="mt-3 grid gap-3">{comment.children.map((child) => <CommentNode key={child.id} comment={child} onVote={onVote} onReply={onReply} depth={depth + 1} />)}</div>}
   </article>;
 }
 
@@ -67,7 +67,7 @@ export function CommentThread({ identity, initial = seedComments, compact = fals
   };
   return <section aria-label="间贴回复">
     <div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><MessageCircle size={15} className="text-primary" /><strong className="text-sm">间贴</strong><span className="text-xs text-muted-foreground">{comments.length}</span></div><div className="inline-flex rounded border border-border p-0.5"><button type="button" className={`h-7 rounded px-2 text-[11px] ${sort === 'score' ? 'bg-muted font-bold' : 'text-muted-foreground'}`} onClick={() => setSort('score')}>按赞</button><button type="button" className={`h-7 rounded px-2 text-[11px] ${sort === 'recent' ? 'bg-muted font-bold' : 'text-muted-foreground'}`} onClick={() => setSort('recent')}>最新</button></div></div>
-    <div className={compact ? 'max-h-[56vh] overflow-auto pr-1' : ''}><div className="comment-tree">{sorted.map((comment) => <CommentNode key={comment.id} comment={comment} onVote={onVote} onReply={setReplyTo} />)}</div></div>
-    <div className="mt-4 border-t border-border pt-3">{replyTo && <div className="mb-2 flex items-center justify-between rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground"><span>回复 {replyTo.author.name}</span><button onClick={() => setReplyTo(null)} aria-label="取消回复">×</button></div>}<div className="flex items-end gap-2"><textarea value={body} onChange={(event) => setBody(event.target.value)} className="field-area min-h-[68px] flex-1 resize-none" placeholder="写一条间贴…" aria-label="间贴内容" /><Button size="icon" onClick={submit} disabled={!body.trim()} aria-label="发送间贴"><Send size={16} /></Button></div></div>
+    <div className={compact ? 'max-h-[56vh] overflow-auto pr-1' : ''}><div className="grid gap-3">{sorted.map((comment) => <CommentNode key={comment.id} comment={comment} onVote={onVote} onReply={setReplyTo} />)}</div></div>
+    <div className="mt-4 border-t border-border pt-3">{replyTo && <div className="mb-2 flex items-center justify-between rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground"><span>回复 {replyTo.author.name}</span><button onClick={() => setReplyTo(null)} aria-label="取消回复">×</button></div>}<div className="flex items-end gap-2"><textarea value={body} onChange={(event) => setBody(event.target.value)} className="h-auto min-h-[68px] w-full flex-1 resize-none rounded-md border border-input bg-white px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15" placeholder="写一条间贴…" aria-label="间贴内容" /><Button size="icon" onClick={submit} disabled={!body.trim()} aria-label="发送间贴"><Send size={16} /></Button></div></div>
   </section>;
 }

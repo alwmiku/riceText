@@ -44,7 +44,7 @@ export function MentionDialog({
           size={16}
         />
         <input
-          className="field pl-9"
+          className="h-10 w-full rounded-md border border-input bg-white pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="按名字或 ID 搜索"

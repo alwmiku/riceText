@@ -50,7 +50,7 @@ export function DiceDialog({
       <label className="grid gap-2 text-sm font-semibold">
         骰子表达式
         <input
-          className="field"
+          className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
           value={expression}
           onChange={(event) => setExpression(event.target.value)}
           placeholder="例如 3d5、1d20+2"

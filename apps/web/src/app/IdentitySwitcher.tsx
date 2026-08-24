@@ -29,7 +29,7 @@ export function IdentitySwitcher() {
           <span className="grid h-7 w-7 place-items-center rounded-full bg-primary text-[10px] font-bold text-white">
             {value.identity.avatar}
           </span>
-          <span className="desktop-only text-left">
+          <span className="text-left max-[840px]:hidden">
             <strong className="block text-xs leading-4">
               {value.identity.name}
             </strong>

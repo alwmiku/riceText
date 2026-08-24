@@ -78,7 +78,7 @@ export function PollDialog({
         <label className="grid gap-1.5 text-xs font-semibold">
           投票问题
           <input
-            className="field"
+            className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             placeholder="例如：下一章先去哪里？"
@@ -98,7 +98,7 @@ export function PollDialog({
           {options.map((option, index) => (
             <div key={option.id} className="flex items-center gap-2">
               <input
-                className="field min-w-0 flex-1"
+                className="h-10 w-full min-w-0 flex-1 rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
                 value={option.label}
                 aria-label={`投票选项 ${index + 1}`}
                 onChange={(event) =>

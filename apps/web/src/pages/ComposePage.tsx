@@ -89,20 +89,28 @@ function SaveStatus({
   revision: number;
   savedAt: string;
 }) {
+  const dotColor =
+    state === "saved"
+      ? "bg-[#209065]"
+      : state === "dirty" || state === "saving"
+        ? "bg-[#c47b0b]"
+        : state === "conflict" || state === "error"
+          ? "bg-[#c83d3d]"
+          : "bg-[#9aa4ae]";
   return (
-    <span className="save-status" data-state={state}>
+    <span className="inline-flex items-center gap-1.5 text-xs whitespace-nowrap text-[#65717e]" data-state={state}>
       {state === "saving" ? (
         <LoaderCircle size={12} className="animate-spin" />
       ) : state === "offline" ? (
         <CloudOff size={12} />
       ) : (
-        <span className="save-dot" />
+        <span className={`h-[7px] w-[7px] rounded-full ${dotColor}`} />
       )}
       <span>
         {statusLabels[state]} · v{revision}
       </span>
       {(state === "saved" || state === "offline") && (
-        <span className="desktop-only">· {formatTime(savedAt)}</span>
+        <span className="max-[840px]:hidden">· {formatTime(savedAt)}</span>
       )}
     </span>
   );
@@ -771,7 +779,7 @@ export default function ComposePage() {
     />
   );
   return (
-    <main className="app-main">
+    <main className="mx-auto max-w-[1600px] px-5 pt-[18px] pb-[42px] max-[840px]:px-2.5 max-[840px]:pt-3 max-[840px]:pb-7 max-[430px]:px-0 max-[430px]:pt-2 max-[430px]:pb-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-1">
         <div>
           <h1 className="text-base font-bold">发帖与创作工作台</h1>
@@ -872,9 +880,9 @@ export default function ComposePage() {
       )}
       {longTextMode ? (
         <section className="mx-auto max-w-[1680px]">
-          <div className="document-bar surface mb-2">
+          <div className="mb-2 flex min-h-[52px] items-center justify-between gap-3 rounded-lg border border-border bg-white py-2 pr-2.5 pl-3.5 shadow-panel max-[430px]:min-h-12 max-[430px]:pr-3 max-[430px]:pl-3">
             <div className="min-w-0">
-              <p className="document-title">长文本工作台</p>
+              <p className="min-w-0 truncate text-[15px] font-bold">长文本工作台</p>
               <SaveStatus
                 state={isPlaceholderData ? "loading" : autosave.state}
                 revision={autosave.revision}
@@ -953,7 +961,7 @@ export default function ComposePage() {
               </Button>
             </div>
           </div>
-          <div className="long-text-workspace">
+          <div className="grid grid-cols-[340px_minmax(420px,1fr)_minmax(0,1.6fr)] items-start gap-3 p-3">
             <ChapterSidebar
               chapters={chapterSummaries}
               activeIndex={activeChapterIndex}
@@ -974,16 +982,16 @@ export default function ComposePage() {
           </div>
         </section>
       ) : mode === "full" ? (
-        <div className="editor-workspace">
+        <div className="grid grid-cols-[220px_minmax(480px,1fr)_310px] items-start gap-3.5 max-[1180px]:grid-cols-[minmax(0,1fr)_300px] max-[1180px]:[&>*:first-child]:hidden max-[840px]:block max-[840px]:[&>aside]:hidden">
           <ChapterRail
             chapters={chapters}
             currentIndex={activeIndex}
             onSelect={setChapterIndex}
           />
-          <section className="editor-column">
-            <div className="document-bar surface mb-2">
+          <section className="min-w-0">
+            <div className="mb-2 flex min-h-[52px] items-center justify-between gap-3 rounded-lg border border-border bg-white py-2 pr-2.5 pl-3.5 shadow-panel max-[430px]:min-h-12 max-[430px]:pr-3 max-[430px]:pl-3">
               <div className="min-w-0">
-                <p className="document-title">
+                <p className="min-w-0 truncate text-[15px] font-bold">
                   {chapters[activeIndex]?.title ?? document.title}
                 </p>
                 <SaveStatus

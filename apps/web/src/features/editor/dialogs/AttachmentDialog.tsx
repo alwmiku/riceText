@@ -74,7 +74,7 @@ export function AttachmentDialog({
         <label className="grid gap-1.5 text-xs font-semibold">
           文件名
           <input
-            className="field"
+            className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="例如 设定集.zip"
@@ -85,7 +85,7 @@ export function AttachmentDialog({
           <label className="grid gap-1.5 text-xs font-semibold">
             MIME 类型
             <input
-              className="field"
+              className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
               value={mimeType}
               onChange={(event) => setMimeType(event.target.value)}
               placeholder="application/zip"
@@ -94,7 +94,7 @@ export function AttachmentDialog({
           <label className="grid gap-1.5 text-xs font-semibold">
             大小（字节）
             <input
-              className="field"
+              className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
               type="number"
               min="0"
               value={Number.isFinite(size) ? size : 0}
@@ -105,7 +105,7 @@ export function AttachmentDialog({
         <label className="grid gap-1.5 text-xs font-semibold">
           价格（金币）
           <input
-            className="field"
+            className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
             type="number"
             min="0"
             value={Number.isFinite(priceCoins) ? priceCoins : 0}

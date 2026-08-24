@@ -103,9 +103,9 @@ function FormatControls({ editor }: { editor: Editor }) {
   const run = (action: (value: Editor) => boolean) => () => action(editor);
 
   return (
-    <div className="selection-format-controls">
-      <div className="selection-format-row" aria-label="字体与字号">
-        <label className="selection-format-field selection-format-field--font">
+    <div className="grid gap-1">
+      <div className="flex min-h-[30px] items-center gap-[3px] [&+&]:border-t [&+&]:border-[#e3e3e3] [&+&]:pt-[3px]" aria-label="字体与字号">
+        <label className="block [&_span]:hidden">
           <span>字体</span>
           <select
             aria-label="选区字体"
@@ -117,6 +117,7 @@ function FormatControls({ editor }: { editor: Editor }) {
                 chain.setFontFamily(event.target.value).run();
               else chain.unsetFontFamily().run();
             }}
+            className="h-[30px] w-[134px] rounded border border-[#9fa5aa] bg-white px-1.5 text-[13px] text-[#1f2933]"
           >
             {fonts.map((font) => (
               <option key={font.value} value={font.value}>
@@ -125,7 +126,7 @@ function FormatControls({ editor }: { editor: Editor }) {
             ))}
           </select>
         </label>
-        <label className="selection-format-field selection-format-field--size">
+        <label className="block [&_span]:hidden">
           <span>字号</span>
           <select
             aria-label="选区字号"
@@ -141,6 +142,7 @@ function FormatControls({ editor }: { editor: Editor }) {
                 })
                 .run()
             }
+            className="h-[30px] w-[78px] rounded border border-[#9fa5aa] bg-white px-1.5 text-[13px] text-[#1f2933]"
           >
             {fontSizes.map((fontSize) => (
               <option key={fontSize}>{fontSize}</option>
@@ -149,7 +151,7 @@ function FormatControls({ editor }: { editor: Editor }) {
         </label>
         <IconButton
           label="清除样式"
-          className="selection-format-button"
+          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
           onMouseDown={preventSelectionLoss}
           onClick={run((value) =>
             value.chain().focus().unsetAllMarks().clearNodes().run(),
@@ -158,11 +160,11 @@ function FormatControls({ editor }: { editor: Editor }) {
           <Eraser size={15} />
         </IconButton>
       </div>
-      <div className="selection-format-row" aria-label="文字样式">
+      <div className="flex min-h-[30px] items-center gap-[3px] [&+&]:border-t [&+&]:border-[#e3e3e3] [&+&]:pt-[3px]" aria-label="文字样式">
         <IconButton
           label="加粗"
           active={editor.isActive("bold")}
-          className="selection-format-button"
+          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
           disabled={spoilerActive}
           onMouseDown={preventSelectionLoss}
           onClick={run((value) => value.chain().focus().toggleBold().run())}
@@ -172,7 +174,7 @@ function FormatControls({ editor }: { editor: Editor }) {
         <IconButton
           label="斜体"
           active={editor.isActive("italic")}
-          className="selection-format-button"
+          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
           disabled={spoilerActive}
           onMouseDown={preventSelectionLoss}
           onClick={run((value) => value.chain().focus().toggleItalic().run())}
@@ -182,7 +184,7 @@ function FormatControls({ editor }: { editor: Editor }) {
         <IconButton
           label="下划线"
           active={editor.isActive("underline")}
-          className="selection-format-button"
+          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
           onMouseDown={preventSelectionLoss}
           onClick={run((value) =>
             value.chain().focus().toggleUnderline().run(),
@@ -190,7 +192,7 @@ function FormatControls({ editor }: { editor: Editor }) {
         >
           <UnderlineIcon size={15} />
         </IconButton>
-        <div className="selection-color-group" aria-label="选区文字颜色">
+        <div className="flex min-h-[30px] items-center gap-[3px] border-x border-[#e3e3e3] px-1 text-[#4c5660]" aria-label="选区文字颜色">
           <Palette size={14} aria-hidden="true" />
           {colors.map((color) => (
             <button
@@ -198,7 +200,7 @@ function FormatControls({ editor }: { editor: Editor }) {
               type="button"
               aria-label={`文字颜色 ${color}`}
               aria-pressed={textStyle.color === color}
-              className="selection-color-swatch"
+              className="h-[18px] w-[18px] rounded-[3px] border-2 border-transparent shadow-[inset_0_0_0_1px_rgb(0_0_0/0.15)] aria-pressed:border-[#197c73] aria-pressed:shadow-[0_0_0_2px_rgb(25_124_115/0.2)]"
               style={{ background: color }}
               disabled={spoilerActive}
               onMouseDown={preventSelectionLoss}
@@ -209,7 +211,7 @@ function FormatControls({ editor }: { editor: Editor }) {
         <IconButton
           label="无序列表"
           active={editor.isActive("bulletList")}
-          className="selection-format-button"
+          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
           onMouseDown={preventSelectionLoss}
           onClick={run((value) =>
             value.chain().focus().toggleBulletList().run(),
@@ -220,7 +222,7 @@ function FormatControls({ editor }: { editor: Editor }) {
         <IconButton
           label="有序列表"
           active={editor.isActive("orderedList")}
-          className="selection-format-button"
+          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
           onMouseDown={preventSelectionLoss}
           onClick={run((value) =>
             value.chain().focus().toggleOrderedList().run(),
@@ -458,11 +460,11 @@ export function SelectionFormatMenu({
   }, [hasSelection]);
 
   const content = (
-    <div className="editor-selection-target">
+    <div className="relative">
       {children}
       {editor && !mobile && hasSelection && floatingPosition ? (
         <div
-          className="selection-floating-menu"
+          className="fixed z-[60] w-max max-w-[calc(100vw-24px)] overflow-visible rounded-md border border-[#c9c9c9] bg-white/[0.98] p-[5px] shadow-[0_8px_24px_rgb(15_23_42/0.18)] -translate-x-1/2 -translate-y-[calc(100%+8px)]"
           role="toolbar"
           aria-label="选区浮动工具栏"
           style={{ left: floatingPosition.x, top: floatingPosition.y }}
@@ -472,7 +474,7 @@ export function SelectionFormatMenu({
       ) : null}
       {editor && mobile && hasSelection ? (
         <div
-          className="mobile-selection-menu"
+          className="fixed inset-x-2 bottom-[calc(66px+env(safe-area-inset-bottom))] z-[36] overflow-hidden rounded-lg border border-border bg-white/[0.98] p-1.5 shadow-[0_-8px_22px_rgb(15_23_42/0.1)] [&_.flex]:overflow-x-auto [&_.flex]:[scrollbar-width:none] [&_.flex::-webkit-scrollbar]:hidden [&_select:first-of-type]:w-[min(132px,36vw)] [&_select:nth-of-type(2)]:w-[74px]"
           role="toolbar"
           aria-label="选区格式菜单"
         >

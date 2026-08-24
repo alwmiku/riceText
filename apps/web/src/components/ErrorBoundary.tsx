@@ -22,27 +22,10 @@ export class ErrorBoundary extends Component<
   render(): ReactNode {
     if (this.state.error) {
       return (
-        <div
-          style={{
-            maxWidth: 860,
-            margin: "48px auto",
-            padding: "24px",
-            fontFamily: "monospace",
-            fontSize: 13,
-            lineHeight: 1.6,
-            color: "#8f2b24",
-            background: "#fdf1f0",
-            border: "1px solid #f0b4b0",
-            borderRadius: 8,
-            whiteSpace: "pre-wrap",
-            overflowWrap: "anywhere",
-          }}
-        >
-          <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>
-            页面渲染出错
-          </h2>
+        <div className="mx-auto my-12 max-w-[860px] rounded-lg border border-[#f0b4b0] bg-[#fdf1f0] p-6 font-mono text-[13px] leading-relaxed text-[#8f2b24] whitespace-pre-wrap break-words">
+          <h2 className="mb-3 text-base">页面渲染出错</h2>
           <p>{this.state.error.message}</p>
-          <pre style={{ margin: 0 }}>{this.state.error.stack}</pre>
+          <pre className="m-0">{this.state.error.stack}</pre>
         </div>
       );
     }

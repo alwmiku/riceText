@@ -19,25 +19,26 @@ export function TocSidebar({
 }) {
   if (chapters.length === 0) return null;
   return (
-    <nav className="viewer-toc surface p-4" aria-label="章节目录">
-      <p className="viewer-toc__heading">
+    <nav className="sticky top-20 max-h-[calc(100vh-120px)] overflow-y-auto rounded-lg border border-border bg-white p-4 font-serif shadow-panel" aria-label="章节目录">
+      <p className="flex items-center gap-1.5 text-[13px] font-bold text-[#37414b]">
         <Menu size={14} aria-hidden="true" />
         目录
       </p>
-      <div className="viewer-toc__divider" aria-hidden="true" />
-      <ol className="viewer-toc__list">
+      <div className="mt-2.5 mb-2 h-px bg-border" aria-hidden="true" />
+      <ol className="m-0 grid list-none gap-0.5 p-0">
         {chapters.map((chapter, index) => {
           const [main, sub] = chapter.title.split(" · ");
           const active = index === currentIndex;
           return (
             <li
               key={chapter.id}
-              className={`viewer-toc__item viewer-toc__item--h1${active ? " viewer-toc__item--active" : ""}`}
+              className={active ? "[&_button]:!bg-[#e7f5f2] [&_button]:!font-bold [&_button]:!text-[#14766d]" : ""}
             >
               <button
                 type="button"
                 aria-current={active ? "true" : undefined}
                 onClick={() => onSelect(index)}
+                className="flex w-full items-baseline gap-[7px] overflow-hidden rounded-[5px] border-0 bg-transparent px-2 py-1 text-left text-[13px] font-bold leading-[1.45] text-[#37414b] whitespace-nowrap text-ellipsis cursor-pointer before:content-['•'] before:text-[#0f766e] hover:bg-[#eef5f3] hover:text-[#14766d]"
               >
                 <span className="min-w-0 flex-1 truncate">{main}</span>
                 {sub ? (

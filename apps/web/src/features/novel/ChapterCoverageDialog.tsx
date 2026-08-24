@@ -105,10 +105,12 @@ export function ChapterCoverageDialog({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div className="surface max-h-[80vh] w-full max-w-3xl overflow-hidden">
-        <div className="document-bar">
+      <div className="max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-lg border border-border bg-white shadow-panel">
+        <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border py-2 pr-2.5 pl-3.5 max-[430px]:min-h-12 max-[430px]:pr-3 max-[430px]:pl-3">
           <div className="min-w-0">
-            <p className="document-title">全文覆盖对比</p>
+            <p className="min-w-0 truncate text-[15px] font-bold">
+              全文覆盖对比
+            </p>
             <p className="text-xs text-muted-foreground">
               共 {chapters.length} 章 · 原文{" "}
               {analysis.totalChars.toLocaleString()} 字 ·{" "}
@@ -143,9 +145,8 @@ export function ChapterCoverageDialog({
                 return (
                   <Fragment key={chapter.id || index}>
                     <tr
-                      className="border-t align-top hover:bg-[#f4faf8]"
+                      className="cursor-pointer border-t align-top hover:bg-[#f4faf8]"
                       onClick={() => setExpanded(isExpanded ? null : index)}
-                      style={{ cursor: "pointer" }}
                     >
                       <td className="p-2 text-muted-foreground">{index + 1}</td>
                       <td className="max-w-[260px] p-2 font-medium">

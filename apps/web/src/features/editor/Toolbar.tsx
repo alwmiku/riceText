@@ -123,7 +123,7 @@ export function Toolbar({
       document.removeEventListener("ricetext:context-insert", handleContextInsert);
   }, [editor]);
   if (!editor)
-    return <div className="editor-toolbar h-[46px]" aria-hidden="true" />;
+    return <div className="sticky top-[58px] z-20 flex min-h-[46px] flex-wrap items-center gap-[3px] border-b border-border bg-[#fbfcfc] px-[7px] py-[5px] max-[430px]:top-[54px]" aria-hidden="true" />;
   const spoilerActive = editor.isActive("spoiler");
   const imageActive = isRichNodeActive(editor, "richImage");
   const diceActive = isRichNodeActive(editor, "diceRoll");
@@ -254,8 +254,8 @@ export function Toolbar({
 
   return (
     <>
-      <div className="editor-toolbar" role="toolbar" aria-label="富文本工具栏">
-        <span className="toolbar-group">
+      <div className="sticky top-[58px] z-20 flex min-h-[46px] flex-wrap items-center gap-[3px] border-b border-border bg-[#fbfcfc] px-[7px] py-[5px] max-[430px]:top-[54px]" role="toolbar" aria-label="富文本工具栏">
+        <span className="inline-flex items-center gap-0.5 border-r border-[#e3e7ea] pr-[5px] mr-[3px] last:border-r-0">
           <IconButton
             label="撤销"
             onClick={cmd(editor, (value) => value.chain().focus().undo().run())}
@@ -271,7 +271,7 @@ export function Toolbar({
             <Redo2 size={16} />
           </IconButton>
         </span>
-        <span className="toolbar-group">
+        <span className="inline-flex items-center gap-0.5 border-r border-[#e3e7ea] pr-[5px] mr-[3px] last:border-r-0">
           <IconButton
             label="加粗"
             active={editor.isActive("bold")}
@@ -333,7 +333,7 @@ export function Toolbar({
           )}
         </span>
         {!condensed && (
-          <span className="toolbar-group">
+          <span className="inline-flex items-center gap-0.5 border-r border-[#e3e7ea] pr-[5px] mr-[3px] last:border-r-0">
             <select
               aria-label="字号"
               disabled={spoilerActive}
@@ -423,7 +423,7 @@ export function Toolbar({
           </span>
         )}
         {!condensed && (
-          <span className="toolbar-group">
+          <span className="inline-flex items-center gap-0.5 border-r border-[#e3e7ea] pr-[5px] mr-[3px] last:border-r-0">
             <IconButton
               label="无序列表"
               active={editor.isActive("bulletList")}
@@ -480,7 +480,7 @@ export function Toolbar({
             </IconButton>
           </span>
         )}
-        <span className="toolbar-group">
+        <span className="inline-flex items-center gap-0.5 border-r border-[#e3e7ea] pr-[5px] mr-[3px] last:border-r-0">
           {!condensed && (
             <IconButton
               label="链接"

@@ -92,7 +92,7 @@ export function ImageDialog({
       <div className="grid gap-4">
         <div className="grid grid-cols-[1fr_auto] gap-2">
           <input
-            className="field"
+            className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
             value={src}
             onChange={(event) => {
               setSrc(event.target.value);
@@ -134,7 +134,7 @@ export function ImageDialog({
           <label className="grid gap-1.5 text-xs font-semibold">
             替代文字
             <input
-              className="field"
+              className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
               value={alt}
               onChange={(event) => setAlt(event.target.value)}
             />
@@ -142,7 +142,7 @@ export function ImageDialog({
           <label className="grid gap-1.5 text-xs font-semibold">
             图片说明
             <input
-              className="field"
+              className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
               value={caption}
               onChange={(event) => setCaption(event.target.value)}
             />
@@ -152,7 +152,7 @@ export function ImageDialog({
           <label className="grid gap-1.5 text-xs font-semibold">
             对齐
             <select
-              className="field"
+              className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
               value={align}
               onChange={(event) => setAlign(event.target.value)}
             >
