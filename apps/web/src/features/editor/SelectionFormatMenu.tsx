@@ -481,7 +481,10 @@ export function SelectionFormatMenu({
   }, [hasSelection]);
 
   const content = (
-    <div className="relative">
+    <div
+      className="relative"
+      onContextMenu={(event) => event.preventDefault()}
+    >
       {children}
       {editor && !mobile && hasSelection && floatingPosition ? (
         <div
