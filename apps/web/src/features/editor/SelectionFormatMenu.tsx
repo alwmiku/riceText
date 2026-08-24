@@ -506,7 +506,7 @@ export function SelectionFormatMenu({
     </div>
   );
 
-  if (mobile || !editor) return content;
+  if (!editor) return content;
 
   return (
     <ContextMenu>
