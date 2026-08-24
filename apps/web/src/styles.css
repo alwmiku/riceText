@@ -84,6 +84,9 @@
 /* 仅保留 Tiptap/ProseMirror 生成内容的排版与阅读器覆盖。
    这些元素由编辑器动态生成，无法在 JSX 中逐个添加工具类；
    此处尽量使用 @apply，仅伪元素/计数器等无法映射的属性保留少量原生声明。 */
+.tiptap {
+  -webkit-touch-callout: none;
+}
 .tiptap p {
   @apply mb-4;
 }
