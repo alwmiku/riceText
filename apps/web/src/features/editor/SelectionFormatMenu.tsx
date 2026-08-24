@@ -7,7 +7,8 @@ import {
   FileText,
   ImagePlus,
   Italic,
-  MoreHorizontal,
+  List,
+  ListOrdered,
   Palette,
   Redo2,
   TextQuote,
@@ -59,6 +60,39 @@ function preventSelectionLoss(event: MouseEvent<HTMLElement>) {
   event.preventDefault();
 }
 
+function selectionMenuPosition(editor: Editor): FloatingPosition {
+  const nativeSelection = window.getSelection();
+  if (nativeSelection?.rangeCount) {
+    const rect = nativeSelection.getRangeAt(0).getBoundingClientRect();
+    if (rect.width || rect.height) {
+      return {
+        x: Math.min(
+          Math.max(rect.left + rect.width / 2, 184),
+          window.innerWidth - 184,
+        ),
+        y: Math.max(rect.top, 10),
+      };
+    }
+  }
+
+  try {
+    const coords = editor.view.coordsAtPos(editor.state.selection.from);
+    if (Number.isFinite(coords.left) && Number.isFinite(coords.top)) {
+      return {
+        x: Math.min(Math.max(coords.left, 184), window.innerWidth - 184),
+        y: Math.max(coords.top, 10),
+      };
+    }
+  } catch {
+    // jsdom and some IME selection states do not expose usable coordinates.
+  }
+
+  return {
+    x: Math.min(Math.max(window.innerWidth / 2, 184), window.innerWidth - 184),
+    y: 80,
+  };
+}
+
 function FormatControls({ editor }: { editor: Editor }) {
   const spoilerActive = editor.isActive("spoiler");
   const textStyle = editor.getAttributes("textStyle") as {
@@ -70,102 +104,130 @@ function FormatControls({ editor }: { editor: Editor }) {
 
   return (
     <div className="selection-format-controls">
-      <div className="selection-format-row" aria-label="文字样式">
-        <IconButton
-          label="加粗"
-          active={editor.isActive("bold")}
-          disabled={spoilerActive}
-          onMouseDown={preventSelectionLoss}
-          onClick={run((value) => value.chain().focus().toggleBold().run())}
-        >
-          <Bold size={16} />
-        </IconButton>
-        <IconButton
-          label="斜体"
-          active={editor.isActive("italic")}
-          disabled={spoilerActive}
-          onMouseDown={preventSelectionLoss}
-          onClick={run((value) => value.chain().focus().toggleItalic().run())}
-        >
-          <Italic size={16} />
-        </IconButton>
-        <IconButton
-          label="下划线"
-          active={editor.isActive("underline")}
-          onMouseDown={preventSelectionLoss}
-          onClick={run((value) =>
-            value.chain().focus().toggleUnderline().run(),
-          )}
-        >
-          <UnderlineIcon size={16} />
-        </IconButton>
+      <div className="selection-format-row" aria-label="字体与字号">
+        <label className="selection-format-field selection-format-field--font">
+          <span>字体</span>
+          <select
+            aria-label="选区字体"
+            disabled={spoilerActive}
+            value={textStyle.fontFamily ?? ""}
+            onChange={(event) => {
+              const chain = editor.chain().focus();
+              if (event.target.value)
+                chain.setFontFamily(event.target.value).run();
+              else chain.unsetFontFamily().run();
+            }}
+          >
+            {fonts.map((font) => (
+              <option key={font.value} value={font.value}>
+                {font.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="selection-format-field selection-format-field--size">
+          <span>字号</span>
+          <select
+            aria-label="选区字号"
+            disabled={spoilerActive}
+            value={textStyle.fontSize ?? "16px"}
+            onChange={(event) =>
+              editor
+                .chain()
+                .focus()
+                .setMark("textStyle", {
+                  ...editor.getAttributes("textStyle"),
+                  fontSize: event.target.value,
+                })
+                .run()
+            }
+          >
+            {fontSizes.map((fontSize) => (
+              <option key={fontSize}>{fontSize}</option>
+            ))}
+          </select>
+        </label>
         <IconButton
           label="清除样式"
+          className="selection-format-button"
           onMouseDown={preventSelectionLoss}
           onClick={run((value) =>
             value.chain().focus().unsetAllMarks().clearNodes().run(),
           )}
         >
-          <Eraser size={16} />
+          <Eraser size={15} />
         </IconButton>
       </div>
-      <label className="selection-format-field">
-        <span>字体</span>
-        <select
-          aria-label="选区字体"
+      <div className="selection-format-row" aria-label="文字样式">
+        <IconButton
+          label="加粗"
+          active={editor.isActive("bold")}
+          className="selection-format-button"
           disabled={spoilerActive}
-          value={textStyle.fontFamily ?? ""}
-          onChange={(event) => {
-            const chain = editor.chain().focus();
-            if (event.target.value)
-              chain.setFontFamily(event.target.value).run();
-            else chain.unsetFontFamily().run();
-          }}
+          onMouseDown={preventSelectionLoss}
+          onClick={run((value) => value.chain().focus().toggleBold().run())}
         >
-          {fonts.map((font) => (
-            <option key={font.value} value={font.value}>
-              {font.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="selection-format-field">
-        <span>字号</span>
-        <select
-          aria-label="选区字号"
+          <Bold size={15} />
+        </IconButton>
+        <IconButton
+          label="斜体"
+          active={editor.isActive("italic")}
+          className="selection-format-button"
           disabled={spoilerActive}
-          value={textStyle.fontSize ?? "16px"}
-          onChange={(event) =>
-            editor
-              .chain()
-              .focus()
-              .setMark("textStyle", {
-                ...editor.getAttributes("textStyle"),
-                fontSize: event.target.value,
-              })
-              .run()
-          }
+          onMouseDown={preventSelectionLoss}
+          onClick={run((value) => value.chain().focus().toggleItalic().run())}
         >
-          {fontSizes.map((fontSize) => (
-            <option key={fontSize}>{fontSize}</option>
+          <Italic size={15} />
+        </IconButton>
+        <IconButton
+          label="下划线"
+          active={editor.isActive("underline")}
+          className="selection-format-button"
+          onMouseDown={preventSelectionLoss}
+          onClick={run((value) =>
+            value.chain().focus().toggleUnderline().run(),
+          )}
+        >
+          <UnderlineIcon size={15} />
+        </IconButton>
+        <div className="selection-color-group" aria-label="选区文字颜色">
+          <Palette size={14} aria-hidden="true" />
+          {colors.map((color) => (
+            <button
+              key={color}
+              type="button"
+              aria-label={`文字颜色 ${color}`}
+              aria-pressed={textStyle.color === color}
+              className="selection-color-swatch"
+              style={{ background: color }}
+              disabled={spoilerActive}
+              onMouseDown={preventSelectionLoss}
+              onClick={() => editor.chain().focus().setColor(color).run()}
+            />
           ))}
-        </select>
-      </label>
-      <div className="selection-color-group" aria-label="选区文字颜色">
-        <Palette size={15} aria-hidden="true" />
-        {colors.map((color) => (
-          <button
-            key={color}
-            type="button"
-            aria-label={`文字颜色 ${color}`}
-            aria-pressed={textStyle.color === color}
-            className="selection-color-swatch"
-            style={{ background: color }}
-            disabled={spoilerActive}
-            onMouseDown={preventSelectionLoss}
-            onClick={() => editor.chain().focus().setColor(color).run()}
-          />
-        ))}
+        </div>
+        <IconButton
+          label="无序列表"
+          active={editor.isActive("bulletList")}
+          className="selection-format-button"
+          onMouseDown={preventSelectionLoss}
+          onClick={run((value) =>
+            value.chain().focus().toggleBulletList().run(),
+          )}
+        >
+          <List size={15} />
+        </IconButton>
+        <IconButton
+          label="有序列表"
+          active={editor.isActive("orderedList")}
+          className="selection-format-button"
+          onMouseDown={preventSelectionLoss}
+          onClick={run((value) =>
+            value.chain().focus().toggleOrderedList().run(),
+          )}
+        >
+          <ListOrdered size={15} />
+        </IconButton>
       </div>
     </div>
   );
@@ -352,7 +414,7 @@ function EditorContextItems({
   );
 }
 
-/** Text-selection actions for desktop context menus and the mobile selection tray. */
+/** Text-selection actions for desktop context menus and mobile selection toolbars. */
 export function SelectionFormatMenu({
   editor,
   mobile = false,
@@ -365,7 +427,6 @@ export function SelectionFormatMenu({
   const [, rerender] = useReducer((value: number) => value + 1, 0);
   const [floatingPosition, setFloatingPosition] =
     useState<FloatingPosition>(null);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const text = selectedText(editor);
   const hasSelection = Boolean(text.trim());
 
@@ -381,20 +442,7 @@ export function SelectionFormatMenu({
         setFloatingPosition(null);
         return;
       }
-      const nativeSelection = window.getSelection();
-      if (!nativeSelection?.rangeCount) {
-        setFloatingPosition(null);
-        return;
-      }
-      const rect = nativeSelection.getRangeAt(0).getBoundingClientRect();
-      if (!rect.width && !rect.height) return;
-      setFloatingPosition({
-        x: Math.min(
-          Math.max(rect.left + rect.width / 2, 184),
-          window.innerWidth - 184,
-        ),
-        y: Math.max(rect.top, 10),
-      });
+      setFloatingPosition(selectionMenuPosition(editor));
     };
     editor.on("selectionUpdate", update);
     editor.on("transaction", update);
@@ -407,7 +455,6 @@ export function SelectionFormatMenu({
   useEffect(() => {
     if (hasSelection) return;
     setFloatingPosition(null);
-    setMobileOpen(false);
   }, [hasSelection]);
 
   const content = (
@@ -424,28 +471,13 @@ export function SelectionFormatMenu({
         </div>
       ) : null}
       {editor && mobile && hasSelection ? (
-        <>
-          <div className="mobile-selection-tray" aria-label="已选择的内容">
-            <span className="mobile-selection-tray__text">{text}</span>
-            <IconButton
-              label="选区更多格式"
-              active={mobileOpen}
-              onMouseDown={preventSelectionLoss}
-              onClick={() => setMobileOpen((open) => !open)}
-            >
-              <MoreHorizontal size={19} />
-            </IconButton>
-          </div>
-          {mobileOpen ? (
-            <div
-              className="mobile-selection-menu"
-              role="dialog"
-              aria-label="选区格式菜单"
-            >
-              <FormatControls editor={editor} />
-            </div>
-          ) : null}
-        </>
+        <div
+          className="mobile-selection-menu"
+          role="toolbar"
+          aria-label="选区格式菜单"
+        >
+          <FormatControls editor={editor} />
+        </div>
       ) : null}
     </div>
   );

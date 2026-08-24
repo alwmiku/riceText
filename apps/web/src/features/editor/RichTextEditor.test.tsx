@@ -250,7 +250,7 @@ describe("RichTextEditor presets", () => {
     expect(screen.getByLabelText("文字颜色 #197c73")).toBeInTheDocument();
   });
 
-  it("移动端将选中文本预览放在工具栏上方", async () => {
+  it("移动端选中文本后直接显示自定义格式工具栏", async () => {
     const editorRef: { current: Editor | null } = { current: null };
     render(
       <RichTextEditor
@@ -267,11 +267,12 @@ describe("RichTextEditor presets", () => {
     const readyEditor = editorRef.current;
     if (!readyEditor) throw new Error("编辑器未初始化");
     readyEditor.commands.setTextSelection({ from: 1, to: 4 });
-    expect(await screen.findByLabelText("已选择的内容")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "选区更多格式" }));
     expect(
-      screen.getByRole("dialog", { name: "选区格式菜单" }),
+      await screen.findByRole("toolbar", { name: "选区格式菜单" }),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("选区字体")).toBeInTheDocument();
+    expect(screen.getByLabelText("选区字号")).toBeInTheDocument();
+    expect(screen.getByLabelText("文字颜色 #197c73")).toBeInTheDocument();
   });
 
   it("移动模式使用底部触控工具栏并在 Sheet 中展开完整工具", async () => {
