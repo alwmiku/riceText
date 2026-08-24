@@ -49,7 +49,9 @@ export function PollResultChart({
     .join("|");
   useEffect(() => {
     if (voted) return;
-    setPendingSelection(optionSelectionKey ? optionSelectionKey.split("|") : []);
+    setPendingSelection(
+      optionSelectionKey ? optionSelectionKey.split("|") : [],
+    );
   }, [optionSelectionKey, voted]);
   const totalVotes = options.reduce((total, option) => total + option.votes, 0);
   const maxVotes = Math.max(0, ...options.map((option) => option.votes));
@@ -149,7 +151,11 @@ export function PollResultChart({
       <button
         type="button"
         className="rt-poll__submit"
-        disabled={voted || pendingSelection.length === 0 || options.every((option) => option.disabled)}
+        disabled={
+          voted ||
+          pendingSelection.length === 0 ||
+          options.every((option) => option.disabled)
+        }
         onClick={() => {
           if (pendingSelection.length === 0 || voted) return;
           if (onSubmit) onSubmit(pendingSelection);
