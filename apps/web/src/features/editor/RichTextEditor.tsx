@@ -211,8 +211,9 @@ export function RichTextEditor({
   }, [editor, longTextMode]);
 
   // 权限或首屏加载状态变化时，只切换编辑能力，不重建 ProseMirror 实例。
+  // setEditable 的 emitUpdate 默认是 true；必须显式关闭，否则无正文变化也会触发 autosave。
   useEffect(() => {
-    editor?.setEditable(editable);
+    editor?.setEditable(editable, false);
   }, [editable, editor]);
   // 回滚/远端装载属于受控更新；emitUpdate=false 防止被误判为新的用户编辑代次。
   // 长文本模式通过 key 重建实例装载整本文档，不需要对超大 JSON 做全量比较。

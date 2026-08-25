@@ -1,6 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { useEffect, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultDocument } from "../../lib/seed";
 import type { DocumentEnvelope, RichTextNode } from "../../lib/types";
@@ -41,6 +47,34 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
+function HydrationRaceHarness() {
+  const compose = useComposeDocument("demo-post");
+  const chapterHeading = compose.content.content?.find(
+    (node) => node.type === "heading" && node.attrs?.level === 2,
+  );
+
+  useEffect(() => {
+    if (compose.isPlaceholderData || chapterHeading) return;
+    // 模拟编辑器在权限开启时立即上报占位正文的规范化结果。
+    compose.replaceContent({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "错误的占位规范化正文" }],
+        },
+      ],
+    });
+  }, [chapterHeading, compose.isPlaceholderData, compose.replaceContent]);
+
+  return (
+    <span>
+      {chapterHeading?.content?.[0]?.text ??
+        (compose.isPlaceholderData ? "加载中" : "无章节")}
+    </span>
+  );
+}
+
 describe("useComposeDocument hydration", () => {
   beforeEach(() => {
     mocks.getDocument.mockReset().mockResolvedValue(serverDocument);
@@ -64,6 +98,13 @@ describe("useComposeDocument hydration", () => {
     await waitFor(() =>
       expect(result.current.content).toBe(serverDocument.content),
     );
+  });
+
+  it("水合落地前保持加载态并忽略编辑器的占位规范化上报", async () => {
+    render(<HydrationRaceHarness />, { wrapper });
+
+    expect(await screen.findByText("第一章 潮汐表")).toBeInTheDocument();
+    expect(screen.queryByText("错误的占位规范化正文")).not.toBeInTheDocument();
   });
 
   it("does not replace local edits when the query resolves later", async () => {

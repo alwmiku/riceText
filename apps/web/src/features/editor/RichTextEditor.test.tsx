@@ -1,5 +1,11 @@
 import type { Editor } from "@tiptap/react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import {
   afterEach,
   beforeAll,
@@ -58,6 +64,7 @@ describe("RichTextEditor presets", () => {
 
   it("完整模式展示全工具栏并执行格式与插入命令", async () => {
     const onChange = vi.fn();
+    let readyEditor: Editor | null = null;
     vi.spyOn(window, "prompt").mockReturnValue("javascript:alert(1)");
     const alert = vi.spyOn(window, "alert").mockImplementation(() => undefined);
     render(
@@ -65,6 +72,9 @@ describe("RichTextEditor presets", () => {
         content={defaultDocument.content}
         mode="full"
         onChange={onChange}
+        onReady={(editor) => {
+          readyEditor = editor;
+        }}
       />,
     );
 
@@ -96,6 +106,7 @@ describe("RichTextEditor presets", () => {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
 
+    await waitFor(() => expect(readyEditor).not.toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "链接" }));
     expect(alert).toHaveBeenCalledWith("仅允许 HTTP(S) 链接");
     fireEvent.change(screen.getByLabelText("字号"), {
@@ -104,11 +115,13 @@ describe("RichTextEditor presets", () => {
     fireEvent.change(screen.getByLabelText("字体"), {
       target: { value: "Noto Serif SC Variable" },
     });
-    expect(screen.getByLabelText("字体")).toHaveValue(
-      "Noto Serif SC Variable",
-    );
+    expect(screen.getByLabelText("字体")).toHaveValue("Noto Serif SC Variable");
     fireEvent.click(screen.getByRole("button", { name: "加粗" }));
     fireEvent.click(screen.getByRole("button", { name: "间贴锚点" }));
+    act(() => {
+      if (!readyEditor) throw new Error("编辑器未初始化");
+      readyEditor.commands.insertContent("真实输入");
+    });
     await waitFor(() => expect(onChange).toHaveBeenCalled());
   });
 
@@ -367,7 +380,9 @@ describe("RichTextEditor presets", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("正文编辑区")).toBeInTheDocument(),
     );
-    expect(screen.getByRole("toolbar", { name: "富文本工具栏" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("toolbar", { name: "富文本工具栏" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "加粗" })).toHaveAttribute(
       "data-size",
       "icon-lg",
@@ -402,6 +417,41 @@ describe("RichTextEditor presets", () => {
       ),
     );
     expect(container.querySelectorAll('[role="toolbar"]')).toHaveLength(1);
+  });
+
+  it("切换编辑权限时不把权限事务上报为正文修改", async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="full"
+        editable={false}
+        onChange={onChange}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("正文编辑区")).toHaveAttribute(
+        "contenteditable",
+        "false",
+      ),
+    );
+    onChange.mockClear();
+
+    rerender(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="full"
+        editable
+        onChange={onChange}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("正文编辑区")).toHaveAttribute(
+        "contenteditable",
+        "true",
+      ),
+    );
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("宿主切换版本时无事件地同步受控正文", async () => {

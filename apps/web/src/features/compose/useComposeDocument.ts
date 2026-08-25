@@ -35,11 +35,12 @@ export function useComposeDocument(
   chapterId?: string,
 ): ComposeDocumentController {
   const queryClient = useQueryClient();
-  const { data = defaultDocument, isPlaceholderData } = useQuery({
-    queryKey: ["document", documentId],
-    queryFn: ({ signal }) => getDocument(documentId, signal),
-    placeholderData: defaultDocument,
-  });
+  const { data = defaultDocument, isPlaceholderData: queryIsPlaceholderData } =
+    useQuery({
+      queryKey: ["document", documentId],
+      queryFn: ({ signal }) => getDocument(documentId, signal),
+      placeholderData: defaultDocument,
+    });
   // state 驱动渲染，ref 让 autosave、发布和长文本桥接始终读取最新正文与代次。
   const [document, setDocument] = useState<DocumentEnvelope>(data);
   const [content, setContent] = useState<RichTextNode>(data.content);
@@ -47,6 +48,9 @@ export function useComposeDocument(
   const [autosaveEnabled, setAutosaveEnabled] = useState(true);
   const contentRef = useRef<RichTextNode>(data.content);
   const generationRef = useRef(0);
+  // Query 结束到本地 state 水合之间仍视为加载中，避免编辑器在这一帧上报占位正文。
+  const hydrationPending = generationRef.current === 0 && data !== document;
+  const isDocumentLoading = queryIsPlaceholderData || hydrationPending;
 
   // 占位文档的 revision 只是演示元数据，不能作为服务器版本的新旧依据。
   // 首次真实编辑发生前始终接纳查询结果；编辑后则由 generationRef 阻止迟到响应覆盖正文。
@@ -71,7 +75,7 @@ export function useComposeDocument(
     content,
     generation,
     ...(chapterId ? { chapterId } : {}),
-    enabled: autosaveEnabled,
+    enabled: autosaveEnabled && !isDocumentLoading,
     onSaved: (next) => {
       // 保存结果更新文档基线，并刷新版本历史和独立章节版本号。
       setDocument((current) => ({
@@ -97,7 +101,7 @@ export function useComposeDocument(
   const publishChapter = useCallback(
     async (chapterIndex: number, latestChapter?: RichTextNode) => {
       // 提交快捷键可能早于 React onChange；显式合并编辑器快照后再 flush。
-      if (isPlaceholderData) return false;
+      if (isDocumentLoading) return false;
       if (latestChapter) {
         const next = mergeChapter(
           contentRef.current,
@@ -110,7 +114,7 @@ export function useComposeDocument(
       }
       return autosave.flush(contentRef.current, generationRef.current);
     },
-    [autosave, isPlaceholderData, replaceContent],
+    [autosave, isDocumentLoading, replaceContent],
   );
 
   const rollback = useCallback(
@@ -137,7 +141,7 @@ export function useComposeDocument(
     content,
     contentRef,
     generation,
-    isPlaceholderData,
+    isPlaceholderData: isDocumentLoading,
     autosave,
     setAutosaveEnabled,
     replaceContent,
