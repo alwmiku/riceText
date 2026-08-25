@@ -20,6 +20,7 @@ import { useAppContext } from "../app-context";
 import { Button, Dialog, Segmented } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
 import { StandardComposeWorkspace } from "../features/compose/StandardComposeWorkspace";
+import { LongTextWorkspace } from "../features/compose/LongTextWorkspace";
 import { SaveStatus } from "../features/compose/SaveStatus";
 import { ChapterRail } from "../features/demo/DemoPanels";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
@@ -40,18 +41,12 @@ import {
 import { useAutosave } from "../features/editor/useAutosave";
 import { AddChapterDialog } from "../features/novel/AddChapterDialog";
 import { ChapterUploadDialog } from "../features/novel/ChapterUploadDialog";
-import {
-  ChapterSidebar,
-  type ChapterSummary,
-} from "../features/novel/ChapterSidebar";
+import type { ChapterSummary } from "../features/novel/ChapterSidebar";
 import {
   ChapterCoverageDialog,
   type CoverageChapter,
 } from "../features/novel/ChapterCoverageDialog";
-import {
-  ChapterRawPreview,
-  collectRawGaps,
-} from "../features/novel/ChapterRawPreview";
+import { collectRawGaps } from "../features/novel/ChapterRawPreview";
 import {
   getCommentThread,
   getDocument,
@@ -795,19 +790,16 @@ export default function ComposePage() {
         </div>
       )}
       {longTextMode ? (
-        <section className="mx-auto max-w-[1680px]">
-          <div className="mb-2 flex min-h-[52px] items-center justify-between gap-3 rounded-lg border border-border bg-white py-2 pr-2.5 pl-3.5 shadow-panel max-[430px]:min-h-12 max-[430px]:pr-3 max-[430px]:pl-3">
-            <div className="min-w-0">
-              <p className="min-w-0 truncate text-[15px] font-bold">
-                长文本工作台
-              </p>
-              <SaveStatus
-                state={isPlaceholderData ? "loading" : autosave.state}
-                revision={autosave.revision}
-                savedAt={autosave.savedAt}
-              />
-            </div>
-            <div className="flex items-center gap-2">
+        <LongTextWorkspace
+          saveStatus={
+            <SaveStatus
+              state={isPlaceholderData ? "loading" : autosave.state}
+              revision={autosave.revision}
+              savedAt={autosave.savedAt}
+            />
+          }
+          controls={
+            <>
               <input
                 ref={longTextFileInputRef}
                 type="file"
@@ -877,28 +869,19 @@ export default function ComposePage() {
               <Button size="sm" variant="ghost" onClick={closeLongTextMode}>
                 退出长文本
               </Button>
-            </div>
-          </div>
-          <div className="grid grid-cols-[340px_minmax(420px,1fr)_minmax(0,1.6fr)] items-start gap-3 p-3">
-            <ChapterSidebar
-              chapters={chapterSummaries}
-              activeIndex={activeChapterIndex}
-              onSelect={selectChapter}
-              onDelete={deleteChapter}
-              onMerge={mergeChapterAt}
-              onMove={moveChapter}
-            />
-            <ChapterRawPreview
-              rawText={rawText}
-              chapters={coverageChapters}
-              activeIndex={activeChapterIndex}
-              onCreateFromGap={createChapterFromGap}
-            />
-            <div className="min-w-0">
-              <EditorErrorBoundary>{editor}</EditorErrorBoundary>
-            </div>
-          </div>
-        </section>
+            </>
+          }
+          chapters={chapterSummaries}
+          coverageChapters={coverageChapters}
+          activeIndex={activeChapterIndex}
+          rawText={rawText}
+          editor={<EditorErrorBoundary>{editor}</EditorErrorBoundary>}
+          onSelect={selectChapter}
+          onDelete={deleteChapter}
+          onMerge={mergeChapterAt}
+          onMove={moveChapter}
+          onCreateFromGap={createChapterFromGap}
+        />
       ) : mode === "full" ? (
         <StandardComposeWorkspace
           chapters={chapters}
