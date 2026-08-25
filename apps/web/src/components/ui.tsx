@@ -110,10 +110,10 @@ export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 
 /** 通过 Portal 渲染的菜单面板，避免被编辑器 overflow 容器裁剪。 */
-export function DropdownMenuContent({ children, align = 'start', className }: { children: ReactNode; align?: 'start' | 'center' | 'end'; className?: string }) {
+export function DropdownMenuContent({ children, align = 'start', side = 'bottom', sideOffset = 6, className }: { children: ReactNode; align?: 'start' | 'center' | 'end'; side?: 'top' | 'right' | 'bottom' | 'left'; sideOffset?: number; className?: string }) {
   return (
     <DropdownMenuPrimitive.Portal>
-      <DropdownMenuPrimitive.Content align={align} sideOffset={6} className={cn('z-50 min-w-44 rounded-md border border-border bg-white p-1 shadow-xl', className)}>
+      <DropdownMenuPrimitive.Content side={side} sideOffset={sideOffset} align={align} className={cn('z-50 min-w-44 rounded-md border border-border bg-white p-1 shadow-xl', className)}>
         {children}
       </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>

@@ -17,7 +17,6 @@ import {
   List,
   ListOrdered,
   MessageCirclePlus,
-  MoreHorizontal,
   Quote,
   Redo2,
   TextQuote,
@@ -26,19 +25,18 @@ import {
   UnlockKeyhole,
   Vote,
   XCircle,
-  type LucideIcon,
 } from "lucide-react";
-import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
-  IconButton,
 } from "../../components/ui";
-import { Button as ShadcnButton } from "../../components/ui/button";
 import { createId } from "../../lib/utils";
+import { CompactToolbarControls } from "./CompactToolbarControls";
+import { ToolbarButton } from "./ToolbarButton";
+import { toolbarColors } from "./toolbar-constants";
 import {
   cmd,
   isContainerNodeActive,
@@ -55,223 +53,6 @@ import {
   type PollDialogValues,
 } from "./dialogs";
 
-const colors = ["#20272c", "#197c73", "#b66a0a", "#b63434", "#6b4bb5"];
-
-function dispatchToolbarInsert(editor: Editor, tool: string) {
-  document.dispatchEvent(
-    new CustomEvent("ricetext:context-insert", {
-      detail: { editor, tool },
-    }),
-  );
-}
-
-function ToolbarMenuButton({
-  label,
-  icon: Icon,
-  mobile = false,
-  children,
-}: {
-  label: string;
-  icon: typeof MoreHorizontal;
-  mobile?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <ShadcnButton
-          variant="ghost"
-          size={mobile ? "icon-lg" : "icon-sm"}
-          aria-label={label}
-          title={label}
-          aria-haspopup="menu"
-          className={mobile ? "text-[#54616b]" : "text-[#54616b]"}
-        >
-          <Icon size={mobile ? 22 : 18} />
-        </ShadcnButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-48">
-        {children}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function CompactToolbarControls({
-  editor,
-  mobile = false,
-  onLink,
-}: {
-  editor: Editor;
-  mobile?: boolean;
-  onLink?: () => void;
-}) {
-  const spoilerActive = editor.isActive("spoiler");
-  const run = (action: (value: Editor) => boolean) => () => action(editor);
-  const iconClass = mobile ? "[&_svg]:size-5" : "";
-  const insertTools: Array<[string, string, LucideIcon]> = [
-    ["image", "图片", ImagePlus],
-    ["dice", "骰子", Dice5],
-    ["attachment", "附件", FileText],
-    ["mention", "提及用户", AtSign],
-    ["poll", "投票", Vote],
-    ["excerpt", "小说摘录", TextQuote],
-  ];
-
-  return (
-    <div className="flex min-w-0 items-center gap-1" role="group" aria-label="折叠编辑工具">
-      <ShadcnButton
-        variant="ghost"
-        size={mobile ? "icon-lg" : "icon-sm"}
-        aria-label="加粗"
-        aria-pressed={editor.isActive("bold")}
-        title="加粗"
-        disabled={spoilerActive}
-        className={iconClass}
-        onClick={run((value) => value.chain().focus().toggleBold().run())}
-      >
-        <Bold size={mobile ? 22 : 18} />
-      </ShadcnButton>
-      <ToolbarMenuButton label="文字格式" icon={Italic} mobile={mobile}>
-        <DropdownMenuItem
-          disabled={spoilerActive}
-          onSelect={run((value) => value.chain().focus().toggleItalic().run())}
-        >
-          <Italic />
-          斜体
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().toggleUnderline().run())}
-        >
-          <UnderlineIcon />
-          下划线
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={spoilerActive}
-          onSelect={run((value) => value.chain().focus().unsetAllMarks().clearNodes().run())}
-        >
-          <Eraser />
-          清除样式
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={spoilerActive}
-          onSelect={run((value) => value.chain().focus().setFontFamily("Noto Serif SC Variable").run())}
-        >
-          宋体
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={spoilerActive}
-          onSelect={run((value) => value.chain().focus().setFontFamily("sans-serif").run())}
-        >
-          黑体
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().setMark("textStyle", { ...value.getAttributes("textStyle"), fontSize: "18px" }).run())}
-        >
-          <span className="text-xs font-bold">18</span>
-          字号 18px
-        </DropdownMenuItem>
-        <div className="flex gap-1 border-t border-border p-2">
-          {colors.map((color) => (
-            <button
-              key={color}
-              type="button"
-              aria-label={`文字颜色 ${color}`}
-              className="size-7 rounded border border-black/10"
-              style={{ background: color }}
-              onClick={() => editor.chain().focus().setColor(color).run()}
-            />
-          ))}
-        </div>
-      </ToolbarMenuButton>
-      <ToolbarMenuButton label="段落排版" icon={AlignLeft} mobile={mobile}>
-        <DropdownMenuItem onSelect={run((value) => value.chain().focus().toggleBulletList().run())}>
-          <List />
-          无序列表
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={run((value) => value.chain().focus().toggleOrderedList().run())}>
-          <ListOrdered />
-          有序列表
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={run((value) => value.chain().focus().toggleBlockquote().run())}>
-          <Quote />
-          引用
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={run((value) => value.chain().focus().setTextAlign("left").run())}>
-          <AlignLeft />
-          左对齐
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={run((value) => value.chain().focus().setTextAlign("center").run())}>
-          <AlignCenter />
-          居中
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={run((value) => value.chain().focus().setTextAlign("right").run())}>
-          <AlignRight />
-          右对齐
-        </DropdownMenuItem>
-      </ToolbarMenuButton>
-      <ToolbarMenuButton label="插入内容" icon={ImagePlus} mobile={mobile}>
-        <DropdownMenuItem
-          disabled={!onLink}
-          {...(onLink ? { onSelect: onLink } : {})}
-        >
-          <Link2 />
-          链接
-        </DropdownMenuItem>
-        {insertTools.map(([tool, label, Icon]) => (
-          <DropdownMenuItem
-            key={tool}
-            onSelect={() => dispatchToolbarInsert(editor, String(tool))}
-          >
-            <Icon />
-            {label}
-          </DropdownMenuItem>
-        ))}
-      </ToolbarMenuButton>
-      <ToolbarMenuButton label="更多工具" icon={MoreHorizontal} mobile={mobile}>
-        <DropdownMenuItem onSelect={run((value) => value.chain().focus().undo().run())}>
-          <Undo2 />
-          撤销
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={run((value) => value.chain().focus().redo().run())}>
-          <Redo2 />
-          重做
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={run((value) => value.chain().focus().toggleHeading({ level: 1 }).run())}>
-          <Heading1 />
-          一级标题
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={run((value) => value.chain().focus().toggleHeading({ level: 2 }).run())}>
-          <Heading2 />
-          二级标题
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => dispatchToolbarInsert(editor, "comment") }>
-          <MessageCirclePlus />
-          间贴锚点
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => dispatchToolbarInsert(editor, "mention")}>
-          <AtSign />
-          提及用户
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={run((value) => value.chain().focus().toggleSpoiler().run())}>
-          <EyeOff />
-          黑幕
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => dispatchToolbarInsert(editor, "gate")}>
-          <UnlockKeyhole />
-          回复后可见
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={!isContainerNodeActive(editor, "replyGate")}
-          onSelect={() => dispatchToolbarInsert(editor, "ungate")}
-        >
-          <XCircle />
-          取消回复可见
-        </DropdownMenuItem>
-      </ToolbarMenuButton>
-    </div>
-  );
-}
 
 /** 完整/移动 Sheet 共用的格式与业务节点工具栏。 */
 export function Toolbar({
@@ -535,23 +316,23 @@ export function Toolbar({
         ) : (
           <>
             <span className="inline-flex items-center gap-0.5 border-r border-[#e3e7ea] pr-[5px] mr-[3px] last:border-r-0">
-          <IconButton
+          <ToolbarButton
             label="撤销"
             onClick={cmd(editor, (value) => value.chain().focus().undo().run())}
             disabled={!editor.can().undo()}
           >
             <Undo2 size={16} />
-          </IconButton>
-          <IconButton
+          </ToolbarButton>
+          <ToolbarButton
             label="重做"
             onClick={cmd(editor, (value) => value.chain().focus().redo().run())}
             disabled={!editor.can().redo()}
           >
             <Redo2 size={16} />
-          </IconButton>
+          </ToolbarButton>
         </span>
         <span className="inline-flex items-center gap-0.5 border-r border-[#e3e7ea] pr-[5px] mr-[3px] last:border-r-0">
-          <IconButton
+          <ToolbarButton
             label="加粗"
             active={editor.isActive("bold")}
             disabled={spoilerActive}
@@ -560,8 +341,8 @@ export function Toolbar({
             )}
           >
             <Bold size={16} />
-          </IconButton>
-          <IconButton
+          </ToolbarButton>
+          <ToolbarButton
             label="斜体"
             active={editor.isActive("italic")}
             disabled={spoilerActive}
@@ -570,8 +351,8 @@ export function Toolbar({
             )}
           >
             <Italic size={16} />
-          </IconButton>
-          <IconButton
+          </ToolbarButton>
+          <ToolbarButton
             label="下划线"
             active={editor.isActive("underline")}
             onClick={cmd(editor, (value) =>
@@ -579,18 +360,18 @@ export function Toolbar({
             )}
           >
             <UnderlineIcon size={16} />
-          </IconButton>
-          <IconButton
+          </ToolbarButton>
+          <ToolbarButton
             label="清除样式"
             onClick={cmd(editor, (value) =>
               value.chain().focus().unsetAllMarks().clearNodes().run(),
             )}
           >
             <Eraser size={16} />
-          </IconButton>
+          </ToolbarButton>
           {!condensed && (
             <>
-              <IconButton
+              <ToolbarButton
                 label="一级标题"
                 active={editor.isActive("heading", { level: 1 })}
                 onClick={cmd(editor, (value) =>
@@ -598,8 +379,8 @@ export function Toolbar({
                 )}
               >
                 <Heading1 size={16} />
-              </IconButton>
-              <IconButton
+              </ToolbarButton>
+              <ToolbarButton
                 label="二级标题"
                 active={editor.isActive("heading", { level: 2 })}
                 onClick={cmd(editor, (value) =>
@@ -607,7 +388,7 @@ export function Toolbar({
                 )}
               >
                 <Heading2 size={16} />
-              </IconButton>
+              </ToolbarButton>
             </>
           )}
         </span>
@@ -685,7 +466,7 @@ export function Toolbar({
               </DropdownMenuTrigger>
               <DropdownMenuContent className="min-w-0">
                 <div className="flex gap-1 p-1">
-                  {colors.map((color) => (
+                  {toolbarColors.map((color) => (
                     <button
                       key={color}
                       aria-label={`文字颜色 ${color}`}
@@ -703,7 +484,7 @@ export function Toolbar({
         )}
         {!condensed && (
           <span className="inline-flex items-center gap-0.5 border-r border-[#e3e7ea] pr-[5px] mr-[3px] last:border-r-0">
-            <IconButton
+            <ToolbarButton
               label="无序列表"
               active={editor.isActive("bulletList")}
               onClick={cmd(editor, (value) =>
@@ -711,8 +492,8 @@ export function Toolbar({
               )}
             >
               <List size={16} />
-            </IconButton>
-            <IconButton
+            </ToolbarButton>
+            <ToolbarButton
               label="有序列表"
               active={editor.isActive("orderedList")}
               onClick={cmd(editor, (value) =>
@@ -720,8 +501,8 @@ export function Toolbar({
               )}
             >
               <ListOrdered size={16} />
-            </IconButton>
-            <IconButton
+            </ToolbarButton>
+            <ToolbarButton
               label="引用"
               active={editor.isActive("blockquote")}
               onClick={cmd(editor, (value) =>
@@ -729,8 +510,8 @@ export function Toolbar({
               )}
             >
               <Quote size={16} />
-            </IconButton>
-            <IconButton
+            </ToolbarButton>
+            <ToolbarButton
               label="左对齐"
               active={editor.isActive({ textAlign: "left" })}
               onClick={cmd(editor, (value) =>
@@ -738,8 +519,8 @@ export function Toolbar({
               )}
             >
               <AlignLeft size={16} />
-            </IconButton>
-            <IconButton
+            </ToolbarButton>
+            <ToolbarButton
               label="居中"
               active={editor.isActive({ textAlign: "center" })}
               onClick={cmd(editor, (value) =>
@@ -747,8 +528,8 @@ export function Toolbar({
               )}
             >
               <AlignCenter size={16} />
-            </IconButton>
-            <IconButton
+            </ToolbarButton>
+            <ToolbarButton
               label="右对齐"
               active={editor.isActive({ textAlign: "right" })}
               onClick={cmd(editor, (value) =>
@@ -756,43 +537,43 @@ export function Toolbar({
               )}
             >
               <AlignRight size={16} />
-            </IconButton>
+            </ToolbarButton>
           </span>
         )}
         <span className="inline-flex items-center gap-0.5 border-r border-[#e3e7ea] pr-[5px] mr-[3px] last:border-r-0">
           {!condensed && (
-            <IconButton
+            <ToolbarButton
               label="链接"
               active={editor.isActive("link")}
               onClick={addLink}
             >
               <Link2 size={16} />
-            </IconButton>
+            </ToolbarButton>
           )}
-          <IconButton
+          <ToolbarButton
             label="图片"
             active={imageActive}
             onClick={openImageDialog}
           >
             <ImagePlus size={16} />
-          </IconButton>
-          <IconButton
+          </ToolbarButton>
+          <ToolbarButton
             label="骰子"
             active={diceActive}
             onClick={() => setDiceOpen(true)}
           >
             <Dice5 size={16} />
-          </IconButton>
-          <IconButton
+          </ToolbarButton>
+          <ToolbarButton
             label="附件"
             active={attachmentActive}
             onClick={openAttachmentDialog}
           >
             <FileText size={16} />
-          </IconButton>
+          </ToolbarButton>
           {!condensed && (
             <>
-              <IconButton
+              <ToolbarButton
                 label="间贴锚点"
                 active={commentAnchorActive}
                 disabled={replyGateActive}
@@ -809,53 +590,53 @@ export function Toolbar({
                 }}
               >
                 <MessageCirclePlus size={16} />
-              </IconButton>
-              <IconButton
+              </ToolbarButton>
+              <ToolbarButton
                 label="@ 用户"
                 active={mentionActive}
                 onClick={() => setMentionOpen(true)}
               >
                 <AtSign size={16} />
-              </IconButton>
-              <IconButton
+              </ToolbarButton>
+              <ToolbarButton
                 label="黑幕"
                 active={editor.isActive("spoiler")}
                 onClick={() => editor.chain().focus().toggleSpoiler().run()}
               >
                 <EyeOff size={16} />
-              </IconButton>
+              </ToolbarButton>
             </>
           )}
           {!condensed && (
             <>
-              <IconButton
+              <ToolbarButton
                 label="小说摘录"
                 active={excerptActive}
                 onClick={() => setExcerptOpen(true)}
               >
                 <TextQuote size={16} />
-              </IconButton>
-              <IconButton
+              </ToolbarButton>
+              <ToolbarButton
                 label="回复后可见"
                 active={replyGateActive}
                 onClick={insertGate}
               >
                 <UnlockKeyhole size={16} />
-              </IconButton>
-              <IconButton
+              </ToolbarButton>
+              <ToolbarButton
                 label="取消回复可见"
                 disabled={!replyGateActive}
                 onClick={() => unwrapOutermostReplyGate(editor)}
               >
                 <XCircle size={16} />
-              </IconButton>
-              <IconButton
+              </ToolbarButton>
+              <ToolbarButton
                 label={pollActive ? "编辑投票" : "投票"}
                 active={pollActive}
                 onClick={openPollDialog}
               >
                 <Vote size={16} />
-              </IconButton>
+              </ToolbarButton>
             </>
           )}
         </span>

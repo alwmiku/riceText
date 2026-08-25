@@ -378,7 +378,8 @@ describe("RichTextEditor presets", () => {
       button: 0,
       ctrlKey: false,
     });
-    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    const mobileMenu = await screen.findByRole("menu");
+    expect(mobileMenu).toHaveAttribute("data-side", "top");
     expect(screen.getByRole("menuitem", { name: /撤销/ })).toBeInTheDocument();
   });
 
