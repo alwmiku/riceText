@@ -508,6 +508,10 @@ export function SelectionFormatMenu({
 
   if (!editor) return content;
 
+  // 移动端长按由浏览器负责创建和调整原生文字选区；不要把触摸长按
+  // 交给 ContextMenu，否则会抢占选区并阻止用户重新拖动选择范围。
+  if (mobile) return content;
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>

@@ -276,6 +276,38 @@ describe("RichTextEditor presets", () => {
     expect(screen.getByLabelText("文字颜色 #197c73")).toBeInTheDocument();
   });
 
+  it("移动端长按不会打开右键菜单并保留选区工具栏", async () => {
+    const editorRef: { current: Editor | null } = { current: null };
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="mobile"
+        onChange={vi.fn()}
+        onReady={(value) => {
+          editorRef.current = value;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const readyEditor = editorRef.current;
+    if (!readyEditor) throw new Error("编辑器未初始化");
+    readyEditor.commands.setTextSelection({ from: 1, to: 4 });
+    expect(
+      await screen.findByRole("toolbar", { name: "选区格式菜单" }),
+    ).toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByLabelText("正文编辑区"), {
+      clientX: 120,
+      clientY: 140,
+    });
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("toolbar", { name: "选区格式菜单" }),
+    ).toBeInTheDocument();
+  });
+
   it("移动模式使用底部触控工具栏并在 Sheet 中展开完整工具", async () => {
     const onSubmit = vi.fn();
     render(
