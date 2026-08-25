@@ -300,11 +300,15 @@ describe("RichTextEditor presets", () => {
       await screen.findByRole("toolbar", { name: "选区格式菜单" }),
     ).toBeInTheDocument();
 
-    fireEvent.contextMenu(screen.getByLabelText("正文编辑区"), {
+    const contextMenuEvent = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
       clientX: 120,
       clientY: 140,
     });
+    screen.getByLabelText("正文编辑区").dispatchEvent(contextMenuEvent);
 
+    expect(contextMenuEvent.defaultPrevented).toBe(true);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(
       screen.getByRole("toolbar", { name: "选区格式菜单" }),

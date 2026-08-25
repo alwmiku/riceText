@@ -330,6 +330,7 @@ export function RichTextEditor({
             <SelectionFormatMenu editor={editor} mobile>
               <EditorContent
                 editor={editor}
+                onContextMenu={(event) => event.preventDefault()}
                 className="tiptap min-h-[calc(100vh-190px)] px-[18px] py-6 pb-[90px] font-serif text-base leading-[1.9] outline-none"
               />
             </SelectionFormatMenu>
