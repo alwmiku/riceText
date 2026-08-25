@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { ChapterRawPreview, collectRawGaps } from "./ChapterRawPreview";
+import { ChapterRawPreview } from "./ChapterRawPreview";
+import { collectRawGaps } from "./raw-coverage";
 import type { CoverageChapter } from "./ChapterCoverageDialog";
 
 // jsdom 没有 Canvas 2D，@chenglou/pretext 的 prepare() 会直接抛错；

@@ -7,7 +7,7 @@ import {
 } from "../../lib/api";
 import type { RichTextNode } from "../../lib/types";
 import { sha256Hex } from "../../lib/utils";
-import { collectRawGaps } from "../novel/ChapterRawPreview";
+import { collectRawGaps } from "../novel/raw-coverage";
 import type { CoverageChapter } from "../novel/ChapterCoverageDialog";
 import type { ChapterUploadDiff } from "../novel/ChapterUploadDialog";
 

@@ -5,13 +5,10 @@ import {
   AlignRight,
   AtSign,
   Bold,
-  Dice5,
   Eraser,
   EyeOff,
-  FileText,
   Heading1,
   Heading2,
-  ImagePlus,
   Italic,
   Link2,
   List,
@@ -20,17 +17,36 @@ import {
   MoreHorizontal,
   Quote,
   Redo2,
-  TextQuote,
   Underline as UnderlineIcon,
   Undo2,
   UnlockKeyhole,
-  Vote,
   XCircle,
-  type LucideIcon,
 } from "lucide-react";
 import { DropdownMenuItem } from "../../components/ui";
-import { isContainerNodeActive } from "./commands";
-import { toolbarColors, dispatchToolbarInsert } from "./toolbar/toolbar-constants";
+import { cmd } from "./commands";
+import {
+  clearFormatting,
+  redo,
+  setColor,
+  setFontFamily,
+  setFontSize,
+  setTextAlign,
+  toggleBlockquote,
+  toggleBold,
+  toggleBulletList,
+  toggleHeading,
+  toggleItalic,
+  toggleOrderedList,
+  toggleSpoiler,
+  toggleUnderline,
+  undo,
+} from "./editor-actions";
+import {
+  INSERT_CONTENT_TOOLS,
+  INSERT_TOOL_DEFINITIONS,
+  TOOLBAR_COLORS,
+} from "./editor-tool-definitions";
+import { useInsertRequest } from "./ToolbarDialogs";
 import { ToolbarButton } from "./toolbar/ToolbarButton";
 import { ToolbarGroup } from "./toolbar/ToolbarGroup";
 
@@ -43,17 +59,9 @@ export function CompactToolbarControls({
   mobile?: boolean;
   onLink?: () => void;
 }) {
+  const requestInsert = useInsertRequest();
   const spoilerActive = editor.isActive("spoiler");
-  const run = (action: (value: Editor) => boolean) => () => action(editor);
   const iconClass = mobile ? "[&_svg]:size-5" : "";
-  const insertTools: Array<[string, string, LucideIcon]> = [
-    ["image", "图片", ImagePlus],
-    ["dice", "骰子", Dice5],
-    ["attachment", "附件", FileText],
-    ["mention", "提及用户", AtSign],
-    ["poll", "投票", Vote],
-    ["excerpt", "小说摘录", TextQuote],
-  ];
 
   return (
     <div
@@ -67,116 +75,90 @@ export function CompactToolbarControls({
         mobile={mobile}
         disabled={spoilerActive}
         className={iconClass}
-        onClick={run((value) => value.chain().focus().toggleBold().run())}
+        onClick={cmd(editor, toggleBold)}
       >
         <Bold size={mobile ? 22 : 18} />
       </ToolbarButton>
       <ToolbarGroup label="文字格式" icon={Italic} collapsed mobile={mobile}>
         <DropdownMenuItem
           disabled={spoilerActive}
-          onSelect={run((value) => value.chain().focus().toggleItalic().run())}
+          onSelect={cmd(editor, toggleItalic)}
         >
           <Italic />
           斜体
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().toggleUnderline().run())}
-        >
+        <DropdownMenuItem onSelect={cmd(editor, toggleUnderline)}>
           <UnderlineIcon />
           下划线
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={spoilerActive}
-          onSelect={run((value) =>
-            value.chain().focus().unsetAllMarks().clearNodes().run(),
-          )}
+          onSelect={cmd(editor, clearFormatting)}
         >
           <Eraser />
           清除样式
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={spoilerActive}
-          onSelect={run((value) =>
-            value.chain().focus().setFontFamily("Noto Serif SC Variable").run(),
-          )}
+          onSelect={() => setFontFamily(editor, "Noto Serif SC Variable")}
         >
           宋体
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={spoilerActive}
-          onSelect={run((value) =>
-            value.chain().focus().setFontFamily("sans-serif").run(),
-          )}
+          onSelect={() => setFontFamily(editor, "sans-serif")}
         >
           黑体
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) =>
-            value
-              .chain()
-              .focus()
-              .setMark("textStyle", {
-                ...value.getAttributes("textStyle"),
-                fontSize: "18px",
-              })
-              .run(),
-          )}
-        >
+        <DropdownMenuItem onSelect={() => setFontSize(editor, "18px")}>
           <span className="text-xs font-bold">18</span>
           字号 18px
         </DropdownMenuItem>
         <div className="flex gap-1 border-t border-border p-2">
-          {toolbarColors.map((color) => (
+          {TOOLBAR_COLORS.map((color) => (
             <button
               key={color}
               type="button"
               aria-label={`文字颜色 ${color}`}
               className="size-7 rounded border border-black/10"
               style={{ background: color }}
-              onClick={() => editor.chain().focus().setColor(color).run()}
+              onClick={() => setColor(editor, color)}
             />
           ))}
         </div>
       </ToolbarGroup>
       <ToolbarGroup label="段落排版" icon={AlignLeft} collapsed mobile={mobile}>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().toggleBulletList().run())}
-        >
+        <DropdownMenuItem onSelect={cmd(editor, toggleBulletList)}>
           <List />
           无序列表
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().toggleOrderedList().run())}
-        >
+        <DropdownMenuItem onSelect={cmd(editor, toggleOrderedList)}>
           <ListOrdered />
           有序列表
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().toggleBlockquote().run())}
-        >
+        <DropdownMenuItem onSelect={cmd(editor, toggleBlockquote)}>
           <Quote />
           引用
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().setTextAlign("left").run())}
-        >
+        <DropdownMenuItem onSelect={() => setTextAlign(editor, "left")}>
           <AlignLeft />
           左对齐
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().setTextAlign("center").run())}
-        >
+        <DropdownMenuItem onSelect={() => setTextAlign(editor, "center")}>
           <AlignCenter />
           居中
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().setTextAlign("right").run())}
-        >
+        <DropdownMenuItem onSelect={() => setTextAlign(editor, "right")}>
           <AlignRight />
           右对齐
         </DropdownMenuItem>
       </ToolbarGroup>
-      <ToolbarGroup label="插入内容" icon={ImagePlus} collapsed mobile={mobile}>
+      <ToolbarGroup
+        label="插入内容"
+        icon={INSERT_CONTENT_TOOLS[0]!.icon}
+        collapsed
+        mobile={mobile}
+      >
         <DropdownMenuItem
           disabled={!onLink}
           {...(onLink ? { onSelect: onLink } : {})}
@@ -184,66 +166,57 @@ export function CompactToolbarControls({
           <Link2 />
           链接
         </DropdownMenuItem>
-        {insertTools.map(([tool, label, Icon]) => (
-          <DropdownMenuItem
-            key={tool}
-            onSelect={() => dispatchToolbarInsert(editor, tool)}
-          >
-            <Icon />
-            {label}
-          </DropdownMenuItem>
-        ))}
+        {INSERT_CONTENT_TOOLS.map((definition) => {
+          const Icon = definition.icon;
+          return (
+            <DropdownMenuItem
+              key={definition.tool}
+              onSelect={() => requestInsert?.(definition.tool)}
+            >
+              <Icon />
+              {definition.label}
+            </DropdownMenuItem>
+          );
+        })}
       </ToolbarGroup>
       <ToolbarGroup label="更多工具" icon={MoreHorizontal} collapsed mobile={mobile}>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().undo().run())}
-        >
+        <DropdownMenuItem onSelect={cmd(editor, undo)}>
           <Undo2 />
           撤销
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().redo().run())}
-        >
+        <DropdownMenuItem onSelect={cmd(editor, redo)}>
           <Redo2 />
           重做
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) =>
-            value.chain().focus().toggleHeading({ level: 1 }).run(),
-          )}
-        >
+        <DropdownMenuItem onSelect={() => toggleHeading(editor, 1)}>
           <Heading1 />
           一级标题
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) =>
-            value.chain().focus().toggleHeading({ level: 2 }).run(),
-          )}
-        >
+        <DropdownMenuItem onSelect={() => toggleHeading(editor, 2)}>
           <Heading2 />
           二级标题
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => dispatchToolbarInsert(editor, "comment")}>
+        <DropdownMenuItem onSelect={() => requestInsert?.("comment")}>
           <MessageCirclePlus />
           间贴锚点
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => dispatchToolbarInsert(editor, "mention")}>
+        <DropdownMenuItem onSelect={() => requestInsert?.("mention")}>
           <AtSign />
           提及用户
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={run((value) => value.chain().focus().toggleSpoiler().run())}
-        >
+        <DropdownMenuItem onSelect={cmd(editor, toggleSpoiler)}>
           <EyeOff />
           黑幕
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => dispatchToolbarInsert(editor, "gate")}>
+        <DropdownMenuItem onSelect={() => requestInsert?.("gate")}>
           <UnlockKeyhole />
           回复后可见
         </DropdownMenuItem>
         <DropdownMenuItem
-          disabled={!isContainerNodeActive(editor, "replyGate")}
-          onSelect={() => dispatchToolbarInsert(editor, "ungate")}
+          disabled={
+            INSERT_TOOL_DEFINITIONS.ungate.isDisabled?.(editor) ?? false
+          }
+          onSelect={() => requestInsert?.("ungate")}
         >
           <XCircle />
           取消回复可见

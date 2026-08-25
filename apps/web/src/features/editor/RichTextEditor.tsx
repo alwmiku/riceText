@@ -21,6 +21,7 @@ import { formatTime } from "../../lib/utils";
 import { describeSteps, type StepJson } from "./commands";
 import { SelectionFormatMenu } from "./SelectionFormatMenu";
 import { Toolbar } from "./toolbar/Toolbar";
+import { ToolbarDialogs } from "./ToolbarDialogs";
 
 /** RichTextEditor 的稳定公共属性；宿主只需持有 JSON，不接触 ProseMirror 实例。 */
 export interface RichTextEditorProps {
@@ -315,7 +316,7 @@ export function RichTextEditor({
 
   if (mode === "mobile")
     return (
-      <>
+      <ToolbarDialogs editor={editor}>
         <div className="mx-auto max-w-[680px] rounded-lg border border-border bg-white pb-[calc(74px+env(safe-area-inset-bottom))] shadow-panel max-[430px]:rounded-none max-[430px]:border-x-0">
           <div className="min-h-[560px] bg-white">
             <SelectionFormatMenu editor={editor} mobile>
@@ -340,50 +341,52 @@ export function RichTextEditor({
             </Button>
           </div>
         </div>
-      </>
+      </ToolbarDialogs>
     );
 
   return (
-    <div className="overflow-clip rounded-lg border border-border bg-white shadow-panel max-[430px]:rounded-none max-[430px]:border-x-0">
-      <Toolbar editor={editor} />
-      <div className="min-h-[560px] bg-white">
-        <SelectionFormatMenu editor={editor}>
-          <EditorContent
-            editor={editor}
-            className="tiptap min-h-[560px] px-[clamp(28px,7vw,92px)] py-[52px] pb-[100px] font-serif text-[17px] leading-[1.9] text-[#232a31] outline-none"
-          />
-        </SelectionFormatMenu>
+    <ToolbarDialogs editor={editor}>
+      <div className="overflow-clip rounded-lg border border-border bg-white shadow-panel max-[430px]:rounded-none max-[430px]:border-x-0">
+        <Toolbar editor={editor} />
+        <div className="min-h-[560px] bg-white">
+          <SelectionFormatMenu editor={editor}>
+            <EditorContent
+              editor={editor}
+              className="tiptap min-h-[560px] px-[clamp(28px,7vw,92px)] py-[52px] pb-[100px] font-serif text-[17px] leading-[1.9] text-[#232a31] outline-none"
+            />
+          </SelectionFormatMenu>
+        </div>
+        <footer className="flex min-h-[34px] flex-wrap items-center justify-end gap-x-5 gap-y-1 border-t border-[#e3e7ea] bg-[#fafbfc] px-3.5 py-1.5 text-xs text-[#68737d]">
+          <span>
+            字数{" "}
+            <strong className="font-semibold text-[#37414b] tabular-nums">
+              {wordCount.toLocaleString()}
+            </strong>
+          </span>
+          <span>
+            最近保存{" "}
+            <strong className="font-semibold text-[#37414b] tabular-nums">
+              {savedAt ? formatTime(savedAt) : "—"}
+            </strong>
+          </span>
+          <span>
+            最近更新{" "}
+            <strong className="font-semibold text-[#37414b] tabular-nums">
+              {lastTransactionAt !== null
+                ? new Date(lastTransactionAt).toLocaleTimeString("zh-CN", {
+                    hour12: false,
+                  })
+                : "—"}
+            </strong>
+            {lastAction ? (
+              <em className="font-semibold not-italic text-[#14766d]">
+                · {lastAction}
+              </em>
+            ) : null}
+          </span>
+        </footer>
       </div>
-      <footer className="flex min-h-[34px] flex-wrap items-center justify-end gap-x-5 gap-y-1 border-t border-[#e3e7ea] bg-[#fafbfc] px-3.5 py-1.5 text-xs text-[#68737d]">
-        <span>
-          字数{" "}
-          <strong className="font-semibold text-[#37414b] tabular-nums">
-            {wordCount.toLocaleString()}
-          </strong>
-        </span>
-        <span>
-          最近保存{" "}
-          <strong className="font-semibold text-[#37414b] tabular-nums">
-            {savedAt ? formatTime(savedAt) : "—"}
-          </strong>
-        </span>
-        <span>
-          最近更新{" "}
-          <strong className="font-semibold text-[#37414b] tabular-nums">
-            {lastTransactionAt !== null
-              ? new Date(lastTransactionAt).toLocaleTimeString("zh-CN", {
-                  hour12: false,
-                })
-              : "—"}
-          </strong>
-          {lastAction ? (
-            <em className="font-semibold not-italic text-[#14766d]">
-              · {lastAction}
-            </em>
-          ) : null}
-        </span>
-      </footer>
-    </div>
+    </ToolbarDialogs>
   );
 }
 

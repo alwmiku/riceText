@@ -19,7 +19,7 @@ vi.mock("../../lib/api", () => ({
   uploadLongTextChapter: mocks.upload,
 }));
 vi.mock("../../lib/utils", () => ({ sha256Hex: mocks.hash }));
-vi.mock("../novel/ChapterRawPreview", () => ({ collectRawGaps: mocks.gaps }));
+vi.mock("../novel/raw-coverage", () => ({ collectRawGaps: mocks.gaps }));
 
 function chapter(id: string, title: string, text: string): RichTextNode {
   return {
