@@ -1,665 +1,100 @@
 import type { Editor } from "@tiptap/react";
-import type { ChapterTitleStyle } from "@ricetext/editor-core";
-import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   BookOpen,
   Check,
-  FileUp,
-  Maximize2,
   MessageCircle,
-  PanelLeftOpen,
   Monitor,
-  Save,
   Smartphone,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useAppContext } from "../app-context";
 import { Button, Dialog, Segmented } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
-import { StandardComposeWorkspace } from "../features/compose/StandardComposeWorkspace";
 import { LongTextWorkspace } from "../features/compose/LongTextWorkspace";
 import { SaveStatus } from "../features/compose/SaveStatus";
-import { ChapterRail } from "../features/demo/DemoPanels";
-import { RichTextEditor } from "../features/editor/RichTextEditor";
+import { StandardComposeWorkspace } from "../features/compose/StandardComposeWorkspace";
+import { useChapterUpload } from "../features/compose/useChapterUpload";
+import { useComposeDocument } from "../features/compose/useComposeDocument";
+import { useLongTextWorkspace } from "../features/compose/useLongTextWorkspace";
 import { EditorErrorBoundary } from "../features/editor/EditorErrorBoundary";
-import { createLongTextDocument } from "../features/editor/long-text-import";
-import {
-  appendGapLongTextChapter,
-  appendLongTextChapter,
-  deleteLongTextChapter,
-  mergeLongTextChapter,
-  moveLongTextChapter,
-  splitLongTextChapter,
-  updateLongTextChapter,
-} from "../features/editor/long-text-chapter-operations";
-import {
-  expandRawRangeToIncludeLeadingTitle,
-} from "../features/editor/long-text-ranges";
-import { useAutosave } from "../features/editor/useAutosave";
-import { AddChapterDialog } from "../features/novel/AddChapterDialog";
-import { ChapterUploadDialog } from "../features/novel/ChapterUploadDialog";
-import type { ChapterSummary } from "../features/novel/ChapterSidebar";
-import {
-  ChapterCoverageDialog,
-  type CoverageChapter,
-} from "../features/novel/ChapterCoverageDialog";
-import { collectRawGaps } from "../features/novel/ChapterRawPreview";
-import {
-  getCommentThread,
-  getDocument,
-  listDemoChapters,
-  restoreRevision,
-  uploadLongTextChapter,
-} from "../lib/api";
-import { mergeChapter, splitDocumentByHeadings } from "../lib/chapters";
-import {
-  loadLongTextDraft,
-  loadLongTextRaw,
-  saveLongTextDraft,
-  saveLongTextRaw,
-} from "../lib/long-text-draft-storage";
-import { defaultDocument } from "../lib/seed";
-import type {
-  CommentReply,
-  DocumentEnvelope,
-  EditorMode,
-  RichTextNode,
-} from "../lib/types";
-import { cn, sha256Hex } from "../lib/utils";
+import { RichTextEditor } from "../features/editor/RichTextEditor";
+import { getCommentThread, listDemoChapters } from "../lib/api";
+import { splitDocumentByHeadings } from "../lib/chapters";
+import type { CommentReply, EditorMode, RichTextNode } from "../lib/types";
+import { cn } from "../lib/utils";
 
-const LOCAL_LONG_TEXT_KEY = "ricetext:local-long-text:demo-post";
-const LOCAL_LONG_TEXT_RAW_KEY = "ricetext:local-long-text-raw:demo-post";
-
-const chapterStyleOptions: Array<{ value: ChapterTitleStyle; label: string }> =
-  [
-    { value: "auto", label: "自动识别" },
-    { value: "chinese", label: "中文：第 X 章" },
-    { value: "english", label: "English: Chapter X" },
-    { value: "numeric", label: "数字：1. 标题" },
-  ];
-
-/** 独立发帖/章节创作工作台，负责组合编辑器、历史、间贴和演示业务面板。 */
+/** Composes independent document, long-text, upload and presentation controllers. */
 export default function ComposePage() {
   const { identity } = useAppContext();
-  const queryClient = useQueryClient();
-  const { data = defaultDocument, isPlaceholderData } = useQuery({
-    queryKey: ["document", "demo-post"],
-    queryFn: ({ signal }) => getDocument("demo-post", signal),
-    placeholderData: defaultDocument,
-  });
-  const [document, setDocument] = useState<DocumentEnvelope>(data);
-  const [content, setContent] = useState<RichTextNode>(data.content);
-  const [generation, setGeneration] = useState(0);
-  const contentRef = useRef<RichTextNode>(data.content);
-  const longTextFileInputRef = useRef<HTMLInputElement | null>(null);
-  const generationRef = useRef(0);
-  const editorRef = useRef<Editor | null>(null);
-  const longTextDraftReadyRef = useRef(false);
-  const longTextOperationRef = useRef(0);
-  const normalContentRef = useRef<RichTextNode | null>(null);
-  const [longTextMode, setLongTextMode] = useState(false);
-  const [hasLocalDraft, setHasLocalDraft] = useState(false);
-  const [longTextDocumentVersion, setLongTextDocumentVersion] = useState(0);
-  const [activeChapterIndex, setActiveChapterIndex] = useState(0);
-  const [mobileChapterRailOpen, setMobileChapterRailOpen] = useState(false);
-  const activeChapterIndexRef = useRef(0);
-  const longTextPendingRef = useRef<RichTextNode | null>(null);
-  const longTextWriteTimerRef = useRef<number | null>(null);
-  const chapterEditTimerRef = useRef<number | null>(null);
-  const chapterEditPendingRef = useRef<{
-    chapterId: string;
-    patch: { title?: string; text?: string };
-  } | null>(null);
-  const [chapterTitleStyle, setChapterTitleStyle] =
-    useState<ChapterTitleStyle>("auto");
-  const [chapterIndex, setChapterIndex] = useState(1);
   const [mode, setMode] = useState<EditorMode>(() =>
     window.matchMedia("(max-width: 600px)").matches ? "mobile" : "full",
   );
+  const [chapterIndex, setChapterIndex] = useState(1);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
-  const [coverageOpen, setCoverageOpen] = useState(false);
-  const [rawText, setRawText] = useState<string | null>(null);
-  const [addChapterOpen, setAddChapterOpen] = useState(false);
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadDiff, setUploadDiff] = useState<{
-    total: number;
-    toUpdate: number;
-    added: number;
-    modified: number;
-    gaps: number;
-    rows: Array<{
-      id: string;
-      title: string;
-      status: "新增" | "修改" | "未变化";
-    }>;
-  } | null>(null);
-  const [addChapterTitle, setAddChapterTitle] = useState("");
-  const [addChapterText, setAddChapterText] = useState("");
+  const editorRef = useRef<Editor | null>(null);
+
   const { data: chapterDirectory = [] } = useQuery({
     queryKey: ["demo", "chapters"],
     queryFn: () => listDemoChapters(),
   });
-  const { data: comments = [] } = useQuery<CommentReply[]>({
-    queryKey: ["comments", document.id, threadId],
-    queryFn: () => getCommentThread(document.id, threadId!),
-    enabled: Boolean(threadId),
+  const compose = useComposeDocument(
+    "demo-post",
+    chapterDirectory[chapterIndex]?.id,
+  );
+  const longText = useLongTextWorkspace({
+    content: compose.content,
+    contentRef: compose.contentRef,
+    replaceContent: compose.replaceContent,
+    setAutosaveEnabled: compose.setAutosaveEnabled,
+    setNotice,
+  });
+  const upload = useChapterUpload({
+    novelId: "demo-post",
+    getDocument: () => {
+      longText.flushEdits();
+      return compose.contentRef.current;
+    },
+    getCoverage: () => longText.coverageChapters,
+    onNotice: setNotice,
   });
 
-  // placeholder 让首屏立即有内容；只有尚未编辑且服务器数据确实更新（revision 更高）时，
-  // 才用真实服务器文档替换正文，避免 fetch 失败回退的旧种子数据覆盖已保存的编辑。
-  useEffect(() => {
-    if (generation !== 0) return;
-    if (data.revision <= document.revision) return;
-    setDocument(data);
-    contentRef.current = data.content;
-    generationRef.current = 0;
-    setContent(data.content);
-  }, [data, generation, document.revision]);
-  const draftSaveTimerRef = useRef<number | null>(null);
-  useEffect(() => {
-    return () => {
-      if (longTextWriteTimerRef.current !== null)
-        window.clearTimeout(longTextWriteTimerRef.current);
-      if (chapterEditTimerRef.current !== null)
-        window.clearTimeout(chapterEditTimerRef.current);
-      if (draftSaveTimerRef.current !== null)
-        window.clearTimeout(draftSaveTimerRef.current);
-    };
-  }, []);
-
-  // 长文本模式不做自动保存：所有改动只存在本页内存，
-  // 由“保存本机草稿”或“确定并上传”显式提交。
-
-  // 一章一界面：普通模式把完整文档按二级标题切分为章节；长文本模式不经过该切分。
   const { chapters } = useMemo(
-    () =>
-      longTextMode
-        ? { lead: [], chapters: [] }
-        : splitDocumentByHeadings(content),
-    [content, longTextMode],
+    () => splitDocumentByHeadings(compose.content),
+    [compose.content],
   );
   const activeIndex = Math.min(chapterIndex, Math.max(0, chapters.length - 1));
   const editorContent = useMemo<RichTextNode>(
     () => ({ type: "doc", content: chapters[activeIndex]?.blocks ?? [] }),
-    [chapters, activeIndex],
+    [activeIndex, chapters],
   );
-  // 长文本模式：目录摘要只来自完整章节 JSON 的轻量字段，编辑器只加载当前一章。
-  const chapterSummaries = useMemo<ChapterSummary[]>(() => {
-    if (!longTextMode) return [];
-    return (content.content ?? []).map((node, index) => ({
-      id: String(node.attrs?.chapterId ?? `chapter-${index}`),
-      title: String(node.attrs?.title ?? "未命名章节"),
-      charCount: String(node.attrs?.text ?? "").length,
-    }));
-  }, [content, longTextMode]);
-  const coverageChapters = useMemo<CoverageChapter[]>(() => {
-    if (!longTextMode) return [];
-    let previousEnd = 0;
-    return (content.content ?? []).map((node, index) => {
-      const text = String(node.attrs?.text ?? "");
-      const title = String(node.attrs?.title ?? "未命名章节");
-      const rawStart =
-        typeof node.attrs?.start === "number" ? node.attrs.start : null;
-      const start = expandRawRangeToIncludeLeadingTitle(
-        rawText,
-        title,
-        rawStart,
-        previousEnd,
-      );
-      const end = typeof node.attrs?.end === "number" ? node.attrs.end : null;
-      if (end !== null) previousEnd = Math.max(previousEnd, end);
-      return {
-        id: String(node.attrs?.chapterId ?? `chapter-${index}`),
-        title,
-        charCount: text.length,
-        start,
-        end,
-        preview: text.slice(0, 200).replace(/\s+/g, " ").slice(0, 120),
-      };
-    });
-  }, [content, longTextMode, rawText]);
-  const longTextEditorContent = useMemo<RichTextNode>(() => {
-    if (!longTextMode) return { type: "doc", content: [] };
-    const block = content.content?.[activeChapterIndex];
-    return block
-      ? { type: "doc", content: [block] }
-      : { type: "doc", content: [] };
-  }, [content, longTextMode, activeChapterIndex]);
-  const autosave = useAutosave({
-    document,
-    content,
-    generation,
-    enabled: !longTextMode,
-    ...(chapters[activeIndex] ? { chapterId: chapters[activeIndex]!.id } : {}),
-    onSaved: (next) => {
-      setDocument((current) => ({
-        ...current,
-        content: next.content,
-        revision: next.revision,
-        savedAt: next.savedAt,
-        storage: next.storage ?? current.storage ?? "server",
-      }));
-      queryClient.setQueryData<DocumentEnvelope>(["document", next.id], next);
-      void queryClient.invalidateQueries({
-        queryKey: ["revisions", next.id],
-      });
-      // 章节独立版本：保存后刷新章节目录，更新当前章节的版本号。
-      void queryClient.invalidateQueries({
-        queryKey: ["demo", "chapters"],
-      });
-    },
+  const { data: comments = [] } = useQuery<CommentReply[]>({
+    queryKey: ["comments", compose.document.id, threadId],
+    queryFn: () => getCommentThread(compose.document.id, threadId!),
+    enabled: Boolean(threadId),
   });
-  // Tiptap 初始化时可能规范化 JSON；服务器查询完成前忽略这类非用户更新，避免错误 baseRevision。
-  // 普通模式只合并当前章节；长文本模式直接维护完整的 longTextBlock 文档。
-  const replaceContent = (next: RichTextNode) => {
-    contentRef.current = next;
-    generationRef.current += 1;
-    setContent(next);
-    setGeneration(generationRef.current);
-  };
-  const replaceLongTextDocument = (next: RichTextNode) => {
-    replaceContent(next);
-    setLongTextDocumentVersion((version) => version + 1);
-  };
-  /** 把编辑器返回的章节块写回完整文档；编辑器内新增章节（切章）时跳到新章并重建。 */
-  const commitPendingLongText = () => {
-    if (longTextWriteTimerRef.current !== null) {
-      window.clearTimeout(longTextWriteTimerRef.current);
-      longTextWriteTimerRef.current = null;
-    }
-    const pending = longTextPendingRef.current;
-    longTextPendingRef.current = null;
-    if (!pending) return;
-    let blocks = pending.content ?? [];
-    if (blocks.length > 1) {
-      // 编辑器理论上只含当前一章；出现多节点说明文档被污染。
-      // 只写回首块，防止普通编辑（如改标题）被误判为新增章节。
-      console.warn("[长文本] 编辑器多节点文档，仅保留当前章", blocks.length);
-      const first = blocks[0];
-      if (!first) return;
-      blocks = [first];
-    }
-    const list = [...(contentRef.current.content ?? [])];
-    const start = activeChapterIndexRef.current;
-    list.splice(start, blocks.length, ...blocks);
-    const gainedChapters = blocks.length > 1;
-    if (gainedChapters) {
-      activeChapterIndexRef.current = start + blocks.length - 1;
-    }
-    replaceContent({ type: "doc", content: list });
-    if (gainedChapters) {
-      setActiveChapterIndex(activeChapterIndexRef.current);
-      setLongTextDocumentVersion((version) => version + 1);
-    }
-  };
-  const updateContent = (next: RichTextNode) => {
-    if (isPlaceholderData) return;
-    if (longTextMode) {
-      const blocks = next.content ?? [];
-      if (blocks.length > 1) {
-        console.warn(
-          "[长文本] 编辑器多节点文档",
-          blocks
-            .map(
-              (node) =>
-                `${node.type}|${String(node.attrs?.title ?? "")}|${String(node.attrs?.chapterId ?? "")}|${String(node.attrs?.text ?? "").length}`,
-            )
-            .join(" ; "),
-        );
-        // 防御：只写回首块；编辑器文档由 RichTextEditor 自动清理回单章。
-        const first = blocks[0];
-        if (first) {
-          longTextPendingRef.current = { type: "doc", content: [first] };
-        }
-        return;
-      }
-      longTextPendingRef.current = next;
-      if (longTextWriteTimerRef.current !== null)
-        window.clearTimeout(longTextWriteTimerRef.current);
-      longTextWriteTimerRef.current = window.setTimeout(
-        commitPendingLongText,
-        300,
-      );
-      return;
-    }
-    const merged = mergeChapter(contentRef.current, activeIndex, next);
-    replaceContent(merged);
-  };
-  const selectChapter = (index: number) => {
-    if (index === activeChapterIndexRef.current) return;
-    commitPendingLongText();
-    activeChapterIndexRef.current = index;
-    setActiveChapterIndex(index);
-    replaceLongTextDocument(contentRef.current);
-  };
 
-  const deleteChapter = (index: number) => {
-    commitPendingLongText();
-    const result = deleteLongTextChapter(
-      contentRef.current,
-      index,
-      activeChapterIndexRef.current,
-    );
-    if (!result) return;
-    activeChapterIndexRef.current = result.activeIndex;
-    replaceLongTextDocument(result.document);
-    setActiveChapterIndex(result.activeIndex);
-  };
-
-  const mergeChapterAt = (index: number) => {
-    commitPendingLongText();
-    const result = mergeLongTextChapter(contentRef.current, index);
-    if (!result) return;
-    activeChapterIndexRef.current = result.activeIndex;
-    replaceLongTextDocument(result.document);
-    setActiveChapterIndex(result.activeIndex);
-  };
-
-  const moveChapter = (from: number, to: number) => {
-    commitPendingLongText();
-    const result = moveLongTextChapter(contentRef.current, from, to);
-    if (!result) return;
-    activeChapterIndexRef.current = result.activeIndex;
-    replaceLongTextDocument(result.document);
-    setActiveChapterIndex(result.activeIndex);
-  };
-
-  /** 管理员手动添加章节（番外、作者说、短章等），追加到目录末尾。 */
-  const addChapter = () => {
-    const title = addChapterTitle.trim();
-    const text = addChapterText.slice(0, MAX_CHAPTER_LENGTH);
-    if (!title && !text) return;
-    commitPendingLongText();
-    const result = appendLongTextChapter(contentRef.current, {
-      chapterId: `manual-chapter-${Date.now()}`,
-      title,
-      text,
-    });
-    activeChapterIndexRef.current = result.activeIndex;
-    replaceLongTextDocument(result.document);
-    setActiveChapterIndex(result.activeIndex);
-    setAddChapterOpen(false);
-    setAddChapterTitle("");
-    setAddChapterText("");
-    setNotice(`已添加章节“${title || "未命名章节"}”`);
-  };
-
-  /** 从未切分到任何章节的原文段落创建新章节（本地核对修正）。 */
-  const createChapterFromGap = (text: string, start: number, end: number) => {
-    if (!text.trim()) return;
-    commitPendingLongText();
-    const result = appendGapLongTextChapter(contentRef.current, {
-      chapterId: `gap-chapter-${Date.now()}`,
-      text,
-      start,
-      end,
-    });
-    if (!result) return;
-    activeChapterIndexRef.current = result.activeIndex;
-    replaceLongTextDocument(result.document);
-    setActiveChapterIndex(result.activeIndex);
-    setNotice("已把未切分段落创建为新章节，请补充标题并核对内容");
-  };
-
-  /** 光标处切章：把当前章节拆为两章，编辑器重建后只加载新章。 */
-  const splitCurrentChapter = (before: string, after: string) => {
-    commitPendingLongText();
-    const index = activeChapterIndexRef.current;
-    const current = contentRef.current.content?.[index];
-    const result = splitLongTextChapter(contentRef.current, index, {
-      chapterId: `chapter-${Date.now()}`,
-      before,
-      after,
-    });
-    if (!result || !current) return;
-    activeChapterIndexRef.current = result.activeIndex;
-    replaceLongTextDocument(result.document);
-    setActiveChapterIndex(result.activeIndex);
-    setNotice(
-      `已在光标处拆分为“${String(current.attrs?.title ?? "当前章")}”与“第 ${index + 2} 章”`,
-    );
-  };
-
-  /** 把防抖中的章节编辑写回整体文档（按章节 id 定位，不动其他章节）。 */
-  const commitChapterEdit = () => {
-    const pending = chapterEditPendingRef.current;
-    chapterEditPendingRef.current = null;
-    if (!pending) return;
-    const updated = updateLongTextChapter(
-      contentRef.current,
-      pending.chapterId,
-      pending.patch,
-    );
-    if (updated) replaceContent(updated);
-  };
-
-  /** 章节编辑回调（来自节点视图的引用修改）：防抖后写回整体数据。 */
-  const handleChapterEdit = (
-    chapterId: string,
-    patch: { title?: string; text?: string },
-  ) => {
-    chapterEditPendingRef.current = { chapterId, patch };
-    if (chapterEditTimerRef.current !== null)
-      window.clearTimeout(chapterEditTimerRef.current);
-    chapterEditTimerRef.current = window.setTimeout(commitChapterEdit, 300);
-  };
-
-  const closeLongTextMode = () => {
-    longTextOperationRef.current += 1;
-    longTextDraftReadyRef.current = false;
-    commitPendingLongText();
-    if (longTextWriteTimerRef.current !== null) {
-      window.clearTimeout(longTextWriteTimerRef.current);
-      longTextWriteTimerRef.current = null;
-    }
-    if (draftSaveTimerRef.current !== null) {
-      window.clearTimeout(draftSaveTimerRef.current);
-      draftSaveTimerRef.current = null;
-    }
-    if (normalContentRef.current) {
-      replaceContent(normalContentRef.current);
-      normalContentRef.current = null;
-    }
-    setLongTextMode(false);
-  };
-  const openLongTextMode = async () => {
-    const operation = ++longTextOperationRef.current;
-    normalContentRef.current = contentRef.current;
-    longTextDraftReadyRef.current = false;
-    activeChapterIndexRef.current = 0;
-    setActiveChapterIndex(0);
-    setHasLocalDraft(false);
-    setLongTextMode(true);
-    replaceLongTextDocument({ type: "doc", content: [] });
-    try {
-      const raw = await loadLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY);
-      if (operation === longTextOperationRef.current) setRawText(raw ?? null);
-      const stored = await loadLongTextDraft(LOCAL_LONG_TEXT_KEY);
-      if (operation !== longTextOperationRef.current) return;
-      if (stored && (stored.content ?? []).length > 0) {
-        setHasLocalDraft(true);
-        setNotice("检测到本机草稿，可点击“恢复本机草稿”");
-      } else {
-        setNotice("长文本工作台已就绪，可导入 .txt 或开始写作");
-      }
-    } catch {
-      if (operation === longTextOperationRef.current)
-        setNotice("无法读取本机草稿，已打开空白长文本工作台");
-    } finally {
-      if (operation === longTextOperationRef.current)
-        longTextDraftReadyRef.current = true;
-    }
-  };
-
-  const restoreLongTextDraft = async () => {
-    const operation = ++longTextOperationRef.current;
-    longTextDraftReadyRef.current = false;
-    try {
-      const raw = await loadLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY);
-      if (operation === longTextOperationRef.current) setRawText(raw ?? null);
-      const stored = await loadLongTextDraft(LOCAL_LONG_TEXT_KEY);
-      if (operation !== longTextOperationRef.current) return;
-      if (stored) {
-        activeChapterIndexRef.current = 0;
-        setActiveChapterIndex(0);
-        replaceLongTextDocument(stored);
-        setHasLocalDraft(false);
-        setNotice("已恢复本机草稿");
-      } else {
-        setHasLocalDraft(false);
-        setNotice("没有可恢复的本机草稿");
-      }
-    } catch {
-      if (operation === longTextOperationRef.current)
-        setNotice("无法读取本机草稿，请检查浏览器存储");
-    } finally {
-      if (operation === longTextOperationRef.current)
-        longTextDraftReadyRef.current = true;
-    }
-  };
-  const handleLongTextImport = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      if (!text.trim()) {
-        setNotice("未导入空白文本");
-        return;
-      }
-      const imported = createLongTextDocument(text, chapterTitleStyle);
-      longTextOperationRef.current += 1;
-      longTextDraftReadyRef.current = true;
-      setHasLocalDraft(false);
-      activeChapterIndexRef.current = 0;
-      setActiveChapterIndex(0);
-      setRawText(text);
-      void saveLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY, text).catch(() => {
-        setNotice("原文快照保存失败，原文对照列可能不可用");
-      });
-      replaceLongTextDocument(imported);
-      setLongTextMode(true);
-      setNotice(`已导入 ${file.name}，共 ${text.length.toLocaleString()} 字`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "文本导入失败");
-    }
-  };
-  // 回滚响应已经是一个新 revision；编辑器通过受控 content 同步显示该快照。
   const rollback = async (revision: number) => {
     try {
-      const next = await restoreRevision(
-        document.id,
-        revision,
-        autosave.revision,
-      );
-      setDocument(next);
-      queryClient.setQueryData<DocumentEnvelope>(["document", next.id], next);
-      contentRef.current = next.content;
-      generationRef.current += 1;
-      setContent(next.content);
-      setGeneration(generationRef.current);
+      const next = await compose.rollback(revision);
       setNotice(`已回退到版本 ${revision}，并创建版本 ${next.revision}`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "版本回退失败");
     }
   };
-  /** 准备分章上传：先展示本地核对结果（未切分段落），再逐章上传。 */
-  const prepareUpload = async () => {
-    commitPendingLongText();
-    const nodes = contentRef.current.content ?? [];
-    if (nodes.length === 0) {
-      setNotice("当前没有可上传的章节");
-      return;
-    }
-    const gaps = collectRawGaps(coverageChapters);
-    setUploadDiff({
-      total: nodes.length,
-      toUpdate: nodes.length,
-      added: nodes.length,
-      modified: 0,
-      gaps: gaps.length,
-      rows: nodes.map((node, index) => ({
-        id: String(node.attrs?.chapterId ?? `chapter-${index}`),
-        title: String(node.attrs?.title ?? "未命名章节"),
-        status: "新增" as const,
-      })),
-    });
-    setUploadOpen(true);
-  };
 
-  /** 确认后分章上传：每个章节一个请求（含内容与哈希）。 */
-  const confirmUpload = async () => {
-    if (!uploadDiff) return;
-    const nodes = contentRef.current.content ?? [];
-    setUploading(true);
-    let uploaded = 0;
-    try {
-      const directory = await listDemoChapters();
-      const revisionById = new Map(
-        directory.map((chapter) => [chapter.id, chapter.revision]),
-      );
-      for (let index = 0; index < nodes.length; index += 1) {
-        const node = nodes[index];
-        if (!node) continue;
-        const chapterId = String(node.attrs?.chapterId ?? `chapter-${index}`);
-        const hash = await sha256Hex(String(node.attrs?.text ?? ""));
-        await uploadLongTextChapter("demo-post", chapterId, {
-          title: String(node.attrs?.title ?? "未命名章节"),
-          order: index,
-          content: { type: "doc", content: [{ ...node }] },
-          hash,
-          baseRevision: revisionById.get(chapterId) ?? 0,
-        });
-        uploaded += 1;
-      }
-      setUploadOpen(false);
-      setUploadDiff(null);
-      setNotice(`已分章上传 ${uploaded} 章`);
-      void queryClient.invalidateQueries({ queryKey: ["demo", "chapters"] });
-    } catch (error) {
-      setNotice(
-        error instanceof Error ? `上传失败：${error.message}` : "上传失败",
-      );
-    } finally {
-      setUploading(false);
-    }
-  };
-  // 显式发布先 flush，保证提示出现时最新正文已经进入保存队列。
   const publish = async (latestContent?: RichTextNode) => {
-    if (longTextMode) {
-      commitPendingLongText();
-      const snapshot = contentRef.current;
-      try {
-        await saveLongTextDraft(LOCAL_LONG_TEXT_KEY, snapshot);
-        setHasLocalDraft(false);
-        setNotice("长文本已保存在本机；上传时将按章节分别提交");
-      } catch {
-        setNotice("本机草稿保存失败，请检查浏览器存储空间");
-      }
+    if (longText.enabled) {
+      await longText.saveDraft();
       return;
     }
-    if (isPlaceholderData) return;
     const snapshot =
       latestContent ??
       (editorRef.current?.getJSON() as RichTextNode | undefined);
-    if (snapshot) {
-      const next = longTextMode
-        ? snapshot
-        : mergeChapter(contentRef.current, activeIndex, snapshot);
-      if (JSON.stringify(next) !== JSON.stringify(contentRef.current)) {
-        replaceContent(next);
-      }
-    }
-    const saved = await autosave.flush(
-      contentRef.current,
-      generationRef.current,
-    );
+    const saved = await compose.publishChapter(activeIndex, snapshot);
     if (!saved) return;
     setNotice(
       mode === "compact"
@@ -670,17 +105,22 @@ export default function ComposePage() {
 
   const editor = (
     <RichTextEditor
-      // 导入或恢复整本草稿时重建编辑器；普通输入不改变该版本，保留编辑体验。
-      key={longTextMode ? `long-text-${longTextDocumentVersion}` : activeIndex}
-      content={longTextMode ? longTextEditorContent : editorContent}
+      key={
+        longText.enabled ? `long-text-${longText.documentVersion}` : activeIndex
+      }
+      content={longText.enabled ? longText.editorContent : editorContent}
       mode={mode}
-      editable={!isPlaceholderData}
-      longTextMode={longTextMode}
-      onChange={updateContent}
-      onSplitChapter={splitCurrentChapter}
-      onChapterEdit={handleChapterEdit}
+      editable={!compose.isPlaceholderData}
+      longTextMode={longText.enabled}
+      onChange={(next) => {
+        if (compose.isPlaceholderData) return;
+        if (longText.enabled) longText.updateEditor(next);
+        else compose.updateChapter(activeIndex, next);
+      }}
+      onSplitChapter={longText.splitChapter}
+      onChapterEdit={longText.editChapter}
       onSubmit={(latestContent) => void publish(latestContent)}
-      savedAt={autosave.savedAt}
+      savedAt={compose.autosave.savedAt}
       onReady={(editorInstance) => {
         editorRef.current = editorInstance;
       }}
@@ -689,6 +129,15 @@ export default function ComposePage() {
       onCommentAnchorOpen={setThreadId}
     />
   );
+
+  const saveStatus = (
+    <SaveStatus
+      state={compose.isPlaceholderData ? "loading" : compose.autosave.state}
+      revision={compose.autosave.revision}
+      savedAt={compose.autosave.savedAt}
+    />
+  );
+
   return (
     <main className="mx-auto max-w-[1600px] px-5 pt-[18px] pb-[42px] max-[840px]:px-2.5 max-[840px]:pt-3 max-[840px]:pb-7 max-[430px]:px-0 max-[430px]:pt-2 max-[430px]:pb-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-1">
@@ -706,17 +155,17 @@ export default function ComposePage() {
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             size="sm"
-            variant={longTextMode ? "secondary" : "outline"}
-            aria-pressed={longTextMode}
+            variant={longText.enabled ? "secondary" : "outline"}
+            aria-pressed={longText.enabled}
             onClick={() => {
-              if (longTextMode) closeLongTextMode();
-              else openLongTextMode();
+              if (longText.enabled) longText.close();
+              else void longText.open();
             }}
           >
             <BookOpen size={14} />
             长文本
           </Button>
-          {!longTextMode && (
+          {!longText.enabled ? (
             <Segmented
               value={mode}
               onChange={setMode}
@@ -735,24 +184,26 @@ export default function ComposePage() {
                 },
               ]}
             />
-          )}
+          ) : null}
         </div>
       </div>
-      {(autosave.state === "conflict" ||
-        (autosave.state === "error" && autosave.conflictMessage)) && (
+
+      {compose.autosave.state === "conflict" ||
+      (compose.autosave.state === "error" &&
+        compose.autosave.conflictMessage) ? (
         <div
           className={cn(
             "mb-3 flex flex-wrap items-center gap-3 rounded-md border px-3 py-2 text-xs",
-            autosave.state === "conflict"
+            compose.autosave.state === "conflict"
               ? "border-[#e5b75e] bg-[#fff9eb] text-[#72500f]"
               : "border-[#f0b4b0] bg-[#fdf1f0] text-[#8f2b24]",
           )}
         >
           <AlertTriangle size={16} />
           <span className="min-w-[220px] flex-1">
-            {autosave.conflictMessage}
+            {compose.autosave.conflictMessage}
           </span>
-          {autosave.state === "error" ? (
+          {compose.autosave.state === "error" ? (
             <span className="whitespace-nowrap">
               当前身份：{identity.name}（仅作者或版主可保存，请切换身份后重试）
             </span>
@@ -763,7 +214,7 @@ export default function ComposePage() {
                 variant="outline"
                 onClick={() =>
                   navigator.clipboard.writeText(
-                    JSON.stringify(content, null, 2),
+                    JSON.stringify(compose.content, null, 2),
                   )
                 }
               >
@@ -775,8 +226,9 @@ export default function ComposePage() {
             </>
           )}
         </div>
-      )}
-      {notice && (
+      ) : null}
+
+      {notice ? (
         <div className="mb-3 flex items-center gap-2 rounded-md border border-[#add4cb] bg-[#edf8f5] px-3 py-2 text-xs text-[#185f57]">
           <Check size={15} />
           <span className="flex-1">{notice}</span>
@@ -788,190 +240,67 @@ export default function ComposePage() {
             <X size={14} />
           </button>
         </div>
-      )}
-      {longTextMode ? (
+      ) : null}
+
+      {longText.enabled ? (
         <LongTextWorkspace
-          saveStatus={
-            <SaveStatus
-              state={isPlaceholderData ? "loading" : autosave.state}
-              revision={autosave.revision}
-              savedAt={autosave.savedAt}
-            />
-          }
-          controls={
-            <>
-              <input
-                ref={longTextFileInputRef}
-                type="file"
-                accept="text/plain,.txt"
-                className="sr-only"
-                aria-label="导入长文本文件"
-                onChange={(event) => void handleLongTextImport(event)}
-              />
-              <label className="sr-only" htmlFor="long-text-heading-style">
-                章节标题风格
-              </label>
-              <select
-                id="long-text-heading-style"
-                className="h-8 border bg-background px-2 text-xs"
-                value={chapterTitleStyle}
-                onChange={(event) =>
-                  setChapterTitleStyle(event.target.value as ChapterTitleStyle)
-                }
-                aria-label="章节标题风格"
-              >
-                {chapterStyleOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={isPlaceholderData}
-                onClick={() => longTextFileInputRef.current?.click()}
-              >
-                <FileUp size={14} />
-                导入 .txt
-              </Button>
-              {hasLocalDraft && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => void restoreLongTextDraft()}
-                >
-                  恢复本机草稿
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setCoverageOpen(true)}
-              >
-                全文对比
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setAddChapterOpen(true)}
-              >
-                添加章节
-              </Button>
-              <Button
-                size="sm"
-                disabled={uploading}
-                onClick={() => void prepareUpload()}
-              >
-                <Save size={14} />
-                {uploading ? "上传中…" : "确定并上传"}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={closeLongTextMode}>
-                退出长文本
-              </Button>
-            </>
-          }
-          chapters={chapterSummaries}
-          coverageChapters={coverageChapters}
-          activeIndex={activeChapterIndex}
-          rawText={rawText}
+          saveStatus={saveStatus}
+          chapters={longText.chapterSummaries}
+          coverageChapters={longText.coverageChapters}
+          activeIndex={longText.activeIndex}
+          rawText={longText.rawText}
           editor={<EditorErrorBoundary>{editor}</EditorErrorBoundary>}
-          onSelect={selectChapter}
-          onDelete={deleteChapter}
-          onMerge={mergeChapterAt}
-          onMove={moveChapter}
-          onCreateFromGap={createChapterFromGap}
+          chapterTitleStyle={longText.chapterTitleStyle}
+          hasLocalDraft={longText.hasLocalDraft}
+          isPlaceholderData={compose.isPlaceholderData}
+          uploadOpen={upload.open}
+          uploadDiff={upload.diff}
+          preparingUpload={upload.preparing}
+          uploading={upload.uploading}
+          onChapterTitleStyleChange={longText.setChapterTitleStyle}
+          onImportFile={longText.importFile}
+          onRestoreDraft={longText.restoreDraft}
+          onPrepareUpload={upload.prepare}
+          onCancelUpload={upload.cancel}
+          onConfirmUpload={upload.confirm}
+          onExit={longText.close}
+          onAddChapter={longText.addChapter}
+          onSelect={longText.selectChapter}
+          onDelete={longText.deleteChapter}
+          onMerge={longText.mergeChapter}
+          onMove={longText.moveChapter}
+          onCreateFromGap={longText.createChapterFromGap}
         />
-      ) : mode === "full" ? (
+      ) : (
         <StandardComposeWorkspace
+          mode={mode}
           chapters={chapters}
           activeIndex={activeIndex}
-          title={chapters[activeIndex]?.title ?? document.title}
+          title={chapters[activeIndex]?.title ?? compose.document.title}
           saveStatus={
             <SaveStatus
-              state={isPlaceholderData ? "loading" : autosave.state}
-              revision={chapterDirectory[activeIndex]?.revision ?? autosave.revision}
-              savedAt={autosave.savedAt}
+              state={
+                compose.isPlaceholderData ? "loading" : compose.autosave.state
+              }
+              revision={
+                chapterDirectory[activeIndex]?.revision ??
+                compose.autosave.revision
+              }
+              savedAt={compose.autosave.savedAt}
             />
           }
           editor={editor}
           identity={identity}
-          documentId={document.id}
-          revision={autosave.revision}
-          saveDisabled={isPlaceholderData}
+          documentId={compose.document.id}
+          revision={compose.autosave.revision}
+          saveDisabled={compose.isPlaceholderData}
           onSelectChapter={setChapterIndex}
           onSave={() => void publish()}
           onRestore={(revision) => void rollback(revision)}
+          onExpand={() => setMode("full")}
         />
-      ) : (
-        <section className="relative">
-          {mode === "mobile" ? (
-            <>
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="打开章节目录"
-                aria-expanded={mobileChapterRailOpen}
-                className="fixed left-2 top-[76px] z-30 h-11 w-11 shadow-panel"
-                onClick={() => setMobileChapterRailOpen(true)}
-              >
-                <PanelLeftOpen size={20} />
-              </Button>
-              {mobileChapterRailOpen ? (
-                <div className="fixed inset-0 z-50" role="presentation">
-                  <button
-                    type="button"
-                    aria-label="关闭章节目录"
-                    className="absolute inset-0 bg-black/35"
-                    onClick={() => setMobileChapterRailOpen(false)}
-                  />
-                  <div
-                    className="absolute inset-y-0 left-0 w-[min(84vw,340px)] border-r border-border bg-white p-2 pt-[calc(12px+env(safe-area-inset-top))] shadow-2xl"
-                    role="dialog"
-                    aria-label="章节目录"
-                    aria-modal="true"
-                  >
-                    <div className="mb-2 flex items-center justify-between px-1">
-                      <strong className="text-sm">章节目录</strong>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="关闭章节目录"
-                        onClick={() => setMobileChapterRailOpen(false)}
-                      >
-                        <X size={18} />
-                      </Button>
-                    </div>
-                    <ChapterRail
-                      chapters={chapters}
-                      currentIndex={activeIndex}
-                      onSelect={(index) => {
-                        setChapterIndex(index);
-                        setMobileChapterRailOpen(false);
-                      }}
-                      className="static max-h-[calc(100vh-78px)] rounded-md shadow-none"
-                    />
-                  </div>
-                </div>
-              ) : null}
-            </>
-          ) : null}
-          <div className="mx-auto mb-2 flex max-w-[860px] items-center justify-between px-1">
-            <SaveStatus
-              state={isPlaceholderData ? "loading" : autosave.state}
-              revision={autosave.revision}
-              savedAt={autosave.savedAt}
-            />
-            {mode === "compact" && (
-              <Button variant="ghost" size="sm" onClick={() => setMode("full")}>
-                <Maximize2 size={14} />
-                展开
-              </Button>
-            )}
-          </div>
-          {editor}
-        </section>
       )}
+
       <Dialog
         open={threadId !== null}
         onOpenChange={(open) => {
@@ -983,37 +312,6 @@ export default function ComposePage() {
       >
         <CommentThread identity={identity} initial={comments} compact />
       </Dialog>
-      {coverageOpen && (
-        <ChapterCoverageDialog
-          chapters={coverageChapters}
-          onClose={() => setCoverageOpen(false)}
-        />
-      )}
-      <AddChapterDialog
-        open={addChapterOpen}
-        title={addChapterTitle}
-        text={addChapterText}
-        onOpenChange={(open) => {
-          setAddChapterOpen(open);
-          if (!open) {
-            setAddChapterTitle("");
-            setAddChapterText("");
-          }
-        }}
-        onTitleChange={setAddChapterTitle}
-        onTextChange={setAddChapterText}
-        onSubmit={addChapter}
-      />
-      <ChapterUploadDialog
-        open={uploadOpen}
-        diff={uploadDiff}
-        uploading={uploading}
-        onOpenChange={(open) => {
-          setUploadOpen(open);
-          if (!open) setUploadDiff(null);
-        }}
-        onConfirm={() => void confirmUpload()}
-      />
     </main>
   );
 }

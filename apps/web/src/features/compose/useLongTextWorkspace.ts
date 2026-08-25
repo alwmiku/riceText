@@ -1,0 +1,376 @@
+import {
+  MAX_CHAPTER_LENGTH,
+  type ChapterTitleStyle,
+} from "@ricetext/editor-core";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
+import type { RichTextNode } from "../../lib/types";
+import {
+  loadLongTextDraft,
+  loadLongTextRaw,
+  saveLongTextRaw,
+} from "../../lib/long-text-draft-storage";
+import { createLongTextDocument } from "../editor/long-text-import";
+import {
+  appendGapLongTextChapter,
+  appendLongTextChapter,
+  deleteLongTextChapter,
+  mergeLongTextChapter,
+  moveLongTextChapter,
+  splitLongTextChapter,
+} from "../editor/long-text-chapter-operations";
+import {
+  activeLongTextChapter,
+  mapLongTextCoverage,
+  summarizeLongTextChapters,
+} from "./long-text-workspace-projections";
+import { useLongTextDraftPersistence } from "./useLongTextDraftPersistence";
+import { useLongTextEditorBuffer } from "./useLongTextEditorBuffer";
+
+const LOCAL_LONG_TEXT_KEY = "ricetext:local-long-text:demo-post";
+const LOCAL_LONG_TEXT_RAW_KEY = "ricetext:local-long-text-raw:demo-post";
+
+interface LongTextWorkspaceOptions {
+  content: RichTextNode;
+  contentRef: MutableRefObject<RichTextNode>;
+  replaceContent: (next: RichTextNode) => void;
+  setAutosaveEnabled: (enabled: boolean) => void;
+  setNotice: (notice: string) => void;
+}
+
+/** Owns long-text mode transitions, local drafts, chapter editing and raw coverage. */
+export function useLongTextWorkspace({
+  content,
+  contentRef,
+  replaceContent,
+  setAutosaveEnabled,
+  setNotice,
+}: LongTextWorkspaceOptions) {
+  const [enabled, setEnabled] = useState(false);
+  const [hasLocalDraft, setHasLocalDraft] = useState(false);
+  const [documentVersion, setDocumentVersion] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [chapterTitleStyle, setChapterTitleStyle] =
+    useState<ChapterTitleStyle>("auto");
+  const [rawText, setRawText] = useState<string | null>(null);
+  const activeIndexRef = useRef(0);
+  const normalContentRef = useRef<RichTextNode | null>(null);
+  const operationRef = useRef(0);
+  const handleDraftError = useCallback(
+    () => setNotice("本机草稿自动保存失败，请检查浏览器存储空间"),
+    [setNotice],
+  );
+  const {
+    markChanged,
+    suspend: suspendDraft,
+    resume: resumeDraft,
+    saveNow: saveDraftNow,
+  } = useLongTextDraftPersistence({
+    enabled,
+    draftKey: LOCAL_LONG_TEXT_KEY,
+    contentRef,
+    onError: handleDraftError,
+  });
+  const {
+    flush: flushEdits,
+    updateEditor,
+    editChapter,
+  } = useLongTextEditorBuffer({
+    contentRef,
+    activeIndexRef,
+    replaceContent,
+    onChanged: markChanged,
+  });
+
+  const replaceLongTextDocument = useCallback(
+    (next: RichTextNode) => {
+      replaceContent(next);
+      setDocumentVersion((version) => version + 1);
+      markChanged();
+    },
+    [markChanged, replaceContent],
+  );
+
+  const chapterSummaries = useMemo(
+    () => (enabled ? summarizeLongTextChapters(content) : []),
+    [content, enabled],
+  );
+  const coverageChapters = useMemo(
+    () => (enabled ? mapLongTextCoverage(content, rawText) : []),
+    [content, enabled, rawText],
+  );
+  const editorContent = useMemo(
+    () =>
+      enabled
+        ? activeLongTextChapter(content, activeIndex)
+        : { type: "doc", content: [] },
+    [activeIndex, content, enabled],
+  );
+
+  const open = useCallback(async () => {
+    const operation = ++operationRef.current;
+    normalContentRef.current = contentRef.current;
+    suspendDraft();
+    activeIndexRef.current = 0;
+    setActiveIndex(0);
+    setHasLocalDraft(false);
+    setAutosaveEnabled(false);
+    setEnabled(true);
+    replaceContent({ type: "doc", content: [] });
+    setDocumentVersion((version) => version + 1);
+    try {
+      const [raw, stored] = await Promise.all([
+        loadLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY),
+        loadLongTextDraft(LOCAL_LONG_TEXT_KEY),
+      ]);
+      if (operation !== operationRef.current) return;
+      setRawText(raw ?? null);
+      if (stored && (stored.content ?? []).length > 0) {
+        setHasLocalDraft(true);
+        setNotice("检测到本机草稿，可点击“恢复本机草稿”");
+      } else {
+        setNotice("长文本工作台已就绪，可导入 .txt 或开始写作");
+      }
+    } catch {
+      if (operation === operationRef.current)
+        setNotice("无法读取本机草稿，已打开空白长文本工作台");
+    } finally {
+      if (operation === operationRef.current) resumeDraft();
+    }
+  }, [
+    contentRef,
+    replaceContent,
+    resumeDraft,
+    setAutosaveEnabled,
+    setNotice,
+    suspendDraft,
+  ]);
+
+  const close = useCallback(() => {
+    operationRef.current += 1;
+    flushEdits();
+    suspendDraft();
+    const normalContent = normalContentRef.current;
+    normalContentRef.current = null;
+    if (normalContent) replaceContent(normalContent);
+    setEnabled(false);
+    setAutosaveEnabled(true);
+  }, [flushEdits, replaceContent, setAutosaveEnabled, suspendDraft]);
+
+  const restoreDraft = useCallback(async () => {
+    const operation = ++operationRef.current;
+    suspendDraft();
+    try {
+      const [raw, stored] = await Promise.all([
+        loadLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY),
+        loadLongTextDraft(LOCAL_LONG_TEXT_KEY),
+      ]);
+      if (operation !== operationRef.current) return;
+      setRawText(raw ?? null);
+      if (!stored) {
+        setHasLocalDraft(false);
+        setNotice("没有可恢复的本机草稿");
+        return;
+      }
+      activeIndexRef.current = 0;
+      setActiveIndex(0);
+      replaceContent(stored);
+      setDocumentVersion((version) => version + 1);
+      setHasLocalDraft(false);
+      setNotice("已恢复本机草稿");
+    } catch {
+      if (operation === operationRef.current)
+        setNotice("无法读取本机草稿，请检查浏览器存储");
+    } finally {
+      if (operation === operationRef.current) resumeDraft();
+    }
+  }, [replaceContent, resumeDraft, setNotice, suspendDraft]);
+
+  const importFile = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text();
+        if (!text.trim()) {
+          setNotice("未导入空白文本");
+          return;
+        }
+        const imported = createLongTextDocument(text, chapterTitleStyle);
+        operationRef.current += 1;
+        resumeDraft();
+        setHasLocalDraft(false);
+        activeIndexRef.current = 0;
+        setActiveIndex(0);
+        setRawText(text);
+        void saveLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY, text).catch(() => {
+          setNotice("原文快照保存失败，原文对照列可能不可用");
+        });
+        replaceLongTextDocument(imported);
+        setEnabled(true);
+        setNotice(`已导入 ${file.name}，共 ${text.length.toLocaleString()} 字`);
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "文本导入失败");
+      }
+    },
+    [chapterTitleStyle, replaceLongTextDocument, resumeDraft, setNotice],
+  );
+
+  const saveDraft = useCallback(async () => {
+    flushEdits();
+    try {
+      await saveDraftNow();
+      setHasLocalDraft(false);
+      setNotice("长文本已保存在本机；上传时将按章节分别提交");
+      return true;
+    } catch {
+      setNotice("本机草稿保存失败，请检查浏览器存储空间");
+      return false;
+    }
+  }, [flushEdits, saveDraftNow, setNotice]);
+
+  const selectChapter = useCallback(
+    (index: number) => {
+      if (index === activeIndexRef.current) return;
+      flushEdits();
+      activeIndexRef.current = index;
+      setActiveIndex(index);
+      setDocumentVersion((version) => version + 1);
+    },
+    [flushEdits],
+  );
+
+  const applyOperation = useCallback(
+    (result: { document: RichTextNode; activeIndex: number } | null) => {
+      if (!result) return false;
+      activeIndexRef.current = result.activeIndex;
+      replaceLongTextDocument(result.document);
+      setActiveIndex(result.activeIndex);
+      return true;
+    },
+    [replaceLongTextDocument],
+  );
+
+  const deleteChapter = useCallback(
+    (index: number) => {
+      flushEdits();
+      applyOperation(
+        deleteLongTextChapter(
+          contentRef.current,
+          index,
+          activeIndexRef.current,
+        ),
+      );
+    },
+    [applyOperation, contentRef, flushEdits],
+  );
+
+  const mergeChapter = useCallback(
+    (index: number) => {
+      flushEdits();
+      applyOperation(mergeLongTextChapter(contentRef.current, index));
+    },
+    [applyOperation, contentRef, flushEdits],
+  );
+
+  const moveChapter = useCallback(
+    (from: number, to: number) => {
+      flushEdits();
+      applyOperation(moveLongTextChapter(contentRef.current, from, to));
+    },
+    [applyOperation, contentRef, flushEdits],
+  );
+
+  const addChapter = useCallback(
+    (titleInput: string, textInput: string) => {
+      const title = titleInput.trim();
+      const text = textInput.slice(0, MAX_CHAPTER_LENGTH);
+      if (!title && !text) return false;
+      flushEdits();
+      applyOperation(
+        appendLongTextChapter(contentRef.current, {
+          chapterId: `manual-chapter-${Date.now()}`,
+          title,
+          text,
+        }),
+      );
+      setNotice(`已添加章节“${title || "未命名章节"}”`);
+      return true;
+    },
+    [applyOperation, contentRef, flushEdits, setNotice],
+  );
+
+  const createChapterFromGap = useCallback(
+    (text: string, start: number, end: number) => {
+      if (!text.trim()) return;
+      flushEdits();
+      if (
+        applyOperation(
+          appendGapLongTextChapter(contentRef.current, {
+            chapterId: `gap-chapter-${Date.now()}`,
+            text,
+            start,
+            end,
+          }),
+        )
+      ) {
+        setNotice("已把未切分段落创建为新章节，请补充标题并核对内容");
+      }
+    },
+    [applyOperation, contentRef, flushEdits, setNotice],
+  );
+
+  const splitChapter = useCallback(
+    (before: string, after: string) => {
+      flushEdits();
+      const index = activeIndexRef.current;
+      const current = contentRef.current.content?.[index];
+      if (
+        current &&
+        applyOperation(
+          splitLongTextChapter(contentRef.current, index, {
+            chapterId: `chapter-${Date.now()}`,
+            before,
+            after,
+          }),
+        )
+      ) {
+        setNotice(
+          `已在光标处拆分为“${String(current.attrs?.title ?? "当前章")}”与“第 ${index + 2} 章”`,
+        );
+      }
+    },
+    [applyOperation, contentRef, flushEdits, setNotice],
+  );
+
+  return {
+    enabled,
+    hasLocalDraft,
+    documentVersion,
+    activeIndex,
+    chapterTitleStyle,
+    rawText,
+    chapterSummaries,
+    coverageChapters,
+    editorContent,
+    setChapterTitleStyle,
+    open,
+    close,
+    restoreDraft,
+    importFile,
+    saveDraft,
+    flushEdits,
+    updateEditor,
+    selectChapter,
+    deleteChapter,
+    mergeChapter,
+    moveChapter,
+    addChapter,
+    createChapterFromGap,
+    splitChapter,
+    editChapter,
+  };
+}

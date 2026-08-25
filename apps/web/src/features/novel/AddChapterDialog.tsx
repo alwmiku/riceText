@@ -1,23 +1,31 @@
 import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
+import { useEffect, useState } from "react";
 import { Button, Dialog } from "../../components/ui";
 
 export function AddChapterDialog({
   open,
-  title,
-  text,
   onOpenChange,
-  onTitleChange,
-  onTextChange,
   onSubmit,
 }: {
   open: boolean;
-  title: string;
-  text: string;
   onOpenChange: (open: boolean) => void;
-  onTitleChange: (value: string) => void;
-  onTextChange: (value: string) => void;
-  onSubmit: () => void;
+  onSubmit: (title: string, text: string) => boolean;
 }) {
+  const [title, setTitle] = useState("");
+  const [text, setText] = useState("");
+
+  useEffect(() => {
+    if (!open) {
+      setTitle("");
+      setText("");
+    }
+  }, [open]);
+
+  const submit = () => {
+    if (!onSubmit(title, text)) return;
+    onOpenChange(false);
+  };
+
   return (
     <Dialog
       open={open}
@@ -27,14 +35,17 @@ export function AddChapterDialog({
       className="max-w-2xl"
     >
       <div className="space-y-3">
-        <label className="block text-xs font-medium" htmlFor="add-chapter-title">
+        <label
+          className="block text-xs font-medium"
+          htmlFor="add-chapter-title"
+        >
           章节标题
         </label>
         <input
           id="add-chapter-title"
           className="w-full rounded-md border px-3 py-2 text-sm"
           value={title}
-          onChange={(event) => onTitleChange(event.target.value)}
+          onChange={(event) => setTitle(event.target.value)}
           placeholder="例如：番外 · 雨季来信"
         />
         <label className="block text-xs font-medium" htmlFor="add-chapter-text">
@@ -45,14 +56,14 @@ export function AddChapterDialog({
           className="h-40 w-full rounded-md border px-3 py-2 text-sm"
           value={text}
           maxLength={MAX_CHAPTER_LENGTH}
-          onChange={(event) => onTextChange(event.target.value)}
+          onChange={(event) => setText(event.target.value)}
           placeholder="粘贴或输入章节内容…"
         />
         <div className="flex justify-end gap-2">
           <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button size="sm" onClick={onSubmit}>
+          <Button size="sm" onClick={submit}>
             添加并编辑
           </Button>
         </div>
