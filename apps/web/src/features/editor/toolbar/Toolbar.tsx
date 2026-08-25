@@ -32,9 +32,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from "../../components/ui";
-import { createId } from "../../lib/utils";
-import { CompactToolbarControls } from "./CompactToolbarControls";
+} from "../../../components/ui";
+import { createId } from "../../../lib/utils";
+import { CompactToolbarControls } from "../CompactToolbarControls";
 import { ToolbarButton } from "./ToolbarButton";
 import { toolbarColors } from "./toolbar-constants";
 import {
@@ -42,7 +42,7 @@ import {
   isContainerNodeActive,
   isRichNodeActive,
   unwrapOutermostReplyGate,
-} from "./commands";
+} from "../commands";
 import {
   AttachmentDialog,
   DiceDialog,
@@ -51,7 +51,7 @@ import {
   MentionDialog,
   PollDialog,
   type PollDialogValues,
-} from "./dialogs";
+} from "../dialogs";
 
 
 /** 完整/移动 Sheet 共用的格式与业务节点工具栏。 */

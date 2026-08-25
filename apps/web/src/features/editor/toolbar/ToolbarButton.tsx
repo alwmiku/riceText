@@ -1,5 +1,5 @@
-import { Button as ShadcnButton } from "../../components/ui/button";
-import { cn } from "../../lib/utils";
+import { Button as ShadcnButton } from "../../../components/ui/button";
+import { cn } from "../../../lib/utils";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export type ToolbarButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {

@@ -30,9 +30,9 @@ import {
 } from "lucide-react";
 import { DropdownMenuItem } from "../../components/ui";
 import { isContainerNodeActive } from "./commands";
-import { toolbarColors, dispatchToolbarInsert } from "./toolbar-constants";
-import { ToolbarButton } from "./ToolbarButton";
-import { ToolbarGroup } from "./ToolbarGroup";
+import { toolbarColors, dispatchToolbarInsert } from "./toolbar/toolbar-constants";
+import { ToolbarButton } from "./toolbar/ToolbarButton";
+import { ToolbarGroup } from "./toolbar/ToolbarGroup";
 
 export function CompactToolbarControls({
   editor,

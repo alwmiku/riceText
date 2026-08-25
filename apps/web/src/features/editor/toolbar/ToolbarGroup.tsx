@@ -4,7 +4,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from "../../components/ui";
+} from "../../../components/ui";
 import { ToolbarButton } from "./ToolbarButton";
 
 export function ToolbarGroup({
