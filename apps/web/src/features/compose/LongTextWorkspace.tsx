@@ -24,6 +24,7 @@ const chapterStyleOptions: Array<{
   { value: "numeric", label: "数字：1. 标题" },
 ];
 
+/** 长文本展示层：负责工具栏、三栏布局及其附属弹窗，不读写业务存储。 */
 export function LongTextWorkspace({
   saveStatus,
   chapters,
@@ -79,6 +80,7 @@ export function LongTextWorkspace({
   onMove: (from: number, to: number) => void;
   onCreateFromGap: (text: string, start: number, end: number) => void;
 }) {
+  // 文件选择器、弹窗开关属于展示层瞬时状态，不进入长文本领域 Hook。
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [coverageOpen, setCoverageOpen] = useState(false);
   const [addChapterOpen, setAddChapterOpen] = useState(false);

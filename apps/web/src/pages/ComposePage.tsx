@@ -26,7 +26,7 @@ import { splitDocumentByHeadings } from "../lib/chapters";
 import type { CommentReply, EditorMode, RichTextNode } from "../lib/types";
 import { cn } from "../lib/utils";
 
-/** Composes independent document, long-text, upload and presentation controllers. */
+/** 创作页编排层：组合文档、长文本、上传和展示控制器，不承载各领域内部状态机。 */
 export default function ComposePage() {
   const { identity } = useAppContext();
   const [mode, setMode] = useState<EditorMode>(() =>
@@ -41,6 +41,7 @@ export default function ComposePage() {
     queryKey: ["demo", "chapters"],
     queryFn: () => listDemoChapters(),
   });
+  // 三个控制器通过完整文档快照衔接；页面只负责跨领域编排和提示展示。
   const compose = useComposeDocument(
     "demo-post",
     chapterDirectory[chapterIndex]?.id,
@@ -55,6 +56,7 @@ export default function ComposePage() {
   const upload = useChapterUpload({
     novelId: "demo-post",
     getDocument: () => {
+      // 上传准备必须先冲刷章节防抖队列，才能冻结用户眼前的最新正文。
       longText.flushEdits();
       return compose.contentRef.current;
     },

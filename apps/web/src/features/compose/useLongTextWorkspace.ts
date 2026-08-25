@@ -43,7 +43,7 @@ interface LongTextWorkspaceOptions {
   setNotice: (notice: string) => void;
 }
 
-/** Owns long-text mode transitions, local drafts, chapter editing and raw coverage. */
+/** 长文本领域编排：管理模式切换、草稿恢复、章节命令和原文覆盖率。 */
 export function useLongTextWorkspace({
   content,
   contentRef,
@@ -51,6 +51,7 @@ export function useLongTextWorkspace({
   setAutosaveEnabled,
   setNotice,
 }: LongTextWorkspaceOptions) {
+  // React state 驱动界面；ref 为异步流程和防抖回调提供同步的当前值。
   const [enabled, setEnabled] = useState(false);
   const [hasLocalDraft, setHasLocalDraft] = useState(false);
   const [documentVersion, setDocumentVersion] = useState(0);
@@ -60,6 +61,7 @@ export function useLongTextWorkspace({
   const [rawText, setRawText] = useState<string | null>(null);
   const activeIndexRef = useRef(0);
   const normalContentRef = useRef<RichTextNode | null>(null);
+  // 每次异步打开/恢复递增令牌；旧请求返回时发现令牌失效便放弃写入。
   const operationRef = useRef(0);
   const handleDraftError = useCallback(
     () => setNotice("本机草稿自动保存失败，请检查浏览器存储空间"),
@@ -87,6 +89,7 @@ export function useLongTextWorkspace({
     onChanged: markChanged,
   });
 
+  // 结构变化递增 documentVersion，强制单章编辑器按新的章节边界重建。
   const replaceLongTextDocument = useCallback(
     (next: RichTextNode) => {
       replaceContent(next);
@@ -113,6 +116,7 @@ export function useLongTextWorkspace({
   );
 
   const open = useCallback(async () => {
+    // 普通正文先暂存；长文本使用独立内存文档并停用服务器 autosave。
     const operation = ++operationRef.current;
     normalContentRef.current = contentRef.current;
     suspendDraft();
@@ -152,6 +156,7 @@ export function useLongTextWorkspace({
   ]);
 
   const close = useCallback(() => {
+    // 先落下防抖编辑，再恢复进入工作区前的普通正文和服务器 autosave。
     operationRef.current += 1;
     flushEdits();
     suspendDraft();
@@ -243,6 +248,7 @@ export function useLongTextWorkspace({
     [flushEdits],
   );
 
+  // 所有纯章节操作都经此处同步文档、活动索引和编辑器版本。
   const applyOperation = useCallback(
     (result: { document: RichTextNode; activeIndex: number } | null) => {
       if (!result) return false;

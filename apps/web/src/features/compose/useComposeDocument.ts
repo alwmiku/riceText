@@ -29,7 +29,7 @@ export interface ComposeDocumentController {
   rollback: (revision: number) => Promise<DocumentEnvelope>;
 }
 
-/** Owns the server-backed document, edit generation, autosave, publish and rollback lifecycle. */
+/** 管理服务器文档、编辑代次、自动保存、显式发布和版本回滚。 */
 export function useComposeDocument(
   documentId: string,
   chapterId?: string,
@@ -40,6 +40,7 @@ export function useComposeDocument(
     queryFn: ({ signal }) => getDocument(documentId, signal),
     placeholderData: defaultDocument,
   });
+  // state 驱动渲染，ref 让 autosave、发布和长文本桥接始终读取最新正文与代次。
   const [document, setDocument] = useState<DocumentEnvelope>(data);
   const [content, setContent] = useState<RichTextNode>(data.content);
   const [generation, setGeneration] = useState(0);
@@ -47,8 +48,8 @@ export function useComposeDocument(
   const contentRef = useRef<RichTextNode>(data.content);
   const generationRef = useRef(0);
 
-  // Placeholder revision is demo metadata, not a server ordering guarantee. Before the
-  // first real edit, always hydrate the resolved query result regardless of revision.
+  // 占位文档的 revision 只是演示元数据，不能作为服务器版本的新旧依据。
+  // 首次真实编辑发生前始终接纳查询结果；编辑后则由 generationRef 阻止迟到响应覆盖正文。
   useEffect(() => {
     if (generationRef.current !== 0) return;
     if (data === document) return;
@@ -72,6 +73,7 @@ export function useComposeDocument(
     ...(chapterId ? { chapterId } : {}),
     enabled: autosaveEnabled,
     onSaved: (next) => {
+      // 保存结果更新文档基线，并刷新版本历史和独立章节版本号。
       setDocument((current) => ({
         ...current,
         content: next.content,
@@ -94,6 +96,7 @@ export function useComposeDocument(
 
   const publishChapter = useCallback(
     async (chapterIndex: number, latestChapter?: RichTextNode) => {
+      // 提交快捷键可能早于 React onChange；显式合并编辑器快照后再 flush。
       if (isPlaceholderData) return false;
       if (latestChapter) {
         const next = mergeChapter(
@@ -112,6 +115,7 @@ export function useComposeDocument(
 
   const rollback = useCallback(
     async (revision: number) => {
+      // 服务端回滚会创建新 revision；返回内容必须同时替换本地正文和保存基线。
       const next = await restoreRevision(
         document.id,
         revision,

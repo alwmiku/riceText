@@ -1,5 +1,6 @@
 import { Button, Dialog } from "../../components/ui";
 
+/** prepare 阶段生成的只读差异摘要，不包含正文上传载荷。 */
 export interface ChapterUploadDiff {
   total: number;
   toUpdate: number;
@@ -13,6 +14,7 @@ export interface ChapterUploadDiff {
   }>;
 }
 
+/** 只展示已冻结的章节差异计划，实际同步和上传由 useChapterUpload 管理。 */
 export function ChapterUploadDialog({
   open,
   diff,

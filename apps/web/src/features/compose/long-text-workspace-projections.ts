@@ -3,6 +3,7 @@ import type { CoverageChapter } from "../novel/ChapterCoverageDialog";
 import type { ChapterSummary } from "../novel/ChapterSidebar";
 import { expandRawRangeToIncludeLeadingTitle } from "../editor/long-text-ranges";
 
+/** 从完整章节 JSON 提取目录需要的轻量字段，避免侧栏持有正文节点。 */
 export function summarizeLongTextChapters(
   document: RichTextNode,
 ): ChapterSummary[] {
@@ -13,6 +14,7 @@ export function summarizeLongTextChapters(
   }));
 }
 
+/** 把章节保存的原文区间转换为覆盖率视图，并补齐标题所在的前导区间。 */
 export function mapLongTextCoverage(
   document: RichTextNode,
   rawText: string | null,
@@ -42,6 +44,7 @@ export function mapLongTextCoverage(
   });
 }
 
+/** 编辑器一次只装载一章；不存在的索引返回合法空文档。 */
 export function activeLongTextChapter(
   document: RichTextNode,
   activeIndex: number,

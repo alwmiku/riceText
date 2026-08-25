@@ -1,6 +1,9 @@
 import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
 import type { RichTextNode } from "../../lib/types";
-import { rawRangeForGapChapter, splitRawRangeAtCursor } from "./long-text-ranges";
+import {
+  rawRangeForGapChapter,
+  splitRawRangeAtCursor,
+} from "./long-text-ranges";
 
 export interface ChapterOperationResult {
   document: RichTextNode;
@@ -15,6 +18,7 @@ function withNodes(nodes: RichTextNode[]): RichTextNode {
   return { type: "doc", content: nodes };
 }
 
+/** 删除指定章节，并把活动索引收敛到删除后的有效范围。 */
 export function deleteLongTextChapter(
   document: RichTextNode,
   index: number,
@@ -29,6 +33,7 @@ export function deleteLongTextChapter(
   };
 }
 
+/** 把当前章合并到前一章，并延伸原文结束区间。 */
 export function mergeLongTextChapter(
   document: RichTextNode,
   index: number,
@@ -59,6 +64,7 @@ export function mergeLongTextChapter(
   return { document: withNodes(nodes), activeIndex: index - 1 };
 }
 
+/** 移动一个章节并返回移动后所在的活动索引。 */
 export function moveLongTextChapter(
   document: RichTextNode,
   from: number,
@@ -74,9 +80,16 @@ export function moveLongTextChapter(
   return { document: withNodes(nodes), activeIndex: to };
 }
 
+/** 在文档末尾追加规范化的长文本章节，并限制正文最大长度。 */
 export function appendLongTextChapter(
   document: RichTextNode,
-  input: { chapterId: string; title: string; text: string; start?: number | null; end?: number | null },
+  input: {
+    chapterId: string;
+    title: string;
+    text: string;
+    start?: number | null;
+    end?: number | null;
+  },
 ): ChapterOperationResult {
   const nodes = chapterNodes(document);
   nodes.push({
@@ -93,6 +106,7 @@ export function appendLongTextChapter(
   return { document: withNodes(nodes), activeIndex: nodes.length - 1 };
 }
 
+/** 把未覆盖的原文片段追加为新章，并根据实际文本修正原文区间。 */
 export function appendGapLongTextChapter(
   document: RichTextNode,
   input: { chapterId: string; text: string; start: number; end: number },
@@ -108,6 +122,7 @@ export function appendGapLongTextChapter(
   });
 }
 
+/** 在光标位置拆章，同时把原章节的原文区间分配给前后两章。 */
 export function splitLongTextChapter(
   document: RichTextNode,
   index: number,
@@ -148,6 +163,7 @@ export function splitLongTextChapter(
   return { document: withNodes(nodes), activeIndex: index + 1 };
 }
 
+/** 按稳定章节 ID 更新标题或正文，不受章节排序变化影响。 */
 export function updateLongTextChapter(
   document: RichTextNode,
   chapterId: string,

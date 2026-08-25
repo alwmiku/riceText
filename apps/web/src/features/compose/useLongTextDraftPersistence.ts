@@ -10,7 +10,7 @@ import type { RichTextNode } from "../../lib/types";
 
 const WRITE_DELAY = 1200;
 
-/** Persists changed long-text snapshots locally without owning workspace commands. */
+/** 只负责长文本草稿的代次跟踪和本机持久化，不处理工作区命令。 */
 export function useLongTextDraftPersistence({
   enabled,
   draftKey,
@@ -22,6 +22,7 @@ export function useLongTextDraftPersistence({
   contentRef: MutableRefObject<RichTextNode>;
   onError: () => void;
 }) {
+  // ref 供异步保存读取最新代次，state 只用于触发防抖 effect。
   const [generation, setGeneration] = useState(0);
   const generationRef = useRef(0);
   const savedGenerationRef = useRef(0);
@@ -32,6 +33,7 @@ export function useLongTextDraftPersistence({
     setGeneration(generationRef.current);
   }, []);
 
+  // 进入、恢复和退出工作区时暂停写回，并把当前代次视为基线，避免空文档覆盖旧草稿。
   const suspend = useCallback(() => {
     readyRef.current = false;
     savedGenerationRef.current = generationRef.current;
@@ -46,6 +48,7 @@ export function useLongTextDraftPersistence({
     savedGenerationRef.current = generationRef.current;
   }, [contentRef, draftKey]);
 
+  // 每次变更重置 1.2 秒定时器；成功后记录代次，避免相同快照重复落盘。
   useEffect(() => {
     if (!enabled || !readyRef.current) return;
     if (generation <= savedGenerationRef.current) return;

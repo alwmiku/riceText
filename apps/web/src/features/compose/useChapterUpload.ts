@@ -12,6 +12,7 @@ import type { CoverageChapter } from "../novel/ChapterCoverageDialog";
 import type { ChapterUploadDiff } from "../novel/ChapterUploadDialog";
 
 interface PreparedChapter {
+  /** prepare 阶段冻结的上传载荷；confirm 不再读取可能已变化的编辑器正文。 */
   id: string;
   title: string;
   order: number;
@@ -27,7 +28,7 @@ interface ChapterUploadOptions {
   onNotice: (notice: string) => void;
 }
 
-/** Owns frozen chapter sync plans, hashes and sequential incremental uploads. */
+/** 管理冻结的章节同步计划、内容哈希以及串行增量上传。 */
 export function useChapterUpload({
   novelId,
   getDocument,
@@ -40,6 +41,7 @@ export function useChapterUpload({
   const [uploading, setUploading] = useState(false);
   const [diff, setDiff] = useState<ChapterUploadDiff | null>(null);
   const preparedRef = useRef<PreparedChapter[] | null>(null);
+  // 对外回调可能随页面渲染变化；ref 让 prepare/confirm 命令保持稳定且读取最新实现。
   const getDocumentRef = useRef(getDocument);
   const getCoverageRef = useRef(getCoverage);
   const onNoticeRef = useRef(onNotice);
@@ -71,6 +73,7 @@ export function useChapterUpload({
               type: "doc",
               content: [{ ...node }],
             };
+            // 标题和顺序也是章节语义的一部分，只哈希正文会漏掉改名与移动。
             const hash = await sha256Hex(
               JSON.stringify({ title, order, content }),
             );
@@ -126,6 +129,7 @@ export function useChapterUpload({
   }, [novelId]);
 
   const confirm = useCallback(async () => {
+    // 必须上传 prepare 冻结的计划，不能重新读取编辑器，否则弹窗 diff 会与请求内容错位。
     const prepared = preparedRef.current;
     if (!prepared) return;
     const pending = prepared.filter((chapter) => chapter.status !== "未变化");
@@ -159,6 +163,7 @@ export function useChapterUpload({
       onNoticeRef.current(`已分章上传 ${uploaded} 章`);
       void queryClient.invalidateQueries({ queryKey: ["demo", "chapters"] });
     } catch (error) {
+      // 串行上传可能已部分成功；丢弃旧计划，重试时重新 sync 才能拿到正确 revision。
       setOpen(false);
       setDiff(null);
       preparedRef.current = null;

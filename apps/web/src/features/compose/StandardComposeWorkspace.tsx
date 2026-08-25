@@ -4,6 +4,7 @@ import { Button } from "../../components/ui";
 import type { EditorMode, SeedIdentity } from "../../lib/types";
 import { ChapterRail, DemoBusinessPanel } from "../demo/DemoPanels";
 
+/** 普通创作展示层：统一完整、极简和移动布局，并封装移动目录抽屉。 */
 export function StandardComposeWorkspace({
   mode,
   chapters,
@@ -37,6 +38,7 @@ export function StandardComposeWorkspace({
 }) {
   const [mobileChapterRailOpen, setMobileChapterRailOpen] = useState(false);
 
+  // 离开移动模式时关闭抽屉，防止切回后残留遮罩和焦点状态。
   useEffect(() => {
     if (mode !== "mobile") setMobileChapterRailOpen(false);
   }, [mode]);

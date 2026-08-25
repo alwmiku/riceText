@@ -9,13 +9,14 @@ interface LongTextEditorBufferOptions {
   onChanged: () => void;
 }
 
-/** Coalesces editor and node-view writes before committing them to the full book. */
+/** 合并编辑器与章节节点视图的高频写入，再统一提交到整本文档。 */
 export function useLongTextEditorBuffer({
   contentRef,
   activeIndexRef,
   replaceContent,
   onChanged,
 }: LongTextEditorBufferOptions) {
+  // 当前章编辑器和章节节点视图拥有独立缓冲，避免两种更新互相覆盖。
   const pendingEditorRef = useRef<RichTextNode | null>(null);
   const editorTimerRef = useRef<number | null>(null);
   const chapterTimerRef = useRef<number | null>(null);
@@ -24,6 +25,7 @@ export function useLongTextEditorBuffer({
     patch: { title?: string; text?: string };
   } | null>(null);
 
+  // 当前章编辑器只装载一个节点，因此按活动索引写回整本章节数组。
   const commitEditor = useCallback(() => {
     if (editorTimerRef.current !== null) {
       window.clearTimeout(editorTimerRef.current);
@@ -39,6 +41,7 @@ export function useLongTextEditorBuffer({
     onChanged();
   }, [activeIndexRef, contentRef, onChanged, replaceContent]);
 
+  // 节点视图更新按稳定 chapterId 定位，章节移动后也不会写错位置。
   const commitChapter = useCallback(() => {
     if (chapterTimerRef.current !== null) {
       window.clearTimeout(chapterTimerRef.current);
@@ -57,6 +60,7 @@ export function useLongTextEditorBuffer({
     onChanged();
   }, [contentRef, onChanged, replaceContent]);
 
+  // 章节切换和结构操作会主动 flush，确保防抖队列中的最后一次输入不会丢失。
   const flush = useCallback(() => {
     commitEditor();
     commitChapter();

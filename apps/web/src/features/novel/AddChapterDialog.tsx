@@ -2,6 +2,7 @@ import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
 import { useEffect, useState } from "react";
 import { Button, Dialog } from "../../components/ui";
 
+/** 自管理表单草稿的添加章节弹窗；领域层只接收校验后的提交结果。 */
 export function AddChapterDialog({
   open,
   onOpenChange,
@@ -14,6 +15,7 @@ export function AddChapterDialog({
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
 
+  // 弹窗关闭即丢弃未提交表单，重新打开时始终从空白状态开始。
   useEffect(() => {
     if (!open) {
       setTitle("");
