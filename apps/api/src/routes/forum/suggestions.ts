@@ -35,6 +35,12 @@ export const forumSuggestionRoutes: FastifyPluginAsync<
             body.toText,
             body.reason,
             identity(dependencies, request),
+            {
+              chapterId: body.chapterId,
+              chapterTitle: body.chapterTitle,
+              lineNo: body.lineNo,
+              lineText: body.lineText,
+            },
           ),
         );
     },

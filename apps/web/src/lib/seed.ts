@@ -1,6 +1,7 @@
 import type {
   CommentReply,
   DocumentEnvelope,
+  ForumSuggestion,
   RevisionSummary,
   SeedIdentity,
 } from "./types";
@@ -182,5 +183,72 @@ export const seedComments: CommentReply[] = [
     downvotes: 0,
     myVote: 0,
     children: [],
+  },
+];
+
+/**
+ * 断网时仍可展示的校订建议：文本与 defaultDocument 的行逐字一致，
+ * 行号指向该文档章节（chapter-0）内的行。
+ */
+export const seedSuggestions: ForumSuggestion[] = [
+  {
+    id: "suggestion_1",
+    documentId: "demo-post",
+    chapterId: "chapter-0",
+    chapterTitle: "正文",
+    lineNo: 2,
+    lineText: "潮声越过旧防波堤时，灯塔正好熄灭。",
+    fromText: "潮声越过旧防波堤时，灯塔正好熄灭",
+    toText: "潮声越过旧防波堤时，灯塔恰好熄灭",
+    reason: "“正好”过于口语，建议改为“恰好”",
+    status: "pending",
+    authorId: "reader",
+    reviewerId: null,
+    createdAt: new Date(Date.now() - 9e5).toISOString(),
+  },
+  {
+    id: "suggestion_2",
+    documentId: "demo-post",
+    chapterId: "chapter-0",
+    chapterTitle: "正文",
+    lineNo: 4,
+    lineText: "调查检定 ，线索足够。",
+    fromText: "，线索足够",
+    toText: "，线索已足够",
+    reason: "检定通过后语气应更笃定",
+    status: "pending",
+    authorId: "reader",
+    reviewerId: null,
+    createdAt: new Date(Date.now() - 8e5).toISOString(),
+  },
+  {
+    id: "suggestion_3",
+    documentId: "demo-post",
+    chapterId: "chapter-0",
+    chapterTitle: "正文",
+    lineNo: 5,
+    lineText: "这一句包含结局线索，请谨慎查看。",
+    fromText: "这一句包含结局线索，请谨慎查看",
+    toText: "这一句包含结局线索，请谨慎阅读",
+    reason: "“查看”与阅读场景不符，建议改为“阅读”",
+    status: "pending",
+    authorId: "wanderer",
+    reviewerId: null,
+    createdAt: new Date(Date.now() - 5e5).toISOString(),
+  },
+  {
+    id: "suggestion_4",
+    documentId: "demo-post",
+    chapterId: "chapter-0",
+    chapterTitle: "正文",
+    lineNo: 6,
+    lineText: "日志坐标：北纬 31°14′，雾号每七分钟响一次。",
+    fromText: "雾号每七分钟响一次",
+    toText: "雾号每七分钟鸣响一次",
+    reason: "“鸣响”拟声更贴切",
+    status: "pending",
+    authorId: "wanderer",
+    reviewerId: null,
+    createdAt: new Date(Date.now() - 4e5).toISOString(),
   },
 ];

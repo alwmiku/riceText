@@ -7,6 +7,7 @@ import {
   Download,
   FileArchive,
   History,
+  MapPin,
   MessageSquareText,
   Paperclip,
   RotateCcw,
@@ -168,6 +169,22 @@ function SuggestionPanel({
               </Badge>
             )}
           </div>
+          {item.chapterTitle || item.lineNo > 0 ? (
+            <p className="mb-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+              <MapPin size={11} className="shrink-0 text-[#176e66]" />
+              {item.chapterTitle ? (
+                <span className="font-semibold text-[#176e66]">
+                  {item.chapterTitle}
+                </span>
+              ) : null}
+              {item.lineNo > 0 ? (
+                <span>第 {item.lineNo} 行</span>
+              ) : null}
+              {item.lineText ? (
+                <span className="min-w-0 truncate">「{item.lineText}」</span>
+              ) : null}
+            </p>
+          ) : null}
           <div className="space-y-1 rounded bg-muted p-2 font-mono text-[11px]">
             <p className="text-[#aa3f3f] line-through">{item.fromText}</p>
             <p className="text-[#18704b]">{item.toText}</p>

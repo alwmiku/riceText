@@ -406,6 +406,14 @@ export const SuggestionSchema = z
   .object({
     id: EntityIdSchema,
     documentId: EntityIdSchema,
+    /** 校订针对的章节（与章节目录 chapters.id 一致）；空串表示未定位到章节。 */
+    chapterId: z.string(),
+    /** 章节标题（冗余存储，免联表即可展示“对哪一章校订”）。 */
+    chapterTitle: z.string(),
+    /** 校订在章节内的行号（1-based；0 表示未知）。 */
+    lineNo: z.number().int().nonnegative(),
+    /** 该行完整文本，作为行级定位依据。 */
+    lineText: z.string(),
     fromText: z.string(),
     toText: z.string(),
     reason: z.string(),
@@ -421,6 +429,11 @@ export const CreateSuggestionRequestSchema = z
     fromText: z.string().min(1),
     toText: z.string().min(1),
     reason: z.string().max(500).default(""),
+    /** 校订定位：章节 ID 与行信息；旧客户端可不传，服务端按默认值存储。 */
+    chapterId: z.string().default(""),
+    chapterTitle: z.string().default(""),
+    lineNo: z.number().int().nonnegative().default(0),
+    lineText: z.string().default(""),
   })
   .strict();
 /** 作者或版主审核纠错建议的请求体。 */

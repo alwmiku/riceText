@@ -88,3 +88,24 @@ export type DiceResult = DiceRollAttributes;
 
 /** 与 editor-core 共用的上传图片元数据。 */
 export type UploadedAsset = CoreUploadedAsset;
+
+/** 纠错建议（服务端真实状态）。 */
+export interface ForumSuggestion {
+  id: string;
+  documentId: string;
+  /** 校订针对的章节（与章节目录 chapters.id 一致）；空串表示未定位到章节。 */
+  chapterId: string;
+  /** 章节标题（冗余存储，用于“对哪一章校订”的展示）。 */
+  chapterTitle: string;
+  /** 校订在章节内的行号（1-based；0 表示未知）。 */
+  lineNo: number;
+  /** 该行完整文本，作为行级定位依据。 */
+  lineText: string;
+  fromText: string;
+  toText: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  authorId: string;
+  reviewerId: string | null;
+  createdAt: string;
+}

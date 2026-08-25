@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defaultDocument, seedComments, seedRevisions } from './seed';
+import { defaultDocument, seedComments, seedRevisions, seedSuggestions } from './seed';
 import {
   ApiError,
   createDice,
   getCommentThread,
   getDocument,
   getRevisions,
+  listForumChapters,
+  listSuggestions,
   restoreRevision,
   saveDocument,
   uploadAsset,
@@ -110,8 +112,29 @@ describe('web api client', () => {
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));
     await expect(getRevisions('demo-post')).resolves.toBe(seedRevisions);
 
+    // 服务不可用（代理 502/503）与断网等价，同样降级到本地历史
     fetchMock.mockResolvedValueOnce(jsonResponse(null, { status: 503 }));
-    await expect(getRevisions('demo-post')).rejects.toMatchObject({ status: 503, message: '请求失败 (503)' });
+    await expect(getRevisions('demo-post')).resolves.toBe(seedRevisions);
+
+    // 业务错误（如权限不足）必须向上抛出
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '无权访问' }, { status: 403 }));
+    await expect(getRevisions('demo-post')).rejects.toMatchObject({ status: 403, message: '无权访问' });
+  });
+
+  it('校订建议：服务可用时读取列表，502/503 时回退种子数据，业务错误抛出', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ items: [] }));
+    await expect(listSuggestions('demo-post')).resolves.toEqual([]);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(null, { status: 502 }));
+    await expect(listSuggestions('demo-post')).resolves.toEqual(seedSuggestions);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '文档不存在' }, { status: 404 }));
+    await expect(listSuggestions('demo-post')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('章节目录在服务不可用时降级为空数组', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(null, { status: 502 }));
+    await expect(listForumChapters()).resolves.toEqual([]);
   });
 
   it('按契约回滚指定版本', async () => {

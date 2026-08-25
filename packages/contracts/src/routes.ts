@@ -257,18 +257,49 @@ export function getContractRoute(operationId: string): ContractRoute {
   return route;
 }
 
+/**
+ * zod 的 default 字段是可选输入，但 zod v4 的 toJSONSchema 仍会把它列入
+ * required，导致 Ajv 在缺省时误报 422（真正填充 default 的是路由内的
+ * zod parse）。这里把带 default 的属性从 required 中移除，保持契约语义。
+ */
+function dropDefaultsFromRequired(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  if (schema.type !== "object" || !schema.properties) return schema;
+  const properties = schema.properties as Record<
+    string,
+    { default?: unknown }
+  >;
+  if (!Array.isArray(schema.required)) return schema;
+  return {
+    ...schema,
+    required: schema.required.filter(
+      (key) => properties[key]?.default === undefined,
+    ),
+  };
+}
+
 /** 将 Zod 契约转换为 Fastify 可消费的 JSON Schema。 */
 export function getFastifySchema(operationId: string): Record<string, unknown> {
   const route = getContractRoute(operationId);
-  const response = Object.fromEntries(Object.entries(route.responses).map(([status, item]) => [status, z.toJSONSchema(item.schema, { target: "draft-7", unrepresentable: "any" })]));
+  const toSchema = (value: z.ZodType) =>
+    dropDefaultsFromRequired(
+      z.toJSONSchema(value, { target: "draft-7", unrepresentable: "any" }),
+    );
+  const response = Object.fromEntries(
+    Object.entries(route.responses).map(([status, item]) => [
+      status,
+      toSchema(item.schema),
+    ]),
+  );
   return {
     operationId: route.operationId,
     summary: route.summary,
     description: route.description,
     tags: route.tags,
-    ...(route.params ? { params: z.toJSONSchema(route.params, { target: "draft-7", unrepresentable: "any" }) } : {}),
-    ...(route.query ? { querystring: z.toJSONSchema(route.query, { target: "draft-7", unrepresentable: "any" }) } : {}),
-    ...(route.body ? { body: z.toJSONSchema(route.body, { target: "draft-7", unrepresentable: "any" }) } : {}),
+    ...(route.params ? { params: toSchema(route.params) } : {}),
+    ...(route.query ? { querystring: toSchema(route.query) } : {}),
+    ...(route.body ? { body: toSchema(route.body) } : {}),
     response,
     ...(route.implementationStatus ? { "x-implementation-status": route.implementationStatus } : {}),
   };

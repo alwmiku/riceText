@@ -3,15 +3,20 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppContext } from '../app-context';
-import { defaultDocument, identities, seedComments } from '../lib/seed';
+import { defaultDocument, identities, seedComments, seedSuggestions } from '../lib/seed';
 import type { DocumentEnvelope, SeedIdentity } from '../lib/types';
 import ReadPage from './ReadPage';
 
-const mocks = vi.hoisted(() => ({ getCommentThread: vi.fn(), getDocument: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  getCommentThread: vi.fn(),
+  getDocument: vi.fn(),
+  listSuggestions: vi.fn(),
+}));
 
 vi.mock('../lib/api', () => ({
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
+  listSuggestions: mocks.listSuggestions,
 }));
 vi.mock('../features/comments/CommentThread', () => ({
   CommentThread: (props: { initial: readonly unknown[]; identity: SeedIdentity }) => <div>回复树：{props.initial.length} 条 · {props.identity.name}</div>,
@@ -49,6 +54,7 @@ describe('ReadPage', () => {
   beforeEach(() => {
     mocks.getDocument.mockReset().mockResolvedValue(interactiveDocument);
     mocks.getCommentThread.mockReset().mockResolvedValue(seedComments);
+    mocks.listSuggestions.mockReset().mockResolvedValue(seedSuggestions);
   });
 
   it('作者可取得付费附件但不会在阅读器自动看到回复可见正文，本地环境允许作者参与投票', async () => {
@@ -103,5 +109,51 @@ describe('ReadPage', () => {
     const attachment = (await screen.findByText('章节资料.zip')).closest('button')!;
     fireEvent.click(attachment);
     expect(screen.getByText('章节资料.zip').closest('button')).toHaveTextContent('购买 · 20');
+  });
+
+  it('普通读者看不到校订入口，也不加载校订数据', async () => {
+    renderPage(identities[1]!);
+    await screen.findByText('章节资料.zip');
+    expect(screen.queryByRole('button', { name: '开始校订' })).not.toBeInTheDocument();
+    expect(screen.queryByText('校订定位')).not.toBeInTheDocument();
+    expect(mocks.listSuggestions).not.toHaveBeenCalled();
+  });
+
+  it('作者可点击开始校订，进入字级 diff 视图并显示文章/章节/行定位', async () => {
+    renderPage(identities[0]!);
+    await screen.findByText('章节资料.zip');
+    await waitFor(() => expect(mocks.listSuggestions).toHaveBeenCalledWith('demo-post', expect.anything()));
+
+    // 右侧卡片显示“哪篇文章的哪个章节的哪些行”
+    expect(screen.getByText('校订定位')).toBeInTheDocument();
+    expect(screen.getByText(/文章《雾港来信：第三章讨论与校订》/)).toBeInTheDocument();
+    expect(screen.getByText(/本章 4 处校订 · 涉及行 2、4、5、6/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '开始校订' }));
+    expect(
+      screen.getByRole('region', { name: '校订对比视图' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('校订《雾港来信：第三章讨论与校订》· 正文')).toBeInTheDocument();
+    // 字级 diff：只有变化的“正”→“恰”被高亮，公共字“好”保持普通
+    const deleted = document.querySelector('[data-diff="delete"]');
+    expect(deleted?.textContent).toBe('正');
+    const inserted = document.querySelector('[data-diff="insert"]');
+    expect(inserted?.textContent).toBe('恰');
+    // 未变化上下文与修改片段同排混排
+    expect(document.body.textContent).toContain('潮声越过旧防波堤时，灯塔');
+    expect(document.body.textContent).toContain('熄灭');
+
+    // 页头与视图内各有一个退出入口，点击任意一个都会退出
+    fireEvent.click(screen.getAllByRole('button', { name: '退出校订' })[0]!);
+    expect(screen.queryByRole('region', { name: '校订对比视图' })).not.toBeInTheDocument();
+  });
+
+  it('版主同样可以进入校订视图', async () => {
+    renderPage(identities[2]!);
+    await screen.findByText('章节资料.zip');
+    fireEvent.click(await screen.findByRole('button', { name: '开始校订' }));
+    expect(
+      screen.getByRole('region', { name: '校订对比视图' }),
+    ).toBeInTheDocument();
   });
 });

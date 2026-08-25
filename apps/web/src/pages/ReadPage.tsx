@@ -6,14 +6,22 @@ import {
   type PollReferenceAttributes,
   type RichTextViewerInteractions,
 } from "@ricetext/editor-core";
-import { BookOpen, Clock3, Eye, MessageCircle, UserRound } from "lucide-react";
+import {
+  BookOpen,
+  Clock3,
+  Eye,
+  GitCompareArrows,
+  MessageCircle,
+  UserRound,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { useAppContext } from "../app-context";
-import { Badge, Dialog } from "../components/ui";
+import { Badge, Button, Dialog } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
+import { ProofreadView } from "../features/proofread/ProofreadView";
 import { TocSidebar } from "../features/viewer/TocSidebar";
-import { getCommentThread, getDocument } from "../lib/api";
-import { splitDocumentByHeadings } from "../lib/chapters";
+import { getCommentThread, getDocument, listSuggestions } from "../lib/api";
+import { chapterTextLines, splitDocumentByHeadings } from "../lib/chapters";
 import { defaultDocument } from "../lib/seed";
 import type { CommentReply } from "../lib/types";
 import { formatTime } from "../lib/utils";
@@ -22,6 +30,7 @@ import { formatTime } from "../lib/utils";
 export default function ReadPage() {
   const { identity } = useAppContext();
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [proofreading, setProofreading] = useState(false);
   const [ownedAttachments, setOwnedAttachments] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -48,6 +57,28 @@ export default function ReadPage() {
     queryFn: () => getCommentThread(document.id, threadId!),
     enabled: Boolean(threadId),
   });
+  // 只有作者与版主可以进入校订：普通读者既看不到入口也不加载校订数据。
+  const canProofread =
+    identity.role === "author" || identity.role === "moderator";
+  const { data: suggestions = [] } = useQuery({
+    queryKey: ["forum", "suggestions", document.id],
+    queryFn: ({ signal }) => listSuggestions(document.id, signal),
+    enabled: canProofread,
+  });
+  // 目录联动：只取当前章的校订，其他章节的校订不会显示在本章视图中。
+  const chapterId = chapters[activeIndex]?.id ?? "";
+  const chapterSuggestions = useMemo(
+    () => suggestions.filter((suggestion) => suggestion.chapterId === chapterId),
+    [suggestions, chapterId],
+  );
+  const lines = useMemo(
+    () => chapterTextLines(chapterDoc.content ?? []),
+    [chapterDoc],
+  );
+  const changedLineNos = useMemo(
+    () => [...new Set(chapterSuggestions.map((suggestion) => suggestion.lineNo))],
+    [chapterSuggestions],
+  );
   // 业务数据通过 Viewer adapter 注入，正文 JSON 只保存稳定 ID 和必要的显示属性。
   const interactions = useMemo<RichTextViewerInteractions>(
     () => ({
@@ -142,12 +173,33 @@ export default function ReadPage() {
                 ? "本地缓存副本"
                 : `版本 ${document.revision}`}
             </Badge>
+            {canProofread && (
+              <Button
+                size="sm"
+                variant={proofreading ? "outline" : "default"}
+                className="ml-auto h-7 px-2.5"
+                onClick={() => setProofreading((value) => !value)}
+              >
+                <GitCompareArrows size={13} />
+                {proofreading ? "退出校订" : "开始校订"}
+              </Button>
+            )}
           </div>
-          <RichTextViewer
-            content={chapterDoc}
-            interactions={interactions}
-            labels={labels}
-          />
+          {proofreading && canProofread ? (
+            <ProofreadView
+              documentTitle={document.title}
+              chapterTitle={chapters[activeIndex]?.title ?? "正文"}
+              lines={lines}
+              suggestions={chapterSuggestions}
+              onExit={() => setProofreading(false)}
+            />
+          ) : (
+            <RichTextViewer
+              content={chapterDoc}
+              interactions={interactions}
+              labels={labels}
+            />
+          )}
         </article>
         <TocSidebar
           chapters={chapters}
@@ -169,9 +221,26 @@ export default function ReadPage() {
               </div>
             </div>
             <div className="my-4 h-px bg-border" />
+            {canProofread ? (
+              <div className="rounded-md bg-[#f5f8f8] px-2 py-2 text-[11px] leading-5 text-muted-foreground">
+                <p className="flex items-center gap-1 font-semibold text-[#176e66]">
+                  <GitCompareArrows size={12} aria-hidden="true" />
+                  校订定位
+                </p>
+                <p className="mt-1">
+                  文章《{document.title}》· 第 {activeIndex + 1} 章
+                  {chapters[activeIndex]?.title ?? ""}
+                </p>
+                <p>
+                  {chapterSuggestions.length > 0
+                    ? `本章 ${chapterSuggestions.length} 处校订 · 涉及行 ${changedLineNos.join("、")}`
+                    : "本章暂无校订"}
+                </p>
+              </div>
+            ) : null}
             <button
               type="button"
-              className="flex w-full items-center justify-between text-xs text-muted-foreground"
+              className="mt-3 flex w-full items-center justify-between text-xs text-muted-foreground"
               onClick={() => setThreadId("thread_1")}
             >
               <span className="flex items-center gap-2">

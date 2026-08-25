@@ -1,9 +1,15 @@
 import { createId } from "./utils";
-import { defaultDocument, seedComments, seedRevisions } from "./seed";
+import {
+  defaultDocument,
+  seedComments,
+  seedRevisions,
+  seedSuggestions,
+} from "./seed";
 import type {
   CommentReply,
   DiceResult,
   DocumentEnvelope,
+  ForumSuggestion,
   RevisionSummary,
   RichTextNode,
   UploadedAsset,
@@ -72,7 +78,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
-/** 读取服务端文档；断网时按“本地副本 -> 内置种子”顺序降级。 */
+/**
+ * 后端服务不可达（断网，或仅启动 Web 时 Vite 代理返回的 502/503）
+ * 时允许读接口降级到本地副本/种子数据；权限、校验、冲突等业务
+ * 错误必须继续向上抛出，让页面正确展示。
+ */
+function isServiceUnavailable(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return false;
+  }
+  return (
+    !(error instanceof ApiError) ||
+    error.status === 502 ||
+    error.status === 503
+  );
+}
+
+/** 读取服务端文档；断网或服务不可用时按“本地副本 -> 内置种子”顺序降级。 */
 export async function getDocument(
   id: string,
   signal?: AbortSignal,
@@ -86,8 +108,7 @@ export async function getDocument(
       storage: "server",
     };
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError")
-      throw error;
+    if (!isServiceUnavailable(error)) throw error;
     const cached = localStorage.getItem(`ricetext:document:${id}`);
     return cached ? (JSON.parse(cached) as DocumentEnvelope) : defaultDocument;
   }
@@ -103,10 +124,17 @@ export interface ForumChapterItem {
   revision: number;
 }
 
-/** 读取论坛章节目录（含每章独立版本号）。 */
+/** 读取论坛章节目录（含每章独立版本号）；服务不可用时返回空目录。 */
 export async function listForumChapters(): Promise<ForumChapterItem[]> {
-  const result = await request<{ items: ForumChapterItem[] }>("/forum/chapters");
-  return result.items;
+  try {
+    const result = await request<{ items: ForumChapterItem[] }>(
+      "/forum/chapters",
+    );
+    return result.items;
+  } catch (error) {
+    if (!isServiceUnavailable(error)) throw error;
+    return [];
+  }
 }
 
 /** 服务器端章节内容哈希清单中的一项。 */
@@ -184,7 +212,7 @@ export async function saveDocument(
   }
 }
 
-/** 读取不可变版本摘要；断网时返回可操作的本地历史。 */
+/** 读取不可变版本摘要；断网或服务不可用时返回可操作的本地历史。 */
 export async function getRevisions(
   id: string,
   signal?: AbortSignal,
@@ -196,7 +224,7 @@ export async function getRevisions(
     );
     return result.items;
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (!isServiceUnavailable(error)) throw error;
     return seedRevisions;
   }
 }
@@ -317,28 +345,23 @@ export async function voteComment(
 }
 
 /** 纠错建议（服务端真实状态）。 */
-export interface ForumSuggestion {
-  id: string;
-  documentId: string;
-  fromText: string;
-  toText: string;
-  reason: string;
-  status: "pending" | "approved" | "rejected";
-  authorId: string;
-  reviewerId: string | null;
-  createdAt: string;
-}
+export type { ForumSuggestion };
 
-/** 读取文档的纠错建议（读者仅见自己的）。 */
+/** 读取文档的纠错建议（读者仅见自己的）；断网或服务不可用时返回本地演示数据。 */
 export async function listSuggestions(
   documentId: string,
   signal?: AbortSignal,
 ): Promise<ForumSuggestion[]> {
-  const result = await request<{ items: ForumSuggestion[] }>(
-    `/forum/documents/${documentId}/suggestions`,
-    signal ? { signal } : undefined,
-  );
-  return result.items;
+  try {
+    const result = await request<{ items: ForumSuggestion[] }>(
+      `/forum/documents/${documentId}/suggestions`,
+      signal ? { signal } : undefined,
+    );
+    return result.items;
+  } catch (error) {
+    if (!isServiceUnavailable(error)) throw error;
+    return structuredClone(seedSuggestions);
+  }
 }
 
 /** 审核建议；approve 会替换正文并创建新修订。 */

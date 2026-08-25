@@ -507,19 +507,20 @@ describe("RiceText API 补充分支", () => {
       url: "/api/forum/documents/demo-post/suggestions",
       headers: { "x-user-id": "reader" },
     });
-    expect(ownerList.json().items).toHaveLength(2);
+    // 种子建议：reader 拥有 suggestion-1/3/4，wanderer 拥有 suggestion-2/5
+    expect(ownerList.json().items).toHaveLength(4);
     const otherReaderList = await app.inject({
       method: "GET",
       url: "/api/forum/documents/demo-post/suggestions",
       headers: { "x-user-id": "wanderer" },
     });
-    expect(otherReaderList.json().items).toHaveLength(1);
+    expect(otherReaderList.json().items).toHaveLength(2);
     const authorList = await app.inject({
       method: "GET",
       url: "/api/forum/documents/demo-post/suggestions",
       headers: { "x-user-id": "author" },
     });
-    expect(authorList.json().items).toHaveLength(3);
+    expect(authorList.json().items).toHaveLength(6);
 
     const forbiddenReview = await app.inject({
       method: "PATCH",

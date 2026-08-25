@@ -86,3 +86,17 @@ export function mergeChapter(
   content.splice(chapter.start, chapter.end - chapter.start, ...(nextDoc.content ?? []));
   return { type: "doc", content };
 }
+
+/** 递归收集节点内的全部文本（跳过无文本节点，如骰子/图片）。 */
+function collectNodeText(node: JSONContent): string {
+  if (node.type === "text" && typeof node.text === "string") return node.text;
+  return (node.content ?? []).map(collectNodeText).join("");
+}
+
+/**
+ * 把章节节点按块拆为“行”文本：每个块（段落/标题/摘录等）一行，
+ * 行号 = 数组下标 + 1，与服务端校订建议的 lineNo 约定一致。
+ */
+export function chapterTextLines(blocks: readonly JSONContent[]): string[] {
+  return blocks.map((block) => collectNodeText(block));
+}

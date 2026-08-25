@@ -237,6 +237,14 @@ ALTER TABLE chapters ADD COLUMN content_json TEXT;
 ALTER TABLE chapters ADD COLUMN content_hash TEXT;
 `;
 
+/** 校订定位：建议必须指明“哪一篇文章的哪一章的哪一行”，支持按章过滤与行级 diff。 */
+const migrationV4 = `
+ALTER TABLE suggestions ADD COLUMN chapter_id TEXT REFERENCES chapters(id);
+ALTER TABLE suggestions ADD COLUMN chapter_title TEXT NOT NULL DEFAULT '';
+ALTER TABLE suggestions ADD COLUMN line_no INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE suggestions ADD COLUMN line_text TEXT NOT NULL DEFAULT '';
+`;
+
 /** 幂等写入开发身份、正文和论坛初始数据，重复启动不会覆盖用户修改。 */
 function seed(db: DatabaseSync): void {
   const now = new Date().toISOString();
@@ -257,6 +265,9 @@ function seed(db: DatabaseSync): void {
     db.prepare("INSERT OR IGNORE INTO comment_votes(reply_id, user_id, value, created_at) VALUES ('comment-root', 'author', 1, ?)").run(now);
 
     // 章节目录为实时数据，每次启动重置为与正文一致的五章大纲。
+    // 校订建议通过 chapter_id 外键引用章节：持久化库第二次启动时旧建议
+    // 仍指向旧章节，必须先释放引用，否则目录重建会被外键约束拦截。
+    db.prepare("DELETE FROM suggestions WHERE chapter_id IS NOT NULL").run();
     db.prepare("DELETE FROM chapters WHERE document_id = 'demo-post'").run();
     const insertChapter = db.prepare("INSERT INTO chapters(id, title, sort_order, document_id, revision) VALUES (?, ?, ?, 'demo-post', 1)");
     insertChapter.run("chapter-0", "楔子 · 雨季之前", 0);
@@ -272,9 +283,70 @@ function seed(db: DatabaseSync): void {
     db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('wanderer', 20)").run();
     db.prepare("INSERT OR IGNORE INTO attachments(id, name, mime_type, price, author_id, download_url) VALUES ('attachment-sample', '雾港设定集.txt', 'text/plain', 10, 'author', '/forum-downloads/mist-harbor.txt')").run();
 
-    // 待审核校订建议：与正文用词一致的初始条目。
-    db.prepare("INSERT OR IGNORE INTO suggestions(id, document_id, from_text, to_text, reason, status, author_id, reviewer_id, created_at, reviewed_at) VALUES ('suggestion-1', 'demo-post', '渡口的汽笛', '港口的汽笛', '与第一章地名保持一致', 'pending', 'reader', NULL, ?, NULL)").run(now);
-    db.prepare("INSERT OR IGNORE INTO suggestions(id, document_id, from_text, to_text, reason, status, author_id, reviewer_id, created_at, reviewed_at) VALUES ('suggestion-2', 'demo-post', '她握紧信封', '她攥紧信封', '减少相邻段落用词重复', 'pending', 'wanderer', NULL, ?, NULL)").run(now);
+    // 待审核校订建议：文本与正文逐字一致，并记录文章/章节/行定位，
+    // 供阅读页按章过滤与行级字对比。五章各一条演示数据，每次启动重置为固定状态。
+    db.prepare("DELETE FROM suggestions WHERE id IN ('suggestion-1', 'suggestion-2', 'suggestion-3', 'suggestion-4', 'suggestion-5')").run();
+    const insertSuggestion = db.prepare("INSERT INTO suggestions(id, document_id, chapter_id, chapter_title, line_no, line_text, from_text, to_text, reason, status, author_id, reviewer_id, created_at, reviewed_at) VALUES (?, 'demo-post', ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, ?, NULL)");
+    insertSuggestion.run(
+      "suggestion-1",
+      "chapter-0",
+      "楔子 · 雨季之前",
+      2,
+      "雨季开始前的第七天，港口送走了最后一班客船。雾线从海面爬上来，把整条长街泡得发软。",
+      "雾线从海面爬上来",
+      "雾气从海面爬上来",
+      "“雾线”非惯用说法，建议改为“雾气”",
+      "reader",
+      now,
+    );
+    insertSuggestion.run(
+      "suggestion-2",
+      "chapter-1",
+      "第一章 · 潮汐表",
+      2,
+      "潮声沿着旧城墙漫上来，旅人把未寄出的信压在灯下。",
+      "旅人把未寄出的信压在灯下",
+      "旅人把未寄出的信压在油灯下",
+      "与第三章“油灯”细节呼应，避免后文才出现的新物件",
+      "wanderer",
+      now,
+    );
+    insertSuggestion.run(
+      "suggestion-3",
+      "chapter-2",
+      "第二章 · 陌生船票",
+      3,
+      "调查检定 ，线索足够。",
+      "，线索足够",
+      "，线索已足够",
+      "检定通过后语气应更笃定",
+      "reader",
+      now,
+    );
+    insertSuggestion.run(
+      "suggestion-4",
+      "chapter-3",
+      "第三章 · 没有寄件人的信",
+      3,
+      "第三扇窗的窗台积着薄灰，玻璃内侧贴着一封没有寄件人的信。这一句包含结局线索，请谨慎查看。",
+      "玻璃内侧贴着一封没有寄件人的信",
+      "玻璃内侧贴着一封没有寄件人的信笺",
+      "与第一章“信笺”用词统一",
+      "reader",
+      now,
+    );
+    insertSuggestion.run(
+      "suggestion-5",
+      "chapter-4",
+      "第四章 · 待发布",
+      2,
+      "这一章还躺在作者的抽屉里，只有一张潮汐表的复印件，和一句没来得及写下的开头。",
+      "这一章还躺在作者的抽屉里",
+      "这一章还躺在作者的抽屉底层",
+      "“抽屉底层”更符合藏物的叙事逻辑",
+      "wanderer",
+      now,
+    );
 
     db.prepare("INSERT OR IGNORE INTO polls(id, question, multiple, minimum_role) VALUES ('poll-route', '下一章先去哪里？', 0, 'reader')").run();
     db.prepare("INSERT OR IGNORE INTO poll_options(id, poll_id, label, sort_order) VALUES ('poll-option-tower', 'poll-route', '钟楼', 1)").run();
@@ -299,6 +371,7 @@ export function createDatabase(options: DatabaseOptions): DatabaseSync {
   runMigration(db, 1, migrationV1);
   runMigration(db, 2, migrationV2);
   runMigration(db, 3, migrationV3);
+  runMigration(db, 4, migrationV4);
   if (options.seed !== false) seed(db);
   return db;
 }

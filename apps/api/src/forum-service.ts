@@ -19,6 +19,10 @@ interface UserRow {
 interface SuggestionRow {
   id: string;
   document_id: string;
+  chapter_id: string | null;
+  chapter_title: string;
+  line_no: number;
+  line_text: string;
   from_text: string;
   to_text: string;
   reason: string;
@@ -55,6 +59,10 @@ function mapSuggestion(row: SuggestionRow) {
   return {
     id: row.id,
     documentId: row.document_id,
+    chapterId: row.chapter_id ?? "",
+    chapterTitle: row.chapter_title,
+    lineNo: row.line_no,
+    lineText: row.line_text,
     fromText: row.from_text,
     toText: row.to_text,
     reason: row.reason,
@@ -224,18 +232,28 @@ export class ForumService {
     return rows.map(mapSuggestion);
   }
 
-  /** 新建 pending 建议。 */
+  /** 新建 pending 建议；旧客户端不传定位字段时按空章节/0 行存储。 */
   createSuggestion(
     documentId: string,
     fromText: string,
     toText: string,
     reason: string,
     identity: RequestIdentity,
+    location: {
+      chapterId: string;
+      chapterTitle: string;
+      lineNo: number;
+      lineText: string;
+    },
   ) {
     this.#documents.get(documentId);
     const row: SuggestionRow = {
       id: randomUUID(),
       document_id: documentId,
+      chapter_id: location.chapterId || null,
+      chapter_title: location.chapterTitle,
+      line_no: location.lineNo,
+      line_text: location.lineText,
       from_text: fromText,
       to_text: toText,
       reason,
@@ -246,11 +264,15 @@ export class ForumService {
     };
     this.#db
       .prepare(
-        "INSERT INTO suggestions(id, document_id, from_text, to_text, reason, status, author_id, reviewer_id, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL, ?)",
+        "INSERT INTO suggestions(id, document_id, chapter_id, chapter_title, line_no, line_text, from_text, to_text, reason, status, author_id, reviewer_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, ?)",
       )
       .run(
         row.id,
         row.document_id,
+        row.chapter_id,
+        row.chapter_title,
+        row.line_no,
+        row.line_text,
         row.from_text,
         row.to_text,
         row.reason,

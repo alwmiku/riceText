@@ -48,6 +48,10 @@ const pendingSuggestions = [
   {
     id: "s1",
     documentId: "demo-post",
+    chapterId: "chapter-0",
+    chapterTitle: "楔子 · 雨季之前",
+    lineNo: 2,
+    lineText: "雨季开始前的第七天，港口送走了最后一班客船。雾线从海面爬上来，把整条长街泡得发软。",
     fromText: "渡口的汽笛",
     toText: "港口的汽笛",
     reason: "与第一章地名保持一致",
@@ -59,6 +63,10 @@ const pendingSuggestions = [
   {
     id: "s2",
     documentId: "demo-post",
+    chapterId: "chapter-1",
+    chapterTitle: "第一章 · 潮汐表",
+    lineNo: 3,
+    lineText: "灯塔管理员翻着泛黄的潮汐表说，今夜没有雾，却有风。",
     fromText: "她握紧信封",
     toText: "她攥紧信封",
     reason: "减少相邻段落用词重复",
@@ -205,6 +213,21 @@ describe("ForumPanels", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /第二章.*陌生船票/ }));
     expect(onSelect).toHaveBeenCalledWith(2);
+  });
+
+  it("校订条目标注“对哪个章节的哪一行”校订", async () => {
+    renderWithQuery(
+      <ForumBusinessPanel
+        identity={identities[0]!}
+        documentId="demo-post"
+        baseRevision={18}
+        onRestore={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText("楔子 · 雨季之前")).toBeInTheDocument();
+    expect(screen.getByText("第 2 行")).toBeInTheDocument();
+    expect(screen.getByText("第一章 · 潮汐表")).toBeInTheDocument();
+    expect(screen.getByText("第 3 行")).toBeInTheDocument();
   });
 
   it("接受校订建议调用审核 API 并显示已合并状态", async () => {
