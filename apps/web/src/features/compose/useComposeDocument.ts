@@ -47,14 +47,16 @@ export function useComposeDocument(
   const contentRef = useRef<RichTextNode>(data.content);
   const generationRef = useRef(0);
 
+  // Placeholder revision is demo metadata, not a server ordering guarantee. Before the
+  // first real edit, always hydrate the resolved query result regardless of revision.
   useEffect(() => {
     if (generationRef.current !== 0) return;
-    if (data.revision <= document.revision) return;
+    if (data === document) return;
     setDocument(data);
     contentRef.current = data.content;
     generationRef.current = 0;
     setContent(data.content);
-  }, [data, document.revision]);
+  }, [data, document]);
 
   const replaceContent = useCallback((next: RichTextNode) => {
     contentRef.current = next;
