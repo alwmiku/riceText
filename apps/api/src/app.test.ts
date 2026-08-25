@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { diffDocuments } from "@ricetext/document-core";
 import { createApp } from "./app.js";
 
 const validContent = (text = "新的正文") => ({
@@ -157,5 +158,80 @@ describe("RiceText API", () => {
     expect(reviewed.json().document.revision).toBe(2);
     const history = await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions" });
     expect(history.json().items[0].operation).toBe("suggestion");
+  });
+
+  it("应用最小 steps 创建带溯源的新修订", async () => {
+    const before = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json().content as {
+      content: Array<{ content: Array<{ text: string }> }>;
+    };
+    const after = structuredClone(before);
+    after.content[0]!.content[0]!.text = "海港来信：第三章讨论与校订";
+    const steps = diffDocuments(before, after);
+
+    const applied = await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/steps",
+      headers: { "x-user-id": "author" },
+      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-one", steps, chapterId: "chapter-0" },
+    });
+    expect(applied.statusCode, applied.body).toBe(201);
+    expect(applied.json().revision).toBe(2);
+    expect(applied.json().content.content[0].content[0].text).toBe("海港来信：第三章讨论与校订");
+
+    // 幂等重试命中既有修订
+    const retried = await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/steps",
+      headers: { "x-user-id": "author" },
+      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-one", steps, chapterId: "chapter-0" },
+    });
+    expect(retried.statusCode).toBe(200);
+    expect(retried.json().revision).toBe(2);
+
+    // 章节独立版本号递增
+    const chapters = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number }>;
+    expect(chapters.find((item) => item.id === "chapter-0")?.revision).toBe(2);
+    expect(chapters.find((item) => item.id === "chapter-1")?.revision).toBe(1);
+
+    // 历史修订带 steps 溯源描述
+    const history = await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions" });
+    expect(history.json().items[0]).toMatchObject({ operation: "steps", summary: "应用增量编辑" });
+    expect(typeof history.json().items[0].stepsSummary).toBe("string");
+    expect(history.json().items[0].stepsSummary.length).toBeGreaterThan(0);
+  });
+
+  it("steps 应用拒绝权限不足、非法步骤与 revision 冲突", async () => {
+    const steps = [{ stepType: "replace", from: 1, to: 2, slice: { content: [{ type: "text", text: "海" }], openStart: 0, openEnd: 0 } }];
+
+    const forbidden = await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/steps",
+      headers: { "x-user-id": "reader" },
+      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-denied", steps },
+    });
+    expect(forbidden.statusCode).toBe(403);
+
+    const invalid = await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/steps",
+      headers: { "x-user-id": "author" },
+      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-invalid", steps: [{ stepType: "replace", from: 9999, to: 10000, slice: { content: [], openStart: 0, openEnd: 0 } }] },
+    });
+    expect(invalid.statusCode).toBe(422);
+    expect(invalid.json().error.code).toBe("INVALID_STEPS");
+
+    await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/steps",
+      headers: { "x-user-id": "author" },
+      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-conflict-base", steps },
+    });
+    const conflict = await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/steps",
+      headers: { "x-user-id": "author" },
+      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-conflict", steps },
+    });
+    expect(conflict.statusCode).toBe(409);
   });
 });

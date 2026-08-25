@@ -1,16 +1,9 @@
 import { Mark } from "@tiptap/core";
+import { spoilerMarkSpec } from "@ricetext/document-core";
 
-/** 用于悬停显示与点击切换剧透文本的 Tiptap 标记。 */
+/** 用于悬停显示与点击切换剧透文本的 Tiptap 标记（规格来自 document-core）。 */
 export const Spoiler = Mark.create({
-  name: "spoiler",
-  inclusive: false,
-  excludes: "bold italic textStyle",
-  parseHTML() {
-    return [{ tag: "span[data-spoiler]" }];
-  },
-  renderHTML() {
-    return ["span", { class: "rt-spoiler", "data-spoiler": "true" }, 0];
-  },
+  ...spoilerMarkSpec,
   addCommands() {
     return {
       setSpoiler:

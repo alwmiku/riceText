@@ -245,6 +245,31 @@ ALTER TABLE suggestions ADD COLUMN line_no INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE suggestions ADD COLUMN line_text TEXT NOT NULL DEFAULT '';
 `;
 
+/**
+ * 溯源与审计：每个 revision 记录本次应用的 ProseMirror steps JSON，
+ * operation 增加 'steps'（SQLite 改 CHECK 约束必须重建表）。
+ * 快照（content_json）与 steps（steps_json）双记录并存：
+ * 快照用于快速读取/回退，steps 用于溯源与审计展示。
+ */
+const migrationV5 = `
+CREATE TABLE document_revisions_v5 (
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL,
+  schema_version INTEGER NOT NULL,
+  content_json TEXT NOT NULL,
+  steps_json TEXT,
+  author_id TEXT NOT NULL REFERENCES users(id),
+  operation TEXT NOT NULL CHECK (operation IN ('seed', 'update', 'rollback', 'suggestion', 'steps')),
+  target_revision INTEGER,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (document_id, revision)
+);
+INSERT INTO document_revisions_v5(document_id, revision, schema_version, content_json, steps_json, author_id, operation, target_revision, created_at)
+  SELECT document_id, revision, schema_version, content_json, NULL, author_id, operation, target_revision, created_at FROM document_revisions;
+DROP TABLE document_revisions;
+ALTER TABLE document_revisions_v5 RENAME TO document_revisions;
+`;
+
 /** 幂等写入开发身份、正文和论坛初始数据，重复启动不会覆盖用户修改。 */
 function seed(db: DatabaseSync): void {
   const now = new Date().toISOString();
@@ -372,6 +397,11 @@ export function createDatabase(options: DatabaseOptions): DatabaseSync {
   runMigration(db, 2, migrationV2);
   runMigration(db, 3, migrationV3);
   runMigration(db, 4, migrationV4);
+  // V5 重建 document_revisions（document_mutations 通过外键引用它），
+  // 迁移期间临时关闭外键检查以允许 DROP + RENAME。
+  db.exec("PRAGMA foreign_keys = OFF");
+  runMigration(db, 5, migrationV5);
+  db.exec("PRAGMA foreign_keys = ON");
   if (options.seed !== false) seed(db);
   return db;
 }

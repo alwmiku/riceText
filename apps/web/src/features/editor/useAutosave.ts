@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, saveDocument } from "../../lib/api";
+import { diffDocuments } from "@ricetext/document-core";
+import { ApiError, saveDocumentSteps } from "../../lib/api";
 import { createId } from "../../lib/utils";
 import type {
   DocumentEnvelope,
@@ -64,6 +65,8 @@ export function useAutosave({
   const timerRef = useRef<number | null>(null);
   const onSavedRef = useRef(onSaved);
   const chapterIdRef = useRef(chapterId);
+  // 服务器基线：保存时对基线做 diff 生成最小 steps，成功后推进到当前内容。
+  const baselineRef = useRef(document.content);
 
   // 回调与正文必须保持最新，但它们不应重建 enqueue 或清空正在执行的保存队列。
   latestRef.current = { content, generation };
@@ -81,9 +84,20 @@ export function useAutosave({
     if (baselineChangedExternally) {
       savedGeneration.current = generation;
       failedGeneration.current = null;
+      // 服务器确认的修订才推进 diff 基线；本地缓存副本保持原基线，
+      // 恢复在线后 diff 自然覆盖离线期间的改动。
+      if (document.storage === "server") {
+        baselineRef.current = document.content;
+      }
     }
     setState(document.storage === "local-cache" ? "offline" : "saved");
-  }, [document.id, document.revision, document.savedAt, document.storage]);
+  }, [
+    document.id,
+    document.revision,
+    document.savedAt,
+    document.storage,
+    document.content,
+  ]);
 
   const enqueue = useCallback(
     async (
@@ -100,15 +114,27 @@ export function useAutosave({
         return true;
       setState("saving");
       let succeeded = true;
-      // Promise 链保证任意时刻只有一个 PUT；catch 先清除上一请求的拒绝状态。
+      // Promise 链保证任意时刻只有一个保存请求；catch 先清除上一请求的拒绝状态。
       queueRef.current = queueRef.current
         .catch(() => undefined)
         .then(async () => {
-          const result = await saveDocument(document.id, {
+          // 与服务器基线对比生成最小 transaction steps；无变化时零网络请求。
+          const steps = diffDocuments(baselineRef.current, snapshot.content);
+          if (steps.length === 0) {
+            savedGeneration.current = snapshot.generation;
+            failedGeneration.current = null;
+            setState(
+              snapshot.generation === latestRef.current.generation
+                ? "saved"
+                : "dirty",
+            );
+            return;
+          }
+          const result = await saveDocumentSteps(document.id, {
             schemaVersion: document.schemaVersion,
             baseRevision: revisionRef.current,
             clientMutationId: createId("save"),
-            content: snapshot.content,
+            steps,
             ...(chapterIdRef.current
               ? { chapterId: chapterIdRef.current }
               : {}),
@@ -116,6 +142,9 @@ export function useAutosave({
           revisionRef.current = result.revision;
           savedGeneration.current = snapshot.generation;
           failedGeneration.current = null;
+          if (result.storage === "server") {
+            baselineRef.current = snapshot.content;
+          }
           setRevision(result.revision);
           setSavedAt(result.savedAt);
           setState(

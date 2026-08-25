@@ -133,18 +133,21 @@ export const seedRevisions: RevisionSummary[] = [
     savedAt: new Date().toISOString(),
     authorName: "林稻",
     summary: "补充第三章摘录与骰点",
+    stepsSummary: "修改文字、插入小说摘录",
   },
   {
     revision: 17,
     savedAt: new Date(Date.now() - 36e5).toISOString(),
     authorName: "林稻",
     summary: "接受读者错字建议",
+    stepsSummary: "修改文字",
   },
   {
     revision: 16,
     savedAt: new Date(Date.now() - 864e5).toISOString(),
     authorName: "版务小禾",
     summary: "调整回复可见范围",
+    stepsSummary: "修改属性",
   },
 ];
 

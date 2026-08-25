@@ -14,6 +14,12 @@ import type {
   RichTextNode,
   UploadedAsset,
 } from "./types";
+import {
+  applyStepsToDocument,
+  sharedSchema,
+  type JSONContent,
+  type StepJson,
+} from "@ricetext/document-core";
 
 /**
  * Web 宿主使用的轻量 API 适配层。
@@ -203,6 +209,52 @@ export async function saveDocument(
     const saved: DocumentEnvelope = {
       ...current,
       content: input.content,
+      revision: Math.max(current.revision, input.baseRevision) + 1,
+      savedAt: new Date().toISOString(),
+      storage: "local-cache",
+    };
+    localStorage.setItem(`ricetext:document:${id}`, JSON.stringify(saved));
+    return saved;
+  }
+}
+
+/**
+ * 上传最小 transaction steps，服务端完整运行 ProseMirror 应用并创建新修订。
+ * 网络不可达时在本地应用 steps 并缓存整篇（恢复在线后基线 diff 自然覆盖）。
+ */
+export async function saveDocumentSteps(
+  id: string,
+  input: {
+    schemaVersion: number;
+    baseRevision: number;
+    clientMutationId: string;
+    steps: StepJson[];
+    /** 本次编辑的章节 id；steps 应用成功后该章节版本号递增。 */
+    chapterId?: string;
+  },
+): Promise<DocumentEnvelope> {
+  try {
+    const envelope = await request<DocumentEnvelope>(`/documents/${id}/steps`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+    return { ...envelope, storage: "server" };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    const current = await getDocument(id);
+    let content: RichTextNode = current.content;
+    try {
+      content = applyStepsToDocument(
+        sharedSchema(),
+        current.content as unknown as JSONContent,
+        input.steps,
+      ) as RichTextNode;
+    } catch {
+      // 本地应用失败时保留服务器版本，避免写入无法解析的本地缓存。
+    }
+    const saved: DocumentEnvelope = {
+      ...current,
+      content,
       revision: Math.max(current.revision, input.baseRevision) + 1,
       savedAt: new Date().toISOString(),
       storage: "local-cache",

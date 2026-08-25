@@ -5,11 +5,11 @@ import { defaultDocument } from "../../lib/seed";
 import type { DocumentEnvelope, RichTextNode } from "../../lib/types";
 import { useAutosave } from "./useAutosave";
 
-const { saveDocumentMock } = vi.hoisted(() => ({ saveDocumentMock: vi.fn() }));
+const { saveDocumentStepsMock } = vi.hoisted(() => ({ saveDocumentStepsMock: vi.fn() }));
 
 vi.mock("../../lib/api", async () => {
   const actual = await vi.importActual<typeof ApiModule>("../../lib/api");
-  return { ...actual, saveDocument: saveDocumentMock };
+  return { ...actual, saveDocumentSteps: saveDocumentStepsMock };
 });
 
 const initialContent = defaultDocument.content;
@@ -46,7 +46,7 @@ function deferred<T>() {
 describe("useAutosave", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    saveDocumentMock.mockReset();
+    saveDocumentStepsMock.mockReset();
   });
 
   afterEach(() => {
@@ -73,7 +73,7 @@ describe("useAutosave", () => {
 
   it("停止输入 1.2 秒后保存并通知宿主", async () => {
     const onSaved = vi.fn();
-    saveDocumentMock.mockResolvedValueOnce(savedDocument(19));
+    saveDocumentStepsMock.mockResolvedValueOnce(savedDocument(19));
     const { result, rerender } = renderHook(
       ({ content, generation }) =>
         useAutosave({
@@ -90,17 +90,17 @@ describe("useAutosave", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1199);
     });
-    expect(saveDocumentMock).not.toHaveBeenCalled();
+    expect(saveDocumentStepsMock).not.toHaveBeenCalled();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
 
-    expect(saveDocumentMock).toHaveBeenCalledWith(
+    expect(saveDocumentStepsMock).toHaveBeenCalledWith(
       "demo-post",
       expect.objectContaining({
         schemaVersion: 1,
         baseRevision: 18,
-        content: changedContent,
+        steps: expect.any(Array),
         clientMutationId: expect.stringMatching(/^save_/),
       }),
     );
@@ -113,7 +113,7 @@ describe("useAutosave", () => {
   });
 
   it("flush 立即保存，并正确标记本地缓存副本", async () => {
-    saveDocumentMock.mockResolvedValueOnce(savedDocument(19, "local-cache"));
+    saveDocumentStepsMock.mockResolvedValueOnce(savedDocument(19, "local-cache"));
     const { result, rerender } = renderHook(
       ({ content, generation }) =>
         useAutosave({ document: defaultDocument, content, generation }),
@@ -132,7 +132,7 @@ describe("useAutosave", () => {
   it("把同时触发的保存串行化，并让后一请求使用新修订号", async () => {
     const first = deferred<DocumentEnvelope>();
     const second = deferred<DocumentEnvelope>();
-    saveDocumentMock
+    saveDocumentStepsMock
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
     const { result, rerender } = renderHook(
@@ -149,7 +149,7 @@ describe("useAutosave", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(saveDocumentMock).toHaveBeenCalledTimes(1);
+    expect(saveDocumentStepsMock).toHaveBeenCalledTimes(1);
 
     const newestContent: RichTextNode = {
       type: "doc",
@@ -165,7 +165,7 @@ describe("useAutosave", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(saveDocumentMock).toHaveBeenCalledTimes(1);
+    expect(saveDocumentStepsMock).toHaveBeenCalledTimes(1);
 
     first.resolve(savedDocument(19));
     await act(async () => {
@@ -174,10 +174,10 @@ describe("useAutosave", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(saveDocumentMock).toHaveBeenCalledTimes(2);
-    expect(saveDocumentMock.mock.calls[1]![1]).toMatchObject({
+    expect(saveDocumentStepsMock).toHaveBeenCalledTimes(2);
+    expect(saveDocumentStepsMock.mock.calls[1]![1]).toMatchObject({
       baseRevision: 19,
-      content: newestContent,
+      steps: expect.any(Array),
     });
 
     second.resolve({ ...savedDocument(20), content: newestContent });
@@ -189,7 +189,7 @@ describe("useAutosave", () => {
 
   it("409 时保留本地内容，接受最新修订后可以继续保存", async () => {
     const { ApiError } = await import("../../lib/api");
-    saveDocumentMock.mockRejectedValueOnce(
+    saveDocumentStepsMock.mockRejectedValueOnce(
       new ApiError("conflict", 409, { latestRevision: 25 }),
     );
     const { result, rerender } = renderHook(
@@ -214,18 +214,42 @@ describe("useAutosave", () => {
       conflictMessage: "",
     });
 
-    saveDocumentMock.mockResolvedValueOnce(savedDocument(26));
+    saveDocumentStepsMock.mockResolvedValueOnce(savedDocument(26));
     await act(async () => {
       await result.current.flush();
     });
-    expect(saveDocumentMock.mock.calls[1]![1]).toMatchObject({
+    expect(saveDocumentStepsMock.mock.calls[1]![1]).toMatchObject({
       baseRevision: 25,
     });
     expect(result.current.state).toBe("saved");
   });
 
+  it("与服务器基线无差异时零网络请求直接标记已保存", async () => {
+    const onSaved = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ content, generation }) =>
+        useAutosave({
+          document: defaultDocument,
+          content,
+          generation,
+          onSaved,
+        }),
+      { initialProps: { content: initialContent, generation: 0 } },
+    );
+
+    // 内容与基线相同，仅代次推进：diff 为空，不应发起保存请求
+    rerender({ content: initialContent, generation: 1 });
+    expect(result.current.state).toBe("dirty");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1300);
+    });
+    expect(saveDocumentStepsMock).not.toHaveBeenCalled();
+    expect(result.current.state).toBe("saved");
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
   it("普通异常保持 error 且不循环重试，新内容代次可以再次保存", async () => {
-    saveDocumentMock.mockRejectedValueOnce(new Error("磁盘暂不可写"));
+    saveDocumentStepsMock.mockRejectedValueOnce(new Error("磁盘暂不可写"));
     const { result, rerender } = renderHook(
       ({ content, generation }) =>
         useAutosave({ document: defaultDocument, content, generation }),
@@ -244,13 +268,13 @@ describe("useAutosave", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
     });
-    expect(saveDocumentMock).toHaveBeenCalledTimes(1);
+    expect(saveDocumentStepsMock).toHaveBeenCalledTimes(1);
 
-    saveDocumentMock.mockResolvedValueOnce(savedDocument(19));
+    saveDocumentStepsMock.mockResolvedValueOnce(savedDocument(19));
     await act(async () => {
       await result.current.flush();
     });
-    expect(saveDocumentMock).toHaveBeenCalledTimes(2);
+    expect(saveDocumentStepsMock).toHaveBeenCalledTimes(2);
     expect(result.current).toMatchObject({ state: "saved", revision: 19 });
 
     const newestContent: RichTextNode = {
@@ -259,7 +283,7 @@ describe("useAutosave", () => {
         { type: "paragraph", content: [{ type: "text", text: "retry" }] },
       ],
     };
-    saveDocumentMock.mockResolvedValueOnce({
+    saveDocumentStepsMock.mockResolvedValueOnce({
       ...savedDocument(19),
       content: newestContent,
     });

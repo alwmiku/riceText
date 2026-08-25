@@ -98,6 +98,9 @@ importers:
       '@ricetext/contracts':
         specifier: workspace:^
         version: link:../../packages/contracts
+      '@ricetext/document-core':
+        specifier: workspace:^
+        version: link:../../packages/document-core
       fastify:
         specifier: ^5.12.1
         version: 5.12.1
@@ -161,6 +164,9 @@ importers:
       '@ricetext/contracts':
         specifier: workspace:^
         version: link:../../packages/contracts
+      '@ricetext/document-core':
+        specifier: workspace:^
+        version: link:../../packages/document-core
       '@ricetext/editor-core':
         specifier: workspace:^
         version: link:../../packages/editor-core
@@ -256,11 +262,47 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  packages/document-core:
+    dependencies:
+      '@ricetext/contracts':
+        specifier: workspace:^
+        version: link:../contracts
+      '@tiptap/core':
+        specifier: ^3.30.2
+        version: 3.30.2(@tiptap/pm@3.30.2)
+      '@tiptap/extension-color':
+        specifier: ^3.30.2
+        version: 3.30.2(@tiptap/extension-text-style@3.30.2(@tiptap/core@3.30.2(@tiptap/pm@3.30.2)))
+      '@tiptap/extension-font-family':
+        specifier: ^3.30.2
+        version: 3.30.2(@tiptap/extension-text-style@3.30.2(@tiptap/core@3.30.2(@tiptap/pm@3.30.2)))
+      '@tiptap/extension-link':
+        specifier: ^3.30.2
+        version: 3.30.2(@tiptap/core@3.30.2(@tiptap/pm@3.30.2))(@tiptap/pm@3.30.2)
+      '@tiptap/extension-text-align':
+        specifier: ^3.30.2
+        version: 3.30.2(@tiptap/core@3.30.2(@tiptap/pm@3.30.2))
+      '@tiptap/extension-text-style':
+        specifier: ^3.30.2
+        version: 3.30.2(@tiptap/core@3.30.2(@tiptap/pm@3.30.2))
+      '@tiptap/extension-underline':
+        specifier: ^3.30.2
+        version: 3.30.2(@tiptap/core@3.30.2(@tiptap/pm@3.30.2))
+      '@tiptap/pm':
+        specifier: ^3.30.2
+        version: 3.30.2
+      '@tiptap/starter-kit':
+        specifier: ^3.30.2
+        version: 3.30.2
+
   packages/editor-core:
     dependencies:
       '@ricetext/contracts':
         specifier: workspace:^
         version: link:../contracts
+      '@ricetext/document-core':
+        specifier: workspace:^
+        version: link:../document-core
       '@tiptap/core':
         specifier: ^3.30.2
         version: 3.30.2(@tiptap/pm@3.30.2)

@@ -445,6 +445,11 @@ export function HistoryPanel({
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
             {item.authorName} · {item.summary}
           </p>
+          {item.stepsSummary ? (
+            <p className="mt-1 rounded bg-muted px-1.5 py-1 text-[10px] leading-4 text-muted-foreground">
+              本次改动：{item.stepsSummary}
+            </p>
+          ) : null}
           <div className="mt-2 flex gap-2">
             <Button variant="ghost" size="sm" className="h-7 px-2">
               比较

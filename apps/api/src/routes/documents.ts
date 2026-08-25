@@ -3,6 +3,7 @@ import {
   CursorQuerySchema,
   RollbackDocumentRequestSchema,
   UpdateDocumentRequestSchema,
+  UpdateDocumentStepsRequestSchema,
 } from "@ricetext/contracts";
 import type { RouteDependencies } from "./dependencies.js";
 import {
@@ -58,6 +59,22 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
       const user = requireEditor(dependencies, request);
       const body = RollbackDocumentRequestSchema.parse(request.body);
       const result = dependencies.documents.rollback(
+        params(request).documentId!,
+        body,
+        user.id,
+      );
+      return reply.status(result.created ? 201 : 200).send(result.envelope);
+    },
+  );
+
+  // 客户端提交最小 transaction steps，服务端完整运行 ProseMirror 应用。
+  app.patch(
+    "/api/documents/:documentId/steps",
+    { schema: getFastifySchema("updateDocumentSteps") },
+    async (request, reply) => {
+      const user = requireEditor(dependencies, request);
+      const body = UpdateDocumentStepsRequestSchema.parse(request.body);
+      const result = dependencies.documents.applySteps(
         params(request).documentId!,
         body,
         user.id,

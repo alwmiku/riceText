@@ -10,6 +10,7 @@ import {
   listSuggestions,
   restoreRevision,
   saveDocument,
+  saveDocumentSteps,
   uploadAsset,
   voteComment,
 } from './api';
@@ -103,6 +104,54 @@ describe('web api client', () => {
 
     expect(result).toMatchObject({ revision: 25, storage: 'local-cache' });
     expect(JSON.parse(localStorage.getItem('ricetext:document:demo-post')!)).toMatchObject({ revision: 25, storage: 'local-cache' });
+  });
+
+  it('上传最小 steps：PATCH 成功、409 抛出、离线本地应用并缓存', async () => {
+    const steps = [
+      {
+        stepType: 'replace',
+        from: 1,
+        to: 1,
+        slice: { content: [{ type: 'text', text: '新' }], openStart: 0, openEnd: 0 },
+      },
+    ];
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...defaultDocument, revision: 19 }));
+    const saved = await saveDocumentSteps('demo-post', {
+      schemaVersion: 1,
+      baseRevision: 18,
+      clientMutationId: 'steps_1',
+      steps,
+      chapterId: 'chapter-0',
+    });
+    expect(saved).toMatchObject({ revision: 19, storage: 'server' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/documents/demo-post/steps',
+      expect.objectContaining({ method: 'PATCH' }),
+    );
+    const init = fetchMock.mock.calls[0]![1]!;
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      baseRevision: 18,
+      steps,
+      chapterId: 'chapter-0',
+    });
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '版本已经变化' }, { status: 409 }));
+    await expect(
+      saveDocumentSteps('demo-post', { schemaVersion: 1, baseRevision: 18, clientMutationId: 'steps_2', steps }),
+    ).rejects.toMatchObject({ status: 409 });
+
+    // 离线：本地应用 steps 后整篇缓存
+    fetchMock.mockRejectedValue(new TypeError('offline'));
+    const offline = await saveDocumentSteps('demo-post', {
+      schemaVersion: 1,
+      baseRevision: 18,
+      clientMutationId: 'steps_3',
+      steps: [{ stepType: 'replace', from: 1, to: 1, slice: { content: [{ type: 'text', text: '海' }], openStart: 0, openEnd: 0 } }],
+    });
+    expect(offline).toMatchObject({ revision: 19, storage: 'local-cache' });
+    const cached = JSON.parse(localStorage.getItem('ricetext:document:demo-post')!) as { content: { content: Array<{ content: Array<{ text: string }> }> } };
+    // 首段首字符被替换为“海”
+    expect(cached.content.content[0]!.content[0]!.text.startsWith('海')).toBe(true);
   });
 
   it('读取版本支持服务器、网络回退和 HTTP 错误', async () => {

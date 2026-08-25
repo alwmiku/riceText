@@ -14,7 +14,16 @@ import {
   type TiptapMark,
   type TiptapNode,
   type UpdateDocumentRequest,
+  type UpdateDocumentStepsRequest,
 } from "@ricetext/contracts";
+import {
+  ApplyStepsError,
+  applyStepsToDocument,
+  createDocumentSchema,
+  describeStepsJson,
+  type JSONContent,
+  type StepJson,
+} from "@ricetext/document-core";
 import { HttpError } from "./errors.js";
 
 interface DocumentRow {
@@ -29,9 +38,10 @@ interface RevisionRow {
   revision: number;
   schema_version: number;
   content_json: string;
+  steps_json: string | null;
   author_id: string;
   author_name?: string;
-  operation: "seed" | "update" | "rollback" | "suggestion";
+  operation: "seed" | "update" | "rollback" | "suggestion" | "steps";
   target_revision: number | null;
   created_at: string;
 }
@@ -457,6 +467,50 @@ export class DocumentService {
     );
   }
 
+  /**
+   * 在服务端完整运行 ProseMirror：把客户端提交的最小 transaction steps
+   * 应用到当前 revision 的快照，生成新修订（快照 + steps 双记录）。
+   */
+  applySteps(
+    documentId: string,
+    request: UpdateDocumentStepsRequest,
+    authorId: string,
+  ): { envelope: DocumentEnvelope; created: boolean } {
+    const current = this.get(documentId);
+    let content: TiptapDocument;
+    try {
+      const next = applyStepsToDocument(
+        createDocumentSchema(),
+        current.content as unknown as JSONContent,
+        request.steps as unknown as StepJson[],
+      );
+      content = sanitizeDocument(next);
+    } catch (error) {
+      if (error instanceof ApplyStepsError)
+        throw new HttpError(422, "INVALID_STEPS", error.message);
+      throw error;
+    }
+    const result = this.#write(
+      documentId,
+      request.baseRevision,
+      request.clientMutationId,
+      JSON.stringify(request),
+      request.schemaVersion,
+      content,
+      authorId,
+      "steps",
+      null,
+      JSON.stringify(request.steps),
+    );
+    // 与整篇保存一致：真正生效时只递增本次编辑章节的 revision。
+    if (result.created && request.chapterId) {
+      this.#db
+        .prepare("UPDATE chapters SET revision = revision + 1 WHERE id = ?")
+        .run(request.chapterId);
+    }
+    return result;
+  }
+
   /** 审核通过建议时创建真实修订。 */
   applySuggestion(
     documentId: string,
@@ -495,7 +549,7 @@ export class DocumentService {
       );
     const rows = this.#db
       .prepare(
-        "SELECT r.revision, r.schema_version, r.author_id, u.name AS author_name, r.operation, r.target_revision, r.created_at FROM document_revisions r JOIN users u ON u.id = r.author_id WHERE r.document_id = ? AND r.revision < ? ORDER BY r.revision DESC LIMIT ?",
+        "SELECT r.revision, r.schema_version, r.author_id, u.name AS author_name, r.operation, r.target_revision, r.steps_json, r.created_at FROM document_revisions r JOIN users u ON u.id = r.author_id WHERE r.document_id = ? AND r.revision < ? ORDER BY r.revision DESC LIMIT ?",
       )
       .all(documentId, before, limit + 1) as unknown as RevisionRow[];
     const hasMore = rows.length > limit;
@@ -513,7 +567,11 @@ export class DocumentService {
           update: "保存正文修改",
           rollback: `回退到版本 ${row.target_revision ?? "?"}`,
           suggestion: "合并已审核纠错建议",
+          steps: "应用增量编辑",
         }[row.operation],
+        stepsSummary: row.steps_json
+          ? describeStepsJson(JSON.parse(row.steps_json) as StepJson[])
+          : null,
         targetRevision: row.target_revision,
       })),
       pageInfo: { nextCursor: hasMore ? String(page.at(-1)!.revision) : null },
@@ -530,6 +588,7 @@ export class DocumentService {
     authorId: string,
     operation: RevisionRow["operation"],
     targetRevision: number | null,
+    stepsJson: string | null = null,
   ): { envelope: DocumentEnvelope; created: boolean } {
     // revision 检查、历史写入、幂等记录和当前指针更新必须处于同一写事务。
     this.#db.exec("BEGIN IMMEDIATE");
@@ -568,13 +627,14 @@ export class DocumentService {
       const now = new Date().toISOString();
       this.#db
         .prepare(
-          "INSERT INTO document_revisions(document_id, revision, schema_version, content_json, author_id, operation, target_revision, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO document_revisions(document_id, revision, schema_version, content_json, steps_json, author_id, operation, target_revision, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           documentId,
           revision,
           schemaVersion,
           JSON.stringify(content),
+          stepsJson,
           authorId,
           operation,
           targetRevision,

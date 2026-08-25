@@ -1,70 +1,12 @@
 import { Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+import { longTextBlockNodeSpec } from "@ricetext/document-core";
 
 import { LongTextView } from "../long-text-node-view.js";
-import { parseInteger } from "./helpers.js";
 
-/** 用于长篇小说章节、带虚拟化 React 视图的 Tiptap 块节点。 */
+/** 用于长篇小说章节、带虚拟化 React 视图的 Tiptap 块节点（规格来自 document-core）。 */
 export const LongTextBlock = Node.create({
-  name: "longTextBlock",
-  group: "block",
-  atom: true,
-  selectable: true,
-  draggable: true,
-  addAttributes() {
-    return {
-      chapterId: {
-        default: "",
-        parseHTML: (element) =>
-          element.getAttribute("data-chapter-id")?.slice(0, 128) ?? "",
-      },
-      title: {
-        default: "",
-        parseHTML: (element) =>
-          element.getAttribute("data-title")?.slice(0, 500) ?? "",
-      },
-      text: {
-        default: "",
-        parseHTML: (element) =>
-          element.textContent?.slice(0, 100_000_000) ?? "",
-      },
-      order: {
-        default: 0,
-        parseHTML: (element) =>
-          parseInteger(element.getAttribute("data-order"), 0, 0, 1_000_000),
-      },
-      start: {
-        default: null,
-        parseHTML: (element) =>
-          parseInteger(element.getAttribute("data-start"), null, 0, 10_000_000_000),
-      },
-      end: {
-        default: null,
-        parseHTML: (element) =>
-          parseInteger(element.getAttribute("data-end"), null, 0, 10_000_000_000),
-      },
-    };
-  },
-  parseHTML() {
-    return [{ tag: 'section[data-node-type="long-text-block"]' }];
-  },
-  renderHTML({ node }) {
-    const start = node.attrs.start;
-    const end = node.attrs.end;
-    return [
-      "section",
-      {
-        class: "rt-long-text",
-        "data-node-type": "long-text-block",
-        "data-chapter-id": String(node.attrs.chapterId ?? ""),
-        "data-title": String(node.attrs.title ?? ""),
-        "data-order": String(node.attrs.order ?? 0),
-        ...(start === null ? {} : { "data-start": String(start) }),
-        ...(end === null ? {} : { "data-end": String(end) }),
-      },
-      String(node.attrs.text ?? ""),
-    ];
-  },
+  ...longTextBlockNodeSpec,
   addCommands() {
     return {
       insertLongTextBlock:

@@ -39,6 +39,8 @@ export interface RevisionSummary {
   authorName: string;
   /** 保存、回滚或建议合并摘要。 */
   summary: string;
+  /** 本次修订应用的 steps 的人类可读描述（快照修订为 null）。 */
+  stepsSummary: string | null;
 }
 
 /** 编辑器保存状态，供宿主页面显示而不依赖实现细节。 */

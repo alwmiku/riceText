@@ -127,6 +127,8 @@ export const UpdateDocumentStepsRequestSchema = z
     baseRevision: z.number().int().nonnegative(),
     clientMutationId: EntityIdSchema,
     steps: z.array(ProseMirrorStepSchema).min(1).max(1_000),
+    /** 可选：本次编辑的章节 id，steps 应用成功后该章节 revision 递增。 */
+    chapterId: EntityIdSchema.optional(),
   })
   .strict();
 /** 增量更新文档请求。 */
@@ -192,8 +194,10 @@ export const RevisionSummarySchema = z
     savedAt: DateTimeSchema,
     authorId: EntityIdSchema,
     authorName: z.string(),
-    operation: z.enum(["seed", "update", "rollback", "suggestion"]),
+    operation: z.enum(["seed", "update", "rollback", "suggestion", "steps"]),
     summary: z.string(),
+    /** 本次修订应用的 steps 的人类可读描述（快照修订为 null）。 */
+    stepsSummary: z.string().nullable(),
     targetRevision: z.number().int().nonnegative().nullable(),
   })
   .strict();
