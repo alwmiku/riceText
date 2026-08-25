@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type {
   Asset,
+  ChapterSchema,
   CommentReply,
   CommentThread,
   ForumUser,
@@ -39,8 +40,8 @@ export class ApiClientError extends Error {
 export interface ApiClientOptions {
   /** API 根地址；浏览器同源代理时保持空字符串。 */
   baseUrl?: string;
-  /** 开发环境写入 `x-user-id` 的身份 ID。 */
-  userId?: string;
+  /** 开发环境写入 `x-user-id` 的身份 ID；传函数时每个请求动态解析。 */
+  userId?: string | (() => string | undefined);
   /** 可注入 mock fetch 或宿主自定义网络实现。 */
   fetch?: typeof fetch;
 }
@@ -51,14 +52,20 @@ export interface RiceTextApiClient {
   getDocument(documentId: string, signal?: AbortSignal): Promise<DocumentEnvelope>;
   /** 按 baseRevision 乐观并发更新正文。 */
   updateDocument(documentId: string, body: { schemaVersion: number; baseRevision: number; clientMutationId: string; content: DocumentEnvelope["content"] }, signal?: AbortSignal): Promise<DocumentEnvelope>;
+  /** 使用 ProseMirror 增量 steps 更新文档（服务端完整应用）。 */
+  updateDocumentSteps(documentId: string, body: { schemaVersion: number; baseRevision: number; clientMutationId: string; steps: Array<Record<string, unknown>>; chapterId?: string }, signal?: AbortSignal): Promise<DocumentEnvelope>;
+  /** 对比章节内容哈希，返回需要上传与已存在的章节 ID。 */
+  syncNovelChapters(novelId: string, chapters: Array<{ id: string; title: string; order: number; hash: string }>, signal?: AbortSignal): Promise<{ toUpdate: string[]; existing: string[] }>;
+  /** 保存单个章节内容并递增该章节版本号。 */
+  saveNovelChapter(novelId: string, chapterId: string, input: { title: string; order: number; content: DocumentEnvelope["content"]; hash: string; baseRevision: number }, signal?: AbortSignal): Promise<{ id: string; title: string; order: number; revision: number }>;
   /** 游标分页读取不可变版本历史。 */
   listRevisions(documentId: string, cursor?: string, signal?: AbortSignal): Promise<RevisionPage>;
   /** 复制指定历史快照并创建新的回滚 revision。 */
   rollbackDocument(documentId: string, body: { baseRevision: number; targetRevision: number; clientMutationId: string }, signal?: AbortSignal): Promise<DocumentEnvelope>;
   /** 使用 multipart 上传图片二进制。 */
   uploadAsset(file: File, signal?: AbortSignal): Promise<Asset>;
-  /** 创建并持久化一次新骰子结果。 */
-  createDice(expression: string, signal?: AbortSignal): Promise<DiceRollResult>;
+  /** 创建并持久化一次新骰子结果；传 rerollOf 时服务端创建关联旧结果的重投。 */
+  createDice(expression: string, rerollOf?: string | null, signal?: AbortSignal): Promise<DiceRollResult>;
   /** 按 rollId 读取稳定结果，不触发重投。 */
   getDice(rollId: string, signal?: AbortSignal): Promise<DiceRollResult>;
   /** 显式重投并创建关联旧结果的新 rollId。 */
@@ -71,6 +78,8 @@ export interface RiceTextApiClient {
   voteComment(replyId: string, value: -1 | 0 | 1, signal?: AbortSignal): Promise<{ score: number; viewerVote: -1 | 0 | 1; upvotes: number; downvotes: number; myVote: -1 | 0 | 1 }>;
   /** 读取当前和可切换的论坛身份。 */
   getForumSession(signal?: AbortSignal): Promise<{ current: ForumUser; available: ForumUser[] }>;
+  /** 读取章节目录（按 order 排序，含每章独立版本号）。 */
+  listChapters(signal?: AbortSignal): Promise<{ items: Array<z.infer<typeof ChapterSchema>> }>;
   /** 按名称或 ID 搜索好友/用户。 */
   searchUsers(query: string, friendsOnly?: boolean, signal?: AbortSignal): Promise<{ items: ForumUser[] }>;
   /** 在发布前由服务端解析非好友 mention。 */
@@ -78,7 +87,9 @@ export interface RiceTextApiClient {
   /** 按当前身份投影回复可见内容。 */
   resolveReplyGate(gateId: string, documentId: string, signal?: AbortSignal): Promise<z.infer<typeof ResolveReplyGateResponseSchema>>;
   /** 读取当前身份可见的章节纠错建议。 */
-  listSuggestions(documentId: string, signal?: AbortSignal): Promise<{ items: Array<z.infer<typeof SuggestionSchema>> }>; 
+  listSuggestions(documentId: string, signal?: AbortSignal): Promise<{ items: Array<z.infer<typeof SuggestionSchema>> }>;
+  /** 审核纠错建议；approve 时服务端替换正文并创建真实修订。 */
+  reviewSuggestion(suggestionId: string, body: { decision: "approve" | "reject"; baseRevision: number }, signal?: AbortSignal): Promise<{ suggestion: z.infer<typeof SuggestionSchema>; document: DocumentEnvelope | null }>; 
   /** 读取附件价格和当前购买权益。 */
   getAttachment(id: string, signal?: AbortSignal): Promise<z.infer<typeof AttachmentSchema>>;
   /** 幂等购买附件并执行金币分账。 */
@@ -99,7 +110,8 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
   // 所有方法共享错误解包路径，保证调用方只处理 ApiClientError 而非各类 Response。
   const request = async <T>(path: string, init: ClientRequestInit = {}): Promise<T> => {
     const headers = new Headers(init.headers);
-    if (options.userId) headers.set("x-user-id", options.userId);
+    const userId = typeof options.userId === "function" ? options.userId() : options.userId;
+    if (userId) headers.set("x-user-id", userId);
     if (init.body && !(init.body instanceof FormData)) headers.set("content-type", "application/json");
     const { signal, ...requestInit } = init;
     const response = await fetcher(`${baseUrl}${path}`, { ...requestInit, headers, ...(signal ? { signal } : {}) });
@@ -120,20 +132,25 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
   return {
     getDocument: (id, signal) => request(`/api/documents/${id}`, { signal }),
     updateDocument: (id, body, signal) => request(`/api/documents/${id}`, { method: "PUT", body: json(body), signal }),
+    updateDocumentSteps: (id, body, signal) => request(`/api/documents/${id}/steps`, { method: "PATCH", body: json(body), signal }),
+    syncNovelChapters: (novelId, chapters, signal) => request(`/api/forum/novels/${novelId}/chapters/sync`, { method: "POST", body: json({ chapters }), signal }),
+    saveNovelChapter: (novelId, chapterId, input, signal) => request(`/api/forum/novels/${novelId}/chapters/${chapterId}`, { method: "PUT", body: json(input), signal }),
     listRevisions: (id, cursor, signal) => request(`/api/documents/${id}/revisions${query({ cursor })}`, { signal }),
     rollbackDocument: (id, body, signal) => request(`/api/documents/${id}/rollback`, { method: "POST", body: json(body), signal }),
     uploadAsset: (file, signal) => { const form = new FormData(); form.set("file", file); return request("/api/assets", { method: "POST", body: form, signal }); },
-    createDice: (expression, signal) => request("/api/dice", { method: "POST", body: json({ expression }), signal }),
+    createDice: (expression, rerollOf, signal) => request("/api/dice", { method: "POST", body: json({ expression, ...(rerollOf ? { rerollOf } : {}) }), signal }),
     getDice: (id, signal) => request(`/api/dice/${id}`, { signal }),
     rerollDice: (id, signal) => request(`/api/dice/${id}/reroll`, { method: "POST", signal }),
     getCommentThread: (documentId, anchorId, sort = "score", cursor, signal) => request(`/api/documents/${documentId}/comments/${anchorId}${query({ sort, cursor })}`, { signal }),
     createCommentReply: (documentId, anchorId, body, parentId, signal) => request(`/api/documents/${documentId}/comments/${anchorId}/replies`, { method: "POST", body: json({ body, parentId: parentId ?? null }), signal }),
     voteComment: (replyId, value, signal) => request(`/api/comments/replies/${replyId}/vote`, { method: "PUT", body: json({ value }), signal }),
     getForumSession: (signal) => request("/api/forum/session", { signal }),
+    listChapters: (signal) => request("/api/forum/chapters", { signal }),
     searchUsers: (q, friendsOnly = false, signal) => request(`/api/forum/users/search${query({ q, friendsOnly })}`, { signal }),
     resolveMention: (name, userId, signal) => request("/api/forum/mentions/resolve", { method: "POST", body: json({ name, ...(userId ? { userId } : {}) }), signal }),
     resolveReplyGate: (gateId, documentId, signal) => request("/api/forum/reply-gates/resolve", { method: "POST", body: json({ gateId, documentId }), signal }),
     listSuggestions: (id, signal) => request(`/api/forum/documents/${id}/suggestions`, { signal }),
+    reviewSuggestion: (id, body, signal) => request(`/api/forum/suggestions/${id}`, { method: "PATCH", body: json(body), signal }),
     getAttachment: (id, signal) => request(`/api/forum/attachments/${id}`, { signal }),
     purchaseAttachment: (id, signal) => request(`/api/forum/attachments/${id}/purchase`, { method: "POST", signal }),
     getPoll: (id, signal) => request(`/api/forum/polls/${id}`, { signal }),

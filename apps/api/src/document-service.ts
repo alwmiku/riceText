@@ -1,17 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
   TiptapDocumentSchema,
-  ALLOWED_DOCUMENT_FONT_FAMILIES,
-  ALLOWED_DOCUMENT_FONT_SIZES,
-  DOCUMENT_MARK_ATTRIBUTES,
-  DOCUMENT_NODE_ATTRIBUTES,
   collectInlineCommentAnchorIds,
   type DocumentEnvelope,
-  type JsonValue,
   type RevisionPage,
   type RollbackDocumentRequest,
   type TiptapDocument,
-  type TiptapMark,
   type TiptapNode,
   type UpdateDocumentRequest,
   type UpdateDocumentStepsRequest,
@@ -21,6 +15,8 @@ import {
   applyStepsToDocument,
   createDocumentSchema,
   describeStepsJson,
+  validateDocument,
+  type DocumentValidationIssue,
   type JSONContent,
   type StepJson,
 } from "@ricetext/document-core";
@@ -46,321 +42,20 @@ interface RevisionRow {
   created_at: string;
 }
 
-/** 每种持久化节点允许的 attrs；未知属性在写入前直接拒绝。 */
-const allowedNodeAttrs: Record<string, ReadonlySet<string>> = Object.fromEntries(
-  Object.entries(DOCUMENT_NODE_ATTRIBUTES).map(([type, attrs]) => [
-    type,
-    new Set<string>(attrs),
-  ]),
-);
-
-/** mark 属性白名单独立于节点，避免任意 style/class/on* 进入正文。 */
-const allowedMarkAttrs: Record<string, ReadonlySet<string>> = Object.fromEntries(
-  Object.entries(DOCUMENT_MARK_ATTRIBUTES).map(([type, attrs]) => [
-    type,
-    new Set<string>(attrs),
-  ]),
-);
-
-const allowedFonts = new Set<string>(ALLOWED_DOCUMENT_FONT_FAMILIES);
-const allowedFontSizes = new Set(
-  ALLOWED_DOCUMENT_FONT_SIZES.map((size) => `${size}px`),
-);
-
-function attrsOf(value: TiptapNode | TiptapMark): Record<string, JsonValue> {
-  return value.attrs ?? {};
-}
-
-/** 验证属性名；即使值看似无害，也不允许 schema 外字段穿透。 */
-function assertAllowedAttrs(
-  type: string,
-  attrs: Record<string, JsonValue>,
-  allowed: ReadonlySet<string>,
-): void {
-  for (const key of Object.keys(attrs)) {
-    if (
-      !allowed.has(key) ||
-      key === "style" ||
-      key === "class" ||
-      key.startsWith("on")
-    ) {
-      throw new HttpError(
-        422,
-        "UNSAFE_ATTRIBUTE",
-        `${type} 不允许属性 ${key}`,
-        { nodeType: type, attribute: key },
-      );
-    }
-  }
-}
-
-/** 读取长度受限字符串属性；可选 null/undefined 视为未提供。 */
-function stringAttr(
-  attrs: Record<string, JsonValue>,
-  key: string,
-  required = false,
-  maxLength = 2_000,
-): string | undefined {
-  const value = attrs[key];
-  if ((value === undefined || value === null) && !required) return undefined;
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.length > maxLength
-  )
-    throw new HttpError(422, "INVALID_ATTRIBUTE", `${key} 必须是有效字符串`);
-  return value;
-}
-
-/** 使用 URL 解析器校验 HTTP(S)，不依赖容易绕过的字符串前缀判断。 */
-function isHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-/** 校验 mark 的协议、颜色、字号和字体白名单。 */
-function validateMark(mark: TiptapMark): void {
-  const allowed = allowedMarkAttrs[mark.type];
-  if (!allowed)
-    throw new HttpError(422, "UNSUPPORTED_MARK", `不支持 mark: ${mark.type}`);
-  const attrs = attrsOf(mark);
-  assertAllowedAttrs(mark.type, attrs, allowed);
-  if (mark.type === "link") {
-    const href = stringAttr(attrs, "href", true)!;
-    let allowedHref = isHttpUrl(href);
-    if (!allowedHref) {
-      try {
-        allowedHref = new URL(href).protocol === "mailto:";
-      } catch {
-        allowedHref = false;
-      }
-    }
-    if (!allowedHref)
-      throw new HttpError(
-        422,
-        "UNSAFE_URL",
-        "链接仅允许 HTTP(S) 或 mailto 协议",
-      );
-  }
-  const color = attrs.color;
-  if (
-    color !== undefined &&
-    (typeof color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(color))
-  )
-    throw new HttpError(422, "INVALID_COLOR", "颜色必须是六位十六进制值");
-  const size = attrs.fontSize;
-  if (
-    size !== undefined &&
-    (typeof size !== "string" || !allowedFontSizes.has(size))
-  )
-    throw new HttpError(422, "INVALID_FONT_SIZE", "字号不在白名单中");
-  const family = attrs.fontFamily;
-  if (
-    family !== undefined &&
-    (typeof family !== "string" || !allowedFonts.has(family))
-  )
-    throw new HttpError(422, "INVALID_FONT_FAMILY", "字体不在白名单中");
-}
-
-/** 深度优先校验完整节点树，并限制嵌套深度。 */
-function validateNode(node: TiptapNode, depth: number): void {
-  if (depth > 100)
-    throw new HttpError(422, "DOCUMENT_TOO_DEEP", "正文嵌套层级不能超过 100");
-  const allowed = allowedNodeAttrs[node.type];
-  if (!allowed)
-    throw new HttpError(422, "UNSUPPORTED_NODE", `不支持节点: ${node.type}`);
-  const attrs = attrsOf(node);
-  assertAllowedAttrs(node.type, attrs, allowed);
-  for (const mark of node.marks ?? []) validateMark(mark);
-
-  if (node.type === "text") {
-    if (typeof node.text !== "string" || node.content)
-      throw new HttpError(
-        422,
-        "INVALID_TEXT_NODE",
-        "text 节点必须仅包含 text 字段",
-      );
-  } else if (node.text !== undefined) {
-    throw new HttpError(
-      422,
-      "INVALID_NODE_TEXT",
-      `${node.type} 不能直接包含 text 字段`,
-    );
-  }
-
-  if (
-    node.type === "heading" &&
-    ![1, 2, 3, 4, 5, 6].includes(attrs.level as number)
-  )
-    throw new HttpError(422, "INVALID_HEADING", "标题级别必须为 1-6");
-  if (
-    (node.type === "heading" || node.type === "paragraph") &&
-    attrs.textAlign !== undefined &&
-    attrs.textAlign !== null &&
-    !["left", "center", "right", "justify"].includes(String(attrs.textAlign))
-  )
-    throw new HttpError(422, "INVALID_ALIGNMENT", "文本对齐值无效");
-  if (node.type === "richImage") {
-    const src = stringAttr(attrs, "src", true)!;
-    if (!isHttpUrl(src) && !/^\/api\/assets\/[A-Za-z0-9_-]+$/.test(src))
-      throw new HttpError(
-        422,
-        "UNSAFE_IMAGE_URL",
-        "图片仅允许 HTTP(S) 外链或本站资产 URL",
-      );
-    if (
-      attrs.align !== undefined &&
-      !["left", "center", "right"].includes(String(attrs.align))
-    )
-      throw new HttpError(422, "INVALID_IMAGE_ALIGNMENT", "图片对齐值无效");
-    if (
-      attrs.width !== undefined &&
-      (typeof attrs.width !== "number" || attrs.width < 10 || attrs.width > 100)
-    )
-      throw new HttpError(
-        422,
-        "INVALID_IMAGE_WIDTH",
-        "图片宽度必须是 10-100 的百分比数值",
-      );
-  }
-  if (node.type === "diceRoll") {
-    stringAttr(attrs, "rollId", true);
-    stringAttr(attrs, "expression", true);
-    if (typeof attrs.total !== "number" || !Number.isFinite(attrs.total))
-      throw new HttpError(422, "INVALID_DICE_TOTAL", "骰子必须保存有限 total");
-    if (
-      !Array.isArray(attrs.rolls) ||
-      !attrs.rolls.every(
-        (item) => typeof item === "number" && Number.isFinite(item),
-      )
-    )
-      throw new HttpError(
-        422,
-        "INVALID_DICE_DETAILS",
-        "骰子必须保存数值 rolls 明细",
-      );
-    if (
-      attrs.rerollOf !== null &&
-      attrs.rerollOf !== undefined &&
-      typeof attrs.rerollOf !== "string"
-    )
-      throw new HttpError(
-        422,
-        "INVALID_DICE_REROLL",
-        "rerollOf 必须是 rollId 或 null",
-      );
-  }
-  if (node.type === "inlineCommentAnchor") {
-    stringAttr(attrs, "threadId", true);
-    if (!["start", "end"].includes(String(attrs.placement)))
-      throw new HttpError(
-        422,
-        "INVALID_ANCHOR_POSITION",
-        "间贴锚点只允许段落首或段落尾",
-      );
-    if (
-      typeof attrs.count !== "number" ||
-      !Number.isInteger(attrs.count) ||
-      attrs.count < 0
-    )
-      throw new HttpError(
-        422,
-        "INVALID_ANCHOR_COUNT",
-        "间贴 count 必须是非负整数",
-      );
-  }
-  if (node.type === "novelExcerpt") {
-    if (
-      !["mobile-book", "desktop-book", "forum-evidence"].includes(
-        String(attrs.variant),
-      )
-    )
-      throw new HttpError(422, "INVALID_EXCERPT_VARIANT", "小说摘录样式无效");
-    stringAttr(attrs, "bookTitle", true);
-    stringAttr(attrs, "chapterTitle", true);
-    stringAttr(attrs, "author", true);
-    const sourceUrl = stringAttr(attrs, "sourceUrl");
-    if (sourceUrl && !isHttpUrl(sourceUrl))
-      throw new HttpError(422, "UNSAFE_URL", "摘录来源仅允许 HTTP(S)");
-  }
-  if (node.type === "mention") {
-    stringAttr(attrs, "name", true);
-    if (attrs.resolved !== undefined && typeof attrs.resolved !== "boolean")
-      throw new HttpError(422, "INVALID_MENTION", "resolved 必须为布尔值");
-    const avatarUrl = attrs.avatarUrl;
-    if (
-      avatarUrl !== null &&
-      avatarUrl !== undefined &&
-      (typeof avatarUrl !== "string" || !isHttpUrl(avatarUrl))
-    )
-      throw new HttpError(422, "UNSAFE_IMAGE_URL", "头像仅允许 HTTP(S)");
-  }
-  if (node.type === "replyGate") {
-    stringAttr(attrs, "gateId", true);
-    stringAttr(attrs, "prompt", true);
-  }
-  if (node.type === "attachmentRef") {
-    stringAttr(attrs, "attachmentId", true);
-    stringAttr(attrs, "name", true);
-    stringAttr(attrs, "mimeType", true);
-    if (
-      typeof attrs.size !== "number" ||
-      attrs.size < 0 ||
-      typeof attrs.priceCoins !== "number" ||
-      attrs.priceCoins < 0
-    )
-      throw new HttpError(
-        422,
-        "INVALID_ATTACHMENT",
-        "附件大小和金币价格必须为非负数",
-      );
-  }
-  if (node.type === "longTextBlock") {
-    stringAttr(attrs, "chapterId", true);
-    stringAttr(attrs, "title", true);
-    stringAttr(attrs, "text", true, 50_000);
-    if (
-      typeof attrs.order !== "number" ||
-      !Number.isInteger(attrs.order) ||
-      attrs.order < 0
-    )
-      throw new HttpError(
-        422,
-        "INVALID_LONG_TEXT_ORDER",
-        "长文本章节顺序必须是非负整数",
-      );
-    for (const key of ["start", "end"] as const) {
-      const value = attrs[key];
-      if (
-        value !== null &&
-        value !== undefined &&
-        (typeof value !== "number" ||
-          !Number.isInteger(value) ||
-          value < 0)
-      )
-        throw new HttpError(
-          422,
-          "INVALID_LONG_TEXT_RANGE",
-          "长文本章节原文区间必须是非负整数或 null",
-        );
-    }
-  }
-  if (node.type === "pollRef") {
-    stringAttr(attrs, "pollId", true);
-    stringAttr(attrs, "question", true);
-    if (typeof attrs.multiple !== "boolean" || !Array.isArray(attrs.options))
-      throw new HttpError(
-        422,
-        "INVALID_POLL",
-        "投票 multiple/options 属性无效",
-      );
-  }
-  for (const child of node.content ?? []) validateNode(child, depth + 1);
-}
+/**
+ * document-core 清洗问题分类到稳定 HTTP 错误码的映射。
+ * 结构与白名单规则单一来源于 document-core / contracts，服务端不再维护第二套 validator。
+ */
+const VALIDATION_ERROR_CODES: Record<DocumentValidationIssue["code"], string> = {
+  "invalid-document": "INVALID_DOCUMENT",
+  "invalid-structure": "INVALID_DOCUMENT",
+  "unknown-node": "UNSUPPORTED_NODE",
+  "unknown-mark": "UNSUPPORTED_MARK",
+  "unknown-attribute": "UNSAFE_ATTRIBUTE",
+  "invalid-attribute": "INVALID_ATTRIBUTE",
+  "unsafe-url": "UNSAFE_URL",
+  "limit-exceeded": "DOCUMENT_TOO_LARGE",
+};
 
 /** 对正文执行结构、节点、属性、协议、字体与颜色白名单校验。 */
 export function sanitizeDocument(input: unknown): TiptapDocument {
@@ -369,7 +64,17 @@ export function sanitizeDocument(input: unknown): TiptapDocument {
     throw new HttpError(422, "INVALID_DOCUMENT", "正文不是有效的 Tiptap JSON", {
       issue: parsed.error.issues[0]?.message ?? "未知结构错误",
     });
-  for (const node of parsed.data.content) validateNode(node, 0);
+  // 拒绝语义：任何清洗问题都视为非法文档，而不是静默改写后保存。
+  const result = validateDocument(parsed.data);
+  if (!result.valid) {
+    const issue = result.issues[0]!;
+    throw new HttpError(
+      422,
+      VALIDATION_ERROR_CODES[issue.code],
+      issue.message,
+      { path: issue.path },
+    );
+  }
   return parsed.data;
 }
 

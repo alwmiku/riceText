@@ -7,7 +7,6 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "openapi": "tsx src/generate-openapi.ts"
   },

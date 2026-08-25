@@ -1,3 +1,14 @@
+import {
+  ApiClientError,
+  createApiClient,
+  type DocumentEnvelope as ContractDocumentEnvelope,
+} from "@ricetext/contracts";
+import {
+  applyStepsToDocument,
+  sharedSchema,
+  type JSONContent,
+  type StepJson,
+} from "@ricetext/document-core";
 import { createId } from "./utils";
 import {
   defaultDocument,
@@ -9,25 +20,25 @@ import type {
   CommentReply,
   DiceResult,
   DocumentEnvelope,
+  ForumAttachment,
+  ForumChapterItem,
+  ForumPoll,
   ForumSuggestion,
   RevisionSummary,
   RichTextNode,
   UploadedAsset,
 } from "./types";
-import {
-  applyStepsToDocument,
-  sharedSchema,
-  type JSONContent,
-  type StepJson,
-} from "@ricetext/document-core";
 
 /**
  * Web 宿主使用的轻量 API 适配层。
  *
- * 真实 HTTP 错误必须向上抛出，让页面显示权限、校验或 revision 冲突；只有网络完全
- * 不可达时才使用 localStorage/种子数据维持离线编辑。
+ * 网络请求统一走 @ricetext/contracts 的类型化客户端（单一来源），本层只负责
+ * 两件事：注入当前论坛身份、在服务不可达时降级到 localStorage/种子数据。
+ * HTTP 业务错误必须向上抛出，让页面显示权限、校验或 revision 冲突。
  */
-const API_ROOT = import.meta.env.VITE_API_ROOT ?? "/api";
+// 契约客户端的请求路径已包含 /api 前缀；VITE_API_ROOT 仅在 API 部署在
+// 其他主机时提供主机根（例如 https://api.example.com）。
+const API_ROOT = import.meta.env.VITE_API_ROOT ?? "";
 
 /** 将前端展示身份映射为服务端 AuthProvider 接受的论坛身份。 */
 function getForumUserHeader(): "author" | "reader" | "moderator" {
@@ -50,39 +61,8 @@ export class ApiError extends Error {
   }
 }
 
-/** 统一注入论坛身份、解析 JSON，并把非 2xx 响应转换为 {@link ApiError}。 */
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers);
-  if (!headers.has("Content-Type"))
-    headers.set("Content-Type", "application/json");
-  headers.set("x-user-id", getForumUserHeader());
-  const response = await fetch(`${API_ROOT}${path}`, {
-    ...init,
-    headers,
-  });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as
-      { message?: string } | null;
-    throw new ApiError(
-      body?.message ?? `请求失败 (${response.status})`,
-      response.status,
-      body,
-    );
-  }
-
-  // 静态托管的 SPA fallback 会以 200 text/html 返回 index.html。它不是 API
-  // 成功响应，须作为传输失败交给调用方的本地缓存降级逻辑处理。
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
-    throw new TypeError(`API 返回了非 JSON 内容 (${contentType || "未知类型"})`);
-  }
-
-  try {
-    return (await response.json()) as T;
-  } catch {
-    throw new TypeError("API 返回了无法解析的 JSON 内容");
-  }
-}
+/** 每个请求动态解析身份，创建一次客户端即可覆盖身份切换。 */
+const api = () => createApiClient({ baseUrl: API_ROOT, userId: getForumUserHeader });
 
 /**
  * 后端服务不可达（断网，或仅启动 Web 时 Vite 代理返回的 502/503）
@@ -93,11 +73,18 @@ function isServiceUnavailable(error: unknown): boolean {
   if (error instanceof DOMException && error.name === "AbortError") {
     return false;
   }
-  return (
-    !(error instanceof ApiError) ||
-    error.status === 502 ||
-    error.status === 503
-  );
+  if (error instanceof ApiClientError) {
+    return error.status === 502 || error.status === 503;
+  }
+  return true;
+}
+
+/** 把共享客户端的类型化错误转换为 Web 宿主使用的 ApiError。 */
+function rethrowClientError(error: unknown): never {
+  if (error instanceof ApiClientError) {
+    throw new ApiError(error.message, error.status, error.details);
+  }
+  throw error;
 }
 
 /** 读取服务端文档；断网或服务不可用时按“本地副本 -> 内置种子”顺序降级。 */
@@ -106,39 +93,25 @@ export async function getDocument(
   signal?: AbortSignal,
 ): Promise<DocumentEnvelope> {
   try {
+    const envelope = await api().getDocument(id, signal);
     return {
-      ...(await request<DocumentEnvelope>(
-        `/documents/${id}`,
-        signal ? { signal } : undefined,
-      )),
+      ...envelope,
+      content: envelope.content as unknown as RichTextNode,
       storage: "server",
     };
   } catch (error) {
-    if (!isServiceUnavailable(error)) throw error;
+    if (!isServiceUnavailable(error)) rethrowClientError(error);
     const cached = localStorage.getItem(`ricetext:document:${id}`);
     return cached ? (JSON.parse(cached) as DocumentEnvelope) : defaultDocument;
   }
 }
 
-/** 论坛章节目录项。 */
-export interface ForumChapterItem {
-  id: string;
-  title: string;
-  order: number;
-  documentId: string;
-  /** 该章节独立的保存版本号。 */
-  revision: number;
-}
-
 /** 读取论坛章节目录（含每章独立版本号）；服务不可用时返回空目录。 */
 export async function listForumChapters(): Promise<ForumChapterItem[]> {
   try {
-    const result = await request<{ items: ForumChapterItem[] }>(
-      "/forum/chapters",
-    );
-    return result.items;
+    return (await api().listChapters()).items;
   } catch (error) {
-    if (!isServiceUnavailable(error)) throw error;
+    if (!isServiceUnavailable(error)) rethrowClientError(error);
     return [];
   }
 }
@@ -157,10 +130,7 @@ export async function syncLongTextChapters(
   novelId: string,
   chapters: readonly ChapterSyncItem[],
 ): Promise<{ toUpdate: string[]; existing: string[] }> {
-  return request(`/forum/novels/${novelId}/chapters/sync`, {
-    method: "POST",
-    body: JSON.stringify({ chapters }),
-  });
+  return api().syncNovelChapters(novelId, [...chapters]);
 }
 
 /** 上传单个章节（含内容与哈希）；baseRevision 冲突时抛出 409。 */
@@ -175,9 +145,9 @@ export async function uploadLongTextChapter(
     baseRevision: number;
   },
 ): Promise<{ id: string; title: string; order: number; revision: number }> {
-  return request(`/forum/novels/${novelId}/chapters/${chapterId}`, {
-    method: "PUT",
-    body: JSON.stringify(input),
+  return api().saveNovelChapter(novelId, chapterId, {
+    ...input,
+    content: input.content as unknown as ContractDocumentEnvelope["content"],
   });
 }
 
@@ -199,12 +169,17 @@ export async function saveDocument(
   },
 ): Promise<DocumentEnvelope> {
   try {
-    return await request<DocumentEnvelope>(`/documents/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(input),
+    const envelope = await api().updateDocument(id, {
+      ...input,
+      content: input.content as unknown as ContractDocumentEnvelope["content"],
     });
+    return {
+      ...envelope,
+      content: envelope.content as unknown as RichTextNode,
+      storage: "server",
+    };
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiClientError) rethrowClientError(error);
     const current = await getDocument(id);
     const saved: DocumentEnvelope = {
       ...current,
@@ -234,13 +209,17 @@ export async function saveDocumentSteps(
   },
 ): Promise<DocumentEnvelope> {
   try {
-    const envelope = await request<DocumentEnvelope>(`/documents/${id}/steps`, {
-      method: "PATCH",
-      body: JSON.stringify(input),
+    const envelope = await api().updateDocumentSteps(id, {
+      ...input,
+      steps: input.steps as unknown as Array<Record<string, unknown>>,
     });
-    return { ...envelope, storage: "server" };
+    return {
+      ...envelope,
+      content: envelope.content as unknown as RichTextNode,
+      storage: "server",
+    };
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiClientError) rethrowClientError(error);
     const current = await getDocument(id);
     let content: RichTextNode = current.content;
     try {
@@ -270,13 +249,9 @@ export async function getRevisions(
   signal?: AbortSignal,
 ): Promise<RevisionSummary[]> {
   try {
-    const result = await request<{ items: RevisionSummary[] }>(
-      `/documents/${id}/revisions?limit=20`,
-      signal ? { signal } : undefined,
-    );
-    return result.items;
+    return (await api().listRevisions(id, undefined, signal)).items;
   } catch (error) {
-    if (!isServiceUnavailable(error)) throw error;
+    if (!isServiceUnavailable(error)) rethrowClientError(error);
     return seedRevisions;
   }
 }
@@ -287,14 +262,12 @@ export async function restoreRevision(
   revision: number,
   baseRevision: number,
 ): Promise<DocumentEnvelope> {
-  return request<DocumentEnvelope>(`/documents/${id}/rollback`, {
-    method: "POST",
-    body: JSON.stringify({
-      targetRevision: revision,
-      baseRevision,
-      clientMutationId: createId("restore"),
-    }),
+  const envelope = await api().rollbackDocument(id, {
+    targetRevision: revision,
+    baseRevision,
+    clientMutationId: createId("restore"),
   });
+  return { ...envelope, content: envelope.content as unknown as RichTextNode };
 }
 
 /**
@@ -306,12 +279,9 @@ export async function createDice(
   rerollOf: string | null = null,
 ): Promise<DiceResult> {
   try {
-    return await request<DiceResult>("/dice", {
-      method: "POST",
-      body: JSON.stringify({ expression, rerollOf }),
-    });
+    return await api().createDice(expression, rerollOf ?? undefined);
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiClientError) rethrowClientError(error);
     const match = /^(\d{1,2})d(\d{1,4})(?:([+-])([0-9]{1,4}))?$/i.exec(
       expression.replace(/\s/g, ""),
     );
@@ -337,18 +307,17 @@ export async function createDice(
 
 /** 上传图片二进制；不设置 JSON Content-Type，让浏览器生成 multipart boundary。 */
 export async function uploadAsset(file: File): Promise<UploadedAsset> {
-  const data = new FormData();
-  data.append("file", file);
   try {
-    const response = await fetch(`${API_ROOT}/assets`, {
-      method: "POST",
-      headers: { "x-user-id": getForumUserHeader() },
-      body: data,
-    });
-    if (!response.ok) throw new ApiError("图片上传失败", response.status);
-    return (await response.json()) as UploadedAsset;
+    const asset = await api().uploadAsset(file);
+    return {
+      assetId: asset.assetId,
+      url: asset.url,
+      name: asset.name,
+      mimeType: asset.mimeType,
+      size: asset.size,
+    };
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiClientError) rethrowClientError(error);
     if (file.size > 8 * 1024 * 1024)
       throw new ApiError("上传限制为 8 MB", 422);
     return {
@@ -367,12 +336,9 @@ export async function getCommentThread(
   anchorId: string,
 ): Promise<CommentReply[]> {
   try {
-    const result = await request<{ items: CommentReply[] }>(
-      `/documents/${documentId}/comments/${anchorId}?sort=score`,
-    );
-    return result.items;
+    return (await api().getCommentThread(documentId, anchorId, "score")).items;
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (!isServiceUnavailable(error)) rethrowClientError(error);
     return structuredClone(seedComments);
   }
 }
@@ -383,10 +349,12 @@ export async function voteComment(
   vote: -1 | 0 | 1,
 ): Promise<{ upvotes: number; downvotes: number; myVote: -1 | 0 | 1 }> {
   try {
-    return await request(`/comments/replies/${commentId}/vote`, {
-      method: "PUT",
-      body: JSON.stringify({ value: vote }),
-    });
+    const result = await api().voteComment(commentId, vote);
+    return {
+      upvotes: result.upvotes,
+      downvotes: result.downvotes,
+      myVote: result.myVote,
+    };
   } catch {
     return {
       upvotes: 8 + (vote === 1 ? 1 : 0),
@@ -396,22 +364,15 @@ export async function voteComment(
   }
 }
 
-/** 纠错建议（服务端真实状态）。 */
-export type { ForumSuggestion };
-
 /** 读取文档的纠错建议（读者仅见自己的）；断网或服务不可用时返回本地演示数据。 */
 export async function listSuggestions(
   documentId: string,
   signal?: AbortSignal,
 ): Promise<ForumSuggestion[]> {
   try {
-    const result = await request<{ items: ForumSuggestion[] }>(
-      `/forum/documents/${documentId}/suggestions`,
-      signal ? { signal } : undefined,
-    );
-    return result.items;
+    return (await api().listSuggestions(documentId, signal)).items;
   } catch (error) {
-    if (!isServiceUnavailable(error)) throw error;
+    if (!isServiceUnavailable(error)) rethrowClientError(error);
     return structuredClone(seedSuggestions);
   }
 }
@@ -422,20 +383,13 @@ export async function reviewSuggestion(
   decision: "approve" | "reject",
   baseRevision: number,
 ): Promise<{ suggestion: ForumSuggestion; document: DocumentEnvelope | null }> {
-  return request(`/forum/suggestions/${suggestionId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ decision, baseRevision }),
-  });
-}
-
-/** 附件（含购买状态与下载地址）。 */
-export interface ForumAttachment {
-  id: string;
-  name: string;
-  mimeType: string;
-  price: number;
-  purchased: boolean;
-  downloadUrl: string | null;
+  const result = await api().reviewSuggestion(suggestionId, { decision, baseRevision });
+  return {
+    suggestion: result.suggestion,
+    document: result.document
+      ? { ...result.document, content: result.document.content as unknown as RichTextNode }
+      : null,
+  };
 }
 
 /** 读取附件及当前身份的购买状态。 */
@@ -443,31 +397,27 @@ export async function getAttachment(
   attachmentId: string,
   signal?: AbortSignal,
 ): Promise<ForumAttachment> {
-  return request(`/forum/attachments/${attachmentId}`, signal ? { signal } : undefined);
+  return api().getAttachment(attachmentId, signal);
 }
 
 /** 购买附件（幂等），返回附件与余额变化。 */
 export async function purchaseAttachment(
   attachmentId: string,
-): Promise<{ attachment: ForumAttachment; buyerBalance: number; authorIncome: number; alreadyPurchased: boolean }> {
-  return request(`/forum/attachments/${attachmentId}/purchase`, {
-    method: "POST",
-  });
-}
-
-/** 投票（含选项票数与当前身份选择）。 */
-export interface ForumPoll {
-  id: string;
-  question: string;
-  multiple: boolean;
-  eligible: boolean;
-  options: Array<{ id: string; label: string; votes: number }>;
-  viewerOptionIds: string[];
+): Promise<{
+  attachment: ForumAttachment;
+  buyerBalance: number;
+  authorIncome: number;
+  alreadyPurchased: boolean;
+}> {
+  return api().purchaseAttachment(attachmentId);
 }
 
 /** 读取投票。 */
-export async function getPoll(pollId: string, signal?: AbortSignal): Promise<ForumPoll> {
-  return request(`/forum/polls/${pollId}`, signal ? { signal } : undefined);
+export async function getPoll(
+  pollId: string,
+  signal?: AbortSignal,
+): Promise<ForumPoll> {
+  return api().getPoll(pollId, signal);
 }
 
 /** 提交或覆盖投票选择，返回更新后的投票。 */
@@ -475,10 +425,7 @@ export async function votePoll(
   pollId: string,
   optionIds: string[],
 ): Promise<ForumPoll> {
-  return request(`/forum/polls/${pollId}/votes`, {
-    method: "POST",
-    body: JSON.stringify({ optionIds }),
-  });
+  return api().submitPollVote(pollId, optionIds);
 }
 
 /** 分页读取实名投票明细。 */
@@ -486,10 +433,14 @@ export async function getPollVotes(
   pollId: string,
   cursor?: string,
 ): Promise<{
-  items: Array<{ user: { id: string; name: string; role: string }; optionIds: string[]; createdAt: string }>;
+  items: Array<{
+    user: { id: string; name: string; role: string };
+    optionIds: string[];
+    createdAt: string;
+  }>;
   pageInfo: { nextCursor: string | null };
 }> {
-  return request(
-    `/forum/polls/${pollId}/votes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
-  );
+  return api().listPollVotes(pollId, cursor);
 }
+
+export type { ForumSuggestion } from "./types";

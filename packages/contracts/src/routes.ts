@@ -16,8 +16,6 @@ import {
   DocumentEnvelopeSchema,
   EntityIdSchema,
   MentionSearchResultSchema,
-  NovelChapterListSchema,
-  NovelChapterSchema,
   PollSchema,
   PollVotePageSchema,
   PurchaseAttachmentResponseSchema,
@@ -28,12 +26,14 @@ import {
   RevisionPageSchema,
   ReviewSuggestionRequestSchema,
   RollbackDocumentRequestSchema,
+  SaveNovelChapterRequestSchema,
+  SaveNovelChapterResponseSchema,
   SubmitPollVoteRequestSchema,
   SuggestionSchema,
+  SyncNovelChaptersRequestSchema,
+  SyncNovelChaptersResponseSchema,
   UpdateDocumentRequestSchema,
   UpdateDocumentStepsRequestSchema,
-  UpdateNovelChapterDeltaRequestSchema,
-  UpdateNovelChapterRequestSchema,
   VoteCommentRequestSchema,
 } from "./schemas.js";
 
@@ -85,7 +85,7 @@ const suggestionParams = z.object({ suggestionId: EntityIdSchema }).strict();
 const userSearchQuery = z.object({ q: z.string().max(80).default(""), friendsOnly: z.coerce.boolean().default(false) }).strict();
 const attachmentParams = z.object({ attachmentId: EntityIdSchema }).strict();
 const pollParams = z.object({ pollId: EntityIdSchema }).strict();
-const novelParams = z.object({ novelId: EntityIdSchema }).strict();
+const novelParams = z.object({ novelId: EntityIdSchema.describe("章节所属的文档/小说 ID") }).strict();
 const novelChapterParams = z.object({ novelId: EntityIdSchema, chapterId: EntityIdSchema }).strict();
 
 /** 全部REST 契约；OpenAPI 和 Fastify schema 均由此生成。 */
@@ -109,22 +109,16 @@ export const contractRoutes: readonly ContractRoute[] = [
     responses: { 200: { description: "幂等重试命中的既有修订。", schema: DocumentEnvelopeSchema }, 201: { description: "新建的不可变修订。", schema: DocumentEnvelopeSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 409: { description: "当前 revision 与 baseRevision 冲突。", schema: ApiErrorSchema }, 422: { description: "steps 无法应用到当前文档或包含非法结构。", schema: ApiErrorSchema } },
   },
   {
-    operationId: "listNovelChapters", method: "GET", path: "/api/novels/:novelId/chapters", tags: ["小说"],
-    summary: "读取小说章节列表", description: "按 order 返回章节列表；后续实现服务端。",
-    params: novelParams,
-    responses: { 200: { description: "章节列表。", schema: NovelChapterListSchema }, 404: { description: "小说不存在。", schema: ApiErrorSchema } },
+    operationId: "syncNovelChapters", method: "POST", path: "/api/forum/novels/:novelId/chapters/sync", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "对比章节内容哈希", description: "客户端提交本地章节清单（含 SHA-256 哈希），服务端对比已存哈希，返回需要上传的章节与已存在（无需上传）的章节 ID。",
+    params: novelParams, body: SyncNovelChaptersRequestSchema,
+    responses: { 200: { description: "需要更新与已存在的章节 ID。", schema: SyncNovelChaptersResponseSchema } },
   },
   {
-    operationId: "updateNovelChapter", method: "PUT", path: "/api/novels/:novelId/chapters/:chapterId", tags: ["小说"],
-    summary: "保存小说章节", description: "需要 author 或 moderator。保存整个章节的 Tiptap JSON；后续可切换为增量。",
-    params: novelChapterParams, body: UpdateNovelChapterRequestSchema,
-    responses: { 200: { description: "幂等重试命中的既有修订。", schema: NovelChapterSchema }, 201: { description: "新建章节。", schema: NovelChapterSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 409: { description: "baseRevision 冲突。", schema: ApiErrorSchema }, 422: { description: "章节内容非法。", schema: ApiErrorSchema } },
-  },
-  {
-    operationId: "updateNovelChapterDelta", method: "PATCH", path: "/api/novels/:novelId/chapters/:chapterId/delta", tags: ["小说"],
-    summary: "增量更新小说章节", description: "提交 ProseMirror steps，服务端应用到章节文档；首版仅定义契约。",
-    params: novelChapterParams, body: UpdateNovelChapterDeltaRequestSchema,
-    responses: { 200: { description: "幂等重试命中的既有修订。", schema: NovelChapterSchema }, 201: { description: "应用 steps 后的新章节。", schema: NovelChapterSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 409: { description: "baseRevision 冲突。", schema: ApiErrorSchema }, 422: { description: "steps 无法应用。", schema: ApiErrorSchema } },
+    operationId: "saveNovelChapter", method: "PUT", path: "/api/forum/novels/:novelId/chapters/:chapterId", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "保存单个章节", description: "需要 author 或 moderator。正文经过与文档相同的白名单校验；该章节 baseRevision 过期返回 409。",
+    params: novelChapterParams, body: SaveNovelChapterRequestSchema,
+    responses: { 201: { description: "保存后的章节版本摘要。", schema: SaveNovelChapterResponseSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 409: { description: "章节已被其他修改更新。", schema: ApiErrorSchema }, 422: { description: "章节内容或字段非法。", schema: ApiErrorSchema } },
   },
   {
     operationId: "listRevisions", method: "GET", path: "/api/documents/:documentId/revisions", tags: ["文档"],

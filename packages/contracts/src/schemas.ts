@@ -136,56 +136,6 @@ export type UpdateDocumentStepsRequest = z.infer<
   typeof UpdateDocumentStepsRequestSchema
 >;
 
-/** 小说章节的持久化结构。 */
-export const NovelChapterSchema = z
-  .object({
-    id: EntityIdSchema,
-    novelId: EntityIdSchema,
-    title: z.string().min(1).max(500),
-    order: z.number().int().nonnegative(),
-    content: TiptapDocumentSchema,
-    savedAt: DateTimeSchema,
-  })
-  .strict();
-/** 小说章节。 */
-export type NovelChapter = z.infer<typeof NovelChapterSchema>;
-
-/** 新增或覆盖章节的请求体。 */
-export const UpdateNovelChapterRequestSchema = z
-  .object({
-    baseRevision: z.number().int().nonnegative(),
-    clientMutationId: EntityIdSchema,
-    content: TiptapDocumentSchema,
-  })
-  .strict();
-/** 更新小说章节请求。 */
-export type UpdateNovelChapterRequest = z.infer<
-  typeof UpdateNovelChapterRequestSchema
->;
-
-/** 章节级增量更新请求体（先定义契约，服务端后续实现）。 */
-export const UpdateNovelChapterDeltaRequestSchema = z
-  .object({
-    baseRevision: z.number().int().nonnegative(),
-    clientMutationId: EntityIdSchema,
-    steps: z.array(ProseMirrorStepSchema).min(1).max(1_000),
-  })
-  .strict();
-/** 章节增量更新请求。 */
-export type UpdateNovelChapterDeltaRequest = z.infer<
-  typeof UpdateNovelChapterDeltaRequestSchema
->;
-
-/** 章节列表响应。 */
-export const NovelChapterListSchema = z
-  .object({
-    items: z.array(NovelChapterSchema).max(10_000),
-    nextCursor: z.string().nullable(),
-  })
-  .strict();
-/** 章节列表响应。 */
-export type NovelChapterList = z.infer<typeof NovelChapterListSchema>;
-
 /** 不可变历史版本的摘要。 */
 export const RevisionSummarySchema = z
   .object({
@@ -405,6 +355,52 @@ export const ChapterSchema = z
     revision: z.number().int().nonnegative(),
   })
   .strict();
+/** 章节差异同步清单中的单个本地章节。 */
+export const ChapterSyncItemSchema = z
+  .object({
+    id: EntityIdSchema,
+    title: z.string().min(1).max(500),
+    order: z.number().int().nonnegative(),
+    /** 章节正文的 SHA-256 十六进制摘要。 */
+    hash: z.string().min(1).max(128),
+  })
+  .strict();
+/** 章节差异同步请求体。 */
+export const SyncNovelChaptersRequestSchema = z
+  .object({ chapters: z.array(ChapterSyncItemSchema).max(10_000).default([]) })
+  .strict();
+/** 章节差异同步响应：需要上传与无需上传（已存在）的章节 ID。 */
+export const SyncNovelChaptersResponseSchema = z
+  .object({
+    toUpdate: z.array(EntityIdSchema),
+    existing: z.array(EntityIdSchema),
+  })
+  .strict();
+
+/** 保存单个章节内容的请求体。 */
+export const SaveNovelChapterRequestSchema = z
+  .object({
+    title: z.string().min(1).max(500),
+    order: z.number().int().nonnegative(),
+    content: TiptapDocumentSchema,
+    /** 保存正文的 SHA-256 摘要，用于后续差异对比。 */
+    hash: z.string().min(1).max(128),
+    /** 该章节独立的保存版本号，冲突时返回 409。 */
+    baseRevision: z.number().int().nonnegative(),
+  })
+  .strict();
+/** 保存章节后的版本摘要（不重复传输正文）。 */
+export const SaveNovelChapterResponseSchema = z
+  .object({
+    id: EntityIdSchema,
+    title: z.string().min(1).max(500),
+    order: z.number().int().nonnegative(),
+    revision: z.number().int().nonnegative(),
+  })
+  .strict();
+/** 章节目录项类型。 */
+export type Chapter = z.infer<typeof ChapterSchema>;
+
 /** 纠错建议。 */
 export const SuggestionSchema = z
   .object({
@@ -427,6 +423,9 @@ export const SuggestionSchema = z
     createdAt: DateTimeSchema,
   })
   .strict();
+/** 纠错建议类型。 */
+export type Suggestion = z.infer<typeof SuggestionSchema>;
+
 /** 读者提交纠错建议的请求体。 */
 export const CreateSuggestionRequestSchema = z
   .object({
@@ -492,6 +491,9 @@ export const AttachmentSchema = z
     downloadUrl: z.string().nullable(),
   })
   .strict();
+/** 附件类型。 */
+export type Attachment = z.infer<typeof AttachmentSchema>;
+
 /** 附件购买结果。 */
 export const PurchaseAttachmentResponseSchema = z
   .object({
@@ -521,6 +523,9 @@ export const PollSchema = z
     viewerOptionIds: z.array(EntityIdSchema),
   })
   .strict();
+/** 投票详情类型。 */
+export type Poll = z.infer<typeof PollSchema>;
+
 /** 提交投票的请求体。 */
 export const SubmitPollVoteRequestSchema = z
   .object({ optionIds: z.array(EntityIdSchema).min(1).max(10) })

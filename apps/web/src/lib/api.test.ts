@@ -48,7 +48,8 @@ describe('web api client', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/documents/post/a b', expect.objectContaining({ signal: controller.signal }));
     const init = fetchMock.mock.calls[0]![1]!;
     expect(new Headers(init.headers).get('x-user-id')).toBe('reader');
-    expect(new Headers(init.headers).get('Content-Type')).toBe('application/json');
+    // GET 请求不携带 body，类型化客户端不设置 Content-Type
+    expect(new Headers(init.headers).get('content-type')).toBeNull();
   });
 
   it('读取失败时优先返回本地副本，其次返回种子文档', async () => {
@@ -84,7 +85,12 @@ describe('web api client', () => {
     await expect(saveDocument('demo-post', input)).resolves.toMatchObject({ revision: 19 });
     expect(fetchMock).toHaveBeenLastCalledWith('/api/documents/demo-post', expect.objectContaining({ method: 'PUT', body: JSON.stringify(input) }));
 
-    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '版本已经变化', latestRevision: 20 }, { status: 409 }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        { error: { code: 'REVISION_CONFLICT', message: '版本已经变化', details: { latestRevision: 20 } } },
+        { status: 409 },
+      ),
+    );
     const error = await saveDocument('demo-post', input).catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ message: '版本已经变化', status: 409, details: { latestRevision: 20 } });
@@ -166,7 +172,9 @@ describe('web api client', () => {
     await expect(getRevisions('demo-post')).resolves.toBe(seedRevisions);
 
     // 业务错误（如权限不足）必须向上抛出
-    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '无权访问' }, { status: 403 }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error: { code: 'FORBIDDEN', message: '无权访问' } }, { status: 403 }),
+    );
     await expect(getRevisions('demo-post')).rejects.toMatchObject({ status: 403, message: '无权访问' });
   });
 
@@ -213,7 +221,9 @@ describe('web api client', () => {
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));
     await expect(createDice('51d6')).rejects.toMatchObject({ status: 422, message: '骰子数量或面数超出范围' });
 
-    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '服务端拒绝' }, { status: 422 }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error: { code: 'INVALID_DICE_EXPRESSION', message: '服务端拒绝' } }, { status: 422 }),
+    );
     await expect(createDice('3d5')).rejects.toMatchObject({ status: 422, message: '服务端拒绝' });
   });
 
@@ -222,7 +232,9 @@ describe('web api client', () => {
     const uploaded = { assetId: 'asset_1', url: '/uploads/cover.png', name: 'cover.png', mimeType: 'image/png', size: 5 };
     fetchMock.mockResolvedValueOnce(jsonResponse(uploaded));
     await expect(uploadAsset(file)).resolves.toEqual(uploaded);
-    expect(fetchMock.mock.calls[0]![1]?.headers).toEqual({ 'x-user-id': 'author' });
+    expect(new Headers(fetchMock.mock.calls[0]![1]?.headers).get('x-user-id')).toBe('author');
+    // multipart 请求不设置 JSON Content-Type，让浏览器生成 boundary
+    expect(new Headers(fetchMock.mock.calls[0]![1]?.headers).get('content-type')).toBeNull();
 
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));
     const createObjectURL = vi.fn(() => 'blob:cover');
@@ -233,8 +245,10 @@ describe('web api client', () => {
 
   it('上传 HTTP 失败和超大离线文件均返回可识别错误', async () => {
     const file = new File(['x'], 'bad.png', { type: 'image/png' });
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 413 }));
-    await expect(uploadAsset(file)).rejects.toMatchObject({ status: 413, message: '图片上传失败' });
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error: { code: 'ASSET_TOO_LARGE', message: '图片超过大小限制' } }, { status: 413 }),
+    );
+    await expect(uploadAsset(file)).rejects.toMatchObject({ status: 413, message: '图片超过大小限制' });
 
     const huge = { name: 'huge.png', type: 'image/png', size: 8 * 1024 * 1024 + 1 } as File;
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));

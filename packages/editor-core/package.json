@@ -8,7 +8,6 @@
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --root ../.. packages/editor-core/src"
   },

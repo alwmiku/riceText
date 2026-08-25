@@ -1,4 +1,10 @@
 import type {
+  Attachment,
+  Chapter,
+  Poll,
+  Suggestion,
+} from "@ricetext/contracts";
+import type {
   DiceRollAttributes,
   EditorMode as CoreEditorMode,
   JSONContent,
@@ -11,7 +17,12 @@ export type RichTextNode = JSONContent;
 /** 编辑器的三种布局预设。 */
 export type EditorMode = CoreEditorMode;
 
-/** 文档读取与更新使用的统一信封。 */
+/**
+ * 文档读取与更新使用的统一信封。
+ * 字段与 @ricetext/contracts 的 DocumentEnvelope 对齐，仅两处差异：
+ * content 使用编辑器宽松的 JSONContent（编辑器/查看器直接消费），
+ * storage 标记本地缓存落点。
+ */
 export interface DocumentEnvelope {
   /** 稳定文档 ID。 */
   id: string;
@@ -29,7 +40,7 @@ export interface DocumentEnvelope {
   storage?: "server" | "local-cache";
 }
 
-/** 单条不可变历史版本摘要。 */
+/** 单条不可变历史版本摘要（展示字段；完整契约见 @ricetext/contracts）。 */
 export interface RevisionSummary {
   /** 历史 revision 编号。 */
   revision: number;
@@ -63,7 +74,7 @@ export interface SeedIdentity {
   replied: boolean;
 }
 
-/** Web 间贴树使用的递归显示模型。 */
+/** Web 间贴树使用的递归显示模型（结构是共享契约的子集）。 */
 export interface CommentReply {
   /** 回复 ID。 */
   id: string;
@@ -91,23 +102,14 @@ export type DiceResult = DiceRollAttributes;
 /** 与 editor-core 共用的上传图片元数据。 */
 export type UploadedAsset = CoreUploadedAsset;
 
-/** 纠错建议（服务端真实状态）。 */
-export interface ForumSuggestion {
-  id: string;
-  documentId: string;
-  /** 校订针对的章节（与章节目录 chapters.id 一致）；空串表示未定位到章节。 */
-  chapterId: string;
-  /** 章节标题（冗余存储，用于“对哪一章校订”的展示）。 */
-  chapterTitle: string;
-  /** 校订在章节内的行号（1-based；0 表示未知）。 */
-  lineNo: number;
-  /** 该行完整文本，作为行级定位依据。 */
-  lineText: string;
-  fromText: string;
-  toText: string;
-  reason: string;
-  status: "pending" | "approved" | "rejected";
-  authorId: string;
-  reviewerId: string | null;
-  createdAt: string;
-}
+/** 纠错建议（复用共享契约类型）。 */
+export type ForumSuggestion = Suggestion;
+
+/** 付费附件（复用共享契约类型）。 */
+export type ForumAttachment = Attachment;
+
+/** 投票详情（复用共享契约类型）。 */
+export type ForumPoll = Poll;
+
+/** 章节目录项（复用共享契约类型）。 */
+export type ForumChapterItem = Chapter;

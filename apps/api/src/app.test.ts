@@ -80,7 +80,7 @@ describe("RiceText API", () => {
 
     const unsafe = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "unsafe-save", content: { type: "doc", content: [{ type: "richImage", attrs: { src: "data:image/png;base64,AAAA", align: "center", width: 80 } }] } } });
     expect(unsafe.statusCode).toBe(422);
-    expect(unsafe.json().error.code).toBe("UNSAFE_IMAGE_URL");
+    expect(unsafe.json().error.code).toBe("UNSAFE_URL");
   });
 
   it("持久化骰子，只有显式重投才创建新结果", async () => {
