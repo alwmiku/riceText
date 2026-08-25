@@ -116,57 +116,8 @@ export function splitChaptersByStyle(
   );
 }
 
-/** 章节切分适配器，后续可替换为 C++ Addon / WASM / 独立服务。 */
-export interface ChapterSplitterAdapter {
-  split(text: string, options: ChapterSplitOptions): Promise<ChapterSplit[]>;
-}
-
-/** 默认 TypeScript 章节切分适配器。 */
-export const defaultChapterSplitterAdapter: ChapterSplitterAdapter = {
-  async split(text, options) {
-    return splitChapters(text, options);
-  },
-};
-
-let activeChapterSplitterAdapter: ChapterSplitterAdapter =
-  defaultChapterSplitterAdapter;
-
-/** 注册自定义章节切分适配器，例如 C++ Addon / WASM / 独立服务。 */
-export function setChapterSplitterAdapter(
-  adapter: ChapterSplitterAdapter,
-): void {
-  activeChapterSplitterAdapter = adapter;
-}
-
-/** 获取当前章节切分适配器。 */
-export function getChapterSplitterAdapter(): ChapterSplitterAdapter {
-  return activeChapterSplitterAdapter;
-}
-
-/** 使用当前适配器执行章节切分。 */
-export async function splitChaptersWithAdapter(
-  text: string,
-  options: ChapterSplitOptions = {},
-): Promise<ChapterSplit[]> {
-  return activeChapterSplitterAdapter.split(text, options);
-}
-
-/** 章节级增量操作。 */
-export type ChapterOp =
-  | { type: "insert"; text: string }
-  | { type: "delete"; count: number }
-  | { type: "retain"; count: number };
-
-/** 章节级增量更新结构。 */
-export interface ChapterDelta {
-  chapterId: string;
-  ops: ChapterOp[];
-}
-
 /**
  * 将长篇纯文本按章节标题切分。
- *
- * 默认使用 TypeScript 实现；后续可替换为 C++/WASM 适配器。
  */
 export function splitChapters(
   text: string,
