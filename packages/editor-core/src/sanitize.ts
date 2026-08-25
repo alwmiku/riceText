@@ -1,4 +1,12 @@
 import type { JSONContent } from '@tiptap/core'
+import {
+  ALLOWED_DOCUMENT_FONT_FAMILIES,
+  ALLOWED_DOCUMENT_FONT_SIZES,
+  DOCUMENT_MARK_ATTRIBUTES,
+  DOCUMENT_NODE_ATTRIBUTES,
+  MAX_DOCUMENT_DEPTH as POLICY_MAX_DOCUMENT_DEPTH,
+  MAX_DOCUMENT_NODES as POLICY_MAX_DOCUMENT_NODES,
+} from '@ricetext/contracts'
 
 import type {
   AttachmentReferenceAttributes,
@@ -16,85 +24,30 @@ import type {
 } from './types.js'
 
 /** 单个文档中可接受的 JSON 节点最大数量。 */
-export const MAX_DOCUMENT_NODES = 10_000
+export const MAX_DOCUMENT_NODES = POLICY_MAX_DOCUMENT_NODES
 
 /** 净化器可接受的最大嵌套深度。 */
-export const MAX_DOCUMENT_DEPTH = 32
+export const MAX_DOCUMENT_DEPTH = POLICY_MAX_DOCUMENT_DEPTH
 
 /** `textStyle` 可持久化的字体族。 */
-export const ALLOWED_FONT_FAMILIES = Object.freeze([
-  'system-ui',
-  'sans-serif',
-  'serif',
-  'monospace',
-  'Noto Sans SC',
-  'Noto Serif SC',
-  'Noto Serif SC Variable',
-  'Microsoft YaHei',
-  'SimSun',
-] as const)
+export const ALLOWED_FONT_FAMILIES = ALLOWED_DOCUMENT_FONT_FAMILIES
 
 /** `textStyle` 可持久化的像素字号。 */
-export const ALLOWED_FONT_SIZES = Object.freeze([12, 14, 16, 18, 20, 24, 28, 32, 36, 48] as const)
+export const ALLOWED_FONT_SIZES = ALLOWED_DOCUMENT_FONT_SIZES
 
 const allowedFontSet = new Set<string>(ALLOWED_FONT_FAMILIES)
 const allowedFontSizeSet = new Set<number>(ALLOWED_FONT_SIZES)
 const allowedSimpleMarks = new Set(['bold', 'italic', 'underline', 'strike', 'code', 'spoiler'])
-const allowedNodes = new Set([
-  'doc',
-  'paragraph',
-  'text',
-  'heading',
-  'bulletList',
-  'orderedList',
-  'listItem',
-  'blockquote',
-  'codeBlock',
-  'hardBreak',
-  'horizontalRule',
-  'inlineCommentAnchor',
-  'richImage',
-  'diceRoll',
-  'novelExcerpt',
-  'mention',
-  'replyGate',
-  'attachmentRef',
-  'pollRef',
-  'longTextBlock',
-])
+const allowedNodes = new Set(Object.keys(DOCUMENT_NODE_ATTRIBUTES))
 
 const blockNodes = new Set(['paragraph', 'heading', 'bulletList', 'orderedList', 'blockquote', 'codeBlock', 'horizontalRule', 'richImage', 'novelExcerpt', 'replyGate', 'attachmentRef', 'pollRef', 'longTextBlock'])
 const inlineNodes = new Set(['text', 'hardBreak', 'inlineCommentAnchor', 'diceRoll', 'mention'])
 const atomNodes = new Set(['hardBreak', 'horizontalRule', 'inlineCommentAnchor', 'richImage', 'diceRoll', 'mention', 'attachmentRef', 'pollRef', 'longTextBlock'])
 
-const nodeAttributeAllowlist: Readonly<Record<string, readonly string[]>> = {
-  doc: [],
-  paragraph: ['textAlign'],
-  text: [],
-  heading: ['level', 'textAlign'],
-  bulletList: [],
-  orderedList: ['start'],
-  listItem: ['textAlign'],
-  blockquote: [],
-  codeBlock: ['language'],
-  hardBreak: [],
-  horizontalRule: [],
-  inlineCommentAnchor: ['threadId', 'count', 'placement'],
-  richImage: ['assetId', 'src', 'alt', 'caption', 'align', 'width'],
-  diceRoll: ['rollId', 'expression', 'rolls', 'total', 'rerollOf'],
-  novelExcerpt: ['bookTitle', 'chapterTitle', 'author', 'sourceUrl', 'variant'],
-  mention: ['userId', 'name', 'resolved', 'avatarUrl'],
-  replyGate: ['gateId', 'prompt'],
-  attachmentRef: ['attachmentId', 'name', 'mimeType', 'size', 'priceCoins'],
-  pollRef: ['pollId', 'question', 'multiple', 'options'],
-  longTextBlock: ['chapterId', 'title', 'text', 'order', 'start', 'end'],
-}
-
-const markAttributeAllowlist: Readonly<Record<string, readonly string[]>> = {
-  bold: [], italic: [], underline: [], strike: [], code: [], spoiler: [],
-  link: ['href', 'target', 'rel'],
-  textStyle: ['color', 'fontFamily', 'fontSize'],
-}
+const nodeAttributeAllowlist: Readonly<Record<string, readonly string[]>> =
+  DOCUMENT_NODE_ATTRIBUTES
+const markAttributeAllowlist: Readonly<Record<string, readonly string[]>> =
+  DOCUMENT_MARK_ATTRIBUTES
 
 interface SanitizerContext {
   issues: DocumentValidationIssue[]

@@ -1,6 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
   TiptapDocumentSchema,
+  ALLOWED_DOCUMENT_FONT_FAMILIES,
+  ALLOWED_DOCUMENT_FONT_SIZES,
+  DOCUMENT_MARK_ATTRIBUTES,
+  DOCUMENT_NODE_ATTRIBUTES,
+  collectInlineCommentAnchorIds,
   type DocumentEnvelope,
   type JsonValue,
   type RevisionPage,
@@ -32,71 +37,25 @@ interface RevisionRow {
 }
 
 /** 每种持久化节点允许的 attrs；未知属性在写入前直接拒绝。 */
-const allowedNodeAttrs: Record<string, ReadonlySet<string>> = {
-  paragraph: new Set(["textAlign"]),
-  heading: new Set(["level", "textAlign"]),
-  bulletList: new Set(),
-  orderedList: new Set(["start"]),
-  listItem: new Set(["textAlign"]),
-  blockquote: new Set(),
-  codeBlock: new Set(["language"]),
-  horizontalRule: new Set(),
-  hardBreak: new Set(),
-  text: new Set(),
-  richImage: new Set(["assetId", "src", "alt", "caption", "align", "width"]),
-  diceRoll: new Set(["rollId", "expression", "rolls", "total", "rerollOf"]),
-  inlineCommentAnchor: new Set(["threadId", "count", "placement"]),
-  novelExcerpt: new Set([
-    "variant",
-    "bookTitle",
-    "chapterTitle",
-    "author",
-    "sourceUrl",
+const allowedNodeAttrs: Record<string, ReadonlySet<string>> = Object.fromEntries(
+  Object.entries(DOCUMENT_NODE_ATTRIBUTES).map(([type, attrs]) => [
+    type,
+    new Set<string>(attrs),
   ]),
-  mention: new Set(["userId", "name", "resolved", "avatarUrl"]),
-  replyGate: new Set(["gateId", "prompt"]),
-  attachmentRef: new Set([
-    "attachmentId",
-    "name",
-    "mimeType",
-    "size",
-    "priceCoins",
-  ]),
-  pollRef: new Set(["pollId", "question", "multiple", "options"]),
-  longTextBlock: new Set(["chapterId", "title", "text", "order", "start", "end"]),
-};
+);
 
 /** mark 属性白名单独立于节点，避免任意 style/class/on* 进入正文。 */
-const allowedMarkAttrs: Record<string, ReadonlySet<string>> = {
-  bold: new Set(),
-  italic: new Set(),
-  underline: new Set(),
-  strike: new Set(),
-  code: new Set(),
-  spoiler: new Set(),
-  link: new Set(["href", "target", "rel"]),
-  textStyle: new Set(["color", "fontSize", "fontFamily"]),
-  fontFamily: new Set(["fontFamily"]),
-};
+const allowedMarkAttrs: Record<string, ReadonlySet<string>> = Object.fromEntries(
+  Object.entries(DOCUMENT_MARK_ATTRIBUTES).map(([type, attrs]) => [
+    type,
+    new Set<string>(attrs),
+  ]),
+);
 
-const allowedFonts = new Set([
-  "system-ui",
-  "sans-serif",
-  "serif",
-  "monospace",
-  "Noto Sans SC",
-  "Noto Serif SC",
-]);
-const allowedFontSizes = new Set([
-  "12px",
-  "14px",
-  "16px",
-  "18px",
-  "20px",
-  "24px",
-  "28px",
-  "32px",
-]);
+const allowedFonts = new Set<string>(ALLOWED_DOCUMENT_FONT_FAMILIES);
+const allowedFontSizes = new Set(
+  ALLOWED_DOCUMENT_FONT_SIZES.map((size) => `${size}px`),
+);
 
 function attrsOf(value: TiptapNode | TiptapMark): Record<string, JsonValue> {
   return value.attrs ?? {};
@@ -404,20 +363,6 @@ export function sanitizeDocument(input: unknown): TiptapDocument {
   return parsed.data;
 }
 
-function collectAnchors(content: TiptapDocument): Set<string> {
-  const result = new Set<string>();
-  const visit = (node: TiptapNode): void => {
-    if (
-      node.type === "inlineCommentAnchor" &&
-      typeof node.attrs?.threadId === "string"
-    )
-      result.add(node.attrs.threadId);
-    for (const child of node.content ?? []) visit(child);
-  };
-  for (const node of content.content) visit(node);
-  return result;
-}
-
 /** 在 Tiptap text 节点中仅替换第一次匹配，供审核建议合并。 */
 export function replaceFirstText(
   content: TiptapDocument,
@@ -660,7 +605,7 @@ export class DocumentService {
 
   #syncAnchors(documentId: string, content: TiptapDocument, now: string): void {
     // 先归档再恢复当前正文中的锚点：删除正文标记不会级联删除已有讨论历史。
-    const anchors = collectAnchors(content);
+    const anchors = collectInlineCommentAnchorIds(content);
     this.#db
       .prepare("UPDATE comment_threads SET archived = 1 WHERE document_id = ?")
       .run(documentId);

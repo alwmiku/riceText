@@ -6,9 +6,7 @@ import {
   AlertTriangle,
   BookOpen,
   Check,
-  CloudOff,
   FileUp,
-  LoaderCircle,
   Maximize2,
   MessageCircle,
   PanelLeftOpen,
@@ -21,16 +19,27 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useAppContext } from "../app-context";
 import { Button, Dialog, Segmented } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
-import { ChapterRail, DemoBusinessPanel } from "../features/demo/DemoPanels";
+import { StandardComposeWorkspace } from "../features/compose/StandardComposeWorkspace";
+import { SaveStatus } from "../features/compose/SaveStatus";
+import { ChapterRail } from "../features/demo/DemoPanels";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
 import { EditorErrorBoundary } from "../features/editor/EditorErrorBoundary";
 import { createLongTextDocument } from "../features/editor/long-text-import";
 import {
+  appendGapLongTextChapter,
+  appendLongTextChapter,
+  deleteLongTextChapter,
+  mergeLongTextChapter,
+  moveLongTextChapter,
+  splitLongTextChapter,
+  updateLongTextChapter,
+} from "../features/editor/long-text-chapter-operations";
+import {
   expandRawRangeToIncludeLeadingTitle,
-  rawRangeForGapChapter,
-  splitRawRangeAtCursor,
 } from "../features/editor/long-text-ranges";
 import { useAutosave } from "../features/editor/useAutosave";
+import { AddChapterDialog } from "../features/novel/AddChapterDialog";
+import { ChapterUploadDialog } from "../features/novel/ChapterUploadDialog";
 import {
   ChapterSidebar,
   type ChapterSummary,
@@ -63,9 +72,8 @@ import type {
   DocumentEnvelope,
   EditorMode,
   RichTextNode,
-  SaveState,
 } from "../lib/types";
-import { cn, formatTime, sha256Hex } from "../lib/utils";
+import { cn, sha256Hex } from "../lib/utils";
 
 const LOCAL_LONG_TEXT_KEY = "ricetext:local-long-text:demo-post";
 const LOCAL_LONG_TEXT_RAW_KEY = "ricetext:local-long-text-raw:demo-post";
@@ -77,56 +85,6 @@ const chapterStyleOptions: Array<{ value: ChapterTitleStyle; label: string }> =
     { value: "english", label: "English: Chapter X" },
     { value: "numeric", label: "数字：1. 标题" },
   ];
-
-const statusLabels: Record<SaveState, string> = {
-  loading: "正在载入",
-  saved: "已保存",
-  dirty: "等待保存",
-  saving: "正在保存",
-  conflict: "版本冲突",
-  offline: "本地演示副本",
-  error: "保存失败",
-};
-
-/** 紧凑展示自动保存状态、revision 和最近保存时间。 */
-function SaveStatus({
-  state,
-  revision,
-  savedAt,
-}: {
-  state: SaveState;
-  revision: number;
-  savedAt: string;
-}) {
-  const dotColor =
-    state === "saved"
-      ? "bg-[#209065]"
-      : state === "dirty" || state === "saving"
-        ? "bg-[#c47b0b]"
-        : state === "conflict" || state === "error"
-          ? "bg-[#c83d3d]"
-          : "bg-[#9aa4ae]";
-  return (
-    <span
-      className="save-status inline-flex items-center gap-1.5 text-xs whitespace-nowrap text-[#65717e]"
-      data-state={state}
-    >
-      {state === "saving" ? (
-        <LoaderCircle size={12} className="animate-spin" />
-      ) : state === "offline" ? (
-        <CloudOff size={12} />
-      ) : (
-        <span className={`h-[7px] w-[7px] rounded-full ${dotColor}`} />
-      )}
-      <span>
-        {statusLabels[state]} · v{revision}
-      </span>
-      {(state === "saved" || state === "offline") && (
-        <span className="max-[840px]:hidden">· {formatTime(savedAt)}</span>
-      )}
-    </span>
-  );
-}
 
 /** 独立发帖/章节创作工作台，负责组合编辑器、历史、间贴和演示业务面板。 */
 export default function ComposePage() {
@@ -387,56 +345,33 @@ export default function ComposePage() {
 
   const deleteChapter = (index: number) => {
     commitPendingLongText();
-    const list = [...(contentRef.current.content ?? [])];
-    if (index < 0 || index >= list.length) return;
-    list.splice(index, 1);
-    activeChapterIndexRef.current = Math.min(
+    const result = deleteLongTextChapter(
+      contentRef.current,
+      index,
       activeChapterIndexRef.current,
-      Math.max(0, list.length - 1),
     );
-    replaceLongTextDocument({ type: "doc", content: list });
-    setActiveChapterIndex(activeChapterIndexRef.current);
+    if (!result) return;
+    activeChapterIndexRef.current = result.activeIndex;
+    replaceLongTextDocument(result.document);
+    setActiveChapterIndex(result.activeIndex);
   };
 
   const mergeChapterAt = (index: number) => {
-    if (index <= 0) return;
     commitPendingLongText();
-    const list = [...(contentRef.current.content ?? [])];
-    const previous = list[index - 1];
-    const current = list[index];
-    if (!previous || !current) return;
-    const previousText = String(previous.attrs?.text ?? "");
-    const currentText = String(current.attrs?.text ?? "");
-    if (previousText.length + currentText.length + 2 > MAX_CHAPTER_LENGTH)
-      return;
-    list.splice(index - 1, 2, {
-      ...previous,
-      attrs: {
-        ...previous.attrs,
-        text: `${previousText}\n\n${currentText}`,
-        end:
-          typeof current.attrs?.end === "number"
-            ? current.attrs.end
-            : typeof previous.attrs?.end === "number"
-              ? previous.attrs.end
-              : null,
-      },
-    });
-    activeChapterIndexRef.current = index - 1;
-    replaceLongTextDocument({ type: "doc", content: list });
-    setActiveChapterIndex(activeChapterIndexRef.current);
+    const result = mergeLongTextChapter(contentRef.current, index);
+    if (!result) return;
+    activeChapterIndexRef.current = result.activeIndex;
+    replaceLongTextDocument(result.document);
+    setActiveChapterIndex(result.activeIndex);
   };
 
   const moveChapter = (from: number, to: number) => {
-    if (from === to) return;
     commitPendingLongText();
-    const list = [...(contentRef.current.content ?? [])];
-    const [moving] = list.splice(from, 1);
-    if (!moving) return;
-    list.splice(to, 0, moving);
-    activeChapterIndexRef.current = to;
-    replaceLongTextDocument({ type: "doc", content: list });
-    setActiveChapterIndex(activeChapterIndexRef.current);
+    const result = moveLongTextChapter(contentRef.current, from, to);
+    if (!result) return;
+    activeChapterIndexRef.current = result.activeIndex;
+    replaceLongTextDocument(result.document);
+    setActiveChapterIndex(result.activeIndex);
   };
 
   /** 管理员手动添加章节（番外、作者说、短章等），追加到目录末尾。 */
@@ -445,22 +380,14 @@ export default function ComposePage() {
     const text = addChapterText.slice(0, MAX_CHAPTER_LENGTH);
     if (!title && !text) return;
     commitPendingLongText();
-    const list = [...(contentRef.current.content ?? [])];
-    const node: RichTextNode = {
-      type: "longTextBlock",
-      attrs: {
-        chapterId: `manual-chapter-${Date.now()}`,
-        title: title || "未命名章节",
-        text,
-        order: list.length,
-        start: null,
-        end: null,
-      },
-    };
-    list.push(node);
-    activeChapterIndexRef.current = list.length - 1;
-    replaceLongTextDocument({ type: "doc", content: list });
-    setActiveChapterIndex(activeChapterIndexRef.current);
+    const result = appendLongTextChapter(contentRef.current, {
+      chapterId: `manual-chapter-${Date.now()}`,
+      title,
+      text,
+    });
+    activeChapterIndexRef.current = result.activeIndex;
+    replaceLongTextDocument(result.document);
+    setActiveChapterIndex(result.activeIndex);
     setAddChapterOpen(false);
     setAddChapterTitle("");
     setAddChapterText("");
@@ -471,67 +398,33 @@ export default function ComposePage() {
   const createChapterFromGap = (text: string, start: number, end: number) => {
     if (!text.trim()) return;
     commitPendingLongText();
-    const list = [...(contentRef.current.content ?? [])];
-    const limitedText = text.slice(0, MAX_CHAPTER_LENGTH);
-    const range = rawRangeForGapChapter(start, end, text);
-    const node: RichTextNode = {
-      type: "longTextBlock",
-      attrs: {
-        chapterId: `gap-chapter-${Date.now()}`,
-        title: "未命名章节",
-        text: limitedText,
-        order: list.length,
-        start: range.start,
-        end: range.end,
-      },
-    };
-    list.push(node);
-    activeChapterIndexRef.current = list.length - 1;
-    replaceLongTextDocument({ type: "doc", content: list });
-    setActiveChapterIndex(activeChapterIndexRef.current);
+    const result = appendGapLongTextChapter(contentRef.current, {
+      chapterId: `gap-chapter-${Date.now()}`,
+      text,
+      start,
+      end,
+    });
+    if (!result) return;
+    activeChapterIndexRef.current = result.activeIndex;
+    replaceLongTextDocument(result.document);
+    setActiveChapterIndex(result.activeIndex);
     setNotice("已把未切分段落创建为新章节，请补充标题并核对内容");
   };
 
   /** 光标处切章：把当前章节拆为两章，编辑器重建后只加载新章。 */
   const splitCurrentChapter = (before: string, after: string) => {
     commitPendingLongText();
-    const list = [...(contentRef.current.content ?? [])];
     const index = activeChapterIndexRef.current;
-    const current = list[index];
-    if (!current) return;
-    const ranges = splitRawRangeAtCursor(
-      current.attrs as Record<string, unknown> | undefined,
+    const current = contentRef.current.content?.[index];
+    const result = splitLongTextChapter(contentRef.current, index, {
+      chapterId: `chapter-${Date.now()}`,
       before,
       after,
-    );
-    const newNode: RichTextNode = {
-      type: "longTextBlock",
-      attrs: {
-        chapterId: `chapter-${Date.now()}`,
-        title: `第 ${index + 2} 章`,
-        text: after,
-        order: index + 1,
-        start: ranges.after.start,
-        end: ranges.after.end,
-      },
-    };
-    list.splice(
-      index,
-      1,
-      {
-        ...current,
-        attrs: {
-          ...current.attrs,
-          text: before,
-          start: ranges.before.start,
-          end: ranges.before.end,
-        },
-      },
-      newNode,
-    );
-    activeChapterIndexRef.current = index + 1;
-    replaceLongTextDocument({ type: "doc", content: list });
-    setActiveChapterIndex(activeChapterIndexRef.current);
+    });
+    if (!result || !current) return;
+    activeChapterIndexRef.current = result.activeIndex;
+    replaceLongTextDocument(result.document);
+    setActiveChapterIndex(result.activeIndex);
     setNotice(
       `已在光标处拆分为“${String(current.attrs?.title ?? "当前章")}”与“第 ${index + 2} 章”`,
     );
@@ -542,29 +435,12 @@ export default function ComposePage() {
     const pending = chapterEditPendingRef.current;
     chapterEditPendingRef.current = null;
     if (!pending) return;
-    const list = contentRef.current.content ?? [];
-    const index = list.findIndex(
-      (node) => String(node.attrs?.chapterId) === pending.chapterId,
+    const updated = updateLongTextChapter(
+      contentRef.current,
+      pending.chapterId,
+      pending.patch,
     );
-    if (index < 0) return;
-    const current = list[index];
-    if (!current) return;
-    const updated = {
-      ...current,
-      attrs: {
-        ...current.attrs,
-        ...(pending.patch.title !== undefined
-          ? { title: pending.patch.title }
-          : {}),
-        ...(pending.patch.text !== undefined
-          ? { text: pending.patch.text }
-          : {}),
-      },
-    };
-    replaceContent({
-      type: "doc",
-      content: [...list.slice(0, index), updated, ...list.slice(index + 1)],
-    });
+    if (updated) replaceContent(updated);
   };
 
   /** 章节编辑回调（来自节点视图的引用修改）：防抖后写回整体数据。 */
@@ -1024,44 +900,26 @@ export default function ComposePage() {
           </div>
         </section>
       ) : mode === "full" ? (
-        <div className="grid grid-cols-[220px_minmax(480px,1fr)_310px] items-start gap-3.5 max-[1180px]:grid-cols-[minmax(0,1fr)_300px] max-[1180px]:[&>*:first-child]:hidden max-[840px]:block max-[840px]:[&>aside]:hidden">
-          <ChapterRail
-            chapters={chapters}
-            currentIndex={activeIndex}
-            onSelect={setChapterIndex}
-          />
-          <section className="min-w-0">
-            <div className="mb-2 flex min-h-[52px] items-center justify-between gap-3 rounded-lg border border-border bg-white py-2 pr-2.5 pl-3.5 shadow-panel max-[430px]:min-h-12 max-[430px]:pr-3 max-[430px]:pl-3">
-              <div className="min-w-0">
-                <p className="min-w-0 truncate text-[15px] font-bold">
-                  {chapters[activeIndex]?.title ?? document.title}
-                </p>
-                <SaveStatus
-                  state={isPlaceholderData ? "loading" : autosave.state}
-                  revision={
-                    chapterDirectory[activeIndex]?.revision ?? autosave.revision
-                  }
-                  savedAt={autosave.savedAt}
-                />
-              </div>
-              <Button
-                size="sm"
-                disabled={isPlaceholderData}
-                onClick={() => void publish()}
-              >
-                <Save size={14} />
-                保存
-              </Button>
-            </div>
-            {editor}
-          </section>
-          <DemoBusinessPanel
-            identity={identity}
-            documentId={document.id}
-            baseRevision={autosave.revision}
-            onRestore={(revision) => void rollback(revision)}
-          />
-        </div>
+        <StandardComposeWorkspace
+          chapters={chapters}
+          activeIndex={activeIndex}
+          title={chapters[activeIndex]?.title ?? document.title}
+          saveStatus={
+            <SaveStatus
+              state={isPlaceholderData ? "loading" : autosave.state}
+              revision={chapterDirectory[activeIndex]?.revision ?? autosave.revision}
+              savedAt={autosave.savedAt}
+            />
+          }
+          editor={editor}
+          identity={identity}
+          documentId={document.id}
+          revision={autosave.revision}
+          saveDisabled={isPlaceholderData}
+          onSelectChapter={setChapterIndex}
+          onSave={() => void publish()}
+          onRestore={(revision) => void rollback(revision)}
+        />
       ) : (
         <section className="relative">
           {mode === "mobile" ? (
@@ -1148,135 +1006,31 @@ export default function ComposePage() {
           onClose={() => setCoverageOpen(false)}
         />
       )}
-      <Dialog
+      <AddChapterDialog
         open={addChapterOpen}
+        title={addChapterTitle}
+        text={addChapterText}
         onOpenChange={(open) => {
+          setAddChapterOpen(open);
           if (!open) {
-            setAddChapterOpen(false);
             setAddChapterTitle("");
             setAddChapterText("");
           }
         }}
-        title="添加章节"
-        description="用于番外、作者说、短章等手动补充的内容。"
-        className="max-w-2xl"
-      >
-        <div className="space-y-3">
-          <label
-            className="block text-xs font-medium"
-            htmlFor="add-chapter-title"
-          >
-            章节标题
-          </label>
-          <input
-            id="add-chapter-title"
-            className="w-full rounded-md border px-3 py-2 text-sm"
-            value={addChapterTitle}
-            onChange={(event) => setAddChapterTitle(event.target.value)}
-            placeholder="例如：番外 · 雨季来信"
-          />
-          <label
-            className="block text-xs font-medium"
-            htmlFor="add-chapter-text"
-          >
-            正文（最多 {MAX_CHAPTER_LENGTH.toLocaleString()} 字）
-          </label>
-          <textarea
-            id="add-chapter-text"
-            className="h-40 w-full rounded-md border px-3 py-2 text-sm"
-            value={addChapterText}
-            maxLength={MAX_CHAPTER_LENGTH}
-            onChange={(event) => setAddChapterText(event.target.value)}
-            placeholder="粘贴或输入章节内容…"
-          />
-          <div className="flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setAddChapterOpen(false)}
-            >
-              取消
-            </Button>
-            <Button size="sm" onClick={addChapter}>
-              添加并编辑
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-      <Dialog
+        onTitleChange={setAddChapterTitle}
+        onTextChange={setAddChapterText}
+        onSubmit={addChapter}
+      />
+      <ChapterUploadDialog
         open={uploadOpen}
+        diff={uploadDiff}
+        uploading={uploading}
         onOpenChange={(open) => {
-          if (!open) {
-            setUploadOpen(false);
-            setUploadDiff(null);
-          }
+          setUploadOpen(open);
+          if (!open) setUploadDiff(null);
         }}
-        title="确定并分章上传"
-        description="每个章节作为一个独立内容上传到服务器。"
-        className="max-w-2xl"
-      >
-        {uploadDiff ? (
-          <div className="space-y-3">
-            {uploadDiff.gaps > 0 ? (
-              <div className="rounded-md border border-[#f0b4b0] bg-[#fdf1f0] px-3 py-2 text-xs text-[#8f2b24]">
-                ⚠ 本地核对发现仍有 <strong>{uploadDiff.gaps}</strong>{" "}
-                段文字未切分进任何章节，
-                建议先在上方原文对照列核对并处理，再上传。
-              </div>
-            ) : (
-              <div className="rounded-md border border-[#add4cb] bg-[#edf8f5] px-3 py-2 text-xs text-[#185f57]">
-                ✓ 本地核对通过：全部原文已连续切分进章节，无未切分段落。
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              将分章上传 <strong>{uploadDiff.total}</strong> 个章节（新增{" "}
-              {uploadDiff.added}，修改 {uploadDiff.modified}）。未变化的章节
-              不会重复上传。
-            </p>
-            <div className="max-h-64 overflow-auto rounded-md border p-2">
-              {uploadDiff.rows.map((row, index) => (
-                <div
-                  key={row.id || index}
-                  className="flex items-center justify-between gap-2 border-b py-1 text-xs last:border-b-0"
-                >
-                  <span className="truncate">
-                    {index + 1}. {row.title}
-                  </span>
-                  <span
-                    className={
-                      row.status === "未变化"
-                        ? "text-muted-foreground"
-                        : "text-[#176e66]"
-                    }
-                  >
-                    {row.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={uploading}
-                onClick={() => {
-                  setUploadOpen(false);
-                  setUploadDiff(null);
-                }}
-              >
-                取消
-              </Button>
-              <Button
-                size="sm"
-                disabled={uploading}
-                onClick={() => void confirmUpload()}
-              >
-                {uploading ? "上传中…" : "确认分章上传"}
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </Dialog>
+        onConfirm={() => void confirmUpload()}
+      />
     </main>
   );
 }
