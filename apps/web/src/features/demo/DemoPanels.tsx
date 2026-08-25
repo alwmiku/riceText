@@ -27,20 +27,28 @@ import {
   votePoll,
 } from "../../lib/api";
 import type { RevisionSummary, SeedIdentity } from "../../lib/types";
-import { formatTime } from "../../lib/utils";
+import { cn, formatTime } from "../../lib/utils";
 
 /** 完整创作模式左侧的章节目录：点击切换当前编辑章节。 */
 export function ChapterRail({
   chapters,
   currentIndex,
   onSelect,
+  className,
 }: {
   chapters: readonly { id: string; title: string }[];
   currentIndex: number;
   onSelect: (index: number) => void;
+  className?: string;
 }) {
   return (
-    <aside className="sticky top-[76px] max-h-[calc(100vh-92px)] overflow-auto rounded-lg border border-border bg-white shadow-panel" aria-label="章节目录">
+    <aside
+      className={cn(
+        "sticky top-[76px] max-h-[calc(100vh-92px)] overflow-auto rounded-lg border border-border bg-white shadow-panel",
+        className,
+      )}
+      aria-label="章节目录"
+    >
       <div className="border-b border-border p-3.5 last:border-b-0">
         <div className="mb-[11px] flex items-center justify-between gap-2 text-[13px] font-bold">
           <span className="flex items-center gap-2">

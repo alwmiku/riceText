@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   Maximize2,
   MessageCircle,
+  PanelLeftOpen,
   Monitor,
   Save,
   Smartphone,
@@ -150,6 +151,7 @@ export default function ComposePage() {
   const [hasLocalDraft, setHasLocalDraft] = useState(false);
   const [longTextDocumentVersion, setLongTextDocumentVersion] = useState(0);
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
+  const [mobileChapterRailOpen, setMobileChapterRailOpen] = useState(false);
   const activeChapterIndexRef = useRef(0);
   const longTextPendingRef = useRef<RichTextNode | null>(null);
   const longTextWriteTimerRef = useRef<number | null>(null);
@@ -1061,7 +1063,58 @@ export default function ComposePage() {
           />
         </div>
       ) : (
-        <section>
+        <section className="relative">
+          {mode === "mobile" ? (
+            <>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="打开章节目录"
+                aria-expanded={mobileChapterRailOpen}
+                className="fixed left-2 top-[76px] z-30 h-11 w-11 shadow-panel"
+                onClick={() => setMobileChapterRailOpen(true)}
+              >
+                <PanelLeftOpen size={20} />
+              </Button>
+              {mobileChapterRailOpen ? (
+                <div className="fixed inset-0 z-50" role="presentation">
+                  <button
+                    type="button"
+                    aria-label="关闭章节目录"
+                    className="absolute inset-0 bg-black/35"
+                    onClick={() => setMobileChapterRailOpen(false)}
+                  />
+                  <div
+                    className="absolute inset-y-0 left-0 w-[min(84vw,340px)] border-r border-border bg-white p-2 pt-[calc(12px+env(safe-area-inset-top))] shadow-2xl"
+                    role="dialog"
+                    aria-label="章节目录"
+                    aria-modal="true"
+                  >
+                    <div className="mb-2 flex items-center justify-between px-1">
+                      <strong className="text-sm">章节目录</strong>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="关闭章节目录"
+                        onClick={() => setMobileChapterRailOpen(false)}
+                      >
+                        <X size={18} />
+                      </Button>
+                    </div>
+                    <ChapterRail
+                      chapters={chapters}
+                      currentIndex={activeIndex}
+                      onSelect={(index) => {
+                        setChapterIndex(index);
+                        setMobileChapterRailOpen(false);
+                      }}
+                      className="static max-h-[calc(100vh-78px)] rounded-md shadow-none"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : null}
           <div className="mx-auto mb-2 flex max-w-[860px] items-center justify-between px-1">
             <SaveStatus
               state={isPlaceholderData ? "loading" : autosave.state}

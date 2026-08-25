@@ -38,7 +38,12 @@ vi.mock('../features/editor/RichTextEditor', () => ({
   </section>,
 }));
 vi.mock('../features/demo/DemoPanels', () => ({
-  ChapterRail: () => <aside>模拟章节目录</aside>,
+  ChapterRail: (props: { onSelect: (index: number) => void; className?: string }) => (
+    <aside className={props.className} aria-label="章节目录">
+      <span>模拟章节目录</span>
+      <button type="button" onClick={() => props.onSelect(0)}>模拟章节 1</button>
+    </aside>
+  ),
   DemoBusinessPanel: (props: { onRestore: (revision: number) => void }) => <aside><span>模拟创作工具</span><button type="button" onClick={() => props.onRestore(17)}>模拟回退</button></aside>,
 }));
 vi.mock('../features/comments/CommentThread', () => ({
@@ -94,6 +99,18 @@ describe('ComposePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '移动' }));
     expect(screen.getByTestId('editor')).toHaveAttribute('data-mode', 'mobile');
     expect(screen.getByText(/移动编辑/)).toBeInTheDocument();
+  });
+
+  it('移动编辑模式通过左侧抽屉切换章节', () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '移动' }));
+    expect(screen.getByRole('button', { name: '打开章节目录' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '打开章节目录' }));
+    expect(screen.getByRole('dialog', { name: '章节目录' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '模拟章节 1' }));
+    expect(screen.queryByRole('dialog', { name: '章节目录' })).not.toBeInTheDocument();
   });
 
   it('发布前 flush 自动保存，并可关闭成功提示', async () => {
