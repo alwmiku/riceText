@@ -2,9 +2,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { editorExtensions, NodeSelection } from "@ricetext/editor-core";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import {
-  Bold,
   ChevronDown,
-  Dice5,
   ImagePlus,
   MoreHorizontal,
   Send,
@@ -13,21 +11,14 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
   Button,
-  Dialog,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  IconButton,
 } from "../../components/ui";
 import type { EditorMode, RichTextNode } from "../../lib/types";
 import { formatTime } from "../../lib/utils";
-import {
-  describeSteps,
-  cmd,
-  isRichNodeActive,
-  type StepJson,
-} from "./commands";
+import { describeSteps, type StepJson } from "./commands";
 import { SelectionFormatMenu } from "./SelectionFormatMenu";
 import { Toolbar } from "./Toolbar";
 
@@ -73,7 +64,6 @@ export function RichTextEditor({
   onCommentAnchorOpen,
   onModeToolsOpen,
 }: RichTextEditorProps) {
-  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [lastTransactionAt, setLastTransactionAt] = useState<number | null>(
     null,
   );
@@ -335,57 +325,20 @@ export function RichTextEditor({
               />
             </SelectionFormatMenu>
           </div>
-          <div className="fixed inset-x-0 bottom-0 z-[35] flex min-h-[58px] items-center justify-around gap-1 border-t border-border bg-white/[0.97] px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] backdrop-blur-xl [&_button]:min-h-11 [&_button]:min-w-11">
-            <IconButton
-              label="加粗"
-              active={Boolean(editor?.isActive("bold"))}
-              disabled={Boolean(editor?.isActive("spoiler"))}
-              onClick={cmd(editor, (value) =>
-                value.chain().focus().toggleBold().run(),
-              )}
-            >
-              <Bold size={18} />
-            </IconButton>
-            <IconButton
-              label="插入图片"
-              active={editor ? isRichNodeActive(editor, "richImage") : false}
-              onClick={() => setMobileToolsOpen(true)}
-            >
-              <ImagePlus size={18} />
-            </IconButton>
-            <IconButton
-              label="插入骰子"
-              active={editor ? isRichNodeActive(editor, "diceRoll") : false}
-              onClick={() => setMobileToolsOpen(true)}
-            >
-              <Dice5 size={18} />
-            </IconButton>
-            <IconButton
-              label="更多工具"
-              onClick={() => setMobileToolsOpen(true)}
-            >
-              <MoreHorizontal size={19} />
-            </IconButton>
+          <div className="fixed inset-x-0 bottom-0 z-[35] flex min-h-[66px] items-center justify-between gap-2 border-t border-border bg-white/[0.97] px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] backdrop-blur-xl">
+            <Toolbar editor={editor} condensed />
             <Button
               size="icon"
+              className="h-11 w-11 min-h-11 min-w-11"
               aria-label="发布"
               onClick={() =>
                 editor && onSubmit?.(editor.getJSON() as RichTextNode)
               }
             >
-              <Send size={18} />
+              <Send size={20} />
             </Button>
           </div>
         </div>
-        <Dialog
-          open={mobileToolsOpen}
-          onOpenChange={setMobileToolsOpen}
-          title="编辑工具"
-          description="选择排版或插入内容。"
-          className="!bottom-0 !top-auto !w-full !max-w-none !translate-y-0 rounded-b-none"
-        >
-          <Toolbar editor={editor} />
-        </Dialog>
       </>
     );
 

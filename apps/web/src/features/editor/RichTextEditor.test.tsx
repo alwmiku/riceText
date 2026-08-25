@@ -53,6 +53,7 @@ describe("RichTextEditor presets", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("完整模式展示全工具栏并执行格式与插入命令", async () => {
@@ -254,6 +255,43 @@ describe("RichTextEditor presets", () => {
     expect(screen.getByLabelText("文字颜色 #197c73")).toBeInTheDocument();
   });
 
+  it("桌面编辑区变窄时按组折叠工具栏", async () => {
+    class TestResizeObserver {
+      private readonly callback: ResizeObserverCallback;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+
+      observe() {
+        this.callback([], this as unknown as ResizeObserver);
+      }
+
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 600, 46),
+    );
+
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="full"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "更多工具" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "加粗" })).toHaveAttribute(
+      "data-size",
+      "icon-sm",
+    );
+  });
+
   it("移动端选中文本后直接显示自定义格式工具栏", async () => {
     const editorRef: { current: Editor | null } = { current: null };
     render(
@@ -315,7 +353,7 @@ describe("RichTextEditor presets", () => {
     ).toBeInTheDocument();
   });
 
-  it("移动模式使用底部触控工具栏并在 Sheet 中展开完整工具", async () => {
+  it("移动模式使用大尺寸底部工具栏并通过菜单展开工具", async () => {
     const onSubmit = vi.fn();
     render(
       <RichTextEditor
@@ -329,21 +367,19 @@ describe("RichTextEditor presets", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("正文编辑区")).toBeInTheDocument(),
     );
-    expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "富文本工具栏" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "加粗" })).toHaveAttribute(
+      "data-size",
+      "icon-lg",
+    );
     fireEvent.click(screen.getByRole("button", { name: "发布" }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole("button", { name: "更多工具" }));
-    expect(
-      screen.getByRole("dialog", { name: "编辑工具" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("toolbar", { name: "富文本工具栏" }),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
-    expect(
-      screen.queryByRole("dialog", { name: "编辑工具" }),
-    ).not.toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "更多工具" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /撤销/ })).toBeInTheDocument();
   });
 
   it("只读状态同步到 ProseMirror，空的紧凑插入菜单不渲染", async () => {
