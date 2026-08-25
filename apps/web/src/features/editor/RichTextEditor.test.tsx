@@ -101,8 +101,11 @@ describe("RichTextEditor presets", () => {
       target: { value: "20px" },
     });
     fireEvent.change(screen.getByLabelText("字体"), {
-      target: { value: "monospace" },
+      target: { value: "Noto Serif SC Variable" },
     });
+    expect(screen.getByLabelText("字体")).toHaveValue(
+      "Noto Serif SC Variable",
+    );
     fireEvent.click(screen.getByRole("button", { name: "加粗" }));
     fireEvent.click(screen.getByRole("button", { name: "间贴锚点" }));
     await waitFor(() => expect(onChange).toHaveBeenCalled());

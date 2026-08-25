@@ -13,7 +13,7 @@ export default {
           'system-ui',
           'sans-serif',
         ],
-        serif: ['"Noto Serif SC"', '"Songti SC"', 'serif'],
+        serif: ['"Noto Serif SC Variable"', '"Noto Serif SC"', '"Songti SC"', 'serif'],
         heading: ['"Playfair Display Variable"', 'serif'],
       },
       colors: {

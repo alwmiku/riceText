@@ -41,7 +41,7 @@ const fontSizes = ["14px", "16px", "18px", "20px", "24px", "28px"];
 const fonts = [
   { value: "", label: "默认字体" },
   { value: "sans-serif", label: "黑体" },
-  { value: "Noto Serif SC", label: "宋体" },
+  { value: "Noto Serif SC Variable", label: "宋体" },
   { value: "monospace", label: "等宽" },
 ];
 

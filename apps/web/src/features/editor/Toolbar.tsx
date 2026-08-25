@@ -382,7 +382,7 @@ export function Toolbar({
             >
               <option value="">默认字体</option>
               <option value="sans-serif">黑体</option>
-              <option value="Noto Serif SC">宋体</option>
+              <option value="Noto Serif SC Variable">宋体</option>
               <option value="monospace">等宽</option>
             </select>
             <DropdownMenu>

@@ -29,6 +29,7 @@ export const ALLOWED_FONT_FAMILIES = Object.freeze([
   'monospace',
   'Noto Sans SC',
   'Noto Serif SC',
+  'Noto Serif SC Variable',
   'Microsoft YaHei',
   'SimSun',
 ] as const)

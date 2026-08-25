@@ -1,6 +1,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/noto-sans";
+@import "@fontsource-variable/noto-serif-sc";
 @import "@fontsource-variable/playfair-display";
 @tailwind base;
 @tailwind components;
@@ -142,6 +143,10 @@
   float: left;
   height: 0;
   pointer-events: none;
+}
+
+.tiptap [style*="Noto Serif SC"] {
+  font-family: "Noto Serif SC Variable", "Noto Serif SC", serif;
 }
 
 /* 阅读器正文排版覆盖（editor-core 的 .rt-viewer 是 unlayered 样式，
