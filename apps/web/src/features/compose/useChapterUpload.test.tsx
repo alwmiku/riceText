@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../lib/api", () => ({
-  listDemoChapters: mocks.list,
+  listForumChapters: mocks.list,
   syncLongTextChapters: mocks.sync,
   uploadLongTextChapter: mocks.upload,
 }));

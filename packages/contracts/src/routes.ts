@@ -11,7 +11,7 @@ import {
   CreateDiceRollRequestSchema,
   CreateSuggestionRequestSchema,
   CursorQuerySchema,
-  DemoUserSchema,
+  ForumUserSchema,
   DiceRollSchema,
   DocumentEnvelopeSchema,
   EntityIdSchema,
@@ -70,8 +70,8 @@ export interface ContractRoute {
   body?: z.ZodType;
   /** 状态码到响应契约的映射。 */
   responses: Record<number, ContractResponse>;
-  /** `mock` 表示首版演示实现，不具备生产鉴权/账务保证。 */
-  implementationStatus?: "mock";
+  /** 实现状态用于区分已上线能力和仅规划契约。 */
+  implementationStatus?: "implemented" | "planned";
 }
 
 const documentParams = z.object({ documentId: EntityIdSchema.describe("文档稳定 ID，例如 demo-post") }).strict();
@@ -88,11 +88,11 @@ const pollParams = z.object({ pollId: EntityIdSchema }).strict();
 const novelParams = z.object({ novelId: EntityIdSchema }).strict();
 const novelChapterParams = z.object({ novelId: EntityIdSchema, chapterId: EntityIdSchema }).strict();
 
-/** 全部正式与演示 REST 契约；OpenAPI 和 Fastify schema 均由此生成。 */
+/** 全部REST 契约；OpenAPI 和 Fastify schema 均由此生成。 */
 export const contractRoutes: readonly ContractRoute[] = [
   {
     operationId: "getDocument", method: "GET", path: "/api/documents/:documentId", tags: ["文档"],
-    summary: "读取当前文档", description: "读取最新不可变修订的 Tiptap JSON。任何演示身份均可访问。",
+    summary: "读取当前文档", description: "读取最新不可变修订的 Tiptap JSON。任何论坛身份均可访问。",
     params: documentParams,
     responses: { 200: { description: "当前文档，例如 revision 为 1 的 demo-post。", schema: DocumentEnvelopeSchema }, 404: { description: "文档不存在。", schema: ApiErrorSchema } },
   },
@@ -140,7 +140,7 @@ export const contractRoutes: readonly ContractRoute[] = [
   },
   {
     operationId: "uploadAsset", method: "POST", path: "/api/assets", tags: ["图片"],
-    summary: "上传本地图片", description: "multipart/form-data 的 file 字段；允许 PNG/JPEG/GIF/WebP，最多 8 MiB。所有已登录演示身份可上传。",
+    summary: "上传本地图片", description: "multipart/form-data 的 file 字段；允许 PNG/JPEG/GIF/WebP，最多 8 MiB。所有已登录论坛身份可上传。",
     responses: { 201: { description: "可直接用于 richImage 节点的资产 URL。", schema: AssetSchema }, 413: { description: "图片超过大小限制。", schema: ApiErrorSchema }, 415: { description: "MIME 或文件签名不是受支持图片。", schema: ApiErrorSchema }, 422: { description: "缺少 file 字段。", schema: ApiErrorSchema } },
   },
   {
@@ -173,7 +173,7 @@ export const contractRoutes: readonly ContractRoute[] = [
   },
   {
     operationId: "createCommentReply", method: "POST", path: "/api/documents/:documentId/comments/:anchorId/replies", tags: ["间贴"],
-    summary: "新增间贴回复", description: "所有演示身份可回复。parentId 为 null 创建根回复，否则创建楼中楼。",
+    summary: "新增间贴回复", description: "所有论坛身份可回复。parentId 为 null 创建根回复，否则创建楼中楼。",
     params: threadParams, body: CreateCommentReplyRequestSchema,
     responses: { 201: { description: "新回复；children 初始为空。", schema: CommentReplySchema }, 404: { description: "文档或父回复不存在。", schema: ApiErrorSchema }, 409: { description: "锚点已随正文删除并归档。", schema: ApiErrorSchema } },
   },
@@ -184,67 +184,67 @@ export const contractRoutes: readonly ContractRoute[] = [
     responses: { 200: { description: "更新后的净赞数、赞踩计数和当前投票。", schema: z.object({ score: z.number().int(), viewerVote: z.union([z.literal(-1), z.literal(0), z.literal(1)]), upvotes: z.number().int().nonnegative(), downvotes: z.number().int().nonnegative(), myVote: z.union([z.literal(-1), z.literal(0), z.literal(1)]) }).strict() }, 404: { description: "回复不存在。", schema: ApiErrorSchema } },
   },
   {
-    operationId: "getDemoSession", method: "GET", path: "/api/demo/session", tags: ["演示业务"], implementationStatus: "mock",
-    summary: "读取当前演示身份", description: "由 x-demo-user 请求头选择 author、reader 或 moderator；默认 reader。仅供首版开发。",
-    responses: { 200: { description: "当前身份和可切换身份。", schema: z.object({ current: DemoUserSchema, available: z.array(DemoUserSchema) }).strict() } },
+    operationId: "getForumSession", method: "GET", path: "/api/forum/session", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "读取当前论坛身份", description: "由 x-user-id 请求头选择 author、reader 或 moderator；默认 reader。",
+    responses: { 200: { description: "当前身份和可切换身份。", schema: z.object({ current: ForumUserSchema, available: z.array(ForumUserSchema) }).strict() } },
   },
   {
-    operationId: "listChapters", method: "GET", path: "/api/demo/chapters", tags: ["演示业务"], implementationStatus: "mock",
-    summary: "读取章节目录", description: "演示书籍目录，未来由真实书籍服务实现。",
+    operationId: "listChapters", method: "GET", path: "/api/forum/chapters", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "读取章节目录", description: "返回当前文档按 order 排序的持久化章节目录。",
     responses: { 200: { description: "按 order 升序的章节。", schema: z.object({ items: z.array(ChapterSchema) }).strict() } },
   },
   {
-    operationId: "listSuggestions", method: "GET", path: "/api/demo/documents/:documentId/suggestions", tags: ["演示业务"], implementationStatus: "mock",
+    operationId: "listSuggestions", method: "GET", path: "/api/forum/documents/:documentId/suggestions", tags: ["论坛业务"], implementationStatus: "implemented",
     summary: "读取纠错建议", description: "作者与版主可看到全部状态；读者仅看到自己提交的建议。",
     params: documentParams, responses: { 200: { description: "纠错建议列表。", schema: z.object({ items: z.array(SuggestionSchema) }).strict() }, 404: { description: "文档不存在。", schema: ApiErrorSchema } },
   },
   {
-    operationId: "createSuggestion", method: "POST", path: "/api/demo/documents/:documentId/suggestions", tags: ["演示业务"], implementationStatus: "mock",
+    operationId: "createSuggestion", method: "POST", path: "/api/forum/documents/:documentId/suggestions", tags: ["论坛业务"], implementationStatus: "implemented",
     summary: "提交纠错建议", description: "读者提交待审核文字替换；未审核内容不会写入正文。",
     params: documentParams, body: CreateSuggestionRequestSchema, responses: { 201: { description: "pending 状态建议。", schema: SuggestionSchema }, 404: { description: "文档不存在。", schema: ApiErrorSchema } },
   },
   {
-    operationId: "reviewSuggestion", method: "PATCH", path: "/api/demo/suggestions/:suggestionId", tags: ["演示业务"], implementationStatus: "mock",
+    operationId: "reviewSuggestion", method: "PATCH", path: "/api/forum/suggestions/:suggestionId", tags: ["论坛业务"], implementationStatus: "implemented",
     summary: "审核纠错建议", description: "仅 author/moderator。approve 会替换当前正文第一次匹配文字并创建 operation=suggestion 的真实修订；reject 只更新建议状态。",
     params: suggestionParams, body: ReviewSuggestionRequestSchema, responses: { 200: { description: "审核后的建议和可选新文档修订。", schema: z.object({ suggestion: SuggestionSchema, document: DocumentEnvelopeSchema.nullable() }).strict() }, 403: { description: "当前身份不可审核。", schema: ApiErrorSchema }, 404: { description: "建议不存在或待替换文字已不存在。", schema: ApiErrorSchema }, 409: { description: "建议已审核或 baseRevision 过期。", schema: ApiErrorSchema } },
   },
   {
-    operationId: "searchMentionUsers", method: "GET", path: "/api/demo/users/search", tags: ["演示业务"], implementationStatus: "mock",
+    operationId: "searchMentionUsers", method: "GET", path: "/api/forum/users/search", tags: ["论坛业务"], implementationStatus: "implemented",
     summary: "搜索 @ 用户", description: "q 同时匹配名称和 ID；friendsOnly=true 仅返回当前身份好友。",
     query: userSearchQuery, responses: { 200: { description: "最多 20 个候选用户。", schema: MentionSearchResultSchema } },
   },
   {
-    operationId: "resolveMention", method: "POST", path: "/api/demo/mentions/resolve", tags: ["演示业务"], implementationStatus: "mock",
+    operationId: "resolveMention", method: "POST", path: "/api/forum/mentions/resolve", tags: ["论坛业务"], implementationStatus: "implemented",
     summary: "服务端解析 @", description: "发送时按可选 ID 或精确名称解析非好友；失败时客户端应渲染普通文本。",
     body: ResolveMentionRequestSchema, responses: { 200: { description: "resolved 表示是否使用 @ 成功样式。", schema: ResolveMentionResponseSchema } },
   },
   {
-    operationId: "resolveReplyGate", method: "POST", path: "/api/demo/reply-gates/resolve", tags: ["演示业务"], implementationStatus: "mock",
+    operationId: "resolveReplyGate", method: "POST", path: "/api/forum/reply-gates/resolve", tags: ["论坛业务"], implementationStatus: "implemented",
     summary: "解析回复可见内容", description: "按服务端记录的回复关系返回内容；作者和版主始终可见。",
     body: ResolveReplyGateRequestSchema, responses: { 200: { description: "不可见时 content 为 null。", schema: ResolveReplyGateResponseSchema }, 404: { description: "gateId 不存在。", schema: ApiErrorSchema } },
   },
   {
-    operationId: "getAttachment", method: "GET", path: "/api/demo/attachments/:attachmentId", tags: ["演示业务"], implementationStatus: "mock",
+    operationId: "getAttachment", method: "GET", path: "/api/forum/attachments/:attachmentId", tags: ["论坛业务"], implementationStatus: "implemented",
     summary: "读取附件购买状态", description: "未购买时隐藏 downloadUrl；作者和版主直接具备权限。",
     params: attachmentParams, responses: { 200: { description: "附件价格和当前身份权益。", schema: AttachmentSchema }, 404: { description: "附件不存在。", schema: ApiErrorSchema } },
   },
   {
-    operationId: "purchaseAttachment", method: "POST", path: "/api/demo/attachments/:attachmentId/purchase", tags: ["演示业务"], implementationStatus: "mock",
-    summary: "购买附件", description: "演示金币账务；重复购买幂等，首次购买扣款并按售价 70% 向作者入账。",
+    operationId: "purchaseAttachment", method: "POST", path: "/api/forum/attachments/:attachmentId/purchase", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "购买附件", description: "金币账务；重复购买幂等，首次购买扣款并按售价 70% 向作者入账。",
     params: attachmentParams, responses: { 200: { description: "已购买或重复购买结果。", schema: PurchaseAttachmentResponseSchema }, 402: { description: "金币不足。", schema: ApiErrorSchema }, 404: { description: "附件不存在。", schema: ApiErrorSchema } },
   },
   {
-    operationId: "getPoll", method: "GET", path: "/api/demo/polls/:pollId", tags: ["演示业务"], implementationStatus: "mock",
+    operationId: "getPoll", method: "GET", path: "/api/forum/polls/:pollId", tags: ["论坛业务"], implementationStatus: "implemented",
     summary: "读取投票统计", description: "返回当前身份资格、已选选项和实时计数。",
     params: pollParams, responses: { 200: { description: "投票详情。", schema: PollSchema }, 404: { description: "投票不存在。", schema: ApiErrorSchema } },
   },
   {
-    operationId: "submitPollVote", method: "POST", path: "/api/demo/polls/:pollId/votes", tags: ["演示业务"], implementationStatus: "mock",
+    operationId: "submitPollVote", method: "POST", path: "/api/forum/polls/:pollId/votes", tags: ["论坛业务"], implementationStatus: "implemented",
     summary: "提交或改投", description: "满足资格的用户可投；单选投票只能提交一个 optionId，重复提交会更新选择。",
     params: pollParams, body: SubmitPollVoteRequestSchema, responses: { 200: { description: "更新后的投票详情。", schema: PollSchema }, 403: { description: "当前身份不满足投票要求。", schema: ApiErrorSchema }, 404: { description: "投票或选项不存在。", schema: ApiErrorSchema }, 422: { description: "选项数量不符合单选/多选要求。", schema: ApiErrorSchema } },
   },
   {
-    operationId: "listPollVotes", method: "GET", path: "/api/demo/polls/:pollId/votes", tags: ["演示业务"], implementationStatus: "mock",
+    operationId: "listPollVotes", method: "GET", path: "/api/forum/polls/:pollId/votes", tags: ["论坛业务"], implementationStatus: "implemented",
     summary: "分页读取实名投票", description: "按投票时间倒序，cursor 为上一页最后一条记录 ID。",
     params: pollParams, query: CursorQuerySchema, responses: { 200: { description: "实名用户与所选 optionId。", schema: PollVotePageSchema }, 404: { description: "投票不存在。", schema: ApiErrorSchema } },
   },

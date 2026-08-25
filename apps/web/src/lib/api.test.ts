@@ -34,7 +34,7 @@ describe('web api client', () => {
     vi.unstubAllGlobals();
   });
 
-  it('读取服务器文档并携带当前演示身份与中止信号', async () => {
+  it('读取服务器文档并携带当前论坛身份与中止信号', async () => {
     localStorage.setItem('ricetext:identity', 'user_reader');
     const controller = new AbortController();
     fetchMock.mockResolvedValueOnce(jsonResponse(defaultDocument));
@@ -44,12 +44,12 @@ describe('web api client', () => {
     expect(result).toMatchObject({ id: 'demo-post', storage: 'server' });
     expect(fetchMock).toHaveBeenCalledWith('/api/documents/post/a b', expect.objectContaining({ signal: controller.signal }));
     const init = fetchMock.mock.calls[0]![1]!;
-    expect(new Headers(init.headers).get('x-demo-user')).toBe('reader');
+    expect(new Headers(init.headers).get('x-user-id')).toBe('reader');
     expect(new Headers(init.headers).get('Content-Type')).toBe('application/json');
   });
 
   it('读取失败时优先返回本地副本，其次返回种子文档', async () => {
-    const cached = { ...defaultDocument, revision: 33, storage: 'local-demo' as const };
+    const cached = { ...defaultDocument, revision: 33, storage: 'local-cache' as const };
     localStorage.setItem('ricetext:document:cached', JSON.stringify(cached));
     fetchMock.mockRejectedValue(new TypeError('offline'));
 
@@ -87,7 +87,7 @@ describe('web api client', () => {
     expect(error).toMatchObject({ message: '版本已经变化', status: 409, details: { latestRevision: 20 } });
   });
 
-  it('网络不可达时保存本地演示副本并递增较新的修订号', async () => {
+  it('网络不可达时保存本地缓存副本并递增较新的修订号', async () => {
     const cached = { ...defaultDocument, revision: 24 };
     localStorage.setItem('ricetext:document:demo-post', JSON.stringify(cached));
     fetchMock.mockRejectedValue(new TypeError('offline'));
@@ -99,8 +99,8 @@ describe('web api client', () => {
       content: { type: 'doc', content: [{ type: 'paragraph' }] },
     });
 
-    expect(result).toMatchObject({ revision: 25, storage: 'local-demo' });
-    expect(JSON.parse(localStorage.getItem('ricetext:document:demo-post')!)).toMatchObject({ revision: 25, storage: 'local-demo' });
+    expect(result).toMatchObject({ revision: 25, storage: 'local-cache' });
+    expect(JSON.parse(localStorage.getItem('ricetext:document:demo-post')!)).toMatchObject({ revision: 25, storage: 'local-cache' });
   });
 
   it('读取版本支持服务器、网络回退和 HTTP 错误', async () => {
@@ -150,7 +150,7 @@ describe('web api client', () => {
     const uploaded = { assetId: 'asset_1', url: '/uploads/cover.png', name: 'cover.png', mimeType: 'image/png', size: 5 };
     fetchMock.mockResolvedValueOnce(jsonResponse(uploaded));
     await expect(uploadAsset(file)).resolves.toEqual(uploaded);
-    expect(fetchMock.mock.calls[0]![1]?.headers).toEqual({ 'x-demo-user': 'author' });
+    expect(fetchMock.mock.calls[0]![1]?.headers).toEqual({ 'x-user-id': 'author' });
 
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));
     const createObjectURL = vi.fn(() => 'blob:cover');
@@ -166,7 +166,7 @@ describe('web api client', () => {
 
     const huge = { name: 'huge.png', type: 'image/png', size: 8 * 1024 * 1024 + 1 } as File;
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));
-    await expect(uploadAsset(huge)).rejects.toMatchObject({ status: 422, message: '演示上传限制为 8 MB' });
+    await expect(uploadAsset(huge)).rejects.toMatchObject({ status: 422, message: '上传限制为 8 MB' });
   });
 
   it('间贴读取与赞踩覆盖服务器和离线回退', async () => {

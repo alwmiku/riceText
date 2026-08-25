@@ -83,7 +83,7 @@ export default function ReadPage() {
             [28, 19, 11][index] ?? 0,
           ]),
         ),
-        // 演示环境：所有身份均可投票，避免作者身份下选项被禁用。
+        // 本地环境：所有身份均可投票，避免作者身份下选项被禁用。
         canVote: true,
         pending: false,
       }),
@@ -137,9 +137,9 @@ export default function ReadPage() {
               <Eye size={13} />
               1,284
             </span>
-            <Badge tone={document.storage === "local-demo" ? "amber" : "teal"}>
-              {document.storage === "local-demo"
-                ? "本地演示副本"
+            <Badge tone={document.storage === "local-cache" ? "amber" : "teal"}>
+              {document.storage === "local-cache"
+                ? "本地缓存副本"
                 : `版本 ${document.revision}`}
             </Badge>
           </div>

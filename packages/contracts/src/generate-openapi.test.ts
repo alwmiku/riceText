@@ -14,7 +14,7 @@ describe("OpenAPI 文件生成入口", () => {
       expect(output).toContain("openapi: 3.1.0");
       expect(output).toContain("title: RiceText 论坛与小说富文本 API");
       expect(output).toContain("/api/documents/{documentId}:");
-      expect(output).toContain("x-implementation-status: mock");
+      expect(output).toContain("x-implementation-status: implemented");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

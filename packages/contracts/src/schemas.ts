@@ -328,7 +328,7 @@ export interface CommentReply {
   upvotes: number;
   /** 点踩总数。 */
   downvotes: number;
-  /** Web 演示组件兼容字段，与 viewerVote 保持一致。 */
+  /** Web 界面组件兼容字段，与 viewerVote 保持一致。 */
   myVote: -1 | 0 | 1;
   /** RFC 3339 创建时间。 */
   createdAt: string;
@@ -377,8 +377,8 @@ export const CommentThreadSchema = z
 /** 间贴树响应。 */
 export type CommentThread = z.infer<typeof CommentThreadSchema>;
 
-/** 演示身份。 */
-export const DemoUserSchema = z
+/** 论坛身份。 */
+export const ForumUserSchema = z
   .object({
     id: EntityIdSchema,
     name: z.string().min(1),
@@ -387,15 +387,15 @@ export const DemoUserSchema = z
     bio: z.string(),
   })
   .strict();
-/** 演示身份。 */
-export type DemoUser = z.infer<typeof DemoUserSchema>;
+/** 论坛身份。 */
+export type ForumUser = z.infer<typeof ForumUserSchema>;
 
 /** 章节目录项。 */
 export const ChapterSchema = z
   .object({
     id: EntityIdSchema,
     title: z.string(),
-    order: z.number().int().positive(),
+    order: z.number().int().nonnegative(),
     documentId: EntityIdSchema,
     /** 该章节独立的保存版本号。 */
     revision: z.number().int().nonnegative(),
@@ -433,7 +433,7 @@ export const ReviewSuggestionRequestSchema = z
 
 /** @ 搜索结果。 */
 export const MentionSearchResultSchema = z
-  .object({ items: z.array(DemoUserSchema) })
+  .object({ items: z.array(ForumUserSchema) })
   .strict();
 /** 服务端解析非好友 @ 的请求体。 */
 export const ResolveMentionRequestSchema = z
@@ -447,7 +447,7 @@ export const ResolveMentionResponseSchema = z
   .object({
     resolved: z.boolean(),
     displayText: z.string(),
-    user: DemoUserSchema.nullable(),
+    user: ForumUserSchema.nullable(),
   })
   .strict();
 
@@ -464,7 +464,7 @@ export const ResolveReplyGateResponseSchema = z
   })
   .strict();
 
-/** 演示附件与购买条件。 */
+/** 附件与购买条件。 */
 export const AttachmentSchema = z
   .object({
     id: EntityIdSchema,
@@ -475,7 +475,7 @@ export const AttachmentSchema = z
     downloadUrl: z.string().nullable(),
   })
   .strict();
-/** 演示附件购买结果。 */
+/** 附件购买结果。 */
 export const PurchaseAttachmentResponseSchema = z
   .object({
     attachment: AttachmentSchema,
@@ -493,7 +493,7 @@ export const PollOptionSchema = z
     votes: z.number().int().nonnegative(),
   })
   .strict();
-/** 演示投票详情。 */
+/** 投票详情。 */
 export const PollSchema = z
   .object({
     id: EntityIdSchema,
@@ -511,7 +511,7 @@ export const SubmitPollVoteRequestSchema = z
 /** 实名投票记录。 */
 export const PollVoteSchema = z
   .object({
-    user: DemoUserSchema,
+    user: ForumUserSchema,
     optionIds: z.array(EntityIdSchema),
     createdAt: DateTimeSchema,
   })
@@ -549,9 +549,9 @@ export interface CommentAdapter {
     value: -1 | 0 | 1,
   ): Promise<{ score: number; viewerVote: -1 | 0 | 1 }>;
 }
-/** 首版演示业务能力的可替换适配器。 */
-export interface DemoBusinessAdapter {
-  searchUsers(query: string, friendsOnly?: boolean): Promise<DemoUser[]>;
+/** 论坛业务能力的可替换适配器。 */
+export interface ForumBusinessAdapter {
+  searchUsers(query: string, friendsOnly?: boolean): Promise<ForumUser[]>;
   resolveMention(
     name: string,
     userId?: string,

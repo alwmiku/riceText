@@ -3,7 +3,7 @@ import { AtSign, LoaderCircle } from "lucide-react";
 import { Dialog } from "../../../components/ui";
 import { identities } from "../../../lib/seed";
 
-/** 好友即时搜索与非好友待解析 mention 的演示选择器。 */
+/** 好友即时搜索与非好友待解析 mention 的选择器。 */
 export function MentionDialog({
   open,
   onOpenChange,

@@ -10,8 +10,8 @@ function getStoredIdentity(): SeedIdentity {
   return identities.find((item) => item.id === stored) ?? identities[0]!;
 }
 
-/** 恢复、切换并持久化演示身份。 */
-export function useDemoIdentity(): AppContextValue {
+/** 恢复、切换并持久化论坛身份。 */
+export function useForumIdentity(): AppContextValue {
   const [identity, setIdentityState] = useState(getStoredIdentity);
 
   // Context value 保持引用稳定，避免身份未变化时让所有页面无意义重渲染。

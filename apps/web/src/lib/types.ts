@@ -25,8 +25,8 @@ export interface DocumentEnvelope {
   savedAt: string;
   /** 唯一权威正文格式。 */
   content: RichTextNode;
-  /** 当前副本的落点；local-demo 表示 API 不可达时的本机演示副本。 */
-  storage?: "server" | "local-demo";
+  /** 当前副本的落点；local-cache 表示 API 不可达时的本机缓存副本。 */
+  storage?: "server" | "local-cache";
 }
 
 /** 单条不可变历史版本摘要。 */
@@ -45,9 +45,9 @@ export interface RevisionSummary {
 export type SaveState =
   "loading" | "saved" | "dirty" | "saving" | "conflict" | "offline" | "error";
 
-/** 用于独立演示权限、金币和回复状态的身份。 */
+/** 用于本地权限、金币和回复状态的身份。 */
 export interface SeedIdentity {
-  /** 前端稳定 ID；请求时映射为 API 的演示身份。 */
+  /** 前端稳定 ID；请求时映射为 API 的论坛身份。 */
   id: string;
   /** 显示名。 */
   name: string;
@@ -55,7 +55,7 @@ export interface SeedIdentity {
   role: "author" | "reader" | "moderator";
   /** 无图片时显示的头像文字。 */
   avatar: string;
-  /** 附件购买演示余额。 */
+  /** 附件购买余额。 */
   coins: number;
   /** 是否已经回复主题，用于回复可见投影。 */
   replied: boolean;

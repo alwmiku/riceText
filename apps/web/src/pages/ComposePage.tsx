@@ -21,7 +21,7 @@ import { useComposeDocument } from "../features/compose/useComposeDocument";
 import { useLongTextWorkspace } from "../features/compose/useLongTextWorkspace";
 import { EditorErrorBoundary } from "../features/editor/EditorErrorBoundary";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
-import { getCommentThread, listDemoChapters } from "../lib/api";
+import { getCommentThread, listForumChapters } from "../lib/api";
 import { splitDocumentByHeadings } from "../lib/chapters";
 import type { CommentReply, EditorMode, RichTextNode } from "../lib/types";
 import { cn } from "../lib/utils";
@@ -38,8 +38,8 @@ export default function ComposePage() {
   const editorRef = useRef<Editor | null>(null);
 
   const { data: chapterDirectory = [] } = useQuery({
-    queryKey: ["demo", "chapters"],
-    queryFn: () => listDemoChapters(),
+    queryKey: ["forum", "chapters"],
+    queryFn: () => listForumChapters(),
   });
   // 三个控制器通过完整文档快照衔接；页面只负责跨领域编排和提示展示。
   const compose = useComposeDocument(
@@ -100,7 +100,7 @@ export default function ComposePage() {
     if (!saved) return;
     setNotice(
       mode === "compact"
-        ? "回复已进入演示发布队列"
+        ? "回复已进入发布队列"
         : "正文已保存，可切换到阅读视图检查",
     );
   };

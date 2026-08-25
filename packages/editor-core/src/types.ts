@@ -210,7 +210,7 @@ export interface MentionCandidate {
 }
 
 /** 用于首发版本模拟业务流程的可替换桥接层。 */
-export interface DemoFeatureAdapter {
+export interface ForumFeatureAdapter {
   /** 针对 `@` 查询搜索本地好友与服务端用户。 */
   searchMentions(query: string, signal?: AbortSignal): Promise<readonly MentionCandidate[]>
   /** 在发布前解析用户输入的提及。 */

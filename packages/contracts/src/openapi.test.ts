@@ -23,7 +23,7 @@ describe("契约路由 helpers", () => {
     expect(schema.body.type).toBe("object");
     expect(schema.body.required).toContain("optionIds");
     expect(schema.response).toHaveProperty("200");
-    expect(schema["x-implementation-status"]).toBe("mock");
+    expect(schema["x-implementation-status"]).toBe("implemented");
 
     const querySchema = getFastifySchema("listRevisions") as {
       querystring: { properties: Record<string, unknown> };
@@ -54,9 +54,7 @@ describe("buildOpenApiDocument", () => {
 
     expect(document.openapi).toBe("3.1.0");
     expect(document.info.title).toContain("RiceText");
-    expect(document.info.description).toContain(
-      "x-implementation-status: mock",
-    );
+    expect(document.info.description).toContain("由 SQLite 服务持久化实现");
     expect(document.servers).toEqual([
       { url: "http://localhost:8787", description: "本地开发 API" },
     ]);
@@ -65,7 +63,7 @@ describe("buildOpenApiDocument", () => {
       "图片",
       "骰子",
       "间贴",
-      "演示业务",
+      "论坛业务",
     ]);
     expect(
       Object.values(document.paths).flatMap((path) => Object.keys(path)),
@@ -83,7 +81,7 @@ describe("buildOpenApiDocument", () => {
           example: "demo-post",
         }),
         expect.objectContaining({
-          name: "x-demo-user",
+          name: "x-user-id",
           in: "header",
           required: false,
           example: "reader",
@@ -155,8 +153,8 @@ describe("buildOpenApiDocument", () => {
       format: "binary",
     });
 
-    const mockPoll = document.paths["/api/demo/polls/{pollId}"]!.get!;
-    expect(mockPoll["x-implementation-status"]).toBe("mock");
+    const forumPoll = document.paths["/api/forum/polls/{pollId}"]!.get!;
+    expect(forumPoll["x-implementation-status"]).toBe("implemented");
     expect(JSON.stringify(document)).not.toMatch(/"\$(?:schema|defs|ref)"/);
   });
 });

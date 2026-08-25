@@ -42,7 +42,7 @@ test('阅读页是静态显示器并支持黑幕与间贴', async ({ page, isMob
 });
 
 test('作者编辑后通过 revision 自动保存', async ({ page, isMobile }) => {
-  // 两个 worker 并行保存同一演示文档会产生 revision 竞争；流程与布局无关，仅桌面验证。
+  // 两个 worker 并行保存同一文档会产生 revision 竞争；流程与布局无关，仅桌面验证。
   test.skip(isMobile, '自动保存流程与布局无关，移动端跳过以避免并行保存竞争');
   await page.goto('/compose');
   const status = page.locator('.save-status');

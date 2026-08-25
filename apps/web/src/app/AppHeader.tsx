@@ -34,7 +34,7 @@ export function AppHeader() {
         </nav>
 
         <span className="flex-1" />
-        <span className="inline-flex h-5 items-center rounded border border-[#d3a859] bg-[#fff9ed] px-1.5 text-[10px] font-bold whitespace-nowrap text-[#80530a] max-[840px]:hidden">演示环境</span>
+        <span className="inline-flex h-5 items-center rounded border border-[#d3a859] bg-[#fff9ed] px-1.5 text-[10px] font-bold whitespace-nowrap text-[#80530a] max-[840px]:hidden">本地环境</span>
         <IdentitySwitcher />
       </div>
     </header>

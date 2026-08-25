@@ -52,7 +52,7 @@ export function useComposeDocument(
   const hydrationPending = generationRef.current === 0 && data !== document;
   const isDocumentLoading = queryIsPlaceholderData || hydrationPending;
 
-  // 占位文档的 revision 只是演示元数据，不能作为服务器版本的新旧依据。
+  // 占位文档的 revision 只是占位元数据，不能作为服务器版本的新旧依据。
   // 首次真实编辑发生前始终接纳查询结果；编辑后则由 generationRef 阻止迟到响应覆盖正文。
   useEffect(() => {
     if (generationRef.current !== 0) return;
@@ -87,7 +87,7 @@ export function useComposeDocument(
       }));
       queryClient.setQueryData<DocumentEnvelope>(["document", next.id], next);
       void queryClient.invalidateQueries({ queryKey: ["revisions", next.id] });
-      void queryClient.invalidateQueries({ queryKey: ["demo", "chapters"] });
+      void queryClient.invalidateQueries({ queryKey: ["forum", "chapters"] });
     },
   });
 

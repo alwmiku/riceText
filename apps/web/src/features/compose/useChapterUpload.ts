@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  listDemoChapters,
+  listForumChapters,
   syncLongTextChapters,
   uploadLongTextChapter,
 } from "../../lib/api";
@@ -143,7 +143,7 @@ export function useChapterUpload({
     setUploading(true);
     let uploaded = 0;
     try {
-      const directory = await listDemoChapters();
+      const directory = await listForumChapters();
       const revisionById = new Map(
         directory.map((chapter) => [chapter.id, chapter.revision]),
       );
@@ -161,7 +161,7 @@ export function useChapterUpload({
       setDiff(null);
       preparedRef.current = null;
       onNoticeRef.current(`已分章上传 ${uploaded} 章`);
-      void queryClient.invalidateQueries({ queryKey: ["demo", "chapters"] });
+      void queryClient.invalidateQueries({ queryKey: ["forum", "chapters"] });
     } catch (error) {
       // 串行上传可能已部分成功；丢弃旧计划，重试时重新 sync 才能拿到正确 revision。
       setOpen(false);

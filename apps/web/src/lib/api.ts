@@ -13,12 +13,12 @@ import type {
  * Web 宿主使用的轻量 API 适配层。
  *
  * 真实 HTTP 错误必须向上抛出，让页面显示权限、校验或 revision 冲突；只有网络完全
- * 不可达时才使用 localStorage/种子数据维持独立编辑器演示。
+ * 不可达时才使用 localStorage/种子数据维持离线编辑。
  */
 const API_ROOT = import.meta.env.VITE_API_ROOT ?? "/api";
 
-/** 将前端展示身份映射为服务端 AuthProvider 接受的演示身份。 */
-function getDemoUserHeader(): "author" | "reader" | "moderator" {
+/** 将前端展示身份映射为服务端 AuthProvider 接受的论坛身份。 */
+function getForumUserHeader(): "author" | "reader" | "moderator" {
   const identity = localStorage.getItem("ricetext:identity");
   if (identity === "user_reader" || identity === "reader") return "reader";
   if (identity === "user_moderator" || identity === "moderator")
@@ -38,12 +38,12 @@ export class ApiError extends Error {
   }
 }
 
-/** 统一注入演示身份、解析 JSON，并把非 2xx 响应转换为 {@link ApiError}。 */
+/** 统一注入论坛身份、解析 JSON，并把非 2xx 响应转换为 {@link ApiError}。 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (!headers.has("Content-Type"))
     headers.set("Content-Type", "application/json");
-  headers.set("x-demo-user", getDemoUserHeader());
+  headers.set("x-user-id", getForumUserHeader());
   const response = await fetch(`${API_ROOT}${path}`, {
     ...init,
     headers,
@@ -59,7 +59,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   // 静态托管的 SPA fallback 会以 200 text/html 返回 index.html。它不是 API
-  // 成功响应，须作为传输失败交给调用方的本地演示降级逻辑处理。
+  // 成功响应，须作为传输失败交给调用方的本地缓存降级逻辑处理。
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     throw new TypeError(`API 返回了非 JSON 内容 (${contentType || "未知类型"})`);
@@ -93,8 +93,8 @@ export async function getDocument(
   }
 }
 
-/** 演示章节目录项。 */
-export interface DemoChapterItem {
+/** 论坛章节目录项。 */
+export interface ForumChapterItem {
   id: string;
   title: string;
   order: number;
@@ -103,9 +103,9 @@ export interface DemoChapterItem {
   revision: number;
 }
 
-/** 读取演示章节目录（含每章独立版本号）。 */
-export async function listDemoChapters(): Promise<DemoChapterItem[]> {
-  const result = await request<{ items: DemoChapterItem[] }>("/demo/chapters");
+/** 读取论坛章节目录（含每章独立版本号）。 */
+export async function listForumChapters(): Promise<ForumChapterItem[]> {
+  const result = await request<{ items: ForumChapterItem[] }>("/forum/chapters");
   return result.items;
 }
 
@@ -123,7 +123,7 @@ export async function syncLongTextChapters(
   novelId: string,
   chapters: readonly ChapterSyncItem[],
 ): Promise<{ toUpdate: string[]; existing: string[] }> {
-  return request(`/demo/novels/${novelId}/chapters/sync`, {
+  return request(`/forum/novels/${novelId}/chapters/sync`, {
     method: "POST",
     body: JSON.stringify({ chapters }),
   });
@@ -141,7 +141,7 @@ export async function uploadLongTextChapter(
     baseRevision: number;
   },
 ): Promise<{ id: string; title: string; order: number; revision: number }> {
-  return request(`/demo/novels/${novelId}/chapters/${chapterId}`, {
+  return request(`/forum/novels/${novelId}/chapters/${chapterId}`, {
     method: "PUT",
     body: JSON.stringify(input),
   });
@@ -151,7 +151,7 @@ export async function uploadLongTextChapter(
  * 使用 baseRevision 保存完整 Tiptap JSON。
  *
  * HTTP 4xx/5xx 表示服务端明确拒绝，不能伪装成保存成功；仅 fetch 级网络错误才写入
- * localStorage，并以 `local-demo` 标记提醒用户这不是服务端 revision。
+ * localStorage，并以 `local-cache` 标记提醒用户这不是服务端 revision。
  */
 export async function saveDocument(
   id: string,
@@ -177,14 +177,14 @@ export async function saveDocument(
       content: input.content,
       revision: Math.max(current.revision, input.baseRevision) + 1,
       savedAt: new Date().toISOString(),
-      storage: "local-demo",
+      storage: "local-cache",
     };
     localStorage.setItem(`ricetext:document:${id}`, JSON.stringify(saved));
     return saved;
   }
 }
 
-/** 读取不可变版本摘要；断网时返回可操作的演示历史。 */
+/** 读取不可变版本摘要；断网时返回可操作的本地历史。 */
 export async function getRevisions(
   id: string,
   signal?: AbortSignal,
@@ -219,7 +219,7 @@ export async function restoreRevision(
 
 /**
  * 请求服务端创建或重投骰子。
- * 断网 fallback 仅用于演示，结果插入正文后仍会随 JSON 持久化，重新渲染不会再次投掷。
+ * 断网 fallback 仅用于离线回退，结果插入正文后仍会随 JSON 持久化，重新渲染不会再次投掷。
  */
 export async function createDice(
   expression: string,
@@ -262,7 +262,7 @@ export async function uploadAsset(file: File): Promise<UploadedAsset> {
   try {
     const response = await fetch(`${API_ROOT}/assets`, {
       method: "POST",
-      headers: { "x-demo-user": getDemoUserHeader() },
+      headers: { "x-user-id": getForumUserHeader() },
       body: data,
     });
     if (!response.ok) throw new ApiError("图片上传失败", response.status);
@@ -270,7 +270,7 @@ export async function uploadAsset(file: File): Promise<UploadedAsset> {
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (file.size > 8 * 1024 * 1024)
-      throw new ApiError("演示上传限制为 8 MB", 422);
+      throw new ApiError("上传限制为 8 MB", 422);
     return {
       assetId: createId("asset"),
       url: URL.createObjectURL(file),
@@ -317,7 +317,7 @@ export async function voteComment(
 }
 
 /** 纠错建议（服务端真实状态）。 */
-export interface DemoSuggestion {
+export interface ForumSuggestion {
   id: string;
   documentId: string;
   fromText: string;
@@ -333,9 +333,9 @@ export interface DemoSuggestion {
 export async function listSuggestions(
   documentId: string,
   signal?: AbortSignal,
-): Promise<DemoSuggestion[]> {
-  const result = await request<{ items: DemoSuggestion[] }>(
-    `/demo/documents/${documentId}/suggestions`,
+): Promise<ForumSuggestion[]> {
+  const result = await request<{ items: ForumSuggestion[] }>(
+    `/forum/documents/${documentId}/suggestions`,
     signal ? { signal } : undefined,
   );
   return result.items;
@@ -346,15 +346,15 @@ export async function reviewSuggestion(
   suggestionId: string,
   decision: "approve" | "reject",
   baseRevision: number,
-): Promise<{ suggestion: DemoSuggestion; document: DocumentEnvelope | null }> {
-  return request(`/demo/suggestions/${suggestionId}`, {
+): Promise<{ suggestion: ForumSuggestion; document: DocumentEnvelope | null }> {
+  return request(`/forum/suggestions/${suggestionId}`, {
     method: "PATCH",
     body: JSON.stringify({ decision, baseRevision }),
   });
 }
 
-/** 演示附件（含购买状态与下载地址）。 */
-export interface DemoAttachment {
+/** 附件（含购买状态与下载地址）。 */
+export interface ForumAttachment {
   id: string;
   name: string;
   mimeType: string;
@@ -367,21 +367,21 @@ export interface DemoAttachment {
 export async function getAttachment(
   attachmentId: string,
   signal?: AbortSignal,
-): Promise<DemoAttachment> {
-  return request(`/demo/attachments/${attachmentId}`, signal ? { signal } : undefined);
+): Promise<ForumAttachment> {
+  return request(`/forum/attachments/${attachmentId}`, signal ? { signal } : undefined);
 }
 
 /** 购买附件（幂等），返回附件与余额变化。 */
 export async function purchaseAttachment(
   attachmentId: string,
-): Promise<{ attachment: DemoAttachment; buyerBalance: number; authorIncome: number; alreadyPurchased: boolean }> {
-  return request(`/demo/attachments/${attachmentId}/purchase`, {
+): Promise<{ attachment: ForumAttachment; buyerBalance: number; authorIncome: number; alreadyPurchased: boolean }> {
+  return request(`/forum/attachments/${attachmentId}/purchase`, {
     method: "POST",
   });
 }
 
-/** 演示投票（含选项票数与当前身份选择）。 */
-export interface DemoPoll {
+/** 投票（含选项票数与当前身份选择）。 */
+export interface ForumPoll {
   id: string;
   question: string;
   multiple: boolean;
@@ -391,16 +391,16 @@ export interface DemoPoll {
 }
 
 /** 读取投票。 */
-export async function getPoll(pollId: string, signal?: AbortSignal): Promise<DemoPoll> {
-  return request(`/demo/polls/${pollId}`, signal ? { signal } : undefined);
+export async function getPoll(pollId: string, signal?: AbortSignal): Promise<ForumPoll> {
+  return request(`/forum/polls/${pollId}`, signal ? { signal } : undefined);
 }
 
 /** 提交或覆盖投票选择，返回更新后的投票。 */
 export async function votePoll(
   pollId: string,
   optionIds: string[],
-): Promise<DemoPoll> {
-  return request(`/demo/polls/${pollId}/votes`, {
+): Promise<ForumPoll> {
+  return request(`/forum/polls/${pollId}/votes`, {
     method: "POST",
     body: JSON.stringify({ optionIds }),
   });
@@ -415,6 +415,6 @@ export async function getPollVotes(
   pageInfo: { nextCursor: string | null };
 }> {
   return request(
-    `/demo/polls/${pollId}/votes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+    `/forum/polls/${pollId}/votes${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
   );
 }

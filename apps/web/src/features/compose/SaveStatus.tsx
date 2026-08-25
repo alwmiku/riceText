@@ -8,7 +8,7 @@ const statusLabels: Record<SaveState, string> = {
   dirty: "等待保存",
   saving: "正在保存",
   conflict: "版本冲突",
-  offline: "本地演示副本",
+  offline: "本地缓存副本",
   error: "保存失败",
 };
 

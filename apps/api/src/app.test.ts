@@ -30,19 +30,19 @@ describe("RiceText API", () => {
     expect(initial.json().revision).toBe(1);
 
     const request = { schemaVersion: 1, baseRevision: 1, clientMutationId: "save-one", content: validContent() };
-    const saved = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-demo-user": "author" }, payload: request });
+    const saved = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: request });
     expect(saved.statusCode, saved.body).toBe(201);
     expect(saved.json().revision).toBe(2);
 
-    const retried = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-demo-user": "author" }, payload: request });
+    const retried = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: request });
     expect(retried.statusCode).toBe(200);
     expect(retried.json().revision).toBe(2);
 
-    const conflict = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-demo-user": "author" }, payload: { ...request, clientMutationId: "save-stale" } });
+    const conflict = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { ...request, clientMutationId: "save-stale" } });
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json().error.details.currentRevision).toBe(2);
 
-    const rolledBack = await app.inject({ method: "POST", url: "/api/documents/demo-post/rollback", headers: { "x-demo-user": "moderator" }, payload: { baseRevision: 2, targetRevision: 1, clientMutationId: "rollback-one" } });
+    const rolledBack = await app.inject({ method: "POST", url: "/api/documents/demo-post/rollback", headers: { "x-user-id": "moderator" }, payload: { baseRevision: 2, targetRevision: 1, clientMutationId: "rollback-one" } });
     expect(rolledBack.statusCode).toBe(201);
     expect(rolledBack.json().revision).toBe(3);
     expect(rolledBack.json().content.content[0].type).toBe("heading");
@@ -54,7 +54,7 @@ describe("RiceText API", () => {
   });
 
   it("保存时仅递增本次编辑章节的版本号", async () => {
-    const directoryBefore = (await app.inject({ method: "GET", url: "/api/demo/chapters" })).json().items as Array<{ id: string; revision: number }>;
+    const directoryBefore = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number }>;
     const chapterOneBefore = directoryBefore.find((item) => item.id === "chapter-1")!;
     const chapterTwoBefore = directoryBefore.find((item) => item.id === "chapter-2")!;
     expect(chapterOneBefore.revision).toBe(1);
@@ -63,21 +63,21 @@ describe("RiceText API", () => {
     const saved = await app.inject({
       method: "PUT",
       url: "/api/documents/demo-post",
-      headers: { "x-demo-user": "author" },
+      headers: { "x-user-id": "author" },
       payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "chapter-save", chapterId: "chapter-1", content: validContent() },
     });
     expect(saved.statusCode).toBe(201);
 
-    const directoryAfter = (await app.inject({ method: "GET", url: "/api/demo/chapters" })).json().items as Array<{ id: string; revision: number }>;
+    const directoryAfter = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number }>;
     expect(directoryAfter.find((item) => item.id === "chapter-1")!.revision).toBe(2);
     expect(directoryAfter.find((item) => item.id === "chapter-2")!.revision).toBe(1);
   });
 
   it("拒绝 reader 写入和不安全正文", async () => {
-    const forbidden = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-demo-user": "reader" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "reader-save", content: validContent() } });
+    const forbidden = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "reader" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "reader-save", content: validContent() } });
     expect(forbidden.statusCode).toBe(403);
 
-    const unsafe = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-demo-user": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "unsafe-save", content: { type: "doc", content: [{ type: "richImage", attrs: { src: "data:image/png;base64,AAAA", align: "center", width: 80 } }] } } });
+    const unsafe = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "unsafe-save", content: { type: "doc", content: [{ type: "richImage", attrs: { src: "data:image/png;base64,AAAA", align: "center", width: 80 } }] } } });
     expect(unsafe.statusCode).toBe(422);
     expect(unsafe.json().error.code).toBe("UNSAFE_IMAGE_URL");
   });
@@ -100,12 +100,12 @@ describe("RiceText API", () => {
     expect(seeded.statusCode).toBe(200);
     expect(seeded.json().items[0].children).toHaveLength(1);
 
-    const reply = await app.inject({ method: "POST", url: "/api/documents/demo-post/comments/anchor-opening/replies", headers: { "x-demo-user": "reader" }, payload: { parentId: null, body: "新根回复" } });
+    const reply = await app.inject({ method: "POST", url: "/api/documents/demo-post/comments/anchor-opening/replies", headers: { "x-user-id": "reader" }, payload: { parentId: null, body: "新根回复" } });
     expect(reply.statusCode).toBe(201);
     const replyId = reply.json().id as string;
-    const vote = await app.inject({ method: "PUT", url: `/api/comments/replies/${replyId}/vote`, headers: { "x-demo-user": "author" }, payload: { value: 1 } });
+    const vote = await app.inject({ method: "PUT", url: `/api/comments/replies/${replyId}/vote`, headers: { "x-user-id": "author" }, payload: { value: 1 } });
     expect(vote.json()).toEqual({ score: 1, viewerVote: 1, upvotes: 1, downvotes: 0, myVote: 1 });
-    const newest = await app.inject({ method: "GET", url: "/api/documents/demo-post/comments/anchor-opening?sort=newest", headers: { "x-demo-user": "author" } });
+    const newest = await app.inject({ method: "GET", url: "/api/documents/demo-post/comments/anchor-opening?sort=newest", headers: { "x-user-id": "author" } });
     expect(newest.json().items[0].id).toBe(replyId);
   });
 
@@ -124,34 +124,34 @@ describe("RiceText API", () => {
     expect(await readFile(join(directory, "uploads", `${asset.id}.png`))).toEqual(png);
   });
 
-  it("演示 @、回复可见、附件 70% 分成和实名投票", async () => {
-    const mention = await app.inject({ method: "POST", url: "/api/demo/mentions/resolve", payload: { name: "远舟" } });
+  it("论坛 @、回复可见、附件 70% 分成和实名投票", async () => {
+    const mention = await app.inject({ method: "POST", url: "/api/forum/mentions/resolve", payload: { name: "远舟" } });
     expect(mention.json().resolved).toBe(true);
 
-    const hidden = await app.inject({ method: "POST", url: "/api/demo/reply-gates/resolve", headers: { "x-demo-user": "wanderer" }, payload: { gateId: "gate-bonus", documentId: "demo-post" } });
+    const hidden = await app.inject({ method: "POST", url: "/api/forum/reply-gates/resolve", headers: { "x-user-id": "wanderer" }, payload: { gateId: "gate-bonus", documentId: "demo-post" } });
     expect(hidden.json().visible).toBe(false);
-    await app.inject({ method: "POST", url: "/api/documents/demo-post/comments/anchor-opening/replies", headers: { "x-demo-user": "wanderer" }, payload: { parentId: null, body: "已回复" } });
-    const visible = await app.inject({ method: "POST", url: "/api/demo/reply-gates/resolve", headers: { "x-demo-user": "wanderer" }, payload: { gateId: "gate-bonus", documentId: "demo-post" } });
+    await app.inject({ method: "POST", url: "/api/documents/demo-post/comments/anchor-opening/replies", headers: { "x-user-id": "wanderer" }, payload: { parentId: null, body: "已回复" } });
+    const visible = await app.inject({ method: "POST", url: "/api/forum/reply-gates/resolve", headers: { "x-user-id": "wanderer" }, payload: { gateId: "gate-bonus", documentId: "demo-post" } });
     expect(visible.json().visible).toBe(true);
 
-    const purchase = await app.inject({ method: "POST", url: "/api/demo/attachments/attachment-sample/purchase", headers: { "x-demo-user": "reader" } });
+    const purchase = await app.inject({ method: "POST", url: "/api/forum/attachments/attachment-sample/purchase", headers: { "x-user-id": "reader" } });
     expect(purchase.json().authorIncome).toBe(7);
     expect(purchase.json().buyerBalance).toBe(40);
-    const duplicate = await app.inject({ method: "POST", url: "/api/demo/attachments/attachment-sample/purchase", headers: { "x-demo-user": "reader" } });
+    const duplicate = await app.inject({ method: "POST", url: "/api/forum/attachments/attachment-sample/purchase", headers: { "x-user-id": "reader" } });
     expect(duplicate.json().alreadyPurchased).toBe(true);
     expect(duplicate.json().buyerBalance).toBe(40);
 
-    const voted = await app.inject({ method: "POST", url: "/api/demo/polls/poll-route/votes", headers: { "x-demo-user": "reader" }, payload: { optionIds: ["poll-option-tower"] } });
+    const voted = await app.inject({ method: "POST", url: "/api/forum/polls/poll-route/votes", headers: { "x-user-id": "reader" }, payload: { optionIds: ["poll-option-tower"] } });
     expect(voted.statusCode).toBe(200);
     expect(voted.json().viewerOptionIds).toEqual(["poll-option-tower"]);
-    const voters = await app.inject({ method: "GET", url: "/api/demo/polls/poll-route/votes", headers: { "x-demo-user": "author" } });
+    const voters = await app.inject({ method: "GET", url: "/api/forum/polls/poll-route/votes", headers: { "x-user-id": "author" } });
     expect(voters.json().items[0].user.id).toBe("reader");
   });
 
   it("审核建议会创建真实 suggestion 修订", async () => {
-    const submitted = await app.inject({ method: "POST", url: "/api/demo/documents/demo-post/suggestions", headers: { "x-demo-user": "reader" }, payload: { fromText: "潮声", toText: "海潮声", reason: "措辞更清楚" } });
+    const submitted = await app.inject({ method: "POST", url: "/api/forum/documents/demo-post/suggestions", headers: { "x-user-id": "reader" }, payload: { fromText: "潮声", toText: "海潮声", reason: "措辞更清楚" } });
     expect(submitted.statusCode).toBe(201);
-    const reviewed = await app.inject({ method: "PATCH", url: `/api/demo/suggestions/${submitted.json().id}`, headers: { "x-demo-user": "author" }, payload: { decision: "approve", baseRevision: 1 } });
+    const reviewed = await app.inject({ method: "PATCH", url: `/api/forum/suggestions/${submitted.json().id}`, headers: { "x-user-id": "author" }, payload: { decision: "approve", baseRevision: 1 } });
     expect(reviewed.statusCode).toBe(200);
     expect(reviewed.json().suggestion.status).toBe("approved");
     expect(reviewed.json().document.revision).toBe(2);

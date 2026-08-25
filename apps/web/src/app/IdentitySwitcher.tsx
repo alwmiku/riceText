@@ -14,7 +14,7 @@ const roleLabels = {
   moderator: "版主",
 } as const;
 
-/** 演示身份下拉切换器。 */
+/** 论坛身份下拉切换器。 */
 export function IdentitySwitcher() {
   const value = useAppContext();
 
@@ -24,7 +24,7 @@ export function IdentitySwitcher() {
         <button
           type="button"
           className="flex h-9 items-center gap-2 rounded-md px-1.5 hover:bg-muted"
-          aria-label="切换演示身份"
+          aria-label="切换论坛身份"
         >
           <span className="grid h-7 w-7 place-items-center rounded-full bg-primary text-[10px] font-bold text-white">
             {value.identity.avatar}

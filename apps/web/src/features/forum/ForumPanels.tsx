@@ -86,7 +86,9 @@ export function ChapterRail({
         </nav>
       </div>
       <div className="border-b border-border p-3.5 last:border-b-0">
-        <p className="mb-2 text-xs font-semibold tracking-normal text-muted-foreground uppercase">本章统计</p>
+        <p className="mb-2 text-xs font-semibold tracking-normal text-muted-foreground uppercase">
+          本章统计
+        </p>
         <dl className="grid grid-cols-2 gap-2 text-xs">
           <div>
             <dt className="text-muted-foreground">字数</dt>
@@ -102,7 +104,7 @@ export function ChapterRail({
   );
 }
 
-/** 读者纠错建议的待审、接受和拒绝状态演示。 */
+/** 读者纠错建议的待审、接受和拒绝状态展示。 */
 function SuggestionPanel({
   documentId,
   baseRevision,
@@ -112,7 +114,7 @@ function SuggestionPanel({
 }) {
   const queryClient = useQueryClient();
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ["demo", "suggestions", documentId],
+    queryKey: ["forum", "suggestions", documentId],
     queryFn: ({ signal }) => listSuggestions(documentId, signal),
   });
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -124,11 +126,15 @@ function SuggestionPanel({
     try {
       await reviewSuggestion(id, decision, baseRevision);
       await queryClient.invalidateQueries({
-        queryKey: ["demo", "suggestions", documentId],
+        queryKey: ["forum", "suggestions", documentId],
       });
       // 接受会合并正文并创建新修订：刷新文档与历史。
-      await queryClient.invalidateQueries({ queryKey: ["document", documentId] });
-      await queryClient.invalidateQueries({ queryKey: ["revisions", documentId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["document", documentId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["revisions", documentId],
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "审核失败");
     } finally {
@@ -136,13 +142,19 @@ function SuggestionPanel({
     }
   };
 
-  if (isLoading) return <p className="text-xs text-muted-foreground">加载中…</p>;
-  if (items.length === 0) return <p className="text-xs text-muted-foreground">暂无待处理的校订建议</p>;
+  if (isLoading)
+    return <p className="text-xs text-muted-foreground">加载中…</p>;
+  if (items.length === 0)
+    return (
+      <p className="text-xs text-muted-foreground">暂无待处理的校订建议</p>
+    );
 
   return (
     <div className="space-y-3">
       {error ? (
-        <p className="rounded bg-[#fdf1f0] px-2 py-1.5 text-[11px] text-[#8f2b24]">{error}</p>
+        <p className="rounded bg-[#fdf1f0] px-2 py-1.5 text-[11px] text-[#8f2b24]">
+          {error}
+        </p>
       ) : null}
       {items.map((item) => (
         <article key={item.id} className="rounded-md border border-border p-3">
@@ -196,7 +208,7 @@ function SuggestionPanel({
 function AttachmentPanel({ identity }: { identity: SeedIdentity }) {
   const queryClient = useQueryClient();
   const { data: attachment, isLoading } = useQuery({
-    queryKey: ["demo", "attachment", "attachment-sample"],
+    queryKey: ["forum", "attachment", "attachment-sample"],
     queryFn: ({ signal }) => getAttachment("attachment-sample", signal),
   });
   const [purchasing, setPurchasing] = useState(false);
@@ -208,7 +220,7 @@ function AttachmentPanel({ identity }: { identity: SeedIdentity }) {
     try {
       await purchaseAttachment("attachment-sample");
       await queryClient.invalidateQueries({
-        queryKey: ["demo", "attachment", "attachment-sample"],
+        queryKey: ["forum", "attachment", "attachment-sample"],
       });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "购买失败");
@@ -225,7 +237,9 @@ function AttachmentPanel({ identity }: { identity: SeedIdentity }) {
   return (
     <div className="space-y-3">
       {error ? (
-        <p className="rounded bg-[#fdf1f0] px-2 py-1.5 text-[11px] text-[#8f2b24]">{error}</p>
+        <p className="rounded bg-[#fdf1f0] px-2 py-1.5 text-[11px] text-[#8f2b24]">
+          {error}
+        </p>
       ) : null}
       <article className="rounded-md border border-border p-3">
         <div className="flex gap-3">
@@ -233,7 +247,9 @@ function AttachmentPanel({ identity }: { identity: SeedIdentity }) {
             <FileArchive size={19} />
           </span>
           <div className="min-w-0 flex-1">
-            <strong className="block truncate text-xs">{attachment.name}</strong>
+            <strong className="block truncate text-xs">
+              {attachment.name}
+            </strong>
             <small className="text-[10px] text-muted-foreground">
               {attachment.mimeType}
             </small>
@@ -275,14 +291,18 @@ function AttachmentPanel({ identity }: { identity: SeedIdentity }) {
 function PollPanel({ pollId }: { pollId: string }) {
   const queryClient = useQueryClient();
   const { data: poll, isLoading } = useQuery({
-    queryKey: ["demo", "poll", pollId],
+    queryKey: ["forum", "poll", pollId],
     queryFn: ({ signal }) => getPoll(pollId, signal),
   });
   const [detail, setDetail] = useState(false);
   const [voting, setVoting] = useState(false);
   const [error, setError] = useState("");
   const [detailItems, setDetailItems] = useState<
-    Array<{ user: { id: string; name: string; role: string }; optionIds: string[]; createdAt: string }>
+    Array<{
+      user: { id: string; name: string; role: string };
+      optionIds: string[];
+      createdAt: string;
+    }>
   >([]);
 
   const toggleDetail = async () => {
@@ -304,7 +324,9 @@ function PollPanel({ pollId }: { pollId: string }) {
     setError("");
     try {
       await votePoll(pollId, [optionId]);
-      await queryClient.invalidateQueries({ queryKey: ["demo", "poll", pollId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["forum", "poll", pollId],
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "投票失败");
     } finally {
@@ -323,7 +345,9 @@ function PollPanel({ pollId }: { pollId: string }) {
         注册满 7 天且发布过 1 条回复可投票
       </p>
       {error ? (
-        <p className="mt-2 rounded bg-[#fdf1f0] px-2 py-1.5 text-[11px] text-[#8f2b24]">{error}</p>
+        <p className="mt-2 rounded bg-[#fdf1f0] px-2 py-1.5 text-[11px] text-[#8f2b24]">
+          {error}
+        </p>
       ) : null}
       <div className="mt-3 space-y-2">
         {poll.options.map((option) => {
@@ -424,8 +448,8 @@ export function HistoryPanel({
   );
 }
 
-/** 汇总首版 mock 业务面板；所有标签都对接演示 API。 */
-export function DemoBusinessPanel({
+/** 汇总校订、附件、投票和版本历史等论坛创作能力。 */
+export function ForumBusinessPanel({
   identity,
   documentId,
   baseRevision,
@@ -451,10 +475,15 @@ export function DemoBusinessPanel({
     { id: "history" as const, label: "历史", icon: History },
   ];
   return (
-    <aside className="sticky top-[76px] max-h-[calc(100vh-92px)] overflow-auto rounded-lg border border-border bg-white shadow-panel" aria-label="创作业务面板">
+    <aside
+      className="sticky top-[76px] max-h-[calc(100vh-92px)] overflow-auto rounded-lg border border-border bg-white shadow-panel"
+      aria-label="创作业务面板"
+    >
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <strong className="text-sm">创作工具</strong>
-        <span className="inline-flex h-5 items-center rounded border border-[#d3a859] bg-[#fff9ed] px-1.5 text-[10px] font-bold whitespace-nowrap text-[#80530a]">演示数据</span>
+        <span className="inline-flex h-5 items-center rounded border border-[#d3a859] bg-[#fff9ed] px-1.5 text-[10px] font-bold whitespace-nowrap text-[#80530a]">
+          实时数据
+        </span>
       </div>
       <div className="grid grid-cols-4 border-b border-border">
         {tabs.map(({ id, label, icon: Icon }) => (
@@ -472,7 +501,10 @@ export function DemoBusinessPanel({
       </div>
       <div className="p-3">
         {tab === "suggestions" && (
-          <SuggestionPanel documentId={documentId} baseRevision={baseRevision} />
+          <SuggestionPanel
+            documentId={documentId}
+            baseRevision={baseRevision}
+          />
         )}
         {tab === "attachment" && <AttachmentPanel identity={identity} />}
         {tab === "poll" && <PollPanel pollId="poll-route" />}

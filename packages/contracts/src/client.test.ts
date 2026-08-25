@@ -13,13 +13,13 @@ describe("createApiClient", () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
     const client = createApiClient({
       baseUrl: "https://forum.example.test/",
-      demoUserId: "author",
+      userId: "author",
       fetch: fetchMock as unknown as typeof fetch,
     });
     const controller = new AbortController();
     const content = { type: "doc" as const, content: [{ type: "paragraph" }] };
 
-    await client.getDocument("demo post", controller.signal);
+    await client.getDocument("forum post", controller.signal);
     await client.updateDocument("demo-post", {
       schemaVersion: 1,
       baseRevision: 2,
@@ -53,7 +53,7 @@ describe("createApiClient", () => {
       "root-1",
     );
     await client.voteComment("reply-1", -1);
-    await client.getDemoSession();
+    await client.getForumSession();
     await client.searchUsers("林");
     await client.searchUsers("远舟", true);
     await client.resolveMention("远舟");
@@ -72,7 +72,7 @@ describe("createApiClient", () => {
     >;
     expect(calls).toHaveLength(26);
     expect(calls[0]?.[0]).toBe(
-      "https://forum.example.test/api/documents/demo post",
+      "https://forum.example.test/api/documents/forum post",
     );
     expect(calls[0]?.[1].signal).toBe(controller.signal);
     expect(calls[2]?.[0]).toBe(
@@ -85,10 +85,10 @@ describe("createApiClient", () => {
       "https://forum.example.test/api/documents/demo-post/comments/anchor-opening?sort=newest&cursor=root-1",
     );
     expect(calls[14]?.[0]).toBe(
-      "https://forum.example.test/api/demo/users/search?q=%E6%9E%97&friendsOnly=false",
+      "https://forum.example.test/api/forum/users/search?q=%E6%9E%97&friendsOnly=false",
     );
     expect(calls[25]?.[0]).toBe(
-      "https://forum.example.test/api/demo/polls/poll-route/votes?cursor=vote-1",
+      "https://forum.example.test/api/forum/polls/poll-route/votes?cursor=vote-1",
     );
 
     const updateInit = calls[1]![1];
@@ -103,14 +103,14 @@ describe("createApiClient", () => {
     expect(new Headers(updateInit.headers).get("content-type")).toBe(
       "application/json",
     );
-    expect(new Headers(updateInit.headers).get("x-demo-user")).toBe("author");
+    expect(new Headers(updateInit.headers).get("x-user-id")).toBe("author");
 
     const uploadInit = calls[4]![1];
     expect(uploadInit.method).toBe("POST");
     expect(uploadInit.body).toBeInstanceOf(FormData);
     expect((uploadInit.body as FormData).get("file")).toBeInstanceOf(File);
     expect(new Headers(uploadInit.headers).get("content-type")).toBeNull();
-    expect(new Headers(uploadInit.headers).get("x-demo-user")).toBe("author");
+    expect(new Headers(uploadInit.headers).get("x-user-id")).toBe("author");
     expect(JSON.parse(String(calls[10]![1].body))).toEqual({
       body: "根回复",
       parentId: null,

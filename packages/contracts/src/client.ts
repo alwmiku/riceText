@@ -3,7 +3,7 @@ import type {
   Asset,
   CommentReply,
   CommentThread,
-  DemoUser,
+  ForumUser,
   DiceRollResult,
   DocumentEnvelope,
   RevisionPage,
@@ -35,12 +35,12 @@ export class ApiClientError extends Error {
   }
 }
 
-/** 创建客户端时可注入的 fetch 与演示身份选项。 */
+/** 创建客户端时可注入的 fetch 与论坛身份选项。 */
 export interface ApiClientOptions {
   /** API 根地址；浏览器同源代理时保持空字符串。 */
   baseUrl?: string;
-  /** 开发环境写入 `x-demo-user` 的身份 ID。 */
-  demoUserId?: string;
+  /** 开发环境写入 `x-user-id` 的身份 ID。 */
+  userId?: string;
   /** 可注入 mock fetch 或宿主自定义网络实现。 */
   fetch?: typeof fetch;
 }
@@ -69,10 +69,10 @@ export interface RiceTextApiClient {
   createCommentReply(documentId: string, anchorId: string, body: string, parentId?: string, signal?: AbortSignal): Promise<CommentReply>;
   /** 设置赞、踩或 0 撤销，并返回权威计数。 */
   voteComment(replyId: string, value: -1 | 0 | 1, signal?: AbortSignal): Promise<{ score: number; viewerVote: -1 | 0 | 1; upvotes: number; downvotes: number; myVote: -1 | 0 | 1 }>;
-  /** 读取当前和可切换的演示身份。 */
-  getDemoSession(signal?: AbortSignal): Promise<{ current: DemoUser; available: DemoUser[] }>;
+  /** 读取当前和可切换的论坛身份。 */
+  getForumSession(signal?: AbortSignal): Promise<{ current: ForumUser; available: ForumUser[] }>;
   /** 按名称或 ID 搜索好友/用户。 */
-  searchUsers(query: string, friendsOnly?: boolean, signal?: AbortSignal): Promise<{ items: DemoUser[] }>;
+  searchUsers(query: string, friendsOnly?: boolean, signal?: AbortSignal): Promise<{ items: ForumUser[] }>;
   /** 在发布前由服务端解析非好友 mention。 */
   resolveMention(name: string, userId?: string, signal?: AbortSignal): Promise<z.infer<typeof ResolveMentionResponseSchema>>;
   /** 按当前身份投影回复可见内容。 */
@@ -81,7 +81,7 @@ export interface RiceTextApiClient {
   listSuggestions(documentId: string, signal?: AbortSignal): Promise<{ items: Array<z.infer<typeof SuggestionSchema>> }>; 
   /** 读取附件价格和当前购买权益。 */
   getAttachment(id: string, signal?: AbortSignal): Promise<z.infer<typeof AttachmentSchema>>;
-  /** 幂等购买附件并执行演示金币分账。 */
+  /** 幂等购买附件并执行金币分账。 */
   purchaseAttachment(id: string, signal?: AbortSignal): Promise<z.infer<typeof PurchaseAttachmentResponseSchema>>;
   /** 读取投票资格、选项和汇总计数。 */
   getPoll(id: string, signal?: AbortSignal): Promise<z.infer<typeof PollSchema>>;
@@ -99,7 +99,7 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
   // 所有方法共享错误解包路径，保证调用方只处理 ApiClientError 而非各类 Response。
   const request = async <T>(path: string, init: ClientRequestInit = {}): Promise<T> => {
     const headers = new Headers(init.headers);
-    if (options.demoUserId) headers.set("x-demo-user", options.demoUserId);
+    if (options.userId) headers.set("x-user-id", options.userId);
     if (init.body && !(init.body instanceof FormData)) headers.set("content-type", "application/json");
     const { signal, ...requestInit } = init;
     const response = await fetcher(`${baseUrl}${path}`, { ...requestInit, headers, ...(signal ? { signal } : {}) });
@@ -129,15 +129,15 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     getCommentThread: (documentId, anchorId, sort = "score", cursor, signal) => request(`/api/documents/${documentId}/comments/${anchorId}${query({ sort, cursor })}`, { signal }),
     createCommentReply: (documentId, anchorId, body, parentId, signal) => request(`/api/documents/${documentId}/comments/${anchorId}/replies`, { method: "POST", body: json({ body, parentId: parentId ?? null }), signal }),
     voteComment: (replyId, value, signal) => request(`/api/comments/replies/${replyId}/vote`, { method: "PUT", body: json({ value }), signal }),
-    getDemoSession: (signal) => request("/api/demo/session", { signal }),
-    searchUsers: (q, friendsOnly = false, signal) => request(`/api/demo/users/search${query({ q, friendsOnly })}`, { signal }),
-    resolveMention: (name, userId, signal) => request("/api/demo/mentions/resolve", { method: "POST", body: json({ name, ...(userId ? { userId } : {}) }), signal }),
-    resolveReplyGate: (gateId, documentId, signal) => request("/api/demo/reply-gates/resolve", { method: "POST", body: json({ gateId, documentId }), signal }),
-    listSuggestions: (id, signal) => request(`/api/demo/documents/${id}/suggestions`, { signal }),
-    getAttachment: (id, signal) => request(`/api/demo/attachments/${id}`, { signal }),
-    purchaseAttachment: (id, signal) => request(`/api/demo/attachments/${id}/purchase`, { method: "POST", signal }),
-    getPoll: (id, signal) => request(`/api/demo/polls/${id}`, { signal }),
-    submitPollVote: (id, optionIds, signal) => request(`/api/demo/polls/${id}/votes`, { method: "POST", body: json({ optionIds }), signal }),
-    listPollVotes: (id, cursor, signal) => request(`/api/demo/polls/${id}/votes${query({ cursor })}`, { signal }),
+    getForumSession: (signal) => request("/api/forum/session", { signal }),
+    searchUsers: (q, friendsOnly = false, signal) => request(`/api/forum/users/search${query({ q, friendsOnly })}`, { signal }),
+    resolveMention: (name, userId, signal) => request("/api/forum/mentions/resolve", { method: "POST", body: json({ name, ...(userId ? { userId } : {}) }), signal }),
+    resolveReplyGate: (gateId, documentId, signal) => request("/api/forum/reply-gates/resolve", { method: "POST", body: json({ gateId, documentId }), signal }),
+    listSuggestions: (id, signal) => request(`/api/forum/documents/${id}/suggestions`, { signal }),
+    getAttachment: (id, signal) => request(`/api/forum/attachments/${id}`, { signal }),
+    purchaseAttachment: (id, signal) => request(`/api/forum/attachments/${id}/purchase`, { method: "POST", signal }),
+    getPoll: (id, signal) => request(`/api/forum/polls/${id}`, { signal }),
+    submitPollVote: (id, optionIds, signal) => request(`/api/forum/polls/${id}/votes`, { method: "POST", body: json({ optionIds }), signal }),
+    listPollVotes: (id, cursor, signal) => request(`/api/forum/polls/${id}/votes${query({ cursor })}`, { signal }),
   };
 }

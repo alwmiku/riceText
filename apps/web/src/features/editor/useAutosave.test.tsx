@@ -56,7 +56,7 @@ describe("useAutosave", () => {
   it("根据文档落点初始化状态，并在文档修订变化时同步", () => {
     const local: DocumentEnvelope = {
       ...defaultDocument,
-      storage: "local-demo",
+      storage: "local-cache",
     };
     const { result, rerender } = renderHook(
       ({ document }) =>
@@ -112,8 +112,8 @@ describe("useAutosave", () => {
     expect(onSaved).toHaveBeenCalledWith(savedDocument(19));
   });
 
-  it("flush 立即保存，并正确标记本地演示副本", async () => {
-    saveDocumentMock.mockResolvedValueOnce(savedDocument(19, "local-demo"));
+  it("flush 立即保存，并正确标记本地缓存副本", async () => {
+    saveDocumentMock.mockResolvedValueOnce(savedDocument(19, "local-cache"));
     const { result, rerender } = renderHook(
       ({ content, generation }) =>
         useAutosave({ document: defaultDocument, content, generation }),

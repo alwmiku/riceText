@@ -35,7 +35,7 @@ function CommentNode({ comment, onVote, onReply, depth = 0 }: {
   </article>;
 }
 
-/** 间贴树 UI，包含根节点排序、乐观赞踩和本地回复演示。 */
+/** 间贴树 UI，包含根节点排序、乐观赞踩和本地回复交互。 */
 export function CommentThread({ identity, initial = seedComments, compact = false }: { identity: SeedIdentity; initial?: CommentReply[]; compact?: boolean }) {
   const [comments, setComments] = useState<CommentReply[]>(initial);
   const [sort, setSort] = useState<SortMode>('score');

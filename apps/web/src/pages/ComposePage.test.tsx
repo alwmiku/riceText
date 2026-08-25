@@ -37,14 +37,14 @@ vi.mock('../features/editor/RichTextEditor', () => ({
     <button type="button" onClick={() => props.onCommentAnchorOpen?.('thread_1')}>模拟间贴锚点</button>
   </section>,
 }));
-vi.mock('../features/demo/DemoPanels', () => ({
+vi.mock('../features/forum/ForumPanels', () => ({
   ChapterRail: (props: { onSelect: (index: number) => void; className?: string }) => (
     <aside className={props.className} aria-label="章节目录">
       <span>模拟章节目录</span>
       <button type="button" onClick={() => props.onSelect(0)}>模拟章节 1</button>
     </aside>
   ),
-  DemoBusinessPanel: (props: { onRestore: (revision: number) => void }) => <aside><span>模拟创作工具</span><button type="button" onClick={() => props.onRestore(17)}>模拟回退</button></aside>,
+  ForumBusinessPanel: (props: { onRestore: (revision: number) => void }) => <aside><span>模拟创作工具</span><button type="button" onClick={() => props.onRestore(17)}>模拟回退</button></aside>,
 }));
 vi.mock('../features/comments/CommentThread', () => ({
   CommentThread: (props: { initial: readonly unknown[] }) => <div>模拟回复树 {props.initial.length}</div>,
@@ -120,9 +120,9 @@ describe('ComposePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '模拟发布' }));
 
     await waitFor(() => expect(mocks.flush).toHaveBeenCalledTimes(1));
-    expect(screen.getByText('回复已进入演示发布队列')).toBeInTheDocument();
+    expect(screen.getByText('回复已进入发布队列')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '关闭提示' }));
-    expect(screen.queryByText('回复已进入演示发布队列')).not.toBeInTheDocument();
+    expect(screen.queryByText('回复已进入发布队列')).not.toBeInTheDocument();
   });
 
   it('打开间贴回复树并执行指定版本回退', async () => {

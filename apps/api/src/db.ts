@@ -6,7 +6,7 @@ import { mkdirSync } from "node:fs";
 export interface DatabaseOptions {
   /** SQLite 文件路径；`:memory:` 用于快速单元测试。 */
   path: string;
-  /** 是否写入幂等演示数据，默认 true。 */
+  /** 是否写入幂等实时数据，默认 true。 */
   seed?: boolean;
 }
 
@@ -237,7 +237,7 @@ ALTER TABLE chapters ADD COLUMN content_json TEXT;
 ALTER TABLE chapters ADD COLUMN content_hash TEXT;
 `;
 
-/** 幂等写入开发身份、正文和演示业务数据，重复启动不会覆盖用户修改。 */
+/** 幂等写入开发身份、正文和论坛初始数据，重复启动不会覆盖用户修改。 */
 function seed(db: DatabaseSync): void {
   const now = new Date().toISOString();
   db.exec("BEGIN IMMEDIATE");
@@ -256,7 +256,7 @@ function seed(db: DatabaseSync): void {
     db.prepare("INSERT OR IGNORE INTO comment_replies(id, document_id, anchor_id, parent_id, author_id, body, created_at) VALUES ('comment-child', 'demo-post', 'anchor-opening', 'comment-root', 'author', '会在第三章解释钟楼的来历。', ?)").run(now);
     db.prepare("INSERT OR IGNORE INTO comment_votes(reply_id, user_id, value, created_at) VALUES ('comment-root', 'author', 1, ?)").run(now);
 
-    // 章节目录为演示数据，每次启动重置为与正文一致的五章大纲。
+    // 章节目录为实时数据，每次启动重置为与正文一致的五章大纲。
     db.prepare("DELETE FROM chapters WHERE document_id = 'demo-post'").run();
     const insertChapter = db.prepare("INSERT INTO chapters(id, title, sort_order, document_id, revision) VALUES (?, ?, ?, 'demo-post', 1)");
     insertChapter.run("chapter-0", "楔子 · 雨季之前", 0);
@@ -270,9 +270,9 @@ function seed(db: DatabaseSync): void {
     db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('reader', 50)").run();
     db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('moderator', 100)").run();
     db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('wanderer', 20)").run();
-    db.prepare("INSERT OR IGNORE INTO attachments(id, name, mime_type, price, author_id, download_url) VALUES ('attachment-sample', '雾港设定集.txt', 'text/plain', 10, 'author', '/demo-downloads/mist-harbor.txt')").run();
+    db.prepare("INSERT OR IGNORE INTO attachments(id, name, mime_type, price, author_id, download_url) VALUES ('attachment-sample', '雾港设定集.txt', 'text/plain', 10, 'author', '/forum-downloads/mist-harbor.txt')").run();
 
-    // 待审核校订建议：与正文用词一致的演示条目。
+    // 待审核校订建议：与正文用词一致的初始条目。
     db.prepare("INSERT OR IGNORE INTO suggestions(id, document_id, from_text, to_text, reason, status, author_id, reviewer_id, created_at, reviewed_at) VALUES ('suggestion-1', 'demo-post', '渡口的汽笛', '港口的汽笛', '与第一章地名保持一致', 'pending', 'reader', NULL, ?, NULL)").run(now);
     db.prepare("INSERT OR IGNORE INTO suggestions(id, document_id, from_text, to_text, reason, status, author_id, reviewer_id, created_at, reviewed_at) VALUES ('suggestion-2', 'demo-post', '她握紧信封', '她攥紧信封', '减少相邻段落用词重复', 'pending', 'wanderer', NULL, ?, NULL)").run(now);
 

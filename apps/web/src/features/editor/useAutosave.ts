@@ -82,7 +82,7 @@ export function useAutosave({
       savedGeneration.current = generation;
       failedGeneration.current = null;
     }
-    setState(document.storage === "local-demo" ? "offline" : "saved");
+    setState(document.storage === "local-cache" ? "offline" : "saved");
   }, [document.id, document.revision, document.savedAt, document.storage]);
 
   const enqueue = useCallback(
@@ -119,7 +119,7 @@ export function useAutosave({
           setRevision(result.revision);
           setSavedAt(result.savedAt);
           setState(
-            result.storage === "local-demo"
+            result.storage === "local-cache"
               ? "offline"
               : snapshot.generation === latestRef.current.generation
                 ? "saved"

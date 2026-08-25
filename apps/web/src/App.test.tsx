@@ -28,7 +28,7 @@ describe('App', () => {
     await screen.findByText('模拟编辑页');
     expect(screen.getByText('版务小禾')).toBeInTheDocument();
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: '切换演示身份' }), { button: 0, ctrlKey: false });
+    fireEvent.pointerDown(screen.getByRole('button', { name: '切换论坛身份' }), { button: 0, ctrlKey: false });
     fireEvent.click(await screen.findByRole('menuitem', { name: /晚风翻页/ }));
 
     await waitFor(() => expect(screen.getByText('晚风翻页')).toBeInTheDocument());

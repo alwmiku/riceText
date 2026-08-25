@@ -5,7 +5,7 @@ import type {
   SeedIdentity,
 } from "./types";
 
-/** 断网 fallback 与 UI 状态演示使用的身份；不代表生产账户系统。 */
+/** 断网 fallback 与 UI 状态展示使用的身份；不代表生产账户系统。 */
 export const identities: SeedIdentity[] = [
   {
     id: "user_author",
@@ -108,7 +108,7 @@ export const defaultDocument: DocumentEnvelope = {
       },
       {
         type: "replyGate",
-        attrs: { gateId: "gate_demo", prompt: "回复主题后显示本段航海日志。" },
+        attrs: { gateId: "gate_forum", prompt: "回复主题后显示本段航海日志。" },
         content: [
           {
             type: "paragraph",

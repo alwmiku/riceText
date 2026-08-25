@@ -2,7 +2,7 @@ import { Maximize2, PanelLeftOpen, Save, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "../../components/ui";
 import type { EditorMode, SeedIdentity } from "../../lib/types";
-import { ChapterRail, DemoBusinessPanel } from "../demo/DemoPanels";
+import { ChapterRail, ForumBusinessPanel } from "../forum/ForumPanels";
 
 /** 普通创作展示层：统一完整、极简和移动布局，并封装移动目录抽屉。 */
 export function StandardComposeWorkspace({
@@ -64,7 +64,7 @@ export function StandardComposeWorkspace({
           </div>
           {editor}
         </section>
-        <DemoBusinessPanel
+        <ForumBusinessPanel
           identity={identity}
           documentId={documentId}
           baseRevision={revision}

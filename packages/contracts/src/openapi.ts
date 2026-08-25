@@ -73,11 +73,11 @@ export function buildOpenApiDocument(): OpenApiDocument {
       ...parametersFrom(route.params, "path"),
       ...parametersFrom(route.query, "query"),
       {
-        name: "x-demo-user",
+        name: "x-user-id",
         in: "header",
         required: false,
         description:
-          "演示身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。",
+          "论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。",
         schema: {
           type: "string",
           enum: ["author", "reader", "moderator"],
@@ -116,7 +116,7 @@ export function buildOpenApiDocument(): OpenApiDocument {
       operationId: route.operationId,
       tags: route.tags,
       summary: route.summary,
-      description: `${route.description}\n\n权限与失败状态均列于 responses；请求示例可使用 x-demo-user: reader。`,
+      description: `${route.description}\n\n权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。`,
       parameters,
       ...(route.operationId === "uploadAsset"
         ? {
@@ -164,7 +164,7 @@ export function buildOpenApiDocument(): OpenApiDocument {
       title: "RiceText 论坛与小说富文本 API",
       version: "0.1.0",
       description:
-        "Tiptap JSON、不可变版本、图片、骰子与间贴为真实实现；带 x-implementation-status: mock 的章节/@/回复可见/附件/投票接口为同契约演示适配器。",
+        "文档、章节、用户互动、附件权益和投票均使用共享契约，并由 SQLite 服务持久化实现。",
     },
     servers: [{ url: "http://localhost:8787", description: "本地开发 API" }],
     tags: [
@@ -173,8 +173,8 @@ export function buildOpenApiDocument(): OpenApiDocument {
       { name: "骰子", description: "初始化后稳定、可显式重投的跑团骰子。" },
       { name: "间贴", description: "段落首尾锚点上的树状回复和赞踩。" },
       {
-        name: "演示业务",
-        description: "未来生产契约的 SQLite 演示实现，不代表真实权限或账务。",
+        name: "论坛业务",
+        description: "论坛创作、用户互动、附件权益和投票能力。",
       },
     ],
     paths,

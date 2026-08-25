@@ -106,7 +106,7 @@ describe("RiceText API 补充分支", () => {
     const invalidBody = await app.inject({
       method: "PUT",
       url: "/api/documents/demo-post",
-      headers: { "x-demo-user": "author" },
+      headers: { "x-user-id": "author" },
       payload: {},
     });
     expect(invalidBody.statusCode).toBe(422);
@@ -115,7 +115,7 @@ describe("RiceText API 补充分支", () => {
     const forbiddenFallback = await app.inject({
       method: "PUT",
       url: "/api/documents/demo-post",
-      headers: { "x-demo-user": "unknown-user" },
+      headers: { "x-user-id": "unknown-user" },
       payload: {
         schemaVersion: 1,
         baseRevision: 1,
@@ -135,7 +135,7 @@ describe("RiceText API 补充分支", () => {
     const saved = await app.inject({
       method: "PUT",
       url: "/api/documents/demo-post",
-      headers: { "x-demo-user": "author" },
+      headers: { "x-user-id": "author" },
       payload: firstRequest,
     });
     expect(saved.statusCode).toBe(201);
@@ -143,7 +143,7 @@ describe("RiceText API 补充分支", () => {
     const reused = await app.inject({
       method: "PUT",
       url: "/api/documents/demo-post",
-      headers: { "x-demo-user": "author" },
+      headers: { "x-user-id": "author" },
       payload: {
         ...firstRequest,
         baseRevision: 2,
@@ -161,14 +161,14 @@ describe("RiceText API 补充分支", () => {
     const rollback = await app.inject({
       method: "POST",
       url: "/api/documents/demo-post/rollback",
-      headers: { "x-demo-user": "moderator" },
+      headers: { "x-user-id": "moderator" },
       payload: rollbackRequest,
     });
     expect(rollback.statusCode).toBe(201);
     const rollbackRetry = await app.inject({
       method: "POST",
       url: "/api/documents/demo-post/rollback",
-      headers: { "x-demo-user": "moderator" },
+      headers: { "x-user-id": "moderator" },
       payload: rollbackRequest,
     });
     expect(rollbackRetry.statusCode).toBe(200);
@@ -325,13 +325,13 @@ describe("RiceText API 补充分支", () => {
     const root = await app.inject({
       method: "POST",
       url: "/api/documents/demo-post/comments/anchor-opening/replies",
-      headers: { "x-demo-user": "wanderer" },
+      headers: { "x-user-id": "wanderer" },
       payload: { parentId: null, body: "第二个根回复" },
     });
     const child = await app.inject({
       method: "POST",
       url: "/api/documents/demo-post/comments/anchor-opening/replies",
-      headers: { "x-demo-user": "author" },
+      headers: { "x-user-id": "author" },
       payload: { parentId: root.json().id, body: "新楼中楼" },
     });
     expect(child.statusCode).toBe(201);
@@ -412,7 +412,7 @@ describe("RiceText API 补充分支", () => {
     const archived = await app.inject({
       method: "PUT",
       url: "/api/documents/demo-post",
-      headers: { "x-demo-user": "author" },
+      headers: { "x-user-id": "author" },
       payload: {
         schemaVersion: 1,
         baseRevision: 1,
@@ -435,11 +435,11 @@ describe("RiceText API 补充分支", () => {
     expect(rejectedReply.json().error.code).toBe("COMMENT_THREAD_ARCHIVED");
   });
 
-  it("覆盖演示会话、好友搜索、未解析 @、章节、回复可见错误与建议拒绝", async () => {
+  it("覆盖论坛会话、好友搜索、未解析 @、章节、回复可见错误与建议拒绝", async () => {
     const session = await app.inject({
       method: "GET",
-      url: "/api/demo/session",
-      headers: { "x-demo-user": "not-seeded" },
+      url: "/api/forum/session",
+      headers: { "x-user-id": "not-seeded" },
     });
     expect(session.json().current.id).toBe("reader");
     expect(
@@ -448,14 +448,14 @@ describe("RiceText API 补充分支", () => {
 
     const chapters = await app.inject({
       method: "GET",
-      url: "/api/demo/chapters",
+      url: "/api/forum/chapters",
     });
     expect(
       chapters.json().items.map((chapter: { order: number }) => chapter.order),
     ).toEqual([0, 1, 2, 3, 4]);
     const friends = await app.inject({
       method: "GET",
-      url: "/api/demo/users/search?q=&friendsOnly=true",
+      url: "/api/forum/users/search?q=&friendsOnly=true",
     });
     expect(friends.json().items.map((user: { id: string }) => user.id)).toEqual(
       expect.arrayContaining(["author", "reader"]),
@@ -463,13 +463,13 @@ describe("RiceText API 补充分支", () => {
     expect(friends.json().items).toHaveLength(2);
     const byId = await app.inject({
       method: "GET",
-      url: "/api/demo/users/search?q=WANDERER",
+      url: "/api/forum/users/search?q=WANDERER",
     });
     expect(byId.json().items[0].id).toBe("wanderer");
 
     const unresolved = await app.inject({
       method: "POST",
-      url: "/api/demo/mentions/resolve",
+      url: "/api/forum/mentions/resolve",
       payload: { name: "不存在的人" },
     });
     expect(unresolved.json()).toEqual({
@@ -479,7 +479,7 @@ describe("RiceText API 补充分支", () => {
     });
     const resolvedById = await app.inject({
       method: "POST",
-      url: "/api/demo/mentions/resolve",
+      url: "/api/forum/mentions/resolve",
       payload: { name: "旧名字", userId: "author" },
     });
     expect(resolvedById.json()).toMatchObject({
@@ -490,7 +490,7 @@ describe("RiceText API 补充分支", () => {
 
     const missingGate = await app.inject({
       method: "POST",
-      url: "/api/demo/reply-gates/resolve",
+      url: "/api/forum/reply-gates/resolve",
       payload: { gateId: "missing-gate", documentId: "demo-post" },
     });
     expect(missingGate.statusCode).toBe(404);
@@ -498,40 +498,40 @@ describe("RiceText API 补充分支", () => {
 
     const suggestion = await app.inject({
       method: "POST",
-      url: "/api/demo/documents/demo-post/suggestions",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/documents/demo-post/suggestions",
+      headers: { "x-user-id": "reader" },
       payload: { fromText: "潮声", toText: "海潮声", reason: "建议替换" },
     });
     const ownerList = await app.inject({
       method: "GET",
-      url: "/api/demo/documents/demo-post/suggestions",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/documents/demo-post/suggestions",
+      headers: { "x-user-id": "reader" },
     });
     expect(ownerList.json().items).toHaveLength(2);
     const otherReaderList = await app.inject({
       method: "GET",
-      url: "/api/demo/documents/demo-post/suggestions",
-      headers: { "x-demo-user": "wanderer" },
+      url: "/api/forum/documents/demo-post/suggestions",
+      headers: { "x-user-id": "wanderer" },
     });
     expect(otherReaderList.json().items).toHaveLength(1);
     const authorList = await app.inject({
       method: "GET",
-      url: "/api/demo/documents/demo-post/suggestions",
-      headers: { "x-demo-user": "author" },
+      url: "/api/forum/documents/demo-post/suggestions",
+      headers: { "x-user-id": "author" },
     });
     expect(authorList.json().items).toHaveLength(3);
 
     const forbiddenReview = await app.inject({
       method: "PATCH",
-      url: `/api/demo/suggestions/${suggestion.json().id as string}`,
-      headers: { "x-demo-user": "reader" },
+      url: `/api/forum/suggestions/${suggestion.json().id as string}`,
+      headers: { "x-user-id": "reader" },
       payload: { decision: "reject", baseRevision: 1 },
     });
     expect(forbiddenReview.statusCode).toBe(403);
     const rejected = await app.inject({
       method: "PATCH",
-      url: `/api/demo/suggestions/${suggestion.json().id as string}`,
-      headers: { "x-demo-user": "author" },
+      url: `/api/forum/suggestions/${suggestion.json().id as string}`,
+      headers: { "x-user-id": "author" },
       payload: { decision: "reject", baseRevision: 1 },
     });
     expect(rejected.json()).toMatchObject({
@@ -540,8 +540,8 @@ describe("RiceText API 补充分支", () => {
     });
     const reviewedTwice = await app.inject({
       method: "PATCH",
-      url: `/api/demo/suggestions/${suggestion.json().id as string}`,
-      headers: { "x-demo-user": "author" },
+      url: `/api/forum/suggestions/${suggestion.json().id as string}`,
+      headers: { "x-user-id": "author" },
       payload: { decision: "reject", baseRevision: 1 },
     });
     expect(reviewedTwice.statusCode).toBe(409);
@@ -551,13 +551,13 @@ describe("RiceText API 补充分支", () => {
   it("报告建议审核冲突与缺失原文", async () => {
     const conflictSuggestion = await app.inject({
       method: "POST",
-      url: "/api/demo/documents/demo-post/suggestions",
+      url: "/api/forum/documents/demo-post/suggestions",
       payload: { fromText: "潮声", toText: "海潮声", reason: "冲突测试" },
     });
     await app.inject({
       method: "PUT",
       url: "/api/documents/demo-post",
-      headers: { "x-demo-user": "author" },
+      headers: { "x-user-id": "author" },
       payload: {
         schemaVersion: 1,
         baseRevision: 1,
@@ -567,8 +567,8 @@ describe("RiceText API 补充分支", () => {
     });
     const conflict = await app.inject({
       method: "PATCH",
-      url: `/api/demo/suggestions/${conflictSuggestion.json().id as string}`,
-      headers: { "x-demo-user": "author" },
+      url: `/api/forum/suggestions/${conflictSuggestion.json().id as string}`,
+      headers: { "x-user-id": "author" },
       payload: { decision: "approve", baseRevision: 1 },
     });
     expect(conflict.statusCode).toBe(409);
@@ -579,13 +579,13 @@ describe("RiceText API 补充分支", () => {
 
     const absentSuggestion = await app.inject({
       method: "POST",
-      url: "/api/demo/documents/demo-post/suggestions",
+      url: "/api/forum/documents/demo-post/suggestions",
       payload: { fromText: "完全不存在", toText: "替换值", reason: "缺失测试" },
     });
     const absent = await app.inject({
       method: "PATCH",
-      url: `/api/demo/suggestions/${absentSuggestion.json().id as string}`,
-      headers: { "x-demo-user": "moderator" },
+      url: `/api/forum/suggestions/${absentSuggestion.json().id as string}`,
+      headers: { "x-user-id": "moderator" },
       payload: { decision: "approve", baseRevision: 2 },
     });
     expect(absent.statusCode).toBe(404);
@@ -593,8 +593,8 @@ describe("RiceText API 补充分支", () => {
 
     const missing = await app.inject({
       method: "PATCH",
-      url: "/api/demo/suggestions/no-suggestion",
-      headers: { "x-demo-user": "author" },
+      url: "/api/forum/suggestions/no-suggestion",
+      headers: { "x-user-id": "author" },
       payload: { decision: "reject", baseRevision: 2 },
     });
     expect(missing.statusCode).toBe(404);
@@ -604,8 +604,8 @@ describe("RiceText API 补充分支", () => {
   it("隐藏未购附件、保证重复购买幂等并拒绝余额不足", async () => {
     const locked = await app.inject({
       method: "GET",
-      url: "/api/demo/attachments/attachment-sample",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/attachments/attachment-sample",
+      headers: { "x-user-id": "reader" },
     });
     expect(locked.json()).toMatchObject({
       purchased: false,
@@ -614,18 +614,18 @@ describe("RiceText API 补充分支", () => {
     });
     const authorView = await app.inject({
       method: "GET",
-      url: "/api/demo/attachments/attachment-sample",
-      headers: { "x-demo-user": "author" },
+      url: "/api/forum/attachments/attachment-sample",
+      headers: { "x-user-id": "author" },
     });
     expect(authorView.json()).toMatchObject({
       purchased: true,
-      downloadUrl: "/demo-downloads/mist-harbor.txt",
+      downloadUrl: "/forum-downloads/mist-harbor.txt",
     });
 
     const first = await app.inject({
       method: "POST",
-      url: "/api/demo/attachments/attachment-sample/purchase",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/attachments/attachment-sample/purchase",
+      headers: { "x-user-id": "reader" },
     });
     expect(first.json()).toMatchObject({
       buyerBalance: 40,
@@ -634,8 +634,8 @@ describe("RiceText API 补充分支", () => {
     });
     const duplicate = await app.inject({
       method: "POST",
-      url: "/api/demo/attachments/attachment-sample/purchase",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/attachments/attachment-sample/purchase",
+      headers: { "x-user-id": "reader" },
     });
     expect(duplicate.json()).toMatchObject({
       buyerBalance: 40,
@@ -650,8 +650,8 @@ describe("RiceText API 补充分支", () => {
     });
     const insufficient = await app.inject({
       method: "POST",
-      url: "/api/demo/attachments/attachment-sample/purchase",
-      headers: { "x-demo-user": "wanderer" },
+      url: "/api/forum/attachments/attachment-sample/purchase",
+      headers: { "x-user-id": "wanderer" },
     });
     expect(insufficient.statusCode).toBe(402);
     expect(insufficient.json().error).toMatchObject({
@@ -661,7 +661,7 @@ describe("RiceText API 补充分支", () => {
 
     const missing = await app.inject({
       method: "GET",
-      url: "/api/demo/attachments/no-attachment",
+      url: "/api/forum/attachments/no-attachment",
     });
     expect(missing.statusCode).toBe(404);
     expect(missing.json().error.code).toBe("ATTACHMENT_NOT_FOUND");
@@ -670,8 +670,8 @@ describe("RiceText API 补充分支", () => {
   it("验证投票资格、选项约束、覆盖投票和实名分页", async () => {
     const poll = await app.inject({
       method: "GET",
-      url: "/api/demo/polls/poll-route",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/polls/poll-route",
+      headers: { "x-user-id": "reader" },
     });
     expect(poll.json()).toMatchObject({
       eligible: true,
@@ -682,16 +682,16 @@ describe("RiceText API 补充分支", () => {
 
     const tooMany = await app.inject({
       method: "POST",
-      url: "/api/demo/polls/poll-route/votes",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/polls/poll-route/votes",
+      headers: { "x-user-id": "reader" },
       payload: { optionIds: ["poll-option-tower", "poll-option-dock"] },
     });
     expect(tooMany.statusCode).toBe(422);
     expect(tooMany.json().error.code).toBe("POLL_SINGLE_CHOICE");
     const unknownOption = await app.inject({
       method: "POST",
-      url: "/api/demo/polls/poll-route/votes",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/polls/poll-route/votes",
+      headers: { "x-user-id": "reader" },
       payload: { optionIds: ["not-an-option"] },
     });
     expect(unknownOption.statusCode).toBe(404);
@@ -699,28 +699,28 @@ describe("RiceText API 补充分支", () => {
 
     const readerVote = await app.inject({
       method: "POST",
-      url: "/api/demo/polls/poll-route/votes",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/polls/poll-route/votes",
+      headers: { "x-user-id": "reader" },
       payload: { optionIds: ["poll-option-tower"] },
     });
     expect(readerVote.json().viewerOptionIds).toEqual(["poll-option-tower"]);
     const overwritten = await app.inject({
       method: "POST",
-      url: "/api/demo/polls/poll-route/votes",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/polls/poll-route/votes",
+      headers: { "x-user-id": "reader" },
       payload: { optionIds: ["poll-option-dock"] },
     });
     expect(overwritten.json().viewerOptionIds).toEqual(["poll-option-dock"]);
     await app.inject({
       method: "POST",
-      url: "/api/demo/polls/poll-route/votes",
-      headers: { "x-demo-user": "wanderer" },
+      url: "/api/forum/polls/poll-route/votes",
+      headers: { "x-user-id": "wanderer" },
       payload: { optionIds: ["poll-option-tower"] },
     });
 
     const voters = await app.inject({
       method: "GET",
-      url: "/api/demo/polls/poll-route/votes?limit=1",
+      url: "/api/forum/polls/poll-route/votes?limit=1",
     });
     expect(voters.json().items).toHaveLength(1);
     expect(voters.json().items[0]).toMatchObject({
@@ -730,7 +730,7 @@ describe("RiceText API 补充分支", () => {
     expect(voters.json().pageInfo.nextCursor).toEqual(expect.any(String));
     const nextPage = await app.inject({
       method: "GET",
-      url: `/api/demo/polls/poll-route/votes?limit=1&cursor=${voters.json().pageInfo.nextCursor as string}`,
+      url: `/api/forum/polls/poll-route/votes?limit=1&cursor=${voters.json().pageInfo.nextCursor as string}`,
     });
     expect(nextPage.json().items).toHaveLength(1);
     expect(nextPage.json().items[0].user.id).not.toBe(
@@ -738,7 +738,7 @@ describe("RiceText API 补充分支", () => {
     );
     const badCursor = await app.inject({
       method: "GET",
-      url: "/api/demo/polls/poll-route/votes?cursor=missing-vote",
+      url: "/api/forum/polls/poll-route/votes?cursor=missing-vote",
     });
     expect(badCursor.statusCode).toBe(422);
     expect(badCursor.json().error.code).toBe("INVALID_CURSOR");
@@ -752,14 +752,14 @@ describe("RiceText API 补充分支", () => {
     });
     const ineligiblePoll = await app.inject({
       method: "GET",
-      url: "/api/demo/polls/poll-route",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/polls/poll-route",
+      headers: { "x-user-id": "reader" },
     });
     expect(ineligiblePoll.json().eligible).toBe(false);
     const ineligibleVote = await app.inject({
       method: "POST",
-      url: "/api/demo/polls/poll-route/votes",
-      headers: { "x-demo-user": "reader" },
+      url: "/api/forum/polls/poll-route/votes",
+      headers: { "x-user-id": "reader" },
       payload: { optionIds: ["poll-option-tower"] },
     });
     expect(ineligibleVote.statusCode).toBe(403);
@@ -767,7 +767,7 @@ describe("RiceText API 补充分支", () => {
 
     const missingPoll = await app.inject({
       method: "GET",
-      url: "/api/demo/polls/no-poll",
+      url: "/api/forum/polls/no-poll",
     });
     expect(missingPoll.statusCode).toBe(404);
     expect(missingPoll.json().error.code).toBe("POLL_NOT_FOUND");

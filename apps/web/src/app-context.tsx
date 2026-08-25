@@ -1,9 +1,9 @@
 import { createContext, useContext } from 'react';
 import type { SeedIdentity } from './lib/types';
 
-/** 全局演示身份及其切换入口；生产环境可替换为真实会话 Provider。 */
+/** 全局论坛身份及其切换入口；生产环境可替换为真实会话 Provider。 */
 export interface AppContextValue {
-  /** 当前用于权限、金币和投票演示的身份。 */
+  /** 当前用于权限、金币和投票的身份。 */
   identity: SeedIdentity;
   /** 切换身份并由 App 持久化选择。 */
   setIdentity: (identity: SeedIdentity) => void;
