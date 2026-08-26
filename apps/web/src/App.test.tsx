@@ -9,6 +9,17 @@ vi.mock('./pages/ReadPage', () => ({ default: () => <main>模拟阅读页</main>
 describe('App', () => {
   beforeEach(() => {
     localStorage.clear();
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0, writable: true });
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
     window.history.pushState({}, '', '/compose');
   });
 
@@ -33,6 +44,30 @@ describe('App', () => {
 
     await waitFor(() => expect(screen.getByText('晚风翻页')).toBeInTheDocument());
     expect(localStorage.getItem('ricetext:identity')).toBe('user_reader');
+  });
+
+  it('移动端向下滚动收起页头，向上滚动后恢复', async () => {
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query === '(max-width: 840px)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    render(<App />);
+    const header = screen.getByRole('banner');
+    expect(header).toHaveAttribute('data-hidden', 'false');
+
+    window.scrollY = 160;
+    fireEvent.scroll(window);
+    await waitFor(() => expect(header).toHaveAttribute('data-hidden', 'true'));
+
+    window.scrollY = 80;
+    fireEvent.scroll(window);
+    await waitFor(() => expect(header).toHaveAttribute('data-hidden', 'false'));
   });
 
   it('未知路由重定向到编辑页', async () => {

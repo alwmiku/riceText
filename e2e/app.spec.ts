@@ -63,12 +63,41 @@ test('作者编辑先自动保存本地，点击保存后才上传最小 revisio
   expect(await status.textContent()).not.toBe(initialStatus);
 });
 
+test('移动端向下阅读时收起页头，向上滚动时恢复', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '仅验证移动端页头滚动行为');
+  await page.goto('/compose');
+  const header = page.getByRole('banner');
+  const directory = page.getByRole('button', { name: '打开章节目录' });
+  await expect(directory).toBeVisible();
+  await expect(header).toHaveAttribute('data-hidden', 'false');
+  await page.evaluate(() => {
+    document.body.style.minHeight = '3000px';
+    window.scrollTo(0, 520);
+  });
+  await expect(header).toHaveAttribute('data-hidden', 'true');
+  await expect(directory).toBeVisible();
+  await directory.click();
+  await expect(page.getByRole('dialog', { name: '章节目录' })).toBeVisible();
+  await page.getByRole('button', { name: '关闭章节目录' }).last().click();
+  await expect
+    .poll(() => header.evaluate((element) => element.getBoundingClientRect().bottom))
+    .toBeLessThanOrEqual(1);
+
+  await page.evaluate(() => window.scrollTo(0, 300));
+  await expect(header).toHaveAttribute('data-hidden', 'false');
+});
+
 test('移动端选择正文后显示浮动修订入口', async ({ page, isMobile }) => {
   test.skip(!isMobile, '仅验证移动端 selectionchange 与浮动操作入口');
   await page.addInitScript(() => {
     localStorage.setItem('ricetext:identity', 'user_reader');
   });
   await page.goto('/read');
+  const readDirectory = page.getByRole('button', { name: '打开阅读目录' });
+  await expect(readDirectory).toBeVisible();
+  await readDirectory.click();
+  await expect(page.getByRole('dialog', { name: '阅读章节目录' })).toBeVisible();
+  await page.getByRole('button', { name: '关闭阅读目录' }).last().click();
   const paragraph = page.locator('.rt-viewer .ProseMirror p').filter({ hasText: '潮声' }).first();
   await expect(paragraph).toBeVisible();
   await paragraph.evaluate((element) => {
@@ -88,6 +117,15 @@ test('移动端选择正文后显示浮动修订入口', async ({ page, isMobile
 
   const action = page.getByRole('button', { name: '提交所选文字修订：潮声' });
   await expect(action).toBeVisible();
+  const actionGeometry = await action.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      bottomGap: window.innerHeight - rect.bottom,
+      horizontalGap: window.innerWidth - rect.width,
+    };
+  });
+  expect(actionGeometry.bottomGap).toBeLessThanOrEqual(24);
+  expect(actionGeometry.horizontalGap).toBeLessThanOrEqual(40);
   await action.click();
   await expect(page.getByRole('dialog', { name: '提交修订' })).toBeVisible();
 });

@@ -40,6 +40,7 @@ export function ReaderSuggestion({
   const [selectionAnchor, setSelectionAnchor] = useState<{
     top: number;
     left: number;
+    mobile: boolean;
   } | null>(null);
   const [open, setOpen] = useState(false);
   const [suggestedText, setSuggestedText] = useState("");
@@ -83,7 +84,10 @@ export function ReaderSuggestion({
           Math.max(72, rect.left + rect.width / 2),
         );
         const top = rect.top >= 52 ? rect.top - 44 : rect.bottom + 8;
-        setSelectionAnchor({ top, left });
+        const mobile =
+          window.innerWidth <= 840 ||
+          window.matchMedia?.("(pointer: coarse)").matches === true;
+        setSelectionAnchor({ top, left, mobile });
       }
     }
     setDraft({
@@ -176,12 +180,20 @@ export function ReaderSuggestion({
       {draft && selectionAnchor ? (
         <Button
           size="sm"
-          className="fixed z-[45] h-9 shadow-lg"
-          style={{
-            top: selectionAnchor.top,
-            left: selectionAnchor.left,
-            transform: "translateX(-50%)",
-          }}
+          className={
+            selectionAnchor.mobile
+              ? "fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] left-4 z-[45] h-11 justify-center shadow-xl"
+              : "fixed z-[45] h-9 shadow-lg"
+          }
+          style={
+            selectionAnchor.mobile
+              ? undefined
+              : {
+                  top: selectionAnchor.top,
+                  left: selectionAnchor.left,
+                  transform: "translateX(-50%)",
+                }
+          }
           onPointerDown={(event) => event.preventDefault()}
           onClick={openDialog}
           aria-label={`提交所选文字修订：${draft.fromText}`}
