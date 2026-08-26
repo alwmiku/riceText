@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  AttachmentDialog,
   DiceDialog,
   ExcerptDialog,
   ImageDialog,
@@ -214,6 +215,77 @@ describe("editor dialogs", () => {
       ],
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("编辑附件时预填字段，并规范化提交值", () => {
+    const onInsert = vi.fn();
+    const onOpenChange = vi.fn();
+    render(
+      <AttachmentDialog
+        open
+        initial={{
+          name: "旧附件.zip",
+          mimeType: "application/zip",
+          size: 10,
+          priceCoins: 2,
+        }}
+        onOpenChange={onOpenChange}
+        onInsert={onInsert}
+      />,
+    );
+    expect(screen.getByRole("dialog", { name: "编辑附件" })).toBeInTheDocument();
+    expect(screen.getByLabelText("文件名")).toHaveValue("旧附件.zip");
+
+    fireEvent.change(screen.getByLabelText("文件名"), {
+      target: { value: "  新附件.zip  " },
+    });
+    fireEvent.change(screen.getByLabelText("MIME 类型"), {
+      target: { value: "  " },
+    });
+    fireEvent.change(screen.getByLabelText("大小（字节）"), {
+      target: { value: "10.6" },
+    });
+    fireEvent.change(screen.getByLabelText("价格（金币）"), {
+      target: { value: "2.6" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+
+    expect(onInsert).toHaveBeenCalledWith({
+      name: "新附件.zip",
+      mimeType: "application/octet-stream",
+      size: 11,
+      priceCoins: 3,
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("附件字段无效时禁止提交，取消时直接关闭", () => {
+    const onInsert = vi.fn();
+    const onOpenChange = vi.fn();
+    render(
+      <AttachmentDialog open onOpenChange={onOpenChange} onInsert={onInsert} />,
+    );
+    const submit = screen.getByRole("button", { name: "插入附件" });
+    expect(submit).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("文件名"), {
+      target: { value: "资料.zip" },
+    });
+    fireEvent.change(screen.getByLabelText("大小（字节）"), {
+      target: { value: "-1" },
+    });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("大小（字节）"), {
+      target: { value: "0" },
+    });
+    fireEvent.change(screen.getByLabelText("价格（金币）"), {
+      target: { value: "-1" },
+    });
+    expect(submit).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onInsert).not.toHaveBeenCalled();
   });
 
   it("提及搜索区分好友与等待服务器解析的用户", async () => {
