@@ -88,6 +88,8 @@ export interface RiceTextApiClient {
   resolveReplyGate(gateId: string, documentId: string, signal?: AbortSignal): Promise<z.infer<typeof ResolveReplyGateResponseSchema>>;
   /** 读取当前身份可见的章节纠错建议。 */
   listSuggestions(documentId: string, signal?: AbortSignal): Promise<{ items: Array<z.infer<typeof SuggestionSchema>> }>;
+  /** 提交一条带章节和行定位的待审核纠错建议。 */
+  createSuggestion(documentId: string, body: { fromText: string; toText: string; reason: string; chapterId: string; chapterTitle: string; lineNo: number; lineText: string }, signal?: AbortSignal): Promise<z.infer<typeof SuggestionSchema>>;
   /** 审核纠错建议；approve 时服务端替换正文并创建真实修订。 */
   reviewSuggestion(suggestionId: string, body: { decision: "approve" | "reject"; baseRevision: number }, signal?: AbortSignal): Promise<{ suggestion: z.infer<typeof SuggestionSchema>; document: DocumentEnvelope | null }>; 
   /** 读取附件价格和当前购买权益。 */
@@ -150,6 +152,7 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     resolveMention: (name, userId, signal) => request("/api/forum/mentions/resolve", { method: "POST", body: json({ name, ...(userId ? { userId } : {}) }), signal }),
     resolveReplyGate: (gateId, documentId, signal) => request("/api/forum/reply-gates/resolve", { method: "POST", body: json({ gateId, documentId }), signal }),
     listSuggestions: (id, signal) => request(`/api/forum/documents/${id}/suggestions`, { signal }),
+    createSuggestion: (id, body, signal) => request(`/api/forum/documents/${id}/suggestions`, { method: "POST", body: json(body), signal }),
     reviewSuggestion: (id, body, signal) => request(`/api/forum/suggestions/${id}`, { method: "PATCH", body: json(body), signal }),
     getAttachment: (id, signal) => request(`/api/forum/attachments/${id}`, { signal }),
     purchaseAttachment: (id, signal) => request(`/api/forum/attachments/${id}/purchase`, { method: "POST", signal }),

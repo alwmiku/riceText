@@ -60,6 +60,15 @@ describe("createApiClient", () => {
     await client.resolveMention("林见", "author");
     await client.resolveReplyGate("gate-bonus", "demo-post");
     await client.listSuggestions("demo-post");
+    await client.createSuggestion("demo-post", {
+      fromText: "雾线",
+      toText: "雾气",
+      reason: "用词更准确",
+      chapterId: "chapter-1",
+      chapterTitle: "第一章 · 潮汐表",
+      lineNo: 3,
+      lineText: "雾线越过长街。",
+    });
     await client.getAttachment("attachment-sample");
     await client.purchaseAttachment("attachment-sample");
     await client.getPoll("poll-route");
@@ -70,7 +79,7 @@ describe("createApiClient", () => {
     const calls = fetchMock.mock.calls as unknown as Array<
       [string, RequestInit]
     >;
-    expect(calls).toHaveLength(26);
+    expect(calls).toHaveLength(27);
     expect(calls[0]?.[0]).toBe(
       "https://forum.example.test/api/documents/forum post",
     );
@@ -87,7 +96,7 @@ describe("createApiClient", () => {
     expect(calls[14]?.[0]).toBe(
       "https://forum.example.test/api/forum/users/search?q=%E6%9E%97&friendsOnly=false",
     );
-    expect(calls[25]?.[0]).toBe(
+    expect(calls[26]?.[0]).toBe(
       "https://forum.example.test/api/forum/polls/poll-route/votes?cursor=vote-1",
     );
 
@@ -123,6 +132,16 @@ describe("createApiClient", () => {
     expect(JSON.parse(String(calls[17]![1].body))).toEqual({
       name: "林见",
       userId: "author",
+    });
+    expect(calls[20]?.[0]).toBe(
+      "https://forum.example.test/api/forum/documents/demo-post/suggestions",
+    );
+    expect(calls[20]?.[1].method).toBe("POST");
+    expect(JSON.parse(String(calls[20]?.[1].body))).toMatchObject({
+      fromText: "雾线",
+      toText: "雾气",
+      chapterId: "chapter-1",
+      lineNo: 3,
     });
   });
 
