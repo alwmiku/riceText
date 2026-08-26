@@ -11,6 +11,7 @@ import {
   restoreRevision,
   saveDocument,
   saveDocumentSteps,
+  submitSuggestion,
   uploadAsset,
   voteComment,
 } from './api';
@@ -187,6 +188,26 @@ describe('web api client', () => {
 
     fetchMock.mockResolvedValueOnce(jsonResponse({ message: '文档不存在' }, { status: 404 }));
     await expect(listSuggestions('demo-post')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('提交校订建议时携带章节和行定位', async () => {
+    const created = seedSuggestions[0]!;
+    fetchMock.mockResolvedValueOnce(jsonResponse(created, { status: 201 }));
+    const input = {
+      fromText: '正好',
+      toText: '恰好',
+      reason: '避免重复',
+      chapterId: 'chapter-0',
+      chapterTitle: '正文',
+      lineNo: 4,
+      lineText: '灯塔正好熄灭。',
+    };
+
+    await expect(submitSuggestion('demo-post', input)).resolves.toEqual(created);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/forum/documents/demo-post/suggestions',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(input) }),
+    );
   });
 
   it('章节目录在服务不可用时降级为空数组', async () => {

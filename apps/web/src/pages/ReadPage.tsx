@@ -19,6 +19,7 @@ import { useAppContext } from "../app-context";
 import { Badge, Button, Dialog } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
 import { ProofreadView } from "../features/proofread/ProofreadView";
+import { ReaderSuggestion } from "../features/proofread/ReaderSuggestion";
 import { TocSidebar } from "../features/viewer/TocSidebar";
 import { getCommentThread, getDocument, listSuggestions } from "../lib/api";
 import { chapterTextLines, splitDocumentByHeadings } from "../lib/chapters";
@@ -79,6 +80,7 @@ export default function ReadPage() {
     () => [...new Set(chapterSuggestions.map((suggestion) => suggestion.lineNo))],
     [chapterSuggestions],
   );
+
   // 业务数据通过 Viewer adapter 注入，正文 JSON 只保存稳定 ID 和必要的显示属性。
   const interactions = useMemo<RichTextViewerInteractions>(
     () => ({
@@ -193,6 +195,20 @@ export default function ReadPage() {
               suggestions={chapterSuggestions}
               onExit={() => setProofreading(false)}
             />
+          ) : identity.role === "reader" ? (
+            <ReaderSuggestion
+              key={`${document.id}:${chapterId}`}
+              documentId={document.id}
+              chapterId={chapterId}
+              chapterTitle={chapters[activeIndex]?.title ?? "正文"}
+              lines={lines}
+            >
+              <RichTextViewer
+                content={chapterDoc}
+                interactions={interactions}
+                labels={labels}
+              />
+            </ReaderSuggestion>
           ) : (
             <RichTextViewer
               content={chapterDoc}

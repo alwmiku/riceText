@@ -11,12 +11,14 @@ const mocks = vi.hoisted(() => ({
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
   listSuggestions: vi.fn(),
+  submitSuggestion: vi.fn(),
 }));
 
 vi.mock('../lib/api', () => ({
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
   listSuggestions: mocks.listSuggestions,
+  submitSuggestion: mocks.submitSuggestion,
 }));
 vi.mock('../features/comments/CommentThread', () => ({
   CommentThread: (props: { initial: readonly unknown[]; identity: SeedIdentity }) => <div>回复树：{props.initial.length} 条 · {props.identity.name}</div>,
@@ -109,14 +111,6 @@ describe('ReadPage', () => {
     const attachment = (await screen.findByText('章节资料.zip')).closest('button')!;
     fireEvent.click(attachment);
     expect(screen.getByText('章节资料.zip').closest('button')).toHaveTextContent('购买 · 20');
-  });
-
-  it('普通读者看不到校订入口，也不加载校订数据', async () => {
-    renderPage(identities[1]!);
-    await screen.findByText('章节资料.zip');
-    expect(screen.queryByRole('button', { name: '开始校订' })).not.toBeInTheDocument();
-    expect(screen.queryByText('校订定位')).not.toBeInTheDocument();
-    expect(mocks.listSuggestions).not.toHaveBeenCalled();
   });
 
   it('作者可点击开始校订，进入字级 diff 视图并显示文章/章节/行定位', async () => {

@@ -377,6 +377,22 @@ export async function listSuggestions(
   }
 }
 
+/** 提交带章节内行定位的纠错建议。 */
+export async function submitSuggestion(
+  documentId: string,
+  input: {
+    fromText: string;
+    toText: string;
+    reason: string;
+    chapterId: string;
+    chapterTitle: string;
+    lineNo: number;
+    lineText: string;
+  },
+): Promise<ForumSuggestion> {
+  return api().createSuggestion(documentId, input);
+}
+
 /** 审核建议；approve 会替换正文并创建新修订。 */
 export async function reviewSuggestion(
   suggestionId: string,

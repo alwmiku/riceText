@@ -109,9 +109,13 @@ export function ChapterRail({
 function SuggestionPanel({
   documentId,
   baseRevision,
+  chapterId,
+  chapterTitle,
 }: {
   documentId: string;
   baseRevision: number;
+  chapterId: string;
+  chapterTitle: string;
 }) {
   const queryClient = useQueryClient();
   const { data: items = [], isLoading } = useQuery({
@@ -120,6 +124,7 @@ function SuggestionPanel({
   });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const chapterItems = items.filter((item) => item.chapterId === chapterId);
 
   const decide = async (id: string, decision: "approve" | "reject") => {
     setBusyId(id);
@@ -145,9 +150,12 @@ function SuggestionPanel({
 
   if (isLoading)
     return <p className="text-xs text-muted-foreground">加载中…</p>;
-  if (items.length === 0)
+  if (chapterItems.length === 0)
     return (
-      <p className="text-xs text-muted-foreground">暂无待处理的校订建议</p>
+      <div className="space-y-1 text-xs text-muted-foreground">
+        <p>{chapterTitle}</p>
+        <p>本章暂无待处理的校订建议</p>
+      </div>
     );
 
   return (
@@ -157,7 +165,7 @@ function SuggestionPanel({
           {error}
         </p>
       ) : null}
-      {items.map((item) => (
+      {chapterItems.map((item) => (
         <article key={item.id} className="rounded-md border border-border p-3">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-bold">{item.authorId}</span>
@@ -475,12 +483,17 @@ export function ForumBusinessPanel({
   identity,
   documentId,
   baseRevision,
+  chapterId,
+  chapterTitle,
   onRestore,
 }: {
   identity: SeedIdentity;
   documentId: string;
   /** 当前文档 revision，作为审核建议合并的基线。 */
   baseRevision: number;
+  /** 当前编辑章节；校订列表只显示该章节的数据。 */
+  chapterId: string;
+  chapterTitle: string;
   onRestore: (revision: number) => void;
 }) {
   const [tab, setTab] = useState<
@@ -526,6 +539,8 @@ export function ForumBusinessPanel({
           <SuggestionPanel
             documentId={documentId}
             baseRevision={baseRevision}
+            chapterId={chapterId}
+            chapterTitle={chapterTitle}
           />
         )}
         {tab === "attachment" && <AttachmentPanel identity={identity} />}

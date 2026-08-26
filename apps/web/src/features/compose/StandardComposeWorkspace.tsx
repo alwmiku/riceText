@@ -68,6 +68,8 @@ export function StandardComposeWorkspace({
           identity={identity}
           documentId={documentId}
           baseRevision={revision}
+          chapterId={chapters[activeIndex]?.id ?? ""}
+          chapterTitle={chapters[activeIndex]?.title ?? title}
           onRestore={onRestore}
         />
       </div>

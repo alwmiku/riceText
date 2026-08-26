@@ -215,19 +215,21 @@ describe("ForumPanels", () => {
     expect(onSelect).toHaveBeenCalledWith(2);
   });
 
-  it("校订条目标注“对哪个章节的哪一行”校订", async () => {
+  it("校订列表只显示当前章节，并保留章节与行定位", async () => {
     renderWithQuery(
       <ForumBusinessPanel
         identity={identities[0]!}
         documentId="demo-post"
         baseRevision={18}
+        chapterId="chapter-0"
+        chapterTitle="楔子 · 雨季之前"
         onRestore={vi.fn()}
       />,
     );
     expect(await screen.findByText("楔子 · 雨季之前")).toBeInTheDocument();
     expect(screen.getByText("第 2 行")).toBeInTheDocument();
-    expect(screen.getByText("第一章 · 潮汐表")).toBeInTheDocument();
-    expect(screen.getByText("第 3 行")).toBeInTheDocument();
+    expect(screen.queryByText("第一章 · 潮汐表")).not.toBeInTheDocument();
+    expect(screen.queryByText("第 3 行")).not.toBeInTheDocument();
   });
 
   it("接受校订建议调用审核 API 并显示已合并状态", async () => {
@@ -236,6 +238,8 @@ describe("ForumPanels", () => {
         identity={identities[0]!}
         documentId="demo-post"
         baseRevision={18}
+        chapterId="chapter-0"
+        chapterTitle="楔子 · 雨季之前"
         onRestore={vi.fn()}
       />,
     );
@@ -258,6 +262,8 @@ describe("ForumPanels", () => {
         identity={identities[1]!}
         documentId="demo-post"
         baseRevision={18}
+        chapterId="chapter-0"
+        chapterTitle="楔子 · 雨季之前"
         onRestore={vi.fn()}
       />,
     );
@@ -280,6 +286,8 @@ describe("ForumPanels", () => {
         identity={{ ...identities[1]!, coins: 5 }}
         documentId="demo-post"
         baseRevision={18}
+        chapterId="chapter-0"
+        chapterTitle="楔子 · 雨季之前"
         onRestore={vi.fn()}
       />,
     );
@@ -295,6 +303,8 @@ describe("ForumPanels", () => {
         identity={identities[1]!}
         documentId="demo-post"
         baseRevision={18}
+        chapterId="chapter-0"
+        chapterTitle="楔子 · 雨季之前"
         onRestore={vi.fn()}
       />,
     );
@@ -319,6 +329,8 @@ describe("ForumPanels", () => {
         identity={identities[0]!}
         documentId="post_7"
         baseRevision={18}
+        chapterId="chapter-0"
+        chapterTitle="楔子 · 雨季之前"
         onRestore={onRestore}
       />,
     );
