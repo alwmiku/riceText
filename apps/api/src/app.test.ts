@@ -156,6 +156,20 @@ describe("RiceText API", () => {
     expect(reviewed.statusCode).toBe(200);
     expect(reviewed.json().suggestion.status).toBe("approved");
     expect(reviewed.json().document.revision).toBe(2);
+    const persisted = await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+    });
+    expect(JSON.stringify(persisted.json().content)).toContain("海潮声");
+    const suggestions = await app.inject({
+      method: "GET",
+      url: "/api/forum/documents/demo-post/suggestions",
+      headers: { "x-user-id": "author" },
+    });
+    expect(
+      suggestions.json().items.find((item: { id: string }) => item.id === submitted.json().id),
+    ).toMatchObject({ status: "approved", reviewerId: "author" });
     const history = await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions" });
     expect(history.json().items[0].operation).toBe("suggestion");
   });

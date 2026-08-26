@@ -18,7 +18,7 @@ import { useMemo, useState } from "react";
 import { useAppContext } from "../app-context";
 import { Badge, Button, Dialog } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
-import { ProofreadView } from "../features/proofread/ProofreadView";
+import { ProofreadWorkspace } from "../features/proofread/ProofreadWorkspace";
 import { ReaderSuggestion } from "../features/proofread/ReaderSuggestion";
 import { TocSidebar } from "../features/viewer/TocSidebar";
 import { getCommentThread, getDocument, listSuggestions } from "../lib/api";
@@ -69,7 +69,11 @@ export default function ReadPage() {
   // 目录联动：只取当前章的校订，其他章节的校订不会显示在本章视图中。
   const chapterId = chapters[activeIndex]?.id ?? "";
   const chapterSuggestions = useMemo(
-    () => suggestions.filter((suggestion) => suggestion.chapterId === chapterId),
+    () =>
+      suggestions.filter(
+        (suggestion) =>
+          suggestion.chapterId === chapterId && suggestion.status === "pending",
+      ),
     [suggestions, chapterId],
   );
   const lines = useMemo(
@@ -188,11 +192,13 @@ export default function ReadPage() {
             )}
           </div>
           {proofreading && canProofread ? (
-            <ProofreadView
+            <ProofreadWorkspace
+              documentId={document.id}
+              baseRevision={document.revision}
               documentTitle={document.title}
+              chapterId={chapterId}
               chapterTitle={chapters[activeIndex]?.title ?? "正文"}
               lines={lines}
-              suggestions={chapterSuggestions}
               onExit={() => setProofreading(false)}
             />
           ) : identity.role === "reader" ? (

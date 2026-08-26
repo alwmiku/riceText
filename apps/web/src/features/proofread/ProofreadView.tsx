@@ -1,4 +1,4 @@
-import { GitCompareArrows, X } from "lucide-react";
+import { Check, GitCompareArrows, X } from "lucide-react";
 import { useMemo } from "react";
 import { Button } from "../../components/ui";
 import type { ForumSuggestion } from "../../lib/api";
@@ -60,7 +60,17 @@ function PlainRow({ lineNo, line }: { lineNo: number; line: string }) {
 }
 
 /** 修改行：原文在上、校订后在下两行（字级高亮），下方附校订说明。 */
-function ChangedRow({ row }: { row: ProofreadLine }) {
+function ChangedRow({
+  row,
+  busyId,
+  onReview,
+}: {
+  row: ProofreadLine;
+  busyId?: string | null | undefined;
+  onReview?:
+    | ((id: string, decision: "approve" | "reject") => void)
+    | undefined;
+}) {
   const ops = row.ops;
   if (!ops) return null;
   const deletionSide = ops.filter((op) => op.type !== "insert");
@@ -81,19 +91,23 @@ function ChangedRow({ row }: { row: ProofreadLine }) {
           <DiffText ops={insertionSide} />
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-[#eef0f1] bg-white px-2 py-1 text-[11px] text-muted-foreground">
+      <div className="grid gap-2 border-t border-[#eef0f1] bg-white px-2 py-2 text-[11px] text-muted-foreground">
         {row.suggestions.map((suggestion) => (
-          <span key={suggestion.id} className="flex items-center gap-1">
+          <div
+            key={suggestion.id}
+            className="flex flex-wrap items-center gap-x-2 gap-y-1"
+          >
             <span className="font-semibold text-[#176e66]">
               第 {row.lineNo} 行
             </span>
-            <span className="text-[#8a939c]">
+            <span className="min-w-0 flex-1 text-[#8a939c]">
               {suggestion.authorId}：{suggestion.reason || "无说明"}
             </span>
             <span
               className={cn(
                 "rounded px-1 py-px text-[10px] font-semibold",
-                suggestion.status === "pending" && "bg-[#fff6e0] text-[#8a5a10]",
+                suggestion.status === "pending" &&
+                  "bg-[#fff6e0] text-[#8a5a10]",
                 suggestion.status === "approved" &&
                   "bg-[#e2f4ec] text-[#176e66]",
                 suggestion.status === "rejected" &&
@@ -103,10 +117,33 @@ function ChangedRow({ row }: { row: ProofreadLine }) {
               {suggestion.status === "pending"
                 ? "待审"
                 : suggestion.status === "approved"
-                  ? "已采纳"
+                  ? "已接受"
                   : "已拒绝"}
             </span>
-          </span>
+            {suggestion.status === "pending" && onReview ? (
+              <div className="ml-auto flex gap-1.5">
+                <Button
+                  size="sm"
+                  className="h-7 px-2.5"
+                  disabled={busyId !== null && busyId !== undefined}
+                  onClick={() => onReview(suggestion.id, "approve")}
+                >
+                  <Check size={12} />
+                  接受
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2.5"
+                  disabled={busyId !== null && busyId !== undefined}
+                  onClick={() => onReview(suggestion.id, "reject")}
+                >
+                  <X size={12} />
+                  拒绝
+                </Button>
+              </div>
+            ) : null}
+          </div>
         ))}
       </div>
     </div>
@@ -125,12 +162,18 @@ export function ProofreadView({
   chapterTitle,
   lines,
   suggestions,
+  busyId,
+  onReview,
   onExit,
 }: {
   documentTitle: string;
   chapterTitle: string;
   lines: readonly string[];
   suggestions: readonly ForumSuggestion[];
+  busyId?: string | null | undefined;
+  onReview?:
+    | ((id: string, decision: "approve" | "reject") => void)
+    | undefined;
   onExit: () => void;
 }) {
   const rows = useMemo<ProofreadLine[]>(
@@ -142,11 +185,14 @@ export function ProofreadView({
         );
         if (lineSuggestions.length === 0)
           return { lineNo, line, ops: null, suggestions: [] };
-        const target = applySuggestionsToLine(line, lineSuggestions);
+        const sourceLine =
+          lineSuggestions.find((suggestion) => suggestion.lineText)?.lineText ??
+          line;
+        const target = applySuggestionsToLine(sourceLine, lineSuggestions);
         return {
           lineNo,
-          line,
-          ops: diffChars(line, target),
+          line: sourceLine,
+          ops: diffChars(sourceLine, target),
           suggestions: lineSuggestions,
         };
       }),
@@ -161,9 +207,13 @@ export function ProofreadView({
       ),
     [suggestions, lines.length],
   );
-  const pendingCount = activeSuggestions.filter(
-    (suggestion) => suggestion.status === "pending",
-  ).length;
+  const suggestionStatus = activeSuggestions[0]?.status ?? "pending";
+  const statusLabel =
+    suggestionStatus === "approved"
+      ? "已接受"
+      : suggestionStatus === "rejected"
+        ? "已拒绝"
+        : "待审";
   const changedLineNos = rows
     .filter((row) => row.ops !== null)
     .map((row) => row.lineNo);
@@ -185,7 +235,7 @@ export function ProofreadView({
           </p>
           <span className="shrink-0 rounded bg-[#e7f5f2] px-1.5 py-px text-[10px] font-semibold text-[#176e66]">
             {activeSuggestions.length > 0
-              ? `${changedLineNos.length} 行 ${pendingCount} 处待审`
+              ? `${changedLineNos.length} 行 ${activeSuggestions.length} 处${statusLabel}`
               : "本章暂无校订"}
           </span>
         </div>
@@ -215,7 +265,12 @@ export function ProofreadView({
                   line={row.line}
                 />
               ) : (
-                <ChangedRow key={row.lineNo} row={row} />
+                <ChangedRow
+                  key={row.lineNo}
+                  row={row}
+                  busyId={busyId}
+                  onReview={onReview}
+                />
               ),
             )}
           </div>
