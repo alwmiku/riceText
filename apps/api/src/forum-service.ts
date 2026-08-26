@@ -7,6 +7,7 @@ import type {
 } from "@ricetext/contracts";
 import {
   applyStepsToDocument,
+  diffDocuments,
   sharedSchema,
   type JSONContent,
 } from "@ricetext/document-core";
@@ -419,18 +420,29 @@ export class ForumService {
       throw new HttpError(409, "SUGGESTION_BATCH_REVIEWED", "批量校订已审核");
     let document: DocumentEnvelope | null = null;
     if (decision === "approve") {
-      if (baseRevision !== row.base_revision)
+      const current = this.#documents.get(row.document_id);
+      const merged = expectedBatchDocument(
+        current.content,
+        row.chapter_id,
+        JSON.parse(row.before_content_json) as TiptapDocument,
+        JSON.parse(row.after_content_json) as TiptapDocument,
+      );
+      if (!merged)
         throw new HttpError(
           409,
-          "REVISION_CONFLICT",
-          "正文已变化，整章批次需要读者基于最新版本重新提交",
-          { currentRevision: baseRevision, baseRevision: row.base_revision },
+          "BATCH_CHAPTER_CONFLICT",
+          "当前章节已变化，无法安全应用整章批次",
+          { currentRevision: current.revision, batchRevision: row.base_revision },
         );
+      const rebasedSteps = diffDocuments(
+        current.content as unknown as JSONContent,
+        merged as unknown as JSONContent,
+      ) as unknown as Array<Record<string, unknown>>;
       document = this.#documents.applySuggestionBatch(
         row.document_id,
-        row.base_revision,
+        baseRevision,
         row.id,
-        JSON.parse(row.steps_json) as Array<Record<string, unknown>>,
+        rebasedSteps,
         row.chapter_id,
         identity.id,
       );

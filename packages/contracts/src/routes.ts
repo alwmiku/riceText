@@ -218,7 +218,7 @@ export const contractRoutes: readonly ContractRoute[] = [
   },
   {
     operationId: "reviewSuggestionBatch", method: "PATCH", path: "/api/forum/suggestion-batches/:batchId", tags: ["论坛业务"], implementationStatus: "implemented",
-    summary: "原子审核整章批量校订", description: "接受时一次应用全部 steps 并只创建一个 revision；拒绝不修改正文。",
+    summary: "原子审核整章批量校订", description: "接受时基于最新正文安全重放当前章节的全部修改并只创建一个 revision；其他章节变化不会阻塞，当前章节变化返回冲突；拒绝不修改正文。",
     params: suggestionBatchParams, body: ReviewSuggestionBatchRequestSchema, responses: { 200: { description: "审核后的批次和可选新文档修订。", schema: z.object({ batch: SuggestionBatchSchema, document: DocumentEnvelopeSchema.nullable() }).strict() }, 403: { description: "当前身份不可审核。", schema: ApiErrorSchema }, 409: { description: "批次已审核或基线过期。", schema: ApiErrorSchema }, 422: { description: "steps 无法应用。", schema: ApiErrorSchema } },
   },
   {

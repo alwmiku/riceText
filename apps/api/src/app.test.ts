@@ -247,21 +247,40 @@ describe("RiceText API", () => {
       reason: "统一两处措辞",
     });
 
+    const unrelated = structuredClone(current.content) as {
+      content: Array<{ content?: Array<{ text?: string }> }>;
+    };
+    unrelated.content[0]!.content![0]!.text = "雾港来信（作者补充）";
+    const savedElsewhere = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "unrelated-before-batch-review",
+        content: unrelated,
+      },
+    });
+    expect(savedElsewhere.statusCode, savedElsewhere.body).toBe(201);
+    expect(savedElsewhere.json().revision).toBe(2);
+
     const reviewed = await app.inject({
       method: "PATCH",
       url: `/api/forum/suggestion-batches/${submitted.json().id}`,
       headers: { "x-user-id": "author" },
-      payload: { decision: "approve", baseRevision: 1 },
+      payload: { decision: "approve", baseRevision: 2 },
     });
     expect(reviewed.statusCode, reviewed.body).toBe(200);
     expect(reviewed.json().batch.status).toBe("approved");
-    expect(reviewed.json().document.revision).toBe(2);
+    expect(reviewed.json().document.revision).toBe(3);
 
     const persisted = await app.inject({
       method: "GET",
       url: "/api/documents/demo-post",
     });
     const serialized = JSON.stringify(persisted.json().content);
+    expect(serialized).toContain("雾港来信（作者补充）");
     expect(serialized).toContain("涌上来");
     expect(serialized).toContain("崭新的潮汐表");
     const history = await app.inject({
@@ -269,7 +288,7 @@ describe("RiceText API", () => {
       url: "/api/documents/demo-post/revisions",
     });
     expect(history.json().items[0]).toMatchObject({
-      revision: 2,
+      revision: 3,
       operation: "suggestion",
     });
   });
