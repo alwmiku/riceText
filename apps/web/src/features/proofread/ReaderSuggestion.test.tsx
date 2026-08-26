@@ -43,11 +43,40 @@ function selectText(node: Node, text: string) {
   const selection = window.getSelection()!;
   selection.removeAllRanges();
   selection.addRange(range);
+  return range;
 }
 
 describe("ReaderSuggestion", () => {
   beforeEach(() => {
     mocks.submitSuggestion.mockReset().mockResolvedValue({ id: "suggestion-1" });
+  });
+
+  it("移动端 selectionchange 后在选区附近显示浮动修订按钮", async () => {
+    renderSuggestion();
+    const paragraph = screen.getByText("灯塔正好熄灭。");
+    const range = selectText(paragraph.firstChild!, "正好");
+    Object.defineProperty(range, "getBoundingClientRect", {
+      value: () => ({
+        top: 240,
+        bottom: 268,
+        left: 120,
+        right: 180,
+        width: 60,
+        height: 28,
+        x: 120,
+        y: 240,
+        toJSON: () => ({}),
+      }),
+    });
+
+    document.dispatchEvent(new Event("selectionchange"));
+    const action = await screen.findByRole("button", {
+      name: "提交所选文字修订：正好",
+    });
+    expect(action).toHaveClass("fixed");
+    expect(action).toHaveStyle({ top: "196px", left: "150px" });
+    fireEvent.click(action);
+    expect(screen.getByRole("dialog", { name: "提交修订" })).toBeInTheDocument();
   });
 
   it("把阅读器选区作为带章节和行定位的修订提交", async () => {

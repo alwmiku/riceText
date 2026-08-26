@@ -1,6 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Send } from "lucide-react";
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Button, Dialog } from "../../components/ui";
 import { submitSuggestion } from "../../lib/api";
 
@@ -30,6 +37,10 @@ export function ReaderSuggestion({
   const queryClient = useQueryClient();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState<SelectionDraft | null>(null);
+  const [selectionAnchor, setSelectionAnchor] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const [open, setOpen] = useState(false);
   const [suggestedText, setSuggestedText] = useState("");
   const [reason, setReason] = useState("");
@@ -37,7 +48,7 @@ export function ReaderSuggestion({
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
 
-  const captureSelection = () => {
+  const captureSelection = useCallback(() => {
     const selection = window.getSelection();
     const root = rootRef.current;
     if (!selection || selection.isCollapsed || !root || selection.rangeCount === 0)
@@ -61,6 +72,20 @@ export function ReaderSuggestion({
         (startElement ? block.contains(startElement) : false),
     );
     const lineNo = lineIndex >= 0 ? lineIndex + 1 : 0;
+    const getRect = (
+      range as Range & { getBoundingClientRect?: () => DOMRect }
+    ).getBoundingClientRect;
+    if (typeof getRect === "function") {
+      const rect = getRect.call(range);
+      if (rect.width > 0 || rect.height > 0) {
+        const left = Math.min(
+          window.innerWidth - 72,
+          Math.max(72, rect.left + rect.width / 2),
+        );
+        const top = rect.top >= 52 ? rect.top - 44 : rect.bottom + 8;
+        setSelectionAnchor({ top, left });
+      }
+    }
     setDraft({
       fromText,
       lineNo,
@@ -68,7 +93,22 @@ export function ReaderSuggestion({
     });
     setSuggestedText(fromText);
     setNotice("");
-  };
+  }, [lines]);
+
+  // 桌面主要触发 mouseup，移动端拖动系统选区手柄时主要触发 selectionchange。
+  // 使用动画帧合并连续事件，既跟随最终选区，又不阻止浏览器原生复制/查询菜单。
+  useEffect(() => {
+    let frame = 0;
+    const handleSelectionChange = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(captureSelection);
+    };
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("selectionchange", handleSelectionChange);
+    };
+  }, [captureSelection]);
 
   const openDialog = () => {
     if (!draft) return;
@@ -104,6 +144,7 @@ export function ReaderSuggestion({
       });
       setOpen(false);
       setDraft(null);
+      setSelectionAnchor(null);
       setNotice("修订已提交给作者审核");
       window.getSelection()?.removeAllRanges();
     } catch (cause) {
@@ -114,8 +155,13 @@ export function ReaderSuggestion({
   };
 
   return (
-    <div ref={rootRef} onMouseUp={captureSelection} onKeyUp={captureSelection}>
-      {draft ? (
+    <div
+      ref={rootRef}
+      onMouseUp={captureSelection}
+      onKeyUp={captureSelection}
+      onTouchEnd={() => window.requestAnimationFrame(captureSelection)}
+    >
+      {draft && !selectionAnchor ? (
         <div className="mb-5 flex items-center gap-3 rounded-md border border-[#add4cb] bg-[#edf8f5] px-3 py-2 text-xs text-[#185f57]">
           <span className="min-w-0 flex-1 truncate">
             已选择「{draft.fromText}」
@@ -126,6 +172,23 @@ export function ReaderSuggestion({
             提交修订
           </Button>
         </div>
+      ) : null}
+      {draft && selectionAnchor ? (
+        <Button
+          size="sm"
+          className="fixed z-[45] h-9 shadow-lg"
+          style={{
+            top: selectionAnchor.top,
+            left: selectionAnchor.left,
+            transform: "translateX(-50%)",
+          }}
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={openDialog}
+          aria-label={`提交所选文字修订：${draft.fromText}`}
+        >
+          <Send size={13} />
+          提交修订
+        </Button>
       ) : null}
       {notice ? (
         <p

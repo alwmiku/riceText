@@ -63,6 +63,35 @@ test('作者编辑先自动保存本地，点击保存后才上传最小 revisio
   expect(await status.textContent()).not.toBe(initialStatus);
 });
 
+test('移动端选择正文后显示浮动修订入口', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '仅验证移动端 selectionchange 与浮动操作入口');
+  await page.addInitScript(() => {
+    localStorage.setItem('ricetext:identity', 'user_reader');
+  });
+  await page.goto('/read');
+  const paragraph = page.locator('.rt-viewer .ProseMirror p').filter({ hasText: '潮声' }).first();
+  await expect(paragraph).toBeVisible();
+  await paragraph.evaluate((element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node && !node.textContent?.includes('潮声')) node = walker.nextNode();
+    if (!node?.textContent) throw new Error('未找到可选择的潮声文本');
+    const start = node.textContent.indexOf('潮声');
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + 2);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+
+  const action = page.getByRole('button', { name: '提交所选文字修订：潮声' });
+  await expect(action).toBeVisible();
+  await action.click();
+  await expect(page.getByRole('dialog', { name: '提交修订' })).toBeVisible();
+});
+
 test('长文本原文对照基于 pretext 测量与 react-window 虚拟滚动', async ({ page, isMobile }) => {
   test.skip(isMobile, '长文本工作台为桌面三栏布局，移动端不在本次验收范围');
   // 第一章正文 3000 字：跨越 2 个虚拟块，章尾可滚动离开首屏。
