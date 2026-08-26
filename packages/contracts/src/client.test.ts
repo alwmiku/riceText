@@ -69,6 +69,20 @@ describe("createApiClient", () => {
       lineNo: 3,
       lineText: "雾线越过长街。",
     });
+    await client.listSuggestionBatches("demo-post");
+    await client.createSuggestionBatch("demo-post", {
+      baseRevision: 2,
+      chapterId: "chapter-1",
+      chapterTitle: "第一章 · 潮汐表",
+      beforeContent: content,
+      afterContent: content,
+      steps: [{ stepType: "replace", from: 1, to: 2 }],
+      reason: "批量修改",
+    });
+    await client.reviewSuggestionBatch("batch-1", {
+      decision: "approve",
+      baseRevision: 2,
+    });
     await client.getAttachment("attachment-sample");
     await client.purchaseAttachment("attachment-sample");
     await client.getPoll("poll-route");
@@ -79,7 +93,7 @@ describe("createApiClient", () => {
     const calls = fetchMock.mock.calls as unknown as Array<
       [string, RequestInit]
     >;
-    expect(calls).toHaveLength(27);
+    expect(calls).toHaveLength(30);
     expect(calls[0]?.[0]).toBe(
       "https://forum.example.test/api/documents/forum post",
     );
@@ -96,7 +110,7 @@ describe("createApiClient", () => {
     expect(calls[14]?.[0]).toBe(
       "https://forum.example.test/api/forum/users/search?q=%E6%9E%97&friendsOnly=false",
     );
-    expect(calls[26]?.[0]).toBe(
+    expect(calls[29]?.[0]).toBe(
       "https://forum.example.test/api/forum/polls/poll-route/votes?cursor=vote-1",
     );
 
@@ -143,6 +157,18 @@ describe("createApiClient", () => {
       chapterId: "chapter-1",
       lineNo: 3,
     });
+    expect(calls[21]?.[0]).toBe(
+      "https://forum.example.test/api/forum/documents/demo-post/suggestion-batches",
+    );
+    expect(calls[22]?.[1].method).toBe("POST");
+    expect(JSON.parse(String(calls[22]?.[1].body))).toMatchObject({
+      baseRevision: 2,
+      steps: [{ stepType: "replace", from: 1, to: 2 }],
+    });
+    expect(calls[23]?.[0]).toBe(
+      "https://forum.example.test/api/forum/suggestion-batches/batch-1",
+    );
+    expect(calls[23]?.[1].method).toBe("PATCH");
   });
 
   it("把结构化失败响应转换为 ApiClientError", async () => {

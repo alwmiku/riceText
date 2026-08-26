@@ -14,6 +14,7 @@ import type {
   PurchaseAttachmentResponseSchema,
   ResolveMentionResponseSchema,
   ResolveReplyGateResponseSchema,
+  SuggestionBatchSchema,
   SuggestionSchema,
 } from "./schemas.js";
 
@@ -92,6 +93,12 @@ export interface RiceTextApiClient {
   createSuggestion(documentId: string, body: { fromText: string; toText: string; reason: string; chapterId: string; chapterTitle: string; lineNo: number; lineText: string }, signal?: AbortSignal): Promise<z.infer<typeof SuggestionSchema>>;
   /** 审核纠错建议；approve 时服务端替换正文并创建真实修订。 */
   reviewSuggestion(suggestionId: string, body: { decision: "approve" | "reject"; baseRevision: number }, signal?: AbortSignal): Promise<{ suggestion: z.infer<typeof SuggestionSchema>; document: DocumentEnvelope | null }>; 
+  /** 读取整章多处修改合并成的校订批次。 */
+  listSuggestionBatches(documentId: string, signal?: AbortSignal): Promise<{ items: Array<z.infer<typeof SuggestionBatchSchema>> }>;
+  /** 提交一个整章校订批次。 */
+  createSuggestionBatch(documentId: string, body: { baseRevision: number; chapterId: string; chapterTitle: string; beforeContent: DocumentEnvelope["content"]; afterContent: DocumentEnvelope["content"]; steps: Array<Record<string, unknown>>; reason: string }, signal?: AbortSignal): Promise<z.infer<typeof SuggestionBatchSchema>>;
+  /** 原子审核整章校订批次。 */
+  reviewSuggestionBatch(batchId: string, body: { decision: "approve" | "reject"; baseRevision: number }, signal?: AbortSignal): Promise<{ batch: z.infer<typeof SuggestionBatchSchema>; document: DocumentEnvelope | null }>;
   /** 读取附件价格和当前购买权益。 */
   getAttachment(id: string, signal?: AbortSignal): Promise<z.infer<typeof AttachmentSchema>>;
   /** 幂等购买附件并执行金币分账。 */
@@ -154,6 +161,9 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     listSuggestions: (id, signal) => request(`/api/forum/documents/${id}/suggestions`, { signal }),
     createSuggestion: (id, body, signal) => request(`/api/forum/documents/${id}/suggestions`, { method: "POST", body: json(body), signal }),
     reviewSuggestion: (id, body, signal) => request(`/api/forum/suggestions/${id}`, { method: "PATCH", body: json(body), signal }),
+    listSuggestionBatches: (id, signal) => request(`/api/forum/documents/${id}/suggestion-batches`, { signal }),
+    createSuggestionBatch: (id, body, signal) => request(`/api/forum/documents/${id}/suggestion-batches`, { method: "POST", body: json(body), signal }),
+    reviewSuggestionBatch: (id, body, signal) => request(`/api/forum/suggestion-batches/${id}`, { method: "PATCH", body: json(body), signal }),
     getAttachment: (id, signal) => request(`/api/forum/attachments/${id}`, { signal }),
     purchaseAttachment: (id, signal) => request(`/api/forum/attachments/${id}/purchase`, { method: "POST", signal }),
     getPoll: (id, signal) => request(`/api/forum/polls/${id}`, { signal }),

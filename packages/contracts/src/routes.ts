@@ -9,6 +9,7 @@ import {
   CommentThreadSchema,
   CreateCommentReplyRequestSchema,
   CreateDiceRollRequestSchema,
+  CreateSuggestionBatchRequestSchema,
   CreateSuggestionRequestSchema,
   CursorQuerySchema,
   ForumUserSchema,
@@ -24,11 +25,13 @@ import {
   ResolveReplyGateRequestSchema,
   ResolveReplyGateResponseSchema,
   RevisionPageSchema,
+  ReviewSuggestionBatchRequestSchema,
   ReviewSuggestionRequestSchema,
   RollbackDocumentRequestSchema,
   SaveNovelChapterRequestSchema,
   SaveNovelChapterResponseSchema,
   SubmitPollVoteRequestSchema,
+  SuggestionBatchSchema,
   SuggestionSchema,
   SyncNovelChaptersRequestSchema,
   SyncNovelChaptersResponseSchema,
@@ -82,6 +85,7 @@ const threadParams = z.object({ documentId: EntityIdSchema, anchorId: EntityIdSc
 const commentQuery = CursorQuerySchema.extend({ sort: CommentSortSchema.default("score") }).strict();
 const replyParams = z.object({ replyId: EntityIdSchema }).strict();
 const suggestionParams = z.object({ suggestionId: EntityIdSchema }).strict();
+const suggestionBatchParams = z.object({ batchId: EntityIdSchema }).strict();
 const userSearchQuery = z.object({ q: z.string().max(80).default(""), friendsOnly: z.coerce.boolean().default(false) }).strict();
 const attachmentParams = z.object({ attachmentId: EntityIdSchema }).strict();
 const pollParams = z.object({ pollId: EntityIdSchema }).strict();
@@ -201,6 +205,21 @@ export const contractRoutes: readonly ContractRoute[] = [
     operationId: "reviewSuggestion", method: "PATCH", path: "/api/forum/suggestions/:suggestionId", tags: ["论坛业务"], implementationStatus: "implemented",
     summary: "审核纠错建议", description: "仅 author/moderator。approve 会替换当前正文第一次匹配文字并创建 operation=suggestion 的真实修订；reject 只更新建议状态。",
     params: suggestionParams, body: ReviewSuggestionRequestSchema, responses: { 200: { description: "审核后的建议和可选新文档修订。", schema: z.object({ suggestion: SuggestionSchema, document: DocumentEnvelopeSchema.nullable() }).strict() }, 403: { description: "当前身份不可审核。", schema: ApiErrorSchema }, 404: { description: "建议不存在或待替换文字已不存在。", schema: ApiErrorSchema }, 409: { description: "建议已审核或 baseRevision 过期。", schema: ApiErrorSchema } },
+  },
+  {
+    operationId: "listSuggestionBatches", method: "GET", path: "/api/forum/documents/:documentId/suggestion-batches", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "读取整章批量校订", description: "作者与版主可查看全部批次；读者仅看到自己提交的批次。",
+    params: documentParams, responses: { 200: { description: "批量校订列表。", schema: z.object({ items: z.array(SuggestionBatchSchema) }).strict() }, 404: { description: "文档不存在。", schema: ApiErrorSchema } },
+  },
+  {
+    operationId: "createSuggestionBatch", method: "POST", path: "/api/forum/documents/:documentId/suggestion-batches", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "提交整章批量校订", description: "把整章编辑产生的多个 ProseMirror steps 合并为一个待审核批次。",
+    params: documentParams, body: CreateSuggestionBatchRequestSchema, responses: { 201: { description: "pending 状态批次。", schema: SuggestionBatchSchema }, 409: { description: "提交基线已过期。", schema: ApiErrorSchema }, 422: { description: "steps 与编辑后快照不一致。", schema: ApiErrorSchema } },
+  },
+  {
+    operationId: "reviewSuggestionBatch", method: "PATCH", path: "/api/forum/suggestion-batches/:batchId", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "原子审核整章批量校订", description: "接受时一次应用全部 steps 并只创建一个 revision；拒绝不修改正文。",
+    params: suggestionBatchParams, body: ReviewSuggestionBatchRequestSchema, responses: { 200: { description: "审核后的批次和可选新文档修订。", schema: z.object({ batch: SuggestionBatchSchema, document: DocumentEnvelopeSchema.nullable() }).strict() }, 403: { description: "当前身份不可审核。", schema: ApiErrorSchema }, 409: { description: "批次已审核或基线过期。", schema: ApiErrorSchema }, 422: { description: "steps 无法应用。", schema: ApiErrorSchema } },
   },
   {
     operationId: "searchMentionUsers", method: "GET", path: "/api/forum/users/search", tags: ["论坛业务"], implementationStatus: "implemented",

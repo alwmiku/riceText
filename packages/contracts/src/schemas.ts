@@ -430,7 +430,8 @@ export type Suggestion = z.infer<typeof SuggestionSchema>;
 export const CreateSuggestionRequestSchema = z
   .object({
     fromText: z.string().min(1),
-    toText: z.string().min(1),
+    /** 空字符串表示删除所选原文。 */
+    toText: z.string(),
     reason: z.string().max(500).default(""),
     /** 校订定位：章节 ID 与行信息；旧客户端可不传，服务端按默认值存储。 */
     chapterId: z.string().default(""),
@@ -446,6 +447,42 @@ export const ReviewSuggestionRequestSchema = z
     baseRevision: z.number().int().nonnegative(),
   })
   .strict();
+
+/** 整章多处修改合并成的一次批量校订。 */
+export const SuggestionBatchSchema = z
+  .object({
+    id: EntityIdSchema,
+    documentId: EntityIdSchema,
+    chapterId: z.string(),
+    chapterTitle: z.string(),
+    baseRevision: z.number().int().nonnegative(),
+    beforeContent: TiptapDocumentSchema,
+    afterContent: TiptapDocumentSchema,
+    steps: z.array(ProseMirrorStepSchema).min(1).max(1_000),
+    reason: z.string(),
+    status: z.enum(["pending", "approved", "rejected"]),
+    authorId: EntityIdSchema,
+    reviewerId: EntityIdSchema.nullable(),
+    createdAt: DateTimeSchema,
+  })
+  .strict();
+export type SuggestionBatch = z.infer<typeof SuggestionBatchSchema>;
+
+/** 读者提交整章批量校订的请求。 */
+export const CreateSuggestionBatchRequestSchema = z
+  .object({
+    baseRevision: z.number().int().nonnegative(),
+    chapterId: z.string().min(1),
+    chapterTitle: z.string().min(1),
+    beforeContent: TiptapDocumentSchema,
+    afterContent: TiptapDocumentSchema,
+    steps: z.array(ProseMirrorStepSchema).min(1).max(1_000),
+    reason: z.string().max(500).default(""),
+  })
+  .strict();
+
+/** 作者或版主原子审核一个批量校订。 */
+export const ReviewSuggestionBatchRequestSchema = ReviewSuggestionRequestSchema;
 
 /** @ 搜索结果。 */
 export const MentionSearchResultSchema = z
