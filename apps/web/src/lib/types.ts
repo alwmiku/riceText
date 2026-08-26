@@ -57,7 +57,7 @@ export interface RevisionSummary {
 
 /** 编辑器保存状态，供宿主页面显示而不依赖实现细节。 */
 export type SaveState =
-  "loading" | "saved" | "dirty" | "saving" | "conflict" | "offline" | "error";
+  "loading" | "saved" | "local-saved" | "dirty" | "saving" | "conflict" | "offline" | "error";
 
 /** 用于本地权限、金币和回复状态的身份。 */
 export interface SeedIdentity {

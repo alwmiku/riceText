@@ -41,19 +41,26 @@ test('阅读页是静态显示器并支持黑幕与间贴', async ({ page, isMob
   }
 });
 
-test('作者编辑后通过 revision 自动保存', async ({ page, isMobile }) => {
+test('作者编辑先自动保存本地，点击保存后才上传最小 revision', async ({ page, isMobile }) => {
   // 两个 worker 并行保存同一文档会产生 revision 竞争；流程与布局无关，仅桌面验证。
-  test.skip(isMobile, '自动保存流程与布局无关，移动端跳过以避免并行保存竞争');
+  test.skip(isMobile, '保存流程与布局无关，移动端跳过以避免并行保存竞争');
   await page.goto('/compose');
   const status = page.locator('.save-status');
-  await expect(status).toContainText('已保存');
+  await expect(status).toContainText('已保存到服务器');
+  const initialStatus = await status.textContent();
+  const initialRevision = initialStatus?.match(/v\d+/)?.[0] ?? "";
   await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'true');
   const editor = page.locator('.ProseMirror');
   await editor.click();
   await page.keyboard.press('Control+End');
-  await page.keyboard.type(' 自动保存验收');
-  await expect(status).toContainText(/正在保存|等待保存/);
-  await expect(status).toContainText('已保存', { timeout: 10_000 });
+  await page.keyboard.type(' 本地自动保存验收');
+  await expect(status).toContainText('等待保存');
+  await expect(status).toContainText('已自动保存到本地', { timeout: 10_000 });
+  expect(await status.textContent()).toContain(initialRevision);
+
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(status).toContainText('已保存到服务器', { timeout: 10_000 });
+  expect(await status.textContent()).not.toBe(initialStatus);
 });
 
 test('长文本原文对照基于 pretext 测量与 react-window 虚拟滚动', async ({ page, isMobile }) => {

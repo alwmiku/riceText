@@ -7,6 +7,10 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getDocument, restoreRevision } from "../../lib/api";
+import {
+  clearLocalDocumentDraft,
+  loadLocalDocumentDraft,
+} from "../../lib/local-document-draft-storage";
 import { mergeChapter } from "../../lib/chapters";
 import { defaultDocument } from "../../lib/seed";
 import type { DocumentEnvelope, RichTextNode } from "../../lib/types";
@@ -58,10 +62,16 @@ export function useComposeDocument(
     if (generationRef.current !== 0) return;
     if (data === document) return;
     setDocument(data);
-    contentRef.current = data.content;
-    generationRef.current = 0;
-    setContent(data.content);
-  }, [data, document]);
+    const draft = loadLocalDocumentDraft(documentId);
+    const restoreDraft = draft?.baseRevision === data.revision;
+    if (draft && !restoreDraft) clearLocalDocumentDraft(documentId);
+    const nextContent = restoreDraft ? draft.content : data.content;
+    const nextGeneration = restoreDraft ? 1 : 0;
+    contentRef.current = nextContent;
+    generationRef.current = nextGeneration;
+    setContent(nextContent);
+    setGeneration(nextGeneration);
+  }, [data, document, documentId]);
 
   const replaceContent = useCallback((next: RichTextNode) => {
     contentRef.current = next;

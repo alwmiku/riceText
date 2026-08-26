@@ -3,9 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiModule from "../../lib/api";
 import { defaultDocument } from "../../lib/seed";
 import type { DocumentEnvelope, RichTextNode } from "../../lib/types";
+import { ApiError } from "../../lib/api";
 import { useAutosave } from "./useAutosave";
 
-const { saveDocumentStepsMock } = vi.hoisted(() => ({ saveDocumentStepsMock: vi.fn() }));
+const { saveDocumentStepsMock } = vi.hoisted(() => ({
+  saveDocumentStepsMock: vi.fn(),
+}));
 
 vi.mock("../../lib/api", async () => {
   const actual = await vi.importActual<typeof ApiModule>("../../lib/api");
@@ -15,37 +18,39 @@ vi.mock("../../lib/api", async () => {
 const initialContent = defaultDocument.content;
 const changedContent: RichTextNode = {
   type: "doc",
-  content: [
-    { type: "paragraph", content: [{ type: "text", text: "changed" }] },
-  ],
+  content: [{ type: "paragraph", content: [{ type: "text", text: "changed" }] }],
+};
+const newestContent: RichTextNode = {
+  type: "doc",
+  content: [{ type: "paragraph", content: [{ type: "text", text: "newest" }] }],
 };
 
 function savedDocument(
   revision: number,
+  content: RichTextNode = changedContent,
   storage: DocumentEnvelope["storage"] = "server",
 ): DocumentEnvelope {
   return {
     ...defaultDocument,
     revision,
     savedAt: `2026-08-20T00:00:0${revision % 10}.000Z`,
-    content: changedContent,
+    content,
     storage,
   };
 }
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+  const promise = new Promise<T>((resolvePromise) => {
     resolve = resolvePromise;
-    reject = rejectPromise;
   });
-  return { promise, resolve, reject };
+  return { promise, resolve };
 }
 
 describe("useAutosave", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    localStorage.clear();
     saveDocumentStepsMock.mockReset();
   });
 
@@ -53,25 +58,32 @@ describe("useAutosave", () => {
     vi.useRealTimers();
   });
 
-  it("根据文档落点初始化状态，并在文档修订变化时同步", () => {
-    const local: DocumentEnvelope = {
-      ...defaultDocument,
-      storage: "local-cache",
-    };
+  it("停止输入 1.2 秒后只保存本地草稿，不请求服务器", async () => {
     const { result, rerender } = renderHook(
-      ({ document }) =>
-        useAutosave({ document, content: document.content, generation: 0 }),
-      { initialProps: { document: local } },
+      ({ content, generation }) =>
+        useAutosave({ document: defaultDocument, content, generation }),
+      { initialProps: { content: initialContent, generation: 0 } },
     );
-    expect(result.current.state).toBe("offline");
-    expect(result.current.revision).toBe(18);
 
-    rerender({ document: savedDocument(21) });
-    expect(result.current.state).toBe("saved");
-    expect(result.current.revision).toBe(21);
+    rerender({ content: changedContent, generation: 1 });
+    expect(result.current.state).toBe("dirty");
+    await act(async () => vi.advanceTimersByTimeAsync(1200));
+
+    expect(saveDocumentStepsMock).not.toHaveBeenCalled();
+    expect(result.current).toMatchObject({
+      state: "local-saved",
+      revision: defaultDocument.revision,
+    });
+    expect(
+      JSON.parse(localStorage.getItem("ricetext:draft:demo-post")!),
+    ).toMatchObject({
+      documentId: "demo-post",
+      baseRevision: defaultDocument.revision,
+      content: changedContent,
+    });
   });
 
-  it("停止输入 1.2 秒后保存并通知宿主", async () => {
+  it("显式 flush 才上传最小 steps，成功后清除本地草稿", async () => {
     const onSaved = vi.fn();
     saveDocumentStepsMock.mockResolvedValueOnce(savedDocument(19));
     const { result, rerender } = renderHook(
@@ -80,218 +92,145 @@ describe("useAutosave", () => {
           document: defaultDocument,
           content,
           generation,
+          chapterId: "chapter-1",
           onSaved,
         }),
       { initialProps: { content: initialContent, generation: 0 } },
     );
-
     rerender({ content: changedContent, generation: 1 });
-    expect(result.current.state).toBe("dirty");
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1199);
-    });
-    expect(saveDocumentStepsMock).not.toHaveBeenCalled();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
+    await act(async () => vi.advanceTimersByTimeAsync(1200));
 
+    await act(async () => {
+      expect(await result.current.flush()).toBe(true);
+    });
     expect(saveDocumentStepsMock).toHaveBeenCalledWith(
       "demo-post",
       expect.objectContaining({
         schemaVersion: 1,
         baseRevision: 18,
-        steps: expect.any(Array),
+        chapterId: "chapter-1",
         clientMutationId: expect.stringMatching(/^save_/),
+        steps: expect.any(Array),
       }),
     );
-    expect(result.current).toMatchObject({
-      state: "saved",
-      revision: 19,
-      savedAt: savedDocument(19).savedAt,
-    });
+    expect(saveDocumentStepsMock.mock.calls[0]![1].steps.length).toBeGreaterThan(0);
+    expect(result.current).toMatchObject({ state: "saved", revision: 19 });
+    expect(localStorage.getItem("ricetext:draft:demo-post")).toBeNull();
     expect(onSaved).toHaveBeenCalledWith(savedDocument(19));
   });
 
-  it("flush 立即保存，并正确标记本地缓存副本", async () => {
-    saveDocumentStepsMock.mockResolvedValueOnce(savedDocument(19, "local-cache"));
-    const { result, rerender } = renderHook(
-      ({ content, generation }) =>
-        useAutosave({ document: defaultDocument, content, generation }),
-      { initialProps: { content: initialContent, generation: 0 } },
+  it("正文没有服务器差异时显式保存不发送空请求", async () => {
+    const { result } = renderHook(() =>
+      useAutosave({
+        document: defaultDocument,
+        content: initialContent,
+        generation: 0,
+      }),
     );
-    rerender({ content: changedContent, generation: 1 });
-
     await act(async () => {
-      await result.current.flush();
+      expect(await result.current.flush()).toBe(true);
     });
-
-    expect(result.current.state).toBe("offline");
-    expect(result.current.revision).toBe(19);
+    expect(saveDocumentStepsMock).not.toHaveBeenCalled();
   });
 
-  it("把同时触发的保存串行化，并让后一请求使用新修订号", async () => {
+  it("多个显式保存请求串行执行，并让后一请求使用新的 revision", async () => {
     const first = deferred<DocumentEnvelope>();
-    const second = deferred<DocumentEnvelope>();
     saveDocumentStepsMock
       .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(second.promise);
+      .mockResolvedValueOnce(savedDocument(20, newestContent));
     const { result, rerender } = renderHook(
       ({ content, generation }) =>
         useAutosave({ document: defaultDocument, content, generation }),
-      { initialProps: { content: initialContent, generation: 0 } },
+      { initialProps: { content: changedContent, generation: 1 } },
     );
 
-    rerender({ content: changedContent, generation: 1 });
-    let firstFlush!: Promise<boolean>;
+    let firstSave!: Promise<boolean>;
     act(() => {
-      firstFlush = result.current.flush();
+      firstSave = result.current.flush(changedContent, 1);
     });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(saveDocumentStepsMock).toHaveBeenCalledTimes(1);
-
-    const newestContent: RichTextNode = {
-      type: "doc",
-      content: [
-        { type: "paragraph", content: [{ type: "text", text: "newest" }] },
-      ],
-    };
     rerender({ content: newestContent, generation: 2 });
-    let secondFlush!: Promise<boolean>;
+    let secondSave!: Promise<boolean>;
     act(() => {
-      secondFlush = result.current.flush();
+      secondSave = result.current.flush(newestContent, 2);
     });
     await act(async () => {
       await Promise.resolve();
     });
     expect(saveDocumentStepsMock).toHaveBeenCalledTimes(1);
 
-    first.resolve(savedDocument(19));
     await act(async () => {
-      await firstFlush;
-    });
-    await act(async () => {
-      await Promise.resolve();
+      first.resolve(savedDocument(19));
+      await firstSave;
+      await secondSave;
     });
     expect(saveDocumentStepsMock).toHaveBeenCalledTimes(2);
     expect(saveDocumentStepsMock.mock.calls[1]![1]).toMatchObject({
       baseRevision: 19,
-      steps: expect.any(Array),
     });
-
-    second.resolve({ ...savedDocument(20), content: newestContent });
-    await act(async () => {
-      await secondFlush;
-    });
-    expect(result.current).toMatchObject({ state: "saved", revision: 20 });
+    expect(result.current.revision).toBe(20);
   });
 
-  it("409 时保留本地内容，接受最新修订后可以继续保存", async () => {
-    const { ApiError } = await import("../../lib/api");
+  it("409 时保留本地草稿并进入冲突状态", async () => {
     saveDocumentStepsMock.mockRejectedValueOnce(
-      new ApiError("conflict", 409, { latestRevision: 25 }),
+      new ApiError("版本冲突", 409, {
+        currentRevision: 22,
+      }),
     );
-    const { result, rerender } = renderHook(
-      ({ content, generation }) =>
-        useAutosave({ document: defaultDocument, content, generation }),
-      { initialProps: { content: initialContent, generation: 0 } },
+    const { result } = renderHook(() =>
+      useAutosave({
+        document: defaultDocument,
+        content: changedContent,
+        generation: 1,
+      }),
     );
-    rerender({ content: changedContent, generation: 1 });
 
     await act(async () => {
-      await result.current.flush();
+      expect(await result.current.flush()).toBe(false);
     });
     expect(result.current.state).toBe("conflict");
     expect(result.current.conflictMessage).toContain("服务器已有更新版本");
-
-    act(() => {
-      result.current.acceptLatest(25);
-    });
-    expect(result.current).toMatchObject({
-      state: "dirty",
-      revision: 25,
-      conflictMessage: "",
-    });
-
-    saveDocumentStepsMock.mockResolvedValueOnce(savedDocument(26));
-    await act(async () => {
-      await result.current.flush();
-    });
-    expect(saveDocumentStepsMock.mock.calls[1]![1]).toMatchObject({
-      baseRevision: 25,
-    });
-    expect(result.current.state).toBe("saved");
+    expect(localStorage.getItem("ricetext:draft:demo-post")).not.toBeNull();
   });
 
-  it("与服务器基线无差异时零网络请求直接标记已保存", async () => {
+  it("离线响应只保留本地状态，不推进服务器 revision", async () => {
     const onSaved = vi.fn();
+    saveDocumentStepsMock.mockResolvedValueOnce(
+      savedDocument(19, changedContent, "local-cache"),
+    );
+    const { result } = renderHook(() =>
+      useAutosave({
+        document: defaultDocument,
+        content: changedContent,
+        generation: 1,
+        onSaved,
+      }),
+    );
+
+    await act(async () => {
+      expect(await result.current.flush()).toBe(false);
+    });
+    expect(result.current).toMatchObject({ state: "offline", revision: 18 });
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(localStorage.getItem("ricetext:draft:demo-post")).not.toBeNull();
+  });
+
+  it("disabled 时既不自动写本地也不上传服务器", async () => {
     const { result, rerender } = renderHook(
       ({ content, generation }) =>
         useAutosave({
           document: defaultDocument,
           content,
           generation,
-          onSaved,
+          enabled: false,
         }),
       { initialProps: { content: initialContent, generation: 0 } },
     );
-
-    // 内容与基线相同，仅代次推进：diff 为空，不应发起保存请求
-    rerender({ content: initialContent, generation: 1 });
-    expect(result.current.state).toBe("dirty");
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1300);
-    });
-    expect(saveDocumentStepsMock).not.toHaveBeenCalled();
-    expect(result.current.state).toBe("saved");
-    expect(onSaved).not.toHaveBeenCalled();
-  });
-
-  it("普通异常保持 error 且不循环重试，新内容代次可以再次保存", async () => {
-    saveDocumentStepsMock.mockRejectedValueOnce(new Error("磁盘暂不可写"));
-    const { result, rerender } = renderHook(
-      ({ content, generation }) =>
-        useAutosave({ document: defaultDocument, content, generation }),
-      { initialProps: { content: initialContent, generation: 0 } },
-    );
     rerender({ content: changedContent, generation: 1 });
-
+    await act(async () => vi.advanceTimersByTimeAsync(1500));
     await act(async () => {
-      await result.current.flush();
+      expect(await result.current.flush()).toBe(true);
     });
-
-    expect(result.current).toMatchObject({
-      state: "error",
-      conflictMessage: "磁盘暂不可写",
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000);
-    });
-    expect(saveDocumentStepsMock).toHaveBeenCalledTimes(1);
-
-    saveDocumentStepsMock.mockResolvedValueOnce(savedDocument(19));
-    await act(async () => {
-      await result.current.flush();
-    });
-    expect(saveDocumentStepsMock).toHaveBeenCalledTimes(2);
-    expect(result.current).toMatchObject({ state: "saved", revision: 19 });
-
-    const newestContent: RichTextNode = {
-      type: "doc",
-      content: [
-        { type: "paragraph", content: [{ type: "text", text: "retry" }] },
-      ],
-    };
-    saveDocumentStepsMock.mockResolvedValueOnce({
-      ...savedDocument(19),
-      content: newestContent,
-    });
-    rerender({ content: newestContent, generation: 2 });
-    expect(result.current.state).toBe("dirty");
-    await act(async () => {
-      await result.current.flush();
-    });
-    expect(result.current).toMatchObject({ state: "saved", revision: 19 });
+    expect(localStorage.getItem("ricetext:draft:demo-post")).toBeNull();
+    expect(saveDocumentStepsMock).not.toHaveBeenCalled();
   });
 });

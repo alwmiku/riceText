@@ -77,6 +77,7 @@ function HydrationRaceHarness() {
 
 describe("useComposeDocument hydration", () => {
   beforeEach(() => {
+    localStorage.clear();
     mocks.getDocument.mockReset().mockResolvedValue(serverDocument);
     mocks.restoreRevision.mockReset();
     mocks.autosave.mockReset().mockReturnValue({
@@ -105,6 +106,54 @@ describe("useComposeDocument hydration", () => {
 
     expect(await screen.findByText("第一章 潮汐表")).toBeInTheDocument();
     expect(screen.queryByText("错误的占位规范化正文")).not.toBeInTheDocument();
+  });
+
+  it("恢复与服务器 revision 一致的本地自动保存草稿", async () => {
+    const localContent: RichTextNode = {
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "第一章 潮汐表" }],
+        },
+        { type: "paragraph", content: [{ type: "text", text: "本地草稿" }] },
+      ],
+    };
+    localStorage.setItem(
+      "ricetext:draft:demo-post",
+      JSON.stringify({
+        documentId: "demo-post",
+        baseRevision: 1,
+        content: localContent,
+        savedAt: "2026-08-20T10:00:00.000Z",
+      }),
+    );
+    const { result } = renderHook(() => useComposeDocument("demo-post"), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.content).toEqual(localContent));
+    expect(result.current.document.revision).toBe(1);
+    expect(result.current.generation).toBe(1);
+  });
+
+  it("丢弃基于旧 revision 的本地草稿", async () => {
+    localStorage.setItem(
+      "ricetext:draft:demo-post",
+      JSON.stringify({
+        documentId: "demo-post",
+        baseRevision: 0,
+        content: { type: "doc", content: [] },
+        savedAt: "2026-08-20T10:00:00.000Z",
+      }),
+    );
+    const { result } = renderHook(() => useComposeDocument("demo-post"), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.content).toBe(serverDocument.content));
+    expect(localStorage.getItem("ricetext:draft:demo-post")).toBeNull();
   });
 
   it("does not replace local edits when the query resolves later", async () => {

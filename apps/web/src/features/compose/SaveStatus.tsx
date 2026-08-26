@@ -4,7 +4,8 @@ import { formatTime } from "../../lib/utils";
 
 const statusLabels: Record<SaveState, string> = {
   loading: "正在载入",
-  saved: "已保存",
+  saved: "已保存到服务器",
+  "local-saved": "已自动保存到本地",
   dirty: "等待保存",
   saving: "正在保存",
   conflict: "版本冲突",
@@ -22,7 +23,7 @@ export function SaveStatus({
   savedAt: string;
 }) {
   const dotColor =
-    state === "saved"
+    state === "saved" || state === "local-saved"
       ? "bg-[#209065]"
       : state === "dirty" || state === "saving"
         ? "bg-[#c47b0b]"
@@ -45,7 +46,11 @@ export function SaveStatus({
       <span>
         {statusLabels[state]} · v{revision}
       </span>
-      {(state === "saved" || state === "offline") ? (
+      {(
+        state === "saved" ||
+        state === "local-saved" ||
+        state === "offline"
+      ) ? (
         <span className="max-[840px]:hidden">· {formatTime(savedAt)}</span>
       ) : null}
     </span>
