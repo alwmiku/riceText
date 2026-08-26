@@ -3010,7 +3010,6 @@ paths:
                   minLength: 1
                 toText:
                   type: string
-                  minLength: 1
                 reason:
                   default: ""
                   type: string
@@ -3433,6 +3432,824 @@ paths:
                 error:
                   code: EXAMPLE_ERROR
                   message: 建议已审核或 baseRevision 过期。
+      x-implementation-status: implemented
+  /api/forum/documents/{documentId}/suggestion-batches:
+    get:
+      operationId: listSuggestionBatches
+      tags:
+        - 论坛业务
+      summary: 读取整章批量校订
+      description: |-
+        作者与版主可查看全部批次；读者仅看到自己提交的批次。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: x-user-id
+          in: header
+          required: false
+          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      responses:
+        "200":
+          description: 批量校订列表。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        documentId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        chapterId:
+                          type: string
+                        chapterTitle:
+                          type: string
+                        baseRevision:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        beforeContent:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              const: doc
+                            content:
+                              default: []
+                              maxItems: 20000
+                              type: array
+                              items:
+                                type: object
+                                description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                                additionalProperties: true
+                          required:
+                            - type
+                            - content
+                          additionalProperties: false
+                        afterContent:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              const: doc
+                            content:
+                              default: []
+                              maxItems: 20000
+                              type: array
+                              items:
+                                type: object
+                                description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                                additionalProperties: true
+                          required:
+                            - type
+                            - content
+                          additionalProperties: false
+                        steps:
+                          minItems: 1
+                          maxItems: 1000
+                          type: array
+                          items:
+                            type: object
+                            propertyNames:
+                              type: string
+                            additionalProperties:
+                              type: object
+                              description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                              additionalProperties: true
+                        reason:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                            - pending
+                            - approved
+                            - rejected
+                        authorId:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        reviewerId:
+                          anyOf:
+                            - type: string
+                              minLength: 1
+                              maxLength: 128
+                              pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                            - type: "null"
+                        createdAt:
+                          type: string
+                          format: date-time
+                          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                      required:
+                        - id
+                        - documentId
+                        - chapterId
+                        - chapterTitle
+                        - baseRevision
+                        - beforeContent
+                        - afterContent
+                        - steps
+                        - reason
+                        - status
+                        - authorId
+                        - reviewerId
+                        - createdAt
+                      additionalProperties: false
+                required:
+                  - items
+                additionalProperties: false
+        "404":
+          description: 文档不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档不存在。
+      x-implementation-status: implemented
+    post:
+      operationId: createSuggestionBatch
+      tags:
+        - 论坛业务
+      summary: 提交整章批量校订
+      description: |-
+        把整章编辑产生的多个 ProseMirror steps 合并为一个待审核批次。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: x-user-id
+          in: header
+          required: false
+          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                baseRevision:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+                chapterId:
+                  type: string
+                  minLength: 1
+                chapterTitle:
+                  type: string
+                  minLength: 1
+                beforeContent:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      const: doc
+                    content:
+                      default: []
+                      maxItems: 20000
+                      type: array
+                      items:
+                        type: object
+                        description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                        additionalProperties: true
+                  required:
+                    - type
+                    - content
+                  additionalProperties: false
+                afterContent:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      const: doc
+                    content:
+                      default: []
+                      maxItems: 20000
+                      type: array
+                      items:
+                        type: object
+                        description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                        additionalProperties: true
+                  required:
+                    - type
+                    - content
+                  additionalProperties: false
+                steps:
+                  minItems: 1
+                  maxItems: 1000
+                  type: array
+                  items:
+                    type: object
+                    propertyNames:
+                      type: string
+                    additionalProperties:
+                      type: object
+                      description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                      additionalProperties: true
+                reason:
+                  default: ""
+                  type: string
+                  maxLength: 500
+              required:
+                - baseRevision
+                - chapterId
+                - chapterTitle
+                - beforeContent
+                - afterContent
+                - steps
+                - reason
+              additionalProperties: false
+      responses:
+        "201":
+          description: pending 状态批次。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  documentId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  chapterId:
+                    type: string
+                  chapterTitle:
+                    type: string
+                  baseRevision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  beforeContent:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        const: doc
+                      content:
+                        default: []
+                        maxItems: 20000
+                        type: array
+                        items:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - type
+                      - content
+                    additionalProperties: false
+                  afterContent:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        const: doc
+                      content:
+                        default: []
+                        maxItems: 20000
+                        type: array
+                        items:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - type
+                      - content
+                    additionalProperties: false
+                  steps:
+                    minItems: 1
+                    maxItems: 1000
+                    type: array
+                    items:
+                      type: object
+                      propertyNames:
+                        type: string
+                      additionalProperties:
+                        type: object
+                        description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                        additionalProperties: true
+                  reason:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - pending
+                      - approved
+                      - rejected
+                  authorId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  reviewerId:
+                    anyOf:
+                      - type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      - type: "null"
+                  createdAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                required:
+                  - id
+                  - documentId
+                  - chapterId
+                  - chapterTitle
+                  - baseRevision
+                  - beforeContent
+                  - afterContent
+                  - steps
+                  - reason
+                  - status
+                  - authorId
+                  - reviewerId
+                  - createdAt
+                additionalProperties: false
+        "409":
+          description: 提交基线已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 提交基线已过期。
+        "422":
+          description: steps 与编辑后快照不一致。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: steps 与编辑后快照不一致。
+      x-implementation-status: implemented
+  /api/forum/suggestion-batches/{batchId}:
+    patch:
+      operationId: reviewSuggestionBatch
+      tags:
+        - 论坛业务
+      summary: 原子审核整章批量校订
+      description: |-
+        接受时一次应用全部 steps 并只创建一个 revision；拒绝不修改正文。
+
+        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          description: 路径参数 batchId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-user-id
+          in: header
+          required: false
+          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision:
+                  type: string
+                  enum:
+                    - approve
+                    - reject
+                baseRevision:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+              required:
+                - decision
+                - baseRevision
+              additionalProperties: false
+      responses:
+        "200":
+          description: 审核后的批次和可选新文档修订。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batch:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      documentId:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      chapterId:
+                        type: string
+                      chapterTitle:
+                        type: string
+                      baseRevision:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      beforeContent:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            const: doc
+                          content:
+                            default: []
+                            maxItems: 20000
+                            type: array
+                            items:
+                              type: object
+                              description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                              additionalProperties: true
+                        required:
+                          - type
+                          - content
+                        additionalProperties: false
+                      afterContent:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            const: doc
+                          content:
+                            default: []
+                            maxItems: 20000
+                            type: array
+                            items:
+                              type: object
+                              description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                              additionalProperties: true
+                        required:
+                          - type
+                          - content
+                        additionalProperties: false
+                      steps:
+                        minItems: 1
+                        maxItems: 1000
+                        type: array
+                        items:
+                          type: object
+                          propertyNames:
+                            type: string
+                          additionalProperties:
+                            type: object
+                            description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                            additionalProperties: true
+                      reason:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - pending
+                          - approved
+                          - rejected
+                      authorId:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      reviewerId:
+                        anyOf:
+                          - type: string
+                            minLength: 1
+                            maxLength: 128
+                            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                          - type: "null"
+                      createdAt:
+                        type: string
+                        format: date-time
+                        pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                    required:
+                      - id
+                      - documentId
+                      - chapterId
+                      - chapterTitle
+                      - baseRevision
+                      - beforeContent
+                      - afterContent
+                      - steps
+                      - reason
+                      - status
+                      - authorId
+                      - reviewerId
+                      - createdAt
+                    additionalProperties: false
+                  document:
+                    anyOf:
+                      - type: object
+                        properties:
+                          id:
+                            type: string
+                            minLength: 1
+                            maxLength: 128
+                            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                          title:
+                            type: string
+                            minLength: 1
+                            maxLength: 200
+                          schemaVersion:
+                            type: integer
+                            exclusiveMinimum: 0
+                            maximum: 9007199254740991
+                          revision:
+                            type: integer
+                            minimum: 0
+                            maximum: 9007199254740991
+                          savedAt:
+                            type: string
+                            format: date-time
+                            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                          content:
+                            type: object
+                            properties:
+                              type:
+                                type: string
+                                const: doc
+                              content:
+                                default: []
+                                maxItems: 20000
+                                type: array
+                                items:
+                                  type: object
+                                  description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                                  additionalProperties: true
+                            required:
+                              - type
+                              - content
+                            additionalProperties: false
+                        required:
+                          - id
+                          - title
+                          - schemaVersion
+                          - revision
+                          - savedAt
+                          - content
+                        additionalProperties: false
+                      - type: "null"
+                required:
+                  - batch
+                  - document
+                additionalProperties: false
+        "403":
+          description: 当前身份不可审核。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份不可审核。
+        "409":
+          description: 批次已审核或基线过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 批次已审核或基线过期。
+        "422":
+          description: steps 无法应用。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: steps 无法应用。
       x-implementation-status: implemented
   /api/forum/users/search:
     get:
