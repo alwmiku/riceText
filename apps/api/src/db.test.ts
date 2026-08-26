@@ -34,6 +34,24 @@ describe("database seed", () => {
     second.close();
   });
 
+  it("V6 创建批量校订表并可在持久化库重启后读取", () => {
+    const path = join(directory, "batch.sqlite");
+    const first = createDatabase({ path });
+    first
+      .prepare(
+        "INSERT INTO suggestion_batches(id, document_id, chapter_id, chapter_title, base_revision, before_content_json, after_content_json, steps_json, reason, status, author_id, created_at) VALUES ('batch-test', 'demo-post', 'chapter-1', '第一章', 1, '{\"type\":\"doc\",\"content\":[]}', '{\"type\":\"doc\",\"content\":[]}', '[{\"stepType\":\"replace\",\"from\":1,\"to\":1}]', '', 'pending', 'reader', '2026-01-01T00:00:00.000Z')",
+      )
+      .run();
+    first.close();
+
+    const second = createDatabase({ path, seed: false });
+    const row = second
+      .prepare("SELECT status, chapter_id FROM suggestion_batches WHERE id = 'batch-test'")
+      .get() as { status: string; chapter_id: string };
+    expect(row).toEqual({ status: "pending", chapter_id: "chapter-1" });
+    second.close();
+  });
+
   it("重跑 seed 后五章各有一条 pending 校订建议", () => {
     const path = join(directory, "seed.sqlite");
     const db = createDatabase({ path });

@@ -237,6 +237,77 @@ export class DocumentService {
     ).envelope;
   }
 
+  /** 在不写入的情况下验证读者批量校订 steps 可应用于指定基线。 */
+  validateSuggestionSteps(
+    documentId: string,
+    baseRevision: number,
+    steps: Array<Record<string, unknown>>,
+  ): TiptapDocument {
+    const current = this.get(documentId);
+    if (current.revision !== baseRevision)
+      throw new HttpError(409, "REVISION_CONFLICT", "正文已变化，请重新编辑后提交", {
+        currentRevision: current.revision,
+        baseRevision,
+      });
+    try {
+      return sanitizeDocument(
+        applyStepsToDocument(
+          createDocumentSchema(),
+          current.content as unknown as JSONContent,
+          steps as unknown as StepJson[],
+        ),
+      );
+    } catch (error) {
+      if (error instanceof ApplyStepsError)
+        throw new HttpError(422, "INVALID_STEPS", error.message);
+      throw error;
+    }
+  }
+
+  /** 接受整章批量校订：一次应用全部 steps，并只创建一个 suggestion revision。 */
+  applySuggestionBatch(
+    documentId: string,
+    baseRevision: number,
+    batchId: string,
+    steps: Array<Record<string, unknown>>,
+    chapterId: string,
+    authorId: string,
+  ): DocumentEnvelope {
+    const current = this.get(documentId);
+    let content: TiptapDocument;
+    try {
+      content = sanitizeDocument(
+        applyStepsToDocument(
+          createDocumentSchema(),
+          current.content as unknown as JSONContent,
+          steps as unknown as StepJson[],
+        ),
+      );
+    } catch (error) {
+      if (error instanceof ApplyStepsError)
+        throw new HttpError(422, "INVALID_STEPS", error.message);
+      throw error;
+    }
+    const result = this.#write(
+      documentId,
+      baseRevision,
+      `suggestion-batch-${batchId}`,
+      JSON.stringify({ baseRevision, batchId, steps }),
+      current.schemaVersion,
+      content,
+      authorId,
+      "suggestion",
+      null,
+      JSON.stringify(steps),
+    );
+    if (result.created && chapterId) {
+      this.#db
+        .prepare("UPDATE chapters SET revision = revision + 1 WHERE id = ?")
+        .run(chapterId);
+    }
+    return result.envelope;
+  }
+
   /** 按 revision 倒序分页历史。 */
   revisions(
     documentId: string,

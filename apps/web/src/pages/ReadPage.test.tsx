@@ -10,14 +10,22 @@ import ReadPage from './ReadPage';
 const mocks = vi.hoisted(() => ({
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
+  listSuggestionBatches: vi.fn(),
   listSuggestions: vi.fn(),
+  reviewSuggestionBatch: vi.fn(),
+  reviewSuggestion: vi.fn(),
+  submitSuggestionBatch: vi.fn(),
   submitSuggestion: vi.fn(),
 }));
 
 vi.mock('../lib/api', () => ({
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
+  listSuggestionBatches: mocks.listSuggestionBatches,
   listSuggestions: mocks.listSuggestions,
+  reviewSuggestionBatch: mocks.reviewSuggestionBatch,
+  reviewSuggestion: mocks.reviewSuggestion,
+  submitSuggestionBatch: mocks.submitSuggestionBatch,
   submitSuggestion: mocks.submitSuggestion,
 }));
 vi.mock('../features/comments/CommentThread', () => ({
@@ -56,7 +64,11 @@ describe('ReadPage', () => {
   beforeEach(() => {
     mocks.getDocument.mockReset().mockResolvedValue(interactiveDocument);
     mocks.getCommentThread.mockReset().mockResolvedValue(seedComments);
+    mocks.listSuggestionBatches.mockReset().mockResolvedValue([]);
     mocks.listSuggestions.mockReset().mockResolvedValue(seedSuggestions);
+    mocks.reviewSuggestionBatch.mockReset();
+    mocks.reviewSuggestion.mockReset();
+    mocks.submitSuggestionBatch.mockReset();
   });
 
   it('作者可取得付费附件但不会在阅读器自动看到回复可见正文，本地环境允许作者参与投票', async () => {
@@ -125,7 +137,7 @@ describe('ReadPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '开始校订' }));
     expect(
-      screen.getByRole('region', { name: '校订对比视图' }),
+      await screen.findByRole('region', { name: '校订对比视图' }),
     ).toBeInTheDocument();
     expect(screen.getByText('校订《雾港来信：第三章讨论与校订》· 正文')).toBeInTheDocument();
     // 字级 diff：只有变化的“正”→“恰”被高亮，公共字“好”保持普通
@@ -147,7 +159,7 @@ describe('ReadPage', () => {
     await screen.findByText('章节资料.zip');
     fireEvent.click(await screen.findByRole('button', { name: '开始校订' }));
     expect(
-      screen.getByRole('region', { name: '校订对比视图' }),
+      await screen.findByRole('region', { name: '校订对比视图' }),
     ).toBeInTheDocument();
   });
 });

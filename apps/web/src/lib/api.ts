@@ -23,6 +23,7 @@ import type {
   ForumAttachment,
   ForumChapterItem,
   ForumPoll,
+  ForumSuggestionBatch,
   ForumSuggestion,
   RevisionSummary,
   RichTextNode,
@@ -404,6 +405,51 @@ export async function reviewSuggestion(
     suggestion: result.suggestion,
     document: result.document
       ? { ...result.document, content: result.document.content as unknown as RichTextNode }
+      : null,
+  };
+}
+
+/** 读取当前身份可见的整章批量校订。 */
+export async function listSuggestionBatches(
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<ForumSuggestionBatch[]> {
+  return (await api().listSuggestionBatches(documentId, signal)).items;
+}
+
+/** 提交整章多处修改合并成的一个批次。 */
+export async function submitSuggestionBatch(
+  documentId: string,
+  input: {
+    baseRevision: number;
+    chapterId: string;
+    chapterTitle: string;
+    beforeContent: ContractDocumentEnvelope["content"];
+    afterContent: ContractDocumentEnvelope["content"];
+    steps: Array<Record<string, unknown>>;
+    reason: string;
+  },
+): Promise<ForumSuggestionBatch> {
+  return api().createSuggestionBatch(documentId, input);
+}
+
+/** 原子审核整章批量校订。 */
+export async function reviewSuggestionBatch(
+  batchId: string,
+  decision: "approve" | "reject",
+  baseRevision: number,
+): Promise<{ batch: ForumSuggestionBatch; document: DocumentEnvelope | null }> {
+  const result = await api().reviewSuggestionBatch(batchId, {
+    decision,
+    baseRevision,
+  });
+  return {
+    batch: result.batch,
+    document: result.document
+      ? {
+          ...result.document,
+          content: result.document.content as unknown as RichTextNode,
+        }
       : null,
   };
 }

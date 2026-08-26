@@ -2,6 +2,7 @@ import type {
   Attachment,
   Chapter,
   Poll,
+  SuggestionBatch,
   Suggestion,
 } from "@ricetext/contracts";
 import type {
@@ -104,6 +105,9 @@ export type UploadedAsset = CoreUploadedAsset;
 
 /** 纠错建议（复用共享契约类型）。 */
 export type ForumSuggestion = Suggestion;
+
+/** 整章多处修改合并成的校订批次。 */
+export type ForumSuggestionBatch = SuggestionBatch;
 
 /** 付费附件（复用共享契约类型）。 */
 export type ForumAttachment = Attachment;

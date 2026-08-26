@@ -82,6 +82,34 @@ describe("ReaderSuggestion", () => {
     );
   });
 
+  it("允许把修订内容留空以提交删除建议", async () => {
+    renderSuggestion();
+    const paragraph = screen.getByText("灯塔正好熄灭。");
+    selectText(paragraph.firstChild!, "正好");
+
+    fireEvent.mouseUp(paragraph);
+    fireEvent.click(screen.getByRole("button", { name: "提交修订" }));
+    fireEvent.change(screen.getByLabelText("修订为"), {
+      target: { value: "" },
+    });
+    fireEvent.change(screen.getByLabelText("修订说明"), {
+      target: { value: "删除多余文字" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交给作者" }));
+
+    await waitFor(() =>
+      expect(mocks.submitSuggestion).toHaveBeenCalledWith(
+        "demo-post",
+        expect.objectContaining({
+          fromText: "正好",
+          toText: "",
+          reason: "删除多余文字",
+        }),
+      ),
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("拒绝提交与原文相同的内容", () => {
     renderSuggestion();
     const paragraph = screen.getByText("灯塔正好熄灭。");

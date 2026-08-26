@@ -5,6 +5,11 @@ import type {
   DocumentEnvelope,
   TiptapDocument,
 } from "@ricetext/contracts";
+import {
+  applyStepsToDocument,
+  sharedSchema,
+  type JSONContent,
+} from "@ricetext/document-core";
 import type { RequestIdentity } from "./auth.js";
 import { replaceFirstText, type DocumentService } from "./document-service.js";
 import { HttpError } from "./errors.js";
@@ -25,6 +30,21 @@ interface SuggestionRow {
   line_text: string;
   from_text: string;
   to_text: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  author_id: string;
+  reviewer_id: string | null;
+  created_at: string;
+}
+interface SuggestionBatchRow {
+  id: string;
+  document_id: string;
+  chapter_id: string;
+  chapter_title: string;
+  base_revision: number;
+  before_content_json: string;
+  after_content_json: string;
+  steps_json: string;
   reason: string;
   status: "pending" | "approved" | "rejected";
   author_id: string;
@@ -71,6 +91,56 @@ function mapSuggestion(row: SuggestionRow) {
     reviewerId: row.reviewer_id,
     createdAt: row.created_at,
   };
+}
+
+function mapSuggestionBatch(row: SuggestionBatchRow) {
+  return {
+    id: row.id,
+    documentId: row.document_id,
+    chapterId: row.chapter_id,
+    chapterTitle: row.chapter_title,
+    baseRevision: row.base_revision,
+    beforeContent: JSON.parse(row.before_content_json) as TiptapDocument,
+    afterContent: JSON.parse(row.after_content_json) as TiptapDocument,
+    steps: JSON.parse(row.steps_json) as Array<Record<string, unknown>>,
+    reason: row.reason,
+    status: row.status,
+    authorId: row.author_id,
+    reviewerId: row.reviewer_id,
+    createdAt: row.created_at,
+  };
+}
+
+function chapterRange(content: TiptapDocument, chapterIndex: number) {
+  const starts: number[] = [];
+  content.content.forEach((node, index) => {
+    if (node.type === "heading" && node.attrs?.level === 2) starts.push(index);
+  });
+  if (starts.length === 0 && chapterIndex === 0)
+    return { start: 0, end: content.content.length };
+  const start = starts[chapterIndex];
+  if (start === undefined) return null;
+  return { start, end: starts[chapterIndex + 1] ?? content.content.length };
+}
+
+function expectedBatchDocument(
+  current: TiptapDocument,
+  chapterId: string,
+  before: TiptapDocument,
+  after: TiptapDocument,
+): TiptapDocument | null {
+  const match = /^chapter-(\d+)$/.exec(chapterId);
+  if (!match) return null;
+  const range = chapterRange(current, Number(match[1]));
+  if (!range) return null;
+  const existing = {
+    type: "doc" as const,
+    content: current.content.slice(range.start, range.end),
+  };
+  if (JSON.stringify(existing) !== JSON.stringify(before)) return null;
+  const content = [...current.content];
+  content.splice(range.start, range.end - range.start, ...after.content);
+  return { type: "doc", content };
 }
 
 /** 首版章节、@、回复可见、附件和投票的 SQLite 论坛适配器。 */
@@ -230,6 +300,149 @@ export class ForumService {
           )
           .all(documentId)) as unknown as SuggestionRow[];
     return rows.map(mapSuggestion);
+  }
+
+  /** 按身份读取整章批量校订。 */
+  suggestionBatches(documentId: string, identity: RequestIdentity) {
+    this.#documents.get(documentId);
+    const rows = (identity.role === "reader"
+      ? this.#db
+          .prepare(
+            "SELECT * FROM suggestion_batches WHERE document_id = ? AND author_id = ? ORDER BY created_at DESC",
+          )
+          .all(documentId, identity.id)
+      : this.#db
+          .prepare(
+            "SELECT * FROM suggestion_batches WHERE document_id = ? ORDER BY created_at DESC",
+          )
+          .all(documentId)) as unknown as SuggestionBatchRow[];
+    return rows.map(mapSuggestionBatch);
+  }
+
+  /** 创建一个包含多个 steps 的待审核整章校订批次。 */
+  createSuggestionBatch(
+    documentId: string,
+    input: {
+      baseRevision: number;
+      chapterId: string;
+      chapterTitle: string;
+      beforeContent: TiptapDocument;
+      afterContent: TiptapDocument;
+      steps: Array<Record<string, unknown>>;
+      reason: string;
+    },
+    identity: RequestIdentity,
+  ) {
+    const current = this.#documents.get(documentId);
+    if (current.revision !== input.baseRevision)
+      throw new HttpError(409, "REVISION_CONFLICT", "正文已变化，请重新编辑后提交", {
+        currentRevision: current.revision,
+        baseRevision: input.baseRevision,
+      });
+    const applied = this.#documents.validateSuggestionSteps(
+      documentId,
+      input.baseRevision,
+      input.steps,
+    );
+    const expected = expectedBatchDocument(
+      current.content,
+      input.chapterId,
+      input.beforeContent,
+      input.afterContent,
+    );
+    const normalizedExpected = expected
+      ? applyStepsToDocument(
+          sharedSchema(),
+          expected as unknown as JSONContent,
+          [],
+        )
+      : null;
+    if (
+      !normalizedExpected ||
+      JSON.stringify(applied) !== JSON.stringify(normalizedExpected)
+    )
+      throw new HttpError(
+        422,
+        "BATCH_SCOPE_MISMATCH",
+        "批量校订 steps 与当前章节修改不一致",
+      );
+    const row: SuggestionBatchRow = {
+      id: randomUUID(),
+      document_id: documentId,
+      chapter_id: input.chapterId,
+      chapter_title: input.chapterTitle,
+      base_revision: input.baseRevision,
+      before_content_json: JSON.stringify(input.beforeContent),
+      after_content_json: JSON.stringify(input.afterContent),
+      steps_json: JSON.stringify(input.steps),
+      reason: input.reason,
+      status: "pending",
+      author_id: identity.id,
+      reviewer_id: null,
+      created_at: new Date().toISOString(),
+    };
+    this.#db
+      .prepare(
+        "INSERT INTO suggestion_batches(id, document_id, chapter_id, chapter_title, base_revision, before_content_json, after_content_json, steps_json, reason, status, author_id, reviewer_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, ?)",
+      )
+      .run(
+        row.id,
+        row.document_id,
+        row.chapter_id,
+        row.chapter_title,
+        row.base_revision,
+        row.before_content_json,
+        row.after_content_json,
+        row.steps_json,
+        row.reason,
+        row.author_id,
+        row.created_at,
+      );
+    return mapSuggestionBatch(row);
+  }
+
+  /** 原子应用或拒绝整章批量校订。 */
+  reviewSuggestionBatch(
+    batchId: string,
+    decision: "approve" | "reject",
+    baseRevision: number,
+    identity: RequestIdentity,
+  ): { batch: ReturnType<typeof mapSuggestionBatch>; document: DocumentEnvelope | null } {
+    if (identity.role === "reader")
+      throw new HttpError(403, "FORBIDDEN", "只有作者或版主可以审核批量校订");
+    const row = this.#db
+      .prepare("SELECT * FROM suggestion_batches WHERE id = ?")
+      .get(batchId) as unknown as SuggestionBatchRow | undefined;
+    if (!row)
+      throw new HttpError(404, "SUGGESTION_BATCH_NOT_FOUND", "批量校订不存在");
+    if (row.status !== "pending")
+      throw new HttpError(409, "SUGGESTION_BATCH_REVIEWED", "批量校订已审核");
+    let document: DocumentEnvelope | null = null;
+    if (decision === "approve") {
+      if (baseRevision !== row.base_revision)
+        throw new HttpError(
+          409,
+          "REVISION_CONFLICT",
+          "正文已变化，整章批次需要读者基于最新版本重新提交",
+          { currentRevision: baseRevision, baseRevision: row.base_revision },
+        );
+      document = this.#documents.applySuggestionBatch(
+        row.document_id,
+        row.base_revision,
+        row.id,
+        JSON.parse(row.steps_json) as Array<Record<string, unknown>>,
+        row.chapter_id,
+        identity.id,
+      );
+    }
+    row.status = decision === "approve" ? "approved" : "rejected";
+    row.reviewer_id = identity.id;
+    this.#db
+      .prepare(
+        "UPDATE suggestion_batches SET status = ?, reviewer_id = ?, reviewed_at = ? WHERE id = ?",
+      )
+      .run(row.status, identity.id, new Date().toISOString(), row.id);
+    return { batch: mapSuggestionBatch(row), document };
   }
 
   /** 新建 pending 建议；旧客户端不传定位字段时按空章节/0 行存储。 */

@@ -174,6 +174,106 @@ describe("RiceText API", () => {
     expect(history.json().items[0].operation).toBe("suggestion");
   });
 
+  it("接受空替换文本时从正文删除所选文字并持久化", async () => {
+    const submitted = await app.inject({
+      method: "POST",
+      url: "/api/forum/documents/demo-post/suggestions",
+      headers: { "x-user-id": "reader" },
+      payload: {
+        fromText: "潮声",
+        toText: "",
+        reason: "删除多余文字",
+        chapterId: "chapter-1",
+        chapterTitle: "第一章 潮汐表",
+        lineNo: 2,
+        lineText: "潮声沿着旧城墙漫上来，旅人把未寄出的信压在灯下。",
+      },
+    });
+    expect(submitted.statusCode, submitted.body).toBe(201);
+    expect(submitted.json().toText).toBe("");
+
+    const reviewed = await app.inject({
+      method: "PATCH",
+      url: `/api/forum/suggestions/${submitted.json().id}`,
+      headers: { "x-user-id": "author" },
+      payload: { decision: "approve", baseRevision: 1 },
+    });
+    expect(reviewed.statusCode, reviewed.body).toBe(200);
+    expect(reviewed.json().suggestion.status).toBe("approved");
+
+    const persisted = await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post",
+    });
+    const serialized = JSON.stringify(persisted.json().content);
+    expect(serialized).toContain("沿着旧城墙漫上来");
+    expect(serialized).not.toContain("潮声沿着旧城墙漫上来");
+  });
+
+  it("整章多处修订作为一个批次提交并原子创建一个版本", async () => {
+    const current = (await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post",
+    })).json();
+    const after = structuredClone(current.content) as {
+      content: Array<{ content?: Array<{ text?: string }> }>;
+    };
+    after.content[5]!.content![0]!.text = "潮声沿着旧城墙涌上来，旅人把未寄出的信压在灯下。";
+    after.content[6]!.content![0]!.text = "灯塔管理员翻着崭新的潮汐表说，今夜没有雾，却有风。";
+    const steps = diffDocuments(current.content, after);
+    expect(steps.length).toBeGreaterThan(1);
+
+    const submitted = await app.inject({
+      method: "POST",
+      url: "/api/forum/documents/demo-post/suggestion-batches",
+      headers: { "x-user-id": "reader" },
+      payload: {
+        baseRevision: 1,
+        chapterId: "chapter-1",
+        chapterTitle: "第一章 潮汐表",
+        beforeContent: {
+          type: "doc",
+          content: current.content.content.slice(4, 7),
+        },
+        afterContent: { type: "doc", content: after.content.slice(4, 7) },
+        steps,
+        reason: "统一两处措辞",
+      },
+    });
+    expect(submitted.statusCode, submitted.body).toBe(201);
+    expect(submitted.json()).toMatchObject({
+      status: "pending",
+      chapterId: "chapter-1",
+      reason: "统一两处措辞",
+    });
+
+    const reviewed = await app.inject({
+      method: "PATCH",
+      url: `/api/forum/suggestion-batches/${submitted.json().id}`,
+      headers: { "x-user-id": "author" },
+      payload: { decision: "approve", baseRevision: 1 },
+    });
+    expect(reviewed.statusCode, reviewed.body).toBe(200);
+    expect(reviewed.json().batch.status).toBe("approved");
+    expect(reviewed.json().document.revision).toBe(2);
+
+    const persisted = await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post",
+    });
+    const serialized = JSON.stringify(persisted.json().content);
+    expect(serialized).toContain("涌上来");
+    expect(serialized).toContain("崭新的潮汐表");
+    const history = await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post/revisions",
+    });
+    expect(history.json().items[0]).toMatchObject({
+      revision: 2,
+      operation: "suggestion",
+    });
+  });
+
   it("应用最小 steps 创建带溯源的新修订", async () => {
     const before = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json().content as {
       content: Array<{ content: Array<{ text: string }> }>;

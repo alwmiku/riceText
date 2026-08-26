@@ -6,12 +6,16 @@ import type { ForumSuggestion } from "../../lib/api";
 import { ProofreadWorkspace } from "./ProofreadWorkspace";
 
 const mocks = vi.hoisted(() => ({
+  listSuggestionBatches: vi.fn(),
   listSuggestions: vi.fn(),
+  reviewSuggestionBatch: vi.fn(),
   reviewSuggestion: vi.fn(),
 }));
 
 vi.mock("../../lib/api", () => ({
+  listSuggestionBatches: mocks.listSuggestionBatches,
   listSuggestions: mocks.listSuggestions,
+  reviewSuggestionBatch: mocks.reviewSuggestionBatch,
   reviewSuggestion: mocks.reviewSuggestion,
 }));
 
@@ -87,6 +91,8 @@ describe("ProofreadWorkspace", () => {
         chapterId: "chapter-1",
       }),
     ];
+    mocks.listSuggestionBatches.mockReset().mockResolvedValue([]);
+    mocks.reviewSuggestionBatch.mockReset();
     mocks.listSuggestions.mockReset().mockImplementation(async () => [...items]);
     mocks.reviewSuggestion.mockReset().mockImplementation(
       async (id: string, decision: "approve" | "reject", baseRevision: number) => {
@@ -115,7 +121,7 @@ describe("ProofreadWorkspace", () => {
     );
   });
 
-  it("接受待审建议后移出待审核页，进入已接受页并同步正文缓存", async () => {
+  it("接受待审建议后从阅读审核页移除并同步正文缓存", async () => {
     const { client } = renderWorkspace();
     expect(await screen.findByText(/待审核说明/)).toBeInTheDocument();
     expect(screen.queryByText(/已经接受的说明/)).not.toBeInTheDocument();
@@ -131,13 +137,11 @@ describe("ProofreadWorkspace", () => {
       revision: 19,
     });
 
-    fireEvent.click(screen.getByRole("tab", { name: /已接受.*2/ }));
-    expect(await screen.findByText(/待审核说明/)).toBeInTheDocument();
-    expect(screen.getByText(/已经接受的说明/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "接受" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByText(/已经接受的说明/)).not.toBeInTheDocument();
   });
 
-  it("拒绝待审建议后移出待审核页并进入已拒绝页", async () => {
+  it("拒绝待审建议后从阅读审核页移除", async () => {
     renderWorkspace();
     await screen.findByText(/待审核说明/);
     fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
@@ -148,9 +152,47 @@ describe("ProofreadWorkspace", () => {
     await waitFor(() =>
       expect(screen.queryByText(/待审核说明/)).not.toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("tab", { name: /已拒绝.*2/ }));
-    expect(await screen.findByText(/待审核说明/)).toBeInTheDocument();
-    expect(screen.getByText(/已经拒绝的说明/)).toBeInTheDocument();
+    expect(screen.queryByText(/已经拒绝的说明/)).not.toBeInTheDocument();
+  });
+
+  it("作者可以一次接受整章批次的全部修改", async () => {
+    const batch = {
+      id: "batch-1",
+      documentId: "demo-post",
+      chapterId: "chapter-0",
+      chapterTitle: "第一章 · 潮汐表",
+      baseRevision: 18,
+      beforeContent: {
+        type: "doc" as const,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "原文" }] }],
+      },
+      afterContent: {
+        type: "doc" as const,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "修改后" }] }],
+      },
+      steps: [{ stepType: "replace", from: 1, to: 3 }],
+      reason: "整章统一调整",
+      status: "pending" as const,
+      authorId: "reader",
+      reviewerId: null,
+      createdAt: "2026-08-20T08:00:00.000Z",
+    };
+    mocks.listSuggestionBatches.mockResolvedValue([batch]);
+    mocks.reviewSuggestionBatch.mockResolvedValue({
+      batch: { ...batch, status: "approved", reviewerId: "author" },
+      document: null,
+    });
+    renderWorkspace();
+
+    expect(await screen.findByText("整章统一调整")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "接受全部修改" }));
+    await waitFor(() =>
+      expect(mocks.reviewSuggestionBatch).toHaveBeenCalledWith(
+        "batch-1",
+        "approve",
+        18,
+      ),
+    );
   });
 
   it("审核失败时保留待审建议并显示错误", async () => {

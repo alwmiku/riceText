@@ -7,7 +7,9 @@ import { ChapterRail, ForumBusinessPanel, HistoryPanel } from "./ForumPanels";
 
 const mocks = vi.hoisted(() => ({
   getRevisionsMock: vi.fn(),
+  listSuggestionBatchesMock: vi.fn(),
   listSuggestionsMock: vi.fn(),
+  reviewSuggestionBatchMock: vi.fn(),
   reviewSuggestionMock: vi.fn(),
   getAttachmentMock: vi.fn(),
   purchaseAttachmentMock: vi.fn(),
@@ -18,7 +20,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../lib/api", () => ({
   getRevisions: mocks.getRevisionsMock,
+  listSuggestionBatches: mocks.listSuggestionBatchesMock,
   listSuggestions: mocks.listSuggestionsMock,
+  reviewSuggestionBatch: mocks.reviewSuggestionBatchMock,
   reviewSuggestion: mocks.reviewSuggestionMock,
   getAttachment: mocks.getAttachmentMock,
   purchaseAttachment: mocks.purchaseAttachmentMock,
@@ -103,6 +107,8 @@ describe("ForumPanels", () => {
   beforeEach(() => {
     mocks.getRevisionsMock.mockReset();
     mocks.getRevisionsMock.mockResolvedValue(seedRevisions);
+    mocks.listSuggestionBatchesMock.mockReset().mockResolvedValue([]);
+    mocks.reviewSuggestionBatchMock.mockReset();
     mocks.listSuggestionsMock.mockReset();
     mocks.listSuggestionsMock.mockResolvedValue(
       structuredClone(pendingSuggestions),
@@ -232,7 +238,37 @@ describe("ForumPanels", () => {
     expect(screen.queryByText("第 3 行")).not.toBeInTheDocument();
   });
 
-  it("接受校订建议调用审核 API 并显示已合并状态", async () => {
+  it("编辑页右栏通过状态 Tab 查看已接受和已拒绝记录", async () => {
+    mocks.listSuggestionsMock.mockResolvedValue([
+      { ...pendingSuggestions[0]!, status: "approved", reason: "已接受记录" },
+      {
+        ...pendingSuggestions[0]!,
+        id: "rejected-item",
+        status: "rejected",
+        reason: "已拒绝记录",
+      },
+    ]);
+    renderWithQuery(
+      <ForumBusinessPanel
+        identity={identities[0]!}
+        documentId="demo-post"
+        baseRevision={18}
+        chapterId="chapter-0"
+        chapterTitle="楔子 · 雨季之前"
+        onRestore={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("tab", { name: /待审核.*0/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /已接受.*1/ }));
+    expect(screen.getByText("已接受记录")).toBeInTheDocument();
+    expect(screen.queryByText("已拒绝记录")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /已拒绝.*1/ }));
+    expect(screen.getByText("已拒绝记录")).toBeInTheDocument();
+    expect(screen.queryByText("已接受记录")).not.toBeInTheDocument();
+  });
+
+  it("接受校订建议调用审核 API并显示已合并状态", async () => {
     renderWithQuery(
       <ForumBusinessPanel
         identity={identities[0]!}
@@ -253,6 +289,7 @@ describe("ForumPanels", () => {
         18,
       ),
     );
+    fireEvent.click(screen.getByRole("tab", { name: /已接受/ }));
     expect(await screen.findByText("已合并并建版")).toBeInTheDocument();
   });
 

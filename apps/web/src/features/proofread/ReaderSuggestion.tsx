@@ -82,7 +82,7 @@ export function ReaderSuggestion({
     event.preventDefault();
     if (!draft) return;
     const replacement = suggestedText.trim();
-    if (!replacement || replacement === draft.fromText) {
+    if (replacement === draft.fromText) {
       setError("请填写与原文不同的修订内容");
       return;
     }
@@ -175,8 +175,8 @@ export function ReaderSuggestion({
             修订为
             <textarea
               autoFocus
-              required
               rows={3}
+              placeholder="输入替换文字；留空表示删除所选原文"
               value={suggestedText}
               onChange={(event) => setSuggestedText(event.target.value)}
               className="mt-1.5 w-full resize-y rounded-md border border-input bg-white px-3 py-2 font-normal leading-5 outline-none focus:ring-2 focus:ring-ring"

@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  CreateSuggestionBatchRequestSchema,
   CreateSuggestionRequestSchema,
+  ReviewSuggestionBatchRequestSchema,
   ReviewSuggestionRequestSchema,
 } from "@ricetext/contracts";
 import type { RouteDependencies } from "../dependencies.js";
@@ -43,6 +45,46 @@ export const forumSuggestionRoutes: FastifyPluginAsync<
             },
           ),
         );
+    },
+  );
+
+  app.get(
+    "/api/forum/documents/:documentId/suggestion-batches",
+    { schema: getFastifySchema("listSuggestionBatches") },
+    async (request) => ({
+      items: dependencies.forum.suggestionBatches(
+        params(request).documentId!,
+        identity(dependencies, request),
+      ),
+    }),
+  );
+
+  app.post(
+    "/api/forum/documents/:documentId/suggestion-batches",
+    { schema: getFastifySchema("createSuggestionBatch") },
+    async (request, reply) => {
+      const body = CreateSuggestionBatchRequestSchema.parse(request.body);
+      return reply.status(201).send(
+        dependencies.forum.createSuggestionBatch(
+          params(request).documentId!,
+          body,
+          identity(dependencies, request),
+        ),
+      );
+    },
+  );
+
+  app.patch(
+    "/api/forum/suggestion-batches/:batchId",
+    { schema: getFastifySchema("reviewSuggestionBatch") },
+    async (request) => {
+      const body = ReviewSuggestionBatchRequestSchema.parse(request.body);
+      return dependencies.forum.reviewSuggestionBatch(
+        params(request).batchId!,
+        body.decision,
+        body.baseRevision,
+        identity(dependencies, request),
+      );
     },
   );
 

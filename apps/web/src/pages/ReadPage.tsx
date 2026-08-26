@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 import { useAppContext } from "../app-context";
 import { Badge, Button, Dialog } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
+import { ChapterSuggestionEditor } from "../features/proofread/ChapterSuggestionEditor";
 import { ProofreadWorkspace } from "../features/proofread/ProofreadWorkspace";
 import { ReaderSuggestion } from "../features/proofread/ReaderSuggestion";
 import { TocSidebar } from "../features/viewer/TocSidebar";
@@ -179,6 +180,19 @@ export default function ReadPage() {
                 ? "本地缓存副本"
                 : `版本 ${document.revision}`}
             </Badge>
+            {identity.role === "reader" ? (
+              <span className="ml-auto">
+                <ChapterSuggestionEditor
+                  documentId={document.id}
+                  baseRevision={document.revision}
+                  chapterId={chapterId}
+                  chapterTitle={chapters[activeIndex]?.title ?? "正文"}
+                  chapterIndex={activeIndex}
+                  fullContent={document.content}
+                  chapterContent={chapterDoc}
+                />
+              </span>
+            ) : null}
             {canProofread && (
               <Button
                 size="sm"

@@ -22,12 +22,19 @@ import {
   getPoll,
   getPollVotes,
   getRevisions,
+  listSuggestionBatches,
   listSuggestions,
   purchaseAttachment,
+  reviewSuggestionBatch,
   reviewSuggestion,
   votePoll,
 } from "../../lib/api";
-import type { RevisionSummary, SeedIdentity } from "../../lib/types";
+import type {
+  ForumSuggestionBatch,
+  RevisionSummary,
+  SeedIdentity,
+} from "../../lib/types";
+import { SuggestionBatchCard } from "../proofread/SuggestionBatchCard";
 import { cn, formatTime } from "../../lib/utils";
 
 /** 完整创作模式左侧的章节目录：点击切换当前编辑章节。 */
@@ -122,9 +129,44 @@ function SuggestionPanel({
     queryKey: ["forum", "suggestions", documentId],
     queryFn: ({ signal }) => listSuggestions(documentId, signal),
   });
+  const { data: batches = [], isLoading: batchesLoading } = useQuery({
+    queryKey: ["forum", "suggestion-batches", documentId],
+    queryFn: ({ signal }) => listSuggestionBatches(documentId, signal),
+  });
+  const [status, setStatus] = useState<"pending" | "approved" | "rejected">(
+    "pending",
+  );
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const chapterItems = items.filter((item) => item.chapterId === chapterId);
+  const chapterItems = items.filter(
+    (item) => item.chapterId === chapterId && item.status === status,
+  );
+  const chapterBatches = batches.filter(
+    (item) => item.chapterId === chapterId && item.status === status,
+  );
+  const counts = {
+    pending:
+      items.filter(
+        (item) => item.chapterId === chapterId && item.status === "pending",
+      ).length +
+      batches.filter(
+        (item) => item.chapterId === chapterId && item.status === "pending",
+      ).length,
+    approved:
+      items.filter(
+        (item) => item.chapterId === chapterId && item.status === "approved",
+      ).length +
+      batches.filter(
+        (item) => item.chapterId === chapterId && item.status === "approved",
+      ).length,
+    rejected:
+      items.filter(
+        (item) => item.chapterId === chapterId && item.status === "rejected",
+      ).length +
+      batches.filter(
+        (item) => item.chapterId === chapterId && item.status === "rejected",
+      ).length,
+  };
 
   const decide = async (id: string, decision: "approve" | "reject") => {
     setBusyId(id);
@@ -148,23 +190,91 @@ function SuggestionPanel({
     }
   };
 
-  if (isLoading)
+  const decideBatch = async (
+    id: string,
+    decision: "approve" | "reject",
+  ) => {
+    setBusyId(id);
+    setError("");
+    try {
+      const result = await reviewSuggestionBatch(id, decision, baseRevision);
+      queryClient.setQueryData<ForumSuggestionBatch[]>(
+        ["forum", "suggestion-batches", documentId],
+        (current = []) =>
+          current.map((item) => (item.id === id ? result.batch : item)),
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["forum", "suggestion-batches", documentId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["document", documentId] }),
+        queryClient.invalidateQueries({ queryKey: ["revisions", documentId] }),
+      ]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "批量审核失败");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (isLoading || batchesLoading)
     return <p className="text-xs text-muted-foreground">加载中…</p>;
-  if (chapterItems.length === 0)
-    return (
-      <div className="space-y-1 text-xs text-muted-foreground">
-        <p>{chapterTitle}</p>
-        <p>本章暂无待处理的校订建议</p>
-      </div>
-    );
 
   return (
     <div className="space-y-3">
+      <div
+        className="grid grid-cols-3 border-b border-border"
+        role="tablist"
+        aria-label="校订状态"
+      >
+        {([
+          ["pending", "待审核"],
+          ["approved", "已接受"],
+          ["rejected", "已拒绝"],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={status === id}
+            onClick={() => setStatus(id)}
+            className={cn(
+              "flex min-h-9 items-center justify-center gap-1 border-b-2 border-transparent px-1 text-[11px] font-semibold text-muted-foreground",
+              status === id && "border-primary text-primary",
+            )}
+          >
+            {label}
+            <span className="rounded bg-muted px-1 py-px text-[9px]">
+              {counts[id]}
+            </span>
+          </button>
+        ))}
+      </div>
       {error ? (
         <p className="rounded bg-[#fdf1f0] px-2 py-1.5 text-[11px] text-[#8f2b24]">
           {error}
         </p>
       ) : null}
+      {chapterItems.length === 0 && chapterBatches.length === 0 ? (
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>{chapterTitle}</p>
+          <p>
+            {status === "pending"
+              ? "本章暂无待处理的校订建议"
+              : status === "approved"
+                ? "本章暂无已接受的校订"
+                : "本章暂无已拒绝的校订"}
+          </p>
+        </div>
+      ) : null}
+      {chapterBatches.map((batch) => (
+        <SuggestionBatchCard
+          key={batch.id}
+          batch={batch}
+          busy={busyId !== null}
+          onReview={(decision) => void decideBatch(batch.id, decision)}
+        />
+      ))}
       {chapterItems.map((item) => (
         <article key={item.id} className="rounded-md border border-border p-3">
           <div className="mb-2 flex items-center justify-between">

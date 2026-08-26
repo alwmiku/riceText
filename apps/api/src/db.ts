@@ -270,6 +270,27 @@ DROP TABLE document_revisions;
 ALTER TABLE document_revisions_v5 RENAME TO document_revisions;
 `;
 
+const migrationV6 = `
+CREATE TABLE suggestion_batches (
+  id TEXT PRIMARY KEY,
+  document_id TEXT NOT NULL REFERENCES documents(id),
+  chapter_id TEXT NOT NULL,
+  chapter_title TEXT NOT NULL,
+  base_revision INTEGER NOT NULL,
+  before_content_json TEXT NOT NULL,
+  after_content_json TEXT NOT NULL,
+  steps_json TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+  author_id TEXT NOT NULL REFERENCES users(id),
+  reviewer_id TEXT REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  reviewed_at TEXT
+);
+CREATE INDEX suggestion_batches_document_idx
+  ON suggestion_batches(document_id, created_at DESC);
+`;
+
 /** 幂等写入开发身份、正文和论坛初始数据，重复启动不会覆盖用户修改。 */
 function seed(db: DatabaseSync): void {
   const now = new Date().toISOString();
@@ -402,6 +423,7 @@ export function createDatabase(options: DatabaseOptions): DatabaseSync {
   db.exec("PRAGMA foreign_keys = OFF");
   runMigration(db, 5, migrationV5);
   db.exec("PRAGMA foreign_keys = ON");
+  runMigration(db, 6, migrationV6);
   if (options.seed !== false) seed(db);
   return db;
 }
