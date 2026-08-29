@@ -108,6 +108,15 @@ describe("ColorPicker 组件", () => {
     expect(window.localStorage.getItem("ricetext:last-color")).toBe("#197c73");
   });
 
+  it("showSaturation=false 隐藏 SV 面板（子菜单紧凑场景）", () => {
+    render(<ColorPicker value="#000000" onChange={vi.fn()} showSaturation={false} />);
+    expect(
+      screen.queryByRole("slider", { name: "饱和度与亮度" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "色相" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Hex 色值")).toBeInTheDocument();
+  });
+
   it("无 value 时以记忆色为初始草稿（默认 #20272c）", () => {
     render(<ColorPicker onChange={vi.fn()} />);
     expect(screen.getByLabelText("Hex 色值")).toHaveValue("#20272c");

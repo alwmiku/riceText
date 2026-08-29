@@ -1,10 +1,12 @@
 import type { Editor } from "@tiptap/react";
+import { useState } from "react";
 import {
   AlignCenter,
   AlignLeft,
   AlignRight,
   AtSign,
   Bold,
+  Check,
   Eraser,
   EyeOff,
   Heading1,
@@ -22,8 +24,14 @@ import {
   UnlockKeyhole,
   XCircle,
 } from "lucide-react";
-import { DropdownMenuItem } from "../../components/ui";
-import { ColorPicker } from "../../components/ui/color-picker";
+import { cn } from "../../lib/utils";
+import {
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from "../../components/ui";
+import { ColorPicker, loadLastColor } from "../../components/ui/color-picker";
 import { cmd } from "./commands";
 import {
   clearFormatting,
@@ -43,6 +51,8 @@ import {
   undo,
 } from "./editor-actions";
 import {
+  FONT_FAMILIES,
+  FONT_SIZES,
   INSERT_CONTENT_TOOLS,
   INSERT_TOOL_DEFINITIONS,
 } from "./editor-tool-definitions";
@@ -61,8 +71,10 @@ export function CompactToolbarControls({
 }) {
   const requestInsert = useInsertRequest();
   const spoilerActive = editor.isActive("spoiler");
+  const [lastColor, setLastColor] = useState(loadLastColor);
   const textStyle = editor.getAttributes("textStyle") as {
-    color?: string;
+    fontSize?: string;
+    fontFamily?: string;
   };
   const iconClass = mobile ? "[&_svg]:size-5" : "";
 
@@ -101,29 +113,86 @@ export function CompactToolbarControls({
           <Eraser />
           清除样式
         </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={spoilerActive}
-          onSelect={() => setFontFamily(editor, "Noto Serif SC Variable")}
-        >
-          宋体
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={spoilerActive}
-          onSelect={() => setFontFamily(editor, "sans-serif")}
-        >
-          黑体
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => setFontSize(editor, "18px")}>
-          <span className="text-xs font-bold">18</span>
-          字号 18px
-        </DropdownMenuItem>
-        <div className="border-t border-border p-2">
-          {/* 拾色器自持记忆色，不随选区文字颜色同步；菜单内无触发按钮，直接应用。 */}
-          <ColorPicker
-            onChange={(color) => setColor(editor, color)}
-            direct
+        {/* 字体：可点击子菜单（shadcn Context Menu 风格），避免平铺占位 */}
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger disabled={spoilerActive}>
+            字体
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            {FONT_FAMILIES.map((font) => (
+              <DropdownMenuItem
+                key={font.value}
+                className={cn(
+                  textStyle.fontFamily === font.value && "bg-muted font-semibold",
+                )}
+                onSelect={() => setFontFamily(editor, font.value)}
+              >
+                {font.label}
+                {textStyle.fontFamily === font.value && (
+                  <Check size={14} className="ml-auto" aria-hidden="true" />
+                )}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        {/* 字号：可点击子菜单 */}
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>字号</DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            {FONT_SIZES.map((fontSize) => (
+              <DropdownMenuItem
+                key={fontSize}
+                className={cn(
+                  textStyle.fontSize === fontSize && "bg-muted font-semibold",
+                )}
+                onSelect={() => setFontSize(editor, fontSize)}
+              >
+                {fontSize}
+                {textStyle.fontSize === fontSize && (
+                  <Check size={14} className="ml-auto" aria-hidden="true" />
+                )}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        {/* 文字颜色：色块可单独点击直接应用；右侧箭头展开完整选色面板（与桌面一致） */}
+        <div className="flex items-stretch" role="none">
+          <button
+            type="button"
+            aria-label="应用文字颜色"
             disabled={spoilerActive}
-          />
+            onClick={() => {
+              setLastColor(lastColor);
+              setColor(editor, lastColor);
+            }}
+            className="flex min-h-9 shrink-0 items-center gap-2 rounded-l px-2.5 text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-45"
+          >
+            <span
+              aria-hidden="true"
+              className="h-4 w-4 rounded-sm border border-black/15"
+              style={{ background: lastColor }}
+            />
+          </button>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger disabled={spoilerActive} className="flex-1 rounded-l-none">
+              文字颜色
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent
+              className="w-auto p-1.5"
+              // 移动端屏幕窄：子菜单从触发器右侧展开易超出视口，改从下方展开
+              {...(mobile ? { side: "bottom", align: "start" } : {})}
+            >
+              <ColorPicker
+                onChange={(color) => {
+                  setLastColor(color);
+                  setColor(editor, color);
+                }}
+                direct
+                disabled={spoilerActive}
+                className="w-[min(236px,calc(100vw-24px))]"
+              />
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
         </div>
       </ToolbarGroup>
       <ToolbarGroup label="段落排版" icon={AlignLeft} collapsed mobile={mobile}>

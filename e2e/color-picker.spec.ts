@@ -80,17 +80,27 @@ test("移动端：文字格式折叠组内紧凑拾色器可交互", async ({ pa
   await page.keyboard.press("Control+a");
   await expect(page.getByRole("toolbar", { name: "选区格式菜单" })).toBeVisible();
 
+  // 文字格式菜单：一级菜单为格式项 + 字体/字号/颜色子菜单，不直接平铺
   await page.getByRole("button", { name: "文字格式" }).tap();
   const menu = page.getByRole("menu");
   await expect(menu).toBeVisible();
-  // 菜单内是完整拾色器（SV/色相/透明度/Hex），无浏览器原生取色器
-  await expect(menu.getByRole("slider", { name: "饱和度与亮度" })).toBeVisible();
-  await expect(menu.getByRole("slider", { name: "透明度" })).toBeVisible();
-  await expect(menu.getByLabel("Hex 色值")).toBeVisible();
-  await expect(menu.getByLabel("系统取色器")).not.toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /字体/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /字号/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /文字颜色/ })).toBeVisible();
+  await expect(menu.getByLabel("Hex 色值")).not.toBeVisible();
 
-  // 已存色块点击 → 编辑器选区文字出现颜色标记
-  await menu.getByLabel("文字颜色 #197c73").tap();
+  // 文字颜色菜单项带色块：色块可单独点击直接应用（记忆色）
+  await menu.getByRole("button", { name: "应用文字颜色" }).tap();
+  await expect(editor.locator('[style*="color"]').first()).toBeVisible();
+
+  // 右侧箭头展开完整选色面板（含 SV 矩形 + 透明度 + Hex + 已存色块）
+  await menu.getByRole("menuitem", { name: /文字颜色/ }).tap();
+  const subMenu = page.getByRole("menu").last();
+  await expect(subMenu).toBeVisible();
+  await expect(subMenu.getByRole("slider", { name: "饱和度与亮度" })).toBeVisible();
+  await expect(subMenu.getByRole("slider", { name: "透明度" })).toBeVisible();
+  await expect(subMenu.getByLabel("Hex 色值")).toBeVisible();
+  await subMenu.getByLabel("文字颜色 #197c73", { exact: true }).tap();
   await expect(editor.locator('[style*="color"]').first()).toBeVisible();
 });
 /** 3. 桌面无选区：setColor 聚焦编辑器不应关闭拾色器（focusin 拦截）。 */

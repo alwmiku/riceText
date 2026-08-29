@@ -220,6 +220,8 @@ export interface ColorPickerProps {
   onDraftChange?: (color: string) => void;
   /** 直接应用模式：无触发按钮的内联场景（如移动端折叠菜单）下，调色即应用。 */
   direct?: boolean;
+  /** 是否显示饱和度/明度面板（子菜单等紧凑场景可隐藏以降低高度）。 */
+  showSaturation?: boolean;
   disabled?: boolean;
   className?: string;
 }
@@ -230,6 +232,7 @@ export function ColorPicker({
   onChange,
   onDraftChange,
   direct = false,
+  showSaturation = true,
   disabled = false,
   className,
 }: ColorPickerProps) {
@@ -324,7 +327,8 @@ export function ColorPicker({
         className,
       )}
     >
-      {/* 饱和度 / 明度面板 */}
+      {/* 饱和度 / 明度面板（子菜单等紧凑场景可隐藏） */}
+      {showSaturation && (
           <div
             ref={svRef}
             role="slider"
@@ -371,7 +375,8 @@ export function ColorPicker({
               className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]"
               style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
             />
-          </div>
+      </div>
+      )}
 
           {/* 色相滑杆（Radix Slider） */}
           <Slider

@@ -512,7 +512,7 @@ describe("RichTextEditor presets", () => {
     expect(readyEditor.getAttributes("textStyle").color).toBe("#197c73");
   });
 
-  it("移动端文字格式折叠组内用紧凑拾色器色块直接应用", async () => {
+  it("移动端文字格式菜单：颜色带色块（点击直用）与箭头子菜单（完整取色面板）", async () => {
     window.localStorage.clear();
     const editorRef: { current: Editor | null } = { current: null };
     render(
@@ -534,9 +534,19 @@ describe("RichTextEditor presets", () => {
       button: 0,
       ctrlKey: false,
     });
-    // 选区内浮动的选区格式菜单里也有一个紧凑拾色器，须限定在折叠组菜单内查询。
     const menu = await screen.findByRole("menu");
-    fireEvent.click(within(menu).getByLabelText("文字颜色 #197c73"));
+    // 1. 色块按钮直接应用记忆色
+    fireEvent.click(within(menu).getByRole("button", { name: "应用文字颜色" }));
+    expect(readyEditor.getAttributes("textStyle").color).toBe("#20272c");
+    // 2. 箭头子菜单展开完整选色面板（含 SV 矩形）
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /文字颜色/ }));
+    const subMenu = (await screen.findAllByRole("menu")).at(-1);
+    if (!subMenu) throw new Error("子菜单未打开");
+    expect(
+      within(subMenu).getByRole("slider", { name: "饱和度与亮度" }),
+    ).toBeInTheDocument();
+    // 3. 面板内已存色块点击应用
+    fireEvent.click(within(subMenu).getByLabelText("文字颜色 #197c73"));
     expect(readyEditor.getAttributes("textStyle").color).toBe("#197c73");
   });
 });

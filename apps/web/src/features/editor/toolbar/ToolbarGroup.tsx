@@ -46,7 +46,7 @@ export function ToolbarGroup({
         // 移动端底部菜单很高（格式项 + 拾色器），限高滚动避免 Radix 碰撞翻转
         // 把菜单挤出视口；桌面折叠工具栏同样受益。
         className={cn(
-          "min-w-48",
+          "min-w-36",
           "max-h-[min(62vh,440px)] overflow-y-auto",
         )}
       >
