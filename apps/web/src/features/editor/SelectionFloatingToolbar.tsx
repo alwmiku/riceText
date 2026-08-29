@@ -13,6 +13,7 @@ import { IconButton } from "../../components/ui";
 import {
   ColorPicker,
   ColorPickerPopover,
+  loadLastColor,
 } from "../../components/ui/color-picker";
 import { cmd } from "./commands";
 import {
@@ -182,7 +183,6 @@ function FormatControls({
         </IconButton>
         {mobile ? (
           <ColorPicker
-            value={textStyle.color ?? ""}
             onChange={(color) => setColor(editor, color)}
             compact
             disabled={spoilerActive}
@@ -190,18 +190,18 @@ function FormatControls({
           />
         ) : (
           <ColorPickerPopover
-            value={textStyle.color ?? ""}
             onChange={(color) => setColor(editor, color)}
             label="选区文字颜色"
+            swatchLabel="应用选区文字颜色"
             disabled={spoilerActive}
             align="center"
-            triggerClassName="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
+            triggerClassName="h-[30px] rounded"
             triggerChildren={
               <span className="flex items-center gap-1">
                 <Palette size={14} aria-hidden="true" />
                 <span
                   className="h-3 w-3 rounded-sm border border-black/15"
-                  style={{ background: textStyle.color ?? "#20272c" }}
+                  style={{ background: loadLastColor() }}
                 />
               </span>
             }

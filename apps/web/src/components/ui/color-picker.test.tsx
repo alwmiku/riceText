@@ -67,52 +67,59 @@ describe("ColorPicker 组件", () => {
     expect(screen.getByLabelText("已存颜色色板")).toBeInTheDocument();
     expect(screen.getByLabelText("文字颜色 #197c73")).toBeInTheDocument();
     expect(screen.getByLabelText("添加当前颜色")).toBeInTheDocument();
+    // 调色区不直接应用，也没有独立的「应用到文字」按钮
+    expect(screen.queryByRole("button", { name: "应用到文字" })).not.toBeInTheDocument();
   });
 
-  it("拖动色相滑杆（Radix Slider）实时产出颜色", () => {
+  it("调色区（滑杆/SV/Hex）只更新草稿并同步 onDraftChange，不触发 onChange", () => {
     const onChange = vi.fn();
-    render(<ColorPicker value="#ff0000" onChange={onChange} />);
-    const hue = screen.getByRole("slider", { name: "色相" });
-    // Radix Slider 的轨道点击会按位置更新值（jsdom 中直接触发键盘更稳定）
-    fireEvent.keyDown(hue, { key: "ArrowRight" });
-    expect(onChange).toHaveBeenCalled();
-  });
-
-  it("SV 面板按下即选色（点击取色）", () => {
-    const onChange = vi.fn();
-    // jsdom 的 getBoundingClientRect 全为 0，模拟面板尺寸让坐标换算生效。
+    const onDraftChange = vi.fn();
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
       new DOMRect(0, 0, 236, 144),
     );
-    render(<ColorPicker value="#ff0000" onChange={onChange} />);
-    const sv = screen.getByRole("slider", { name: "饱和度与亮度" });
-    fireEvent.pointerDown(sv, {
+    render(
+      <ColorPicker value="#ff0000" onChange={onChange} onDraftChange={onDraftChange} />,
+    );
+    // 色相滑杆键盘调整（草稿）
+    fireEvent.keyDown(screen.getByRole("slider", { name: "色相" }), {
+      key: "ArrowRight",
+    });
+    // SV 面板点击（草稿）
+    fireEvent.pointerDown(screen.getByRole("slider", { name: "饱和度与亮度" }), {
       pointerId: 1,
       pointerType: "mouse",
       button: 0,
       clientX: 236,
       clientY: 0,
     });
-    expect(onChange).toHaveBeenLastCalledWith("#ff0000");
+    // Hex 输入回车（草稿）
+    const input = screen.getByLabelText("Hex 色值");
+    fireEvent.change(input, { target: { value: "#4F46E5" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onDraftChange).toHaveBeenLastCalledWith("#4f46e5");
   });
 
-  it("点击已存色块输出归一化 hex", () => {
+  it("点击已存色块直接应用并持久化记忆色", () => {
     const onChange = vi.fn();
     render(<ColorPicker value="#000000" onChange={onChange} />);
     fireEvent.click(screen.getByLabelText("文字颜色 #197c73"));
     expect(onChange).toHaveBeenLastCalledWith("#197c73");
+    expect(window.localStorage.getItem("ricetext:last-color")).toBe("#197c73");
   });
 
-  it("Hex 输入框回车提交合法值，非法值失焦回退", () => {
+  it("无 value 时以记忆色为初始草稿（默认 #20272c）", () => {
+    render(<ColorPicker onChange={vi.fn()} />);
+    expect(screen.getByLabelText("Hex 色值")).toHaveValue("#20272c");
+  });
+
+  it("Hex 非法值失焦回退", () => {
     const onChange = vi.fn();
     render(<ColorPicker value="#000000" onChange={onChange} />);
     const input = screen.getByLabelText("Hex 色值");
-    fireEvent.change(input, { target: { value: "#4F46E5" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(onChange).toHaveBeenLastCalledWith("#4f46e5");
     fireEvent.change(input, { target: { value: "zzz" } });
     fireEvent.blur(input);
-    expect(input).toHaveValue("#4f46e5");
+    expect(input).toHaveValue("#000000");
   });
 
   it("添加当前颜色写入已存色板并持久化到 localStorage", () => {
@@ -125,7 +132,16 @@ describe("ColorPicker 组件", () => {
     expect(stored).toContain("#123456");
   });
 
-  it("紧凑模式省略 SV 面板与色相滑杆，保留透明度与系统取色器", () => {
+  it("紧凑模式 Hex 输入回车直接应用", () => {
+    const onChange = vi.fn();
+    render(<ColorPicker value="#000000" onChange={onChange} compact />);
+    const input = screen.getByLabelText("Hex 色值");
+    fireEvent.change(input, { target: { value: "#4F46E5" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onChange).toHaveBeenLastCalledWith("#4f46e5");
+  });
+
+  it("紧凑模式省略 SV 面板与色相滑杆，保留透明度与系统取色器，且无应用按钮（全部直接应用）", () => {
     render(<ColorPicker value="#000000" onChange={vi.fn()} compact />);
     expect(
       screen.queryByRole("slider", { name: "饱和度与亮度" }),
@@ -137,9 +153,41 @@ describe("ColorPicker 组件", () => {
     expect(screen.queryByLabelText("色板")).not.toBeInTheDocument();
   });
 
-  it("Popover 包装器点击触发按钮打开拾色器", () => {
-    render(<ColorPickerPopover value="#000000" onChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "文字颜色" }));
+  it("Popover 包装器：色块按钮直接应用，箭头按钮打开面板，色块跟随草稿", () => {
+    const onChange = vi.fn();
+    render(<ColorPickerPopover onChange={onChange} />);
+    const swatchButton = screen.getByRole("button", { name: "应用文字颜色" });
+    const arrowButton = screen.getByRole("button", { name: "文字颜色" });
+    expect(arrowButton.querySelector("svg[class*=chevron]")).not.toBeNull();
+
+    // 1. 色块按钮点击：直接应用当前色（不打开面板）
+    fireEvent.click(swatchButton);
+    expect(onChange).toHaveBeenLastCalledWith("#20272c");
+    expect(screen.queryByLabelText("拾色器")).not.toBeInTheDocument();
+
+    // 2. 箭头按钮点击：打开面板
+    fireEvent.click(arrowButton);
     expect(screen.getByLabelText("拾色器")).toBeInTheDocument();
+
+    // 3. 面板内已存色块 → 应用 + 记忆 + 关闭
+    fireEvent.click(screen.getByLabelText("文字颜色 #197c73"));
+    expect(onChange).toHaveBeenLastCalledWith("#197c73");
+    expect(screen.queryByLabelText("拾色器")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("ricetext:last-color")).toBe("#197c73");
+
+    // 4. 色块按钮显示应用后的颜色（#197c73）
+    const swatch = swatchButton.querySelector("span");
+    expect(swatch).not.toBeNull();
+    expect(swatch?.getAttribute("style")).toMatch(/197c73|25, ?124, ?115/);
+
+    // 5. 面板调色（Hex 草稿）→ 色块实时跟随
+    fireEvent.click(arrowButton);
+    const hex = screen.getByLabelText("Hex 色值");
+    fireEvent.change(hex, { target: { value: "#4F46E5" } });
+    fireEvent.keyDown(hex, { key: "Enter" });
+    const swatchAfter = swatchButton.querySelector("span");
+    expect(swatchAfter?.getAttribute("style")).toMatch(/4f46e5|79, ?70, ?229/);
+    // 草稿不应用
+    expect(onChange).toHaveBeenCalledTimes(2);
   });
 });

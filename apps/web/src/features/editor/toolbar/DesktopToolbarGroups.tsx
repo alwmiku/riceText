@@ -170,12 +170,12 @@ export function TextFormatGroup({
               </option>
             ))}
           </select>
+          {/* 拾色器自持记忆色（上次使用的颜色），不随选区文字颜色同步。 */}
           <ColorPickerPopover
-            value={textStyle.color ?? ""}
             onChange={(color) => setColor(editor, color)}
             label="文字颜色"
             disabled={spoilerActive}
-            triggerClassName="h-8 w-8"
+            triggerClassName="h-8"
           />
         </span>
       )}

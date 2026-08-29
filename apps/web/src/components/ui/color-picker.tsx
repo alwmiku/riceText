@@ -1,5 +1,6 @@
 import {
   Check,
+  ChevronDown,
   Palette,
   Plus,
 } from "lucide-react";
@@ -178,6 +179,34 @@ function persistSavedColors(colors: string[]): void {
   }
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * 记忆颜色（独立于选区文字颜色，方便连续编辑）
+ * ──────────────────────────────────────────────────────────────────────── */
+
+const LAST_COLOR_KEY = "ricetext:last-color";
+
+/** 默认记忆色（与工具栏历史默认一致）。 */
+export const DEFAULT_LAST_COLOR = "#20272c";
+
+/** 读取上次使用的颜色；不存在或损坏时回退默认色。 */
+export function loadLastColor(): string {
+  try {
+    const raw = window.localStorage.getItem(LAST_COLOR_KEY);
+    return raw ? normalizeHex(raw) : DEFAULT_LAST_COLOR;
+  } catch {
+    return DEFAULT_LAST_COLOR;
+  }
+}
+
+/** 持久化记忆色。 */
+export function persistLastColor(color: string): void {
+  try {
+    window.localStorage.setItem(LAST_COLOR_KEY, normalizeHex(color));
+  } catch {
+    // localStorage 不可用时静默降级为仅内存。
+  }
+}
+
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
@@ -188,11 +217,13 @@ function clamp01(value: number): number {
  * ──────────────────────────────────────────────────────────────────────── */
 
 export interface ColorPickerProps {
-  /** 当前颜色，任意可解析的 CSS 颜色；不可解析时回退默认色。 */
-  value: string;
-  /** 颜色变化回调，产出 #rrggbb 或 #rrggbbaa。 */
+  /** 初始颜色（仅挂载时生效）；不传则使用上次记忆的颜色。 */
+  value?: string;
+  /** 应用颜色回调，产出 #rrggbb 或 #rrggbbaa。 */
   onChange: (color: string) => void;
-  /** 紧凑模式（移动端）：仅保留色板、Hex 输入与透明度，省略取色面板。 */
+  /** 草稿变化回调：完整模式调色区（SV/滑杆/Hex）实时同步到触发按钮色块。 */
+  onDraftChange?: (color: string) => void;
+  /** 紧凑模式（移动端）：仅保留色板、Hex 输入与透明度，省略取色面板；所有操作直接应用。 */
   compact?: boolean;
   disabled?: boolean;
   className?: string;
@@ -202,13 +233,18 @@ export interface ColorPickerProps {
 export function ColorPicker({
   value,
   onChange,
+  onDraftChange,
   compact = false,
   disabled = false,
   className,
 }: ColorPickerProps) {
-  const parsed = splitAlpha(value);
-  const [draft, setDraft] = useState<{ hex6: string; alpha: number }>(parsed);
-  const [hexText, setHexText] = useState(parsed.hex6);
+  // 初始颜色：显式 value（测试/受控）优先，否则用上次记忆的颜色——拾色器
+  // 不跟随选区文字颜色，方便连续给不同文字上色。仅挂载时读取一次。
+  const initial = value !== undefined && value !== ""
+    ? splitAlpha(value)
+    : splitAlpha(loadLastColor());
+  const [draft, setDraft] = useState<{ hex6: string; alpha: number }>(initial);
+  const [hexText, setHexText] = useState(initial.hex6);
   const [saved, setSaved] = useState<string[]>(loadSavedColors);
   const svRef = useRef<HTMLDivElement>(null);
   const [svDragging, setSvDragging] = useState(false);
@@ -219,21 +255,24 @@ export function ColorPicker({
     if (!rect || rect.width === 0 || rect.height === 0) return;
     const s = clamp01((clientX - rect.left) / rect.width);
     const v = clamp01(1 - (clientY - rect.top) / rect.height);
-    commit(hsvToHex(hsv.h, s, v), draft.alpha);
+    setDraftColor(hsvToHex(hsv.h, s, v), draft.alpha);
   };
 
-  // 外部 value 变化（编辑器撤销/重做、外部 setColor）时同步草稿。
-  useEffect(() => {
-    const next = splitAlpha(value);
-    setDraft(next);
-    setHexText(next.hex6);
-  }, [value]);
-
-  const commit = (hex6: string, alpha: number) => {
+  /** 应用颜色：更新草稿 + 记忆 + 回调（编辑器上色 / 关闭面板）。 */
+  const apply = (hex6: string, alpha: number) => {
     const next = { hex6: normalizeHex(hex6), alpha: clamp01(alpha) };
     setDraft(next);
     setHexText(next.hex6);
+    persistLastColor(withAlpha(next.hex6, next.alpha));
     onChange(withAlpha(next.hex6, next.alpha));
+  };
+
+  /** 仅更新草稿（完整模式的 SV/滑杆/Hex 调色不立即应用），并同步到触发按钮色块。 */
+  const setDraftColor = (hex6: string, alpha: number) => {
+    const next = { hex6: normalizeHex(hex6), alpha: clamp01(alpha) };
+    setDraft(next);
+    setHexText(next.hex6);
+    onDraftChange?.(withAlpha(next.hex6, next.alpha));
   };
 
   const hsv = hexToHsv(draft.hex6);
@@ -252,18 +291,27 @@ export function ColorPicker({
 
   const pickSaved = (color: string) => {
     const { hex6, alpha } = splitAlpha(color);
-    commit(hex6, alpha);
+    apply(hex6, alpha);
   };
 
   const commitHexText = () => {
     const clean = hexText.trim().replace(/^#/u, "").toLowerCase();
     if (/^[0-9a-f]{6}$/u.test(clean)) {
-      commit("#" + clean, draft.alpha);
+      // 完整模式：Hex 只是设置草稿，点「应用到文字」才生效；紧凑模式直接应用。
+      if (compact) {
+        apply("#" + clean, draft.alpha);
+      } else {
+        setDraftColor("#" + clean, draft.alpha);
+      }
       return;
     }
     if (/^[0-9a-f]{8}$/u.test(clean)) {
       const { hex6, alpha } = splitAlpha("#" + clean);
-      commit(hex6, alpha);
+      if (compact) {
+        apply(hex6, alpha);
+      } else {
+        setDraftColor(hex6, alpha);
+      }
       return;
     }
     setHexText(draft.hex6);
@@ -323,7 +371,7 @@ export function ColorPicker({
               else if (event.key === "ArrowDown") v -= step;
               else return;
               event.preventDefault();
-              commit(hsvToHex(hsv.h, s, v), draft.alpha);
+              setDraftColor(hsvToHex(hsv.h, s, v), draft.alpha);
             }}
           >
             <div
@@ -348,7 +396,7 @@ export function ColorPicker({
             }}
             onValueChange={([hue]) => {
               if (hue === undefined) return;
-              commit(hsvToHex(hue, hsv.s, hsv.v), draft.alpha);
+              setDraftColor(hsvToHex(hue, hsv.s, hsv.v), draft.alpha);
             }}
           />
 
@@ -367,7 +415,7 @@ export function ColorPicker({
             }}
             onValueChange={([percent]) => {
               if (percent === undefined) return;
-              commit(draft.hex6, percent / 100);
+              setDraftColor(draft.hex6, percent / 100);
             }}
           />
         </>
@@ -420,7 +468,7 @@ export function ColorPicker({
           }}
           onValueChange={([percent]) => {
             if (percent === undefined) return;
-            commit(draft.hex6, percent / 100);
+            apply(draft.hex6, percent / 100);
           }}
         />
       )}
@@ -489,7 +537,7 @@ export function ColorPicker({
               value={draft.hex6}
               onChange={(event) => {
                 const { hex6, alpha } = splitAlpha(event.target.value);
-                commit(hex6, alpha);
+                apply(hex6, alpha);
               }}
               className="sr-only"
             />
@@ -506,25 +554,30 @@ export function ColorPicker({
  * ──────────────────────────────────────────────────────────────────────── */
 
 export interface ColorPickerPopoverProps extends ColorPickerProps {
-  /** 触发按钮的可访问名称（默认「文字颜色」）。 */
+  /** 箭头按钮（打开面板）的可访问名称，默认「文字颜色」。 */
   label?: string;
-  /** 触发按钮的自定义内容（默认显示当前颜色色块）。 */
+  /** 色块按钮（点击直接应用）的可访问名称，默认「应用文字颜色」。 */
+  swatchLabel?: string;
+  /** 色块按钮的自定义内容（默认显示当前颜色色块）。 */
   triggerChildren?: ReactNode;
-  /** 触发按钮的 className。 */
+  /** 组合按钮容器的 className（高度等）。 */
   triggerClassName?: string;
-  /** 触发按钮 onMouseDown，用于在选区浮动工具栏中保持编辑器选区。 */
+  /** 按钮 onMouseDown，用于在选区浮动工具栏中保持编辑器选区。 */
   triggerOnMouseDown?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   align?: "start" | "center" | "end";
   side?: "top" | "right" | "bottom" | "left";
 }
 
-/** 工具栏按钮 + Popover 的一体化拾色器入口，复用 shadcn Popover/Button。 */
+/**
+ * 工具栏拾色器入口（shadcn 子组件组合）：色块按钮点击直接应用当前颜色，
+ * 箭头按钮展开取色面板；面板内调色（草稿）实时同步到色块。
+ */
 export function ColorPickerPopover({
-  value,
   onChange,
   compact = false,
   disabled = false,
   label = "文字颜色",
+  swatchLabel = "应用文字颜色",
   triggerChildren,
   triggerClassName,
   triggerOnMouseDown,
@@ -532,25 +585,68 @@ export function ColorPickerPopover({
   side = "bottom",
   className,
 }: ColorPickerPopoverProps) {
+  // 显示色：初始为记忆色；面板草稿变化时实时跟随。
+  const [displayColor, setDisplayColor] = useState<string>(loadLastColor);
+  const [open, setOpen] = useState(false);
+
+  // 色块按钮点击：直接应用当前色（不需要打开面板）。
+  const handleApply = () => {
+    persistLastColor(displayColor);
+    onChange(displayColor);
+    setOpen(false);
+  };
+
+  // 面板内应用（已存色块直选）：更新色块 + 记忆 + 关闭面板。
+  const handlePanelApply = (color: string) => {
+    setDisplayColor(color);
+    persistLastColor(color);
+    onChange(color);
+    setOpen(false);
+  };
+
+  const baseButtonClass = "grid shrink-0 place-items-center hover:bg-muted disabled:pointer-events-none disabled:opacity-45";
+
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label={label}
-          disabled={disabled}
-          onMouseDown={triggerOnMouseDown}
-          className={cn("relative", triggerClassName)}
-        >
-          {triggerChildren ?? (
-            <span
-              className="h-4 w-4 rounded-sm border border-black/15"
-              style={{ background: value || "#20272c" }}
+    <span
+      className={cn(
+        "inline-flex items-stretch overflow-hidden rounded-md border border-input bg-white",
+        triggerClassName,
+      )}
+    >
+      <button
+        type="button"
+        aria-label={swatchLabel}
+        aria-haspopup="false"
+        disabled={disabled}
+        onMouseDown={triggerOnMouseDown}
+        onClick={handleApply}
+        className={cn(baseButtonClass, "px-1.5")}
+      >
+        {triggerChildren ?? (
+          <span
+            className="h-4 w-4 rounded-sm border border-black/15"
+            style={{ background: displayColor }}
+          />
+        )}
+      </button>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={label}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            disabled={disabled}
+            onMouseDown={triggerOnMouseDown}
+            className={cn(baseButtonClass, "border-l border-input px-1")}
+          >
+            <ChevronDown
+              size={14}
+              aria-hidden="true"
+              className="text-muted-foreground"
             />
-          )}
-        </Button>
-      </PopoverTrigger>
+          </button>
+        </PopoverTrigger>
       {/* z-[70]：有选区时选区浮动工具栏为 z-[60]，必须在其之上才能接收点击。 */}
       <PopoverContent
         align={align}
@@ -566,13 +662,14 @@ export function ColorPickerPopover({
         }}
       >
         <ColorPicker
-          value={value}
-          onChange={onChange}
+          onChange={handlePanelApply}
+          onDraftChange={setDisplayColor}
           compact={compact}
           disabled={disabled}
           {...(className ? { className } : {})}
         />
       </PopoverContent>
-    </Popover>
+      </Popover>
+    </span>
   );
 }
