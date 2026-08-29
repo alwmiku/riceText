@@ -123,7 +123,8 @@ export function sanitizeUrl(value: unknown, kind: 'image' | 'link' = 'link'): st
 export function sanitizeColor(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const color = value.trim().toLowerCase()
-  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/u.test(color)) return color
+  // #rgb / #rrggbb / #rrggbbaa：8 位十六进制（CSS Color 4）承载透明度，由拾色器产出。
+  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3}(?:[0-9a-f]{2})?)?$/u.test(color)) return color
   if (/^rgb\(\s*(?:\d{1,3}\s*,\s*){2}\d{1,3}\s*\)$/u.test(color)) {
     const channels = color.match(/\d+/gu)?.map(Number) ?? []
     return channels.length === 3 && channels.every((channel) => channel <= 255) ? `rgb(${channels.join(', ')})` : null

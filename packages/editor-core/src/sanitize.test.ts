@@ -113,6 +113,10 @@ describe('document sanitization', () => {
   it('normalizes safe colors, fonts, and pixel sizes', () => {
     expect(sanitizeColor('#ABC')).toBe('#abc')
     expect(sanitizeColor('#00FF7F')).toBe('#00ff7f')
+    expect(sanitizeColor('#FF00FF80')).toBe('#ff00ff80')
+    expect(sanitizeColor('#ABCDEF12')).toBe('#abcdef12')
+    expect(sanitizeColor('#FFF0')).toBeNull()
+    expect(sanitizeColor('#12345')).toBeNull()
     expect(sanitizeColor('rgb(1, 20, 255)')).toBe('rgb(1, 20, 255)')
     expect(sanitizeColor('rgb(0, 0, 999)')).toBeNull()
     expect(sanitizeColor('red')).toBeNull()
