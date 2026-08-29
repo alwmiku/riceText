@@ -1,7 +1,7 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
-import { X } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { cn } from '../lib/utils';
 
@@ -114,7 +114,7 @@ export function DropdownMenuContent({ children, align = 'start', side = 'bottom'
   return (
     <DropdownMenuPrimitive.Portal>
       {/* z-[70]：高于选区浮动工具栏（z-[60]），避免选中文本时菜单被其遮挡 */}
-      <DropdownMenuPrimitive.Content side={side} sideOffset={sideOffset} align={align} className={cn('z-[70] min-w-44 rounded-md border border-border bg-white p-1 shadow-xl', className)}>
+      <DropdownMenuPrimitive.Content side={side} sideOffset={sideOffset} align={align} className={cn('z-[70] min-w-36 rounded-md border border-border bg-white p-1 shadow-xl', className)}>
         {children}
       </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
@@ -127,6 +127,41 @@ export function DropdownMenuItem({ children, onSelect, disabled, className }: { 
     <DropdownMenuPrimitive.Item {...(disabled === undefined ? {} : { disabled })} {...(onSelect ? { onSelect } : {})} className={cn('flex min-h-9 cursor-default select-none items-center gap-2 rounded px-2.5 text-sm outline-none data-[disabled]:opacity-45 data-[highlighted]:bg-muted', className)}>
       {children}
     </DropdownMenuPrimitive.Item>
+  );
+}
+
+/** 嵌套子菜单（shadcn Context Menu 风格），用于折叠字体/字号/颜色等二级选项。 */
+export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
+
+/** 子菜单触发器：显示名称 + 右侧展开箭头。 */
+export function DropdownMenuSubTrigger({ children, className, inset, ...props }: DropdownMenuPrimitive.DropdownMenuSubTriggerProps & { inset?: boolean }) {
+  return (
+    <DropdownMenuPrimitive.SubTrigger
+      data-slot="dropdown-menu-sub-trigger"
+      data-inset={inset}
+      className={cn('flex min-h-9 cursor-default select-none items-center gap-2 rounded px-2.5 text-sm outline-none data-[highlighted]:bg-muted data-[state=open]:bg-muted', inset && 'pl-9', className)}
+      {...props}
+    >
+      {children}
+      <ChevronRight size={14} className="ml-auto text-muted-foreground" aria-hidden="true" />
+    </DropdownMenuPrimitive.SubTrigger>
+  );
+}
+
+/** 子菜单内容：Portal 渲染的二级面板。 */
+export function DropdownMenuSubContent({ children, className, ...props }: DropdownMenuPrimitive.DropdownMenuSubContentProps) {
+  return (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.SubContent
+        data-slot="dropdown-menu-sub-content"
+        sideOffset={6}
+        alignOffset={-6}
+        className={cn('z-[70] min-w-44 rounded-md border border-border bg-white p-1 shadow-xl', className)}
+        {...props}
+      >
+        {children}
+      </DropdownMenuPrimitive.SubContent>
+    </DropdownMenuPrimitive.Portal>
   );
 }
 
