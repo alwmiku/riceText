@@ -1,5 +1,6 @@
 import { MoreHorizontal, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { cn } from "../../../lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,7 +43,12 @@ export function ToolbarGroup({
       <DropdownMenuContent
         align="start"
         side={mobile ? "top" : "bottom"}
-        className="min-w-48"
+        // 移动端底部菜单很高（格式项 + 拾色器），限高滚动避免 Radix 碰撞翻转
+        // 把菜单挤出视口；桌面折叠工具栏同样受益。
+        className={cn(
+          "min-w-48",
+          "max-h-[min(62vh,440px)] overflow-y-auto",
+        )}
       >
         {children}
       </DropdownMenuContent>

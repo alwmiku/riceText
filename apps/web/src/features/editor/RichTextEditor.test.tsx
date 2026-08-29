@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import {
   afterEach,
@@ -265,7 +266,9 @@ describe("RichTextEditor presets", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("选区字体")).toBeInTheDocument();
     expect(screen.getByLabelText("选区字号")).toBeInTheDocument();
-    expect(screen.getByLabelText("文字颜色 #197c73")).toBeInTheDocument();
+    // 右键菜单是 modal，会把浮动工具栏标为 aria-hidden；getByLabelText 不按
+    // 无障碍树过滤，仍能断言浮动工具栏上的拾色器触发按钮。
+    expect(screen.getByLabelText("选区文字颜色")).toBeInTheDocument();
   });
 
   it("桌面编辑区变窄时按组折叠工具栏", async () => {
@@ -481,5 +484,59 @@ describe("RichTextEditor presets", () => {
 
     expect(await screen.findByText("回滚后的正文")).toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("桌面工具栏拾色器把选中的颜色写入选区", async () => {
+    window.localStorage.clear();
+    const editorRef: { current: Editor | null } = { current: null };
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="full"
+        onChange={vi.fn()}
+        onReady={(value) => {
+          editorRef.current = value;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const readyEditor = editorRef.current;
+    if (!readyEditor) throw new Error("编辑器未初始化");
+    readyEditor.commands.setTextSelection({ from: 1, to: 4 });
+    fireEvent.click(screen.getByRole("button", { name: "文字颜色" }));
+    expect(await screen.findByLabelText("拾色器")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("文字颜色 #197c73"));
+    expect(readyEditor.getAttributes("textStyle").color).toBe("#197c73");
+  });
+
+  it("移动端文字格式折叠组内可用紧凑拾色器输入自定义 Hex", async () => {
+    window.localStorage.clear();
+    const editorRef: { current: Editor | null } = { current: null };
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="mobile"
+        onChange={vi.fn()}
+        onReady={(value) => {
+          editorRef.current = value;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const readyEditor = editorRef.current;
+    if (!readyEditor) throw new Error("编辑器未初始化");
+    readyEditor.commands.setTextSelection({ from: 1, to: 4 });
+    fireEvent.pointerDown(screen.getByRole("button", { name: "文字格式" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    // 选区内浮动的选区格式菜单里也有一个紧凑拾色器，须限定在折叠组菜单内查询。
+    const menu = await screen.findByRole("menu");
+    const hexInput = within(menu).getByLabelText("Hex 色值");
+    fireEvent.change(hexInput, { target: { value: "#4F46E5" } });
+    fireEvent.keyDown(hexInput, { key: "Enter" });
+    expect(readyEditor.getAttributes("textStyle").color).toBe("#4f46e5");
   });
 });

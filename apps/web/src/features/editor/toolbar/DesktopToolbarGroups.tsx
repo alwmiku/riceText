@@ -26,12 +26,7 @@ import {
   Vote,
   XCircle,
 } from "lucide-react";
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "../../../components/ui";
+import { ColorPickerPopover } from "../../../components/ui/color-picker";
 import { cmd } from "../commands";
 import {
   addLink,
@@ -55,7 +50,6 @@ import {
   FONT_FAMILIES,
   FONT_SIZES,
   INSERT_TOOL_DEFINITIONS,
-  TOOLBAR_COLORS,
 } from "../editor-tool-definitions";
 import { useInsertRequest } from "../ToolbarDialogs";
 import { ToolbarButton } from "./ToolbarButton";
@@ -176,35 +170,13 @@ export function TextFormatGroup({
               </option>
             ))}
           </select>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8"
-                aria-label="文字颜色"
-                disabled={spoilerActive}
-              >
-                <span
-                  className="h-4 w-4 rounded-sm border border-black/15"
-                  style={{ background: textStyle.color ?? "#20272c" }}
-                />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="min-w-0">
-              <div className="flex gap-1 p-1">
-                {TOOLBAR_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    aria-label={`文字颜色 ${color}`}
-                    className="h-7 w-7 rounded border border-black/10"
-                    style={{ background: color }}
-                    onClick={() => setColor(editor, color)}
-                  />
-                ))}
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ColorPickerPopover
+            value={textStyle.color ?? ""}
+            onChange={(color) => setColor(editor, color)}
+            label="文字颜色"
+            disabled={spoilerActive}
+            triggerClassName="h-8 w-8"
+          />
         </span>
       )}
     </>

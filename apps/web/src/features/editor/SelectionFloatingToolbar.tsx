@@ -10,6 +10,10 @@ import {
 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { IconButton } from "../../components/ui";
+import {
+  ColorPicker,
+  ColorPickerPopover,
+} from "../../components/ui/color-picker";
 import { cmd } from "./commands";
 import {
   clearFormatting,
@@ -22,11 +26,7 @@ import {
   toggleOrderedList,
   toggleUnderline,
 } from "./editor-actions";
-import {
-  FONT_FAMILIES,
-  FONT_SIZES,
-  TOOLBAR_COLORS,
-} from "./editor-tool-definitions";
+import { FONT_FAMILIES, FONT_SIZES } from "./editor-tool-definitions";
 
 export type FloatingPosition = { x: number; y: number } | null;
 
@@ -88,7 +88,13 @@ function mobileSelectionMenuPosition(editor: Editor): FloatingPosition {
   return position;
 }
 
-function FormatControls({ editor }: { editor: Editor }) {
+function FormatControls({
+  editor,
+  mobile = false,
+}: {
+  editor: Editor;
+  mobile?: boolean;
+}) {
   const spoilerActive = editor.isActive("spoiler");
   const textStyle = editor.getAttributes("textStyle") as {
     color?: string;
@@ -174,25 +180,34 @@ function FormatControls({ editor }: { editor: Editor }) {
         >
           <UnderlineIcon size={15} />
         </IconButton>
-        <div
-          className="flex min-h-[30px] items-center gap-[3px] border-x border-[#e3e3e3] px-1 text-[#4c5660]"
-          aria-label="选区文字颜色"
-        >
-          <Palette size={14} aria-hidden="true" />
-          {TOOLBAR_COLORS.map((color) => (
-            <button
-              key={color}
-              type="button"
-              aria-label={`文字颜色 ${color}`}
-              aria-pressed={textStyle.color === color}
-              className="h-[18px] w-[18px] rounded-[3px] border-2 border-transparent shadow-[inset_0_0_0_1px_rgb(0_0_0/0.15)] aria-pressed:border-[#197c73] aria-pressed:shadow-[0_0_0_2px_rgb(25_124_115/0.2)]"
-              style={{ background: color }}
-              disabled={spoilerActive}
-              onMouseDown={preventSelectionLoss}
-              onClick={() => setColor(editor, color)}
-            />
-          ))}
-        </div>
+        {mobile ? (
+          <ColorPicker
+            value={textStyle.color ?? ""}
+            onChange={(color) => setColor(editor, color)}
+            compact
+            disabled={spoilerActive}
+            className="min-w-[190px] border-x border-[#e3e3e3] px-1"
+          />
+        ) : (
+          <ColorPickerPopover
+            value={textStyle.color ?? ""}
+            onChange={(color) => setColor(editor, color)}
+            label="选区文字颜色"
+            disabled={spoilerActive}
+            align="center"
+            triggerClassName="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
+            triggerChildren={
+              <span className="flex items-center gap-1">
+                <Palette size={14} aria-hidden="true" />
+                <span
+                  className="h-3 w-3 rounded-sm border border-black/15"
+                  style={{ background: textStyle.color ?? "#20272c" }}
+                />
+              </span>
+            }
+            triggerOnMouseDown={preventSelectionLoss}
+          />
+        )}
         <IconButton
           label="无序列表"
           active={editor.isActive("bulletList")}
@@ -244,7 +259,7 @@ export function SelectionFloatingToolbar({
         aria-label="选区格式菜单"
         style={{ left: position.x, top: position.y }}
       >
-        <FormatControls editor={editor} />
+        <FormatControls editor={editor} mobile />
       </div>
     );
   }

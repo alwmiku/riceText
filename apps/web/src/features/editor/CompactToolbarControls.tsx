@@ -23,6 +23,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { DropdownMenuItem } from "../../components/ui";
+import { ColorPicker } from "../../components/ui/color-picker";
 import { cmd } from "./commands";
 import {
   clearFormatting,
@@ -44,7 +45,6 @@ import {
 import {
   INSERT_CONTENT_TOOLS,
   INSERT_TOOL_DEFINITIONS,
-  TOOLBAR_COLORS,
 } from "./editor-tool-definitions";
 import { useInsertRequest } from "./ToolbarDialogs";
 import { ToolbarButton } from "./toolbar/ToolbarButton";
@@ -61,6 +61,9 @@ export function CompactToolbarControls({
 }) {
   const requestInsert = useInsertRequest();
   const spoilerActive = editor.isActive("spoiler");
+  const textStyle = editor.getAttributes("textStyle") as {
+    color?: string;
+  };
   const iconClass = mobile ? "[&_svg]:size-5" : "";
 
   return (
@@ -114,17 +117,13 @@ export function CompactToolbarControls({
           <span className="text-xs font-bold">18</span>
           字号 18px
         </DropdownMenuItem>
-        <div className="flex gap-1 border-t border-border p-2">
-          {TOOLBAR_COLORS.map((color) => (
-            <button
-              key={color}
-              type="button"
-              aria-label={`文字颜色 ${color}`}
-              className="size-7 rounded border border-black/10"
-              style={{ background: color }}
-              onClick={() => setColor(editor, color)}
-            />
-          ))}
+        <div className="border-t border-border p-2">
+          <ColorPicker
+            value={textStyle.color ?? ""}
+            onChange={(color) => setColor(editor, color)}
+            compact
+            disabled={spoilerActive}
+          />
         </div>
       </ToolbarGroup>
       <ToolbarGroup label="段落排版" icon={AlignLeft} collapsed mobile={mobile}>

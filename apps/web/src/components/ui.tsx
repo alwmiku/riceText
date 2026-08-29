@@ -113,7 +113,8 @@ export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export function DropdownMenuContent({ children, align = 'start', side = 'bottom', sideOffset = 6, className }: { children: ReactNode; align?: 'start' | 'center' | 'end'; side?: 'top' | 'right' | 'bottom' | 'left'; sideOffset?: number; className?: string }) {
   return (
     <DropdownMenuPrimitive.Portal>
-      <DropdownMenuPrimitive.Content side={side} sideOffset={sideOffset} align={align} className={cn('z-50 min-w-44 rounded-md border border-border bg-white p-1 shadow-xl', className)}>
+      {/* z-[70]：高于选区浮动工具栏（z-[60]），避免选中文本时菜单被其遮挡 */}
+      <DropdownMenuPrimitive.Content side={side} sideOffset={sideOffset} align={align} className={cn('z-[70] min-w-44 rounded-md border border-border bg-white p-1 shadow-xl', className)}>
         {children}
       </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
