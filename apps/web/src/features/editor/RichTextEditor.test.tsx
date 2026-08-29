@@ -538,15 +538,54 @@ describe("RichTextEditor presets", () => {
     // 1. 色块按钮直接应用记忆色
     fireEvent.click(within(menu).getByRole("button", { name: "应用文字颜色" }));
     expect(readyEditor.getAttributes("textStyle").color).toBe("#20272c");
-    // 2. 箭头子菜单展开完整选色面板（含 SV 矩形）
-    fireEvent.click(within(menu).getByRole("menuitem", { name: /文字颜色/ }));
-    const subMenu = (await screen.findAllByRole("menu")).at(-1);
-    if (!subMenu) throw new Error("子菜单未打开");
+    // 2. 点「颜色」菜单项 → 独立取色弹层（含 SV 矩形）
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /^颜色$/ }));
+    const panel = await screen.findByLabelText("拾色器");
     expect(
-      within(subMenu).getByRole("slider", { name: "饱和度与亮度" }),
+      within(panel).getByRole("slider", { name: "饱和度与亮度" }),
     ).toBeInTheDocument();
     // 3. 面板内已存色块点击应用
-    fireEvent.click(within(subMenu).getByLabelText("文字颜色 #197c73"));
+    fireEvent.click(within(panel).getByLabelText("文字颜色 #197c73"));
     expect(readyEditor.getAttributes("textStyle").color).toBe("#197c73");
+  });
+
+  it("移动端文字格式菜单：在取色弹层内按下 SV 矩阵不关闭菜单", async () => {
+    window.localStorage.clear();
+    const editorRef: { current: Editor | null } = { current: null };
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="mobile"
+        onChange={vi.fn()}
+        onReady={(value) => {
+          editorRef.current = value;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const readyEditor = editorRef.current;
+    if (!readyEditor) throw new Error("编辑器未初始化");
+    readyEditor.commands.setTextSelection({ from: 1, to: 4 });
+    fireEvent.pointerDown(screen.getByRole("button", { name: "文字格式" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    const menu = await screen.findByRole("menu");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /^颜色$/ }));
+    const panel = await screen.findByLabelText("拾色器");
+    const sv = within(panel).getByRole("slider", { name: "饱和度与亮度" });
+
+    // 取色弹层已注册为菜单的 DismissableLayer branch：
+    // 在 SV 矩阵上按下/拖动不算「点击菜单外部」，斜体菜单保持打开。
+    fireEvent.pointerDown(sv, {
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 40,
+      clientY: 40,
+    });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.getByLabelText("拾色器")).toBeInTheDocument();
   });
 });

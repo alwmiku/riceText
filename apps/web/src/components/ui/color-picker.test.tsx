@@ -122,6 +122,28 @@ describe("ColorPicker 组件", () => {
     expect(screen.getByLabelText("Hex 色值")).toHaveValue("#20272c");
   });
 
+  it("挂载中的多个拾色器实时同步工作色：任一实例调色其余跟随", () => {
+    window.localStorage.clear();
+    render(
+      <div>
+        <ColorPicker value="#ff0000" onChange={vi.fn()} />
+        <ColorPicker value="#0000ff" onChange={vi.fn()} />
+      </div>,
+    );
+    // 第一个实例调色（色相键盘 +1，草稿广播）
+    const hueSliders = screen.getAllByRole("slider", { name: "色相" });
+    fireEvent.keyDown(hueSliders[0]!, { key: "ArrowRight" });
+    // 第二个实例的 Hex 草稿同步为同一颜色
+    const hexInputs = screen.getAllByLabelText("Hex 色值");
+    expect(hexInputs).toHaveLength(2);
+    expect(hexInputs[1]).toHaveValue(hexInputs[0]!.getAttribute("value"));
+    expect(hexInputs[1]).not.toHaveValue("#0000ff");
+    // 工作色同步持久化
+    expect(window.localStorage.getItem("ricetext:last-color")).toBe(
+      hexInputs[0]!.getAttribute("value"),
+    );
+  });
+
   it("Hex 非法值失焦回退", () => {
     const onChange = vi.fn();
     render(<ColorPicker value="#000000" onChange={onChange} />);
@@ -194,5 +216,42 @@ describe("ColorPicker 组件", () => {
     expect(swatchAfter?.getAttribute("style")).toMatch(/4f46e5|79, ?70, ?229/);
     // 草稿不应用
     expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("跨实例同步：一个面板调色（草稿）后，其他实例的色块与面板草稿跟随同一颜色", () => {
+    window.localStorage.clear();
+    const onChangeA = vi.fn();
+    const onChangeB = vi.fn();
+    render(
+      <div>
+        <ColorPickerPopover onChange={onChangeA} />
+        <ColorPickerPopover onChange={onChangeB} />
+      </div>,
+    );
+    const [arrowA, arrowB] = screen.getAllByRole("button", {
+      name: "文字颜色",
+    });
+
+    // 打开 A 的面板，Hex 调成绿色（草稿广播，不应用）
+    fireEvent.click(arrowA!);
+    const hexA = screen.getByLabelText("Hex 色值");
+    fireEvent.change(hexA, { target: { value: "#288B4A" } });
+    fireEvent.keyDown(hexA, { key: "Enter" });
+
+    // B 尚未打开面板：色块应已同步显示 A 的草稿色
+    const swatchB = screen.getAllByRole("button", { name: "应用文字颜色" })[1]!;
+    expect(swatchB.querySelector("span")?.getAttribute("style")).toMatch(
+      /288b4a|40, ?139, ?74/,
+    );
+    // 工作色已持久化，且两侧都没有应用到文字
+    expect(window.localStorage.getItem("ricetext:last-color")).toBe("#288b4a");
+    expect(onChangeA).not.toHaveBeenCalled();
+    expect(onChangeB).not.toHaveBeenCalled();
+
+    // 打开 B 的面板：初始草稿即 A 调的颜色（此前各自为记忆色，出现不一致）
+    fireEvent.click(arrowB!);
+    const hexInputs = screen.getAllByLabelText("Hex 色值");
+    expect(hexInputs).toHaveLength(2);
+    expect(hexInputs[1]).toHaveValue("#288b4a");
   });
 });

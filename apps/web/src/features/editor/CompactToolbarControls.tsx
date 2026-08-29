@@ -1,5 +1,7 @@
 import type { Editor } from "@tiptap/react";
+import { DismissableLayer } from "radix-ui/internal";
 import { useState } from "react";
+
 import {
   AlignCenter,
   AlignLeft,
@@ -31,7 +33,16 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "../../components/ui";
-import { ColorPicker, loadLastColor } from "../../components/ui/color-picker";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "../../components/ui/popover";
+import {
+  ColorPicker,
+  persistLastColor,
+  useLastColor,
+} from "../../components/ui/color-picker";
 import { cmd } from "./commands";
 import {
   clearFormatting,
@@ -71,7 +82,8 @@ export function CompactToolbarControls({
 }) {
   const requestInsert = useInsertRequest();
   const spoilerActive = editor.isActive("spoiler");
-  const [lastColor, setLastColor] = useState(loadLastColor);
+  const [colorOpen, setColorOpen] = useState(false);
+  const lastColor = useLastColor();
   const textStyle = editor.getAttributes("textStyle") as {
     fontSize?: string;
     fontFamily?: string;
@@ -155,16 +167,15 @@ export function CompactToolbarControls({
             ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
-        {/* 文字颜色：色块可单独点击直接应用；右侧箭头展开完整选色面板（与桌面一致） */}
+        {/* 颜色：色块可单独点击直接应用当前工作色（随取色面板草稿实时同步）；
+            「颜色」项点击打开独立取色弹层。弹层独立于菜单生命周期
+            （Radix 子菜单拖动时会关闭重挂载，导致 SV 取色后跳回旧色）。 */}
         <div className="flex items-stretch" role="none">
           <button
             type="button"
             aria-label="应用文字颜色"
             disabled={spoilerActive}
-            onClick={() => {
-              setLastColor(lastColor);
-              setColor(editor, lastColor);
-            }}
+            onClick={() => setColor(editor, lastColor)}
             className="flex min-h-9 shrink-0 items-center gap-2 rounded-l px-2.5 text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-45"
           >
             <span
@@ -173,28 +184,57 @@ export function CompactToolbarControls({
               style={{ background: lastColor }}
             />
           </button>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger disabled={spoilerActive} className="flex-1 rounded-l-none">
-              文字颜色
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent
-              className="w-auto p-1.5"
-              // 移动端屏幕窄：子菜单从触发器右侧展开易超出视口，改从下方展开
-              {...(mobile ? { side: "bottom", align: "start" } : {})}
-            >
-              <ColorPicker
-                onChange={(color) => {
-                  setLastColor(color);
-                  setColor(editor, color);
-                }}
-                direct
-                disabled={spoilerActive}
-                className="w-[min(236px,calc(100vw-24px))]"
-              />
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+          <DropdownMenuItem
+            className="flex-1 rounded-l-none gap-1.5 pr-2.5 [&_svg]:size-3.5"
+            onSelect={(event) => {
+              // 阻止菜单关闭，让独立取色弹层接管
+              event.preventDefault();
+              setColorOpen(true);
+            }}
+          >
+            颜色
+          </DropdownMenuItem>
         </div>
       </ToolbarGroup>
+      {/* 独立取色弹层：anchor 固定于视口上部，不依赖菜单生命周期，
+          拖动 SV/滑杆时不会随菜单关闭而重挂载。 */}
+      <Popover open={colorOpen} onOpenChange={setColorOpen}>
+        <PopoverAnchor asChild>
+          <span className="pointer-events-none fixed left-1/2 top-[24vh] h-0 w-0" />
+        </PopoverAnchor>
+        <PopoverContent
+          side="bottom"
+          align="center"
+          position="fixed"
+          className="z-[70] w-auto p-0"
+          onInteractOutside={(event) => {
+            // 菜单关闭时 Radix 会把焦点还给菜单按钮（焦点移出弹层），
+            // 新版 Radix 将 focusin 视为 interact outside 而关闭弹层；
+            // 只拦截 focusin 来源的关闭，点击弹层外部（pointerdown）仍关闭。
+            if (event.detail.originalEvent.type === "focusin") {
+              event.preventDefault();
+            }
+          }}
+        >
+          {/* 把整个弹层注册为「文字格式」菜单（modal DropdownMenu）的
+             DismissableLayer branch：在面板内按下/聚焦（SV 矩阵、滑杆、Hex、
+             已存色块）不再被 Radix 判定为「点击菜单外部」，斜体菜单保持打开。
+             内边距随之移入 branch，保证弹层整个面板都在 branch 内。 */}
+          <DismissableLayer.Branch className="p-1.5">
+            <ColorPicker
+              onChange={(color) => {
+                persistLastColor(color);
+                setColor(editor, color);
+                setColorOpen(false);
+              }}
+              direct
+              saturationCompact
+              disabled={spoilerActive}
+              className="w-[min(236px,calc(100vw-24px))]"
+            />
+          </DismissableLayer.Branch>
+        </PopoverContent>
+      </Popover>
       <ToolbarGroup label="段落排版" icon={AlignLeft} collapsed mobile={mobile}>
         <DropdownMenuItem onSelect={cmd(editor, toggleBulletList)}>
           <List />

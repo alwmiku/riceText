@@ -22,10 +22,13 @@ function PopoverContent({
   className,
   align = "center",
   sideOffset = 6,
+  position,
   ...props
 }: ComponentProps<typeof PopoverPrimitive.Content> & {
   align?: "start" | "center" | "end";
   sideOffset?: number;
+  /** 定位模式：absolute（默认，跟随页面滚动）或 fixed（相对视口）。 */
+  position?: "absolute" | "fixed";
 }) {
   return (
     <PopoverPrimitive.Portal>
@@ -33,6 +36,7 @@ function PopoverContent({
         data-slot="popover-content"
         align={align}
         sideOffset={sideOffset}
+        {...(position ? { position } : {})}
         className={cn(
           "z-50 origin-[var(--radix-popover-content-transform-origin)] rounded-lg border border-border bg-white p-1 text-foreground shadow-xl outline-none",
           "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",

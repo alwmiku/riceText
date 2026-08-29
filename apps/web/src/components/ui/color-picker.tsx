@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@/lib/utils";
-import { Button } from "../ui";
 import { Input } from "./input";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { Slider } from "./slider";
@@ -175,15 +174,15 @@ function persistSavedColors(colors: string[]): void {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
- * 记忆颜色（独立于选区文字颜色，方便连续编辑）
+ * 工作色（独立于选区文字颜色，方便连续编辑；全实例同步）
  * ──────────────────────────────────────────────────────────────────────── */
 
 const LAST_COLOR_KEY = "ricetext:last-color";
 
-/** 默认记忆色（与工具栏历史默认一致）。 */
+/** 默认工作色（与工具栏历史默认一致）。 */
 export const DEFAULT_LAST_COLOR = "#20272c";
 
-/** 读取上次使用的颜色；不存在或损坏时回退默认色。 */
+/** 读取当前工作色；不存在或损坏时回退默认色。 */
 export function loadLastColor(): string {
   try {
     const raw = window.localStorage.getItem(LAST_COLOR_KEY);
@@ -193,13 +192,40 @@ export function loadLastColor(): string {
   }
 }
 
-/** 持久化记忆色。 */
+/** 工作色变更订阅：跨拾色器实例（工具栏/悬浮工具栏/折叠菜单）同步。 */
+const lastColorListeners = new Set<() => void>();
+
+/** 订阅工作色变更，返回退订函数。 */
+export function subscribeLastColor(listener: () => void): () => void {
+  lastColorListeners.add(listener);
+  return () => {
+    lastColorListeners.delete(listener);
+  };
+}
+
+/**
+ * 持久化工作色，并通知所有订阅实例。草稿（调色区拖动）与正式应用都会
+ * 走这里：任何一处拾色器调色后，其余实例（色块按钮、已打开的面板）
+ * 即时跟随同一颜色，解决「不同地方取色器颜色不一致」。
+ */
 export function persistLastColor(color: string): void {
+  const normalized = normalizeHex(color);
   try {
-    window.localStorage.setItem(LAST_COLOR_KEY, normalizeHex(color));
+    window.localStorage.setItem(LAST_COLOR_KEY, normalized);
   } catch {
     // localStorage 不可用时静默降级为仅内存。
   }
+  for (const listener of lastColorListeners) listener();
+}
+
+/**
+ * 订阅工作色的 hook：任一拾色器实例更新颜色后，所有实例（工具栏按钮、
+ * 悬浮工具栏色块）同步刷新，避免各自持有过期状态。
+ */
+export function useLastColor(): string {
+  const [color, setColor] = useState(loadLastColor);
+  useEffect(() => subscribeLastColor(() => setColor(loadLastColor())), []);
+  return color;
 }
 
 function clamp01(value: number): number {
@@ -212,16 +238,22 @@ function clamp01(value: number): number {
  * ──────────────────────────────────────────────────────────────────────── */
 
 export interface ColorPickerProps {
-  /** 初始颜色（仅挂载时生效）；不传则使用上次记忆的颜色。 */
+  /** 初始颜色（仅挂载时生效）；不传则使用当前工作色。 */
   value?: string;
   /** 应用颜色回调，产出 #rrggbb 或 #rrggbbaa。 */
   onChange: (color: string) => void;
-  /** 草稿变化回调：调色区（SV/滑杆/Hex）实时同步到触发按钮色块。 */
+  /** 草稿变化回调：调色区（SV/滑杆/Hex）实时同步；草稿同时广播为全局工作色。 */
   onDraftChange?: (color: string) => void;
-  /** 直接应用模式：无触发按钮的内联场景（如移动端折叠菜单）下，调色即应用。 */
+  /**
+   * 直接应用模式：无触发按钮的内联场景（如移动端折叠菜单）下，Hex 回车/失焦
+   * 即应用；调色区拖动仅更新草稿（已同步为工作色），由色块按钮统一应用，
+   * 避免拖动即应用导致弹层在拖动中途关闭。
+   */
   direct?: boolean;
   /** 是否显示饱和度/明度面板（子菜单等紧凑场景可隐藏以降低高度）。 */
   showSaturation?: boolean;
+  /** 移动端适配：缩小饱和度/明度面板高度。 */
+  saturationCompact?: boolean;
   disabled?: boolean;
   className?: string;
 }
@@ -233,11 +265,13 @@ export function ColorPicker({
   onDraftChange,
   direct = false,
   showSaturation = true,
+  saturationCompact = false,
   disabled = false,
   className,
 }: ColorPickerProps) {
-  // 初始颜色：显式 value（测试/受控）优先，否则用上次记忆的颜色——拾色器
-  // 不跟随选区文字颜色，方便连续给不同文字上色。仅挂载时读取一次。
+  // 初始颜色：显式 value（测试/受控）优先，否则用当前工作色——拾色器
+  // 不跟随选区文字颜色，方便连续给不同文字上色。仅挂载时读取一次；
+  // 挂载期间其他实例的调色会通过订阅实时同步进来（见下方 effect）。
   const initial = value !== undefined && value !== ""
     ? splitAlpha(value)
     : splitAlpha(loadLastColor());
@@ -247,16 +281,35 @@ export function ColorPicker({
   const svRef = useRef<HTMLDivElement>(null);
   const [svDragging, setSvDragging] = useState(false);
 
+  // 工作色同步：其他拾色器实例调色（草稿或应用）时，本实例的草稿实时跟随，
+  // 保证「不同地方」的取色器始终显示同一个当前颜色。与自身广播同值时跳过，
+  // 避免无意义的重渲染。
+  useEffect(
+    () =>
+      subscribeLastColor(() => {
+        const full = loadLastColor();
+        setDraft((previous) =>
+          withAlpha(previous.hex6, previous.alpha) === full
+            ? previous
+            : splitAlpha(full),
+        );
+        setHexText(splitAlpha(full).hex6);
+      }),
+    [],
+  );
+
   /** SV 面板为二维取色，Radix Slider 无法表达，按指针坐标直接换算饱和度/明度。 */
   const updateSv = (clientX: number, clientY: number) => {
     const rect = svRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return;
     const s = clamp01((clientX - rect.left) / rect.width);
     const v = clamp01(1 - (clientY - rect.top) / rect.height);
+    // SV 拖动只更新草稿（Hex/色块实时跟随，弹层保持打开），
+    // 应用由 Hex 回车/已存色块触发——避免拖动即应用导致弹层立刻关闭。
     setDraftColor(hsvToHex(hsv.h, s, v), draft.alpha);
   };
 
-  /** 应用颜色：更新草稿 + 记忆 + 回调（编辑器上色 / 关闭面板）。 */
+  /** 应用颜色：更新草稿 + 工作色 + 回调（编辑器上色 / 关闭面板）。 */
   const apply = (hex6: string, alpha: number) => {
     const next = { hex6: normalizeHex(hex6), alpha: clamp01(alpha) };
     setDraft(next);
@@ -265,12 +318,14 @@ export function ColorPicker({
     onChange(withAlpha(next.hex6, next.alpha));
   };
 
-  /** 仅更新草稿（完整模式的 SV/滑杆/Hex 调色不立即应用），并同步到触发按钮色块。 */
+  /** 仅更新草稿，并同步为全局工作色（其他拾色器实例/色块按钮实时跟随）。 */
   const setDraftColor = (hex6: string, alpha: number) => {
     const next = { hex6: normalizeHex(hex6), alpha: clamp01(alpha) };
     setDraft(next);
     setHexText(next.hex6);
-    onDraftChange?.(withAlpha(next.hex6, next.alpha));
+    const full = withAlpha(next.hex6, next.alpha);
+    onDraftChange?.(full);
+    persistLastColor(full);
   };
 
   const hsv = hexToHsv(draft.hex6);
@@ -337,7 +392,10 @@ export function ColorPicker({
             aria-valuemax={100}
             aria-valuenow={Math.round(hsv.s * 100)}
             tabIndex={disabled ? -1 : 0}
-            className="relative h-36 w-full touch-none select-none overflow-hidden rounded-md border border-border"
+            className={cn(
+              "relative w-full touch-none select-none overflow-hidden rounded-md border border-border",
+              saturationCompact ? "h-28" : "h-36",
+            )}
             style={{
               background: `linear-gradient(to top, #000, rgb(0 0 0 / 0)), linear-gradient(to right, #fff, hsl(${hsv.h} 100% 50%))`,
             }}
@@ -513,8 +571,8 @@ export interface ColorPickerPopoverProps extends ColorPickerProps {
 }
 
 /**
- * 工具栏拾色器入口（shadcn 子组件组合）：色块按钮点击直接应用当前颜色，
- * 箭头按钮展开取色面板；面板内调色（草稿）实时同步到色块。
+ * 工具栏拾色器入口（shadcn 子组件组合）：色块按钮点击直接应用当前工作色，
+ * 箭头按钮展开取色面板；面板内调色（草稿）实时广播为工作色，所有实例同步。
  */
 export function ColorPickerPopover({
   onChange,
@@ -527,21 +585,22 @@ export function ColorPickerPopover({
   align = "start",
   side = "bottom",
   className,
+  saturationCompact = false,
 }: ColorPickerPopoverProps) {
-  // 显示色：初始为记忆色；面板草稿变化时实时跟随。
-  const [displayColor, setDisplayColor] = useState<string>(loadLastColor);
+  // 工作色全局订阅：本实例调色（草稿）会经 persistLastColor 广播回来，
+  // 其他实例调色也会同步到这里——色块始终显示全局一致的当前颜色。
+  const lastColor = useLastColor();
   const [open, setOpen] = useState(false);
+  const displayColor = lastColor;
 
-  // 色块按钮点击：直接应用当前色（不需要打开面板）。
+  // 色块按钮点击：直接应用当前工作色（不需要打开面板）。
   const handleApply = () => {
-    persistLastColor(displayColor);
     onChange(displayColor);
     setOpen(false);
   };
 
-  // 面板内应用（已存色块直选）：更新色块 + 记忆 + 关闭面板。
+  // 面板内应用（已存色块直选）：更新工作色（自动广播到各实例）+ 关闭面板。
   const handlePanelApply = (color: string) => {
-    setDisplayColor(color);
     persistLastColor(color);
     onChange(color);
     setOpen(false);
@@ -606,7 +665,7 @@ export function ColorPickerPopover({
       >
         <ColorPicker
           onChange={handlePanelApply}
-          onDraftChange={setDisplayColor}
+          saturationCompact={saturationCompact}
           disabled={disabled}
           {...(className ? { className } : {})}
         />

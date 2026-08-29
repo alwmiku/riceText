@@ -11,7 +11,7 @@ import type { MouseEvent } from "react";
 import { IconButton } from "../../components/ui";
 import {
   ColorPickerPopover,
-  loadLastColor,
+  useLastColor,
 } from "../../components/ui/color-picker";
 import { cmd } from "./commands";
 import {
@@ -95,6 +95,7 @@ function FormatControls({
   mobile?: boolean;
 }) {
   const spoilerActive = editor.isActive("spoiler");
+  const lastColor = useLastColor();
   const textStyle = editor.getAttributes("textStyle") as {
     color?: string;
     fontSize?: string;
@@ -189,6 +190,7 @@ function FormatControls({
             disabled={spoilerActive}
             align="center"
             side="top"
+            saturationCompact
             triggerClassName="h-[26px] rounded"
             triggerOnMouseDown={preventSelectionLoss}
           />
@@ -201,7 +203,7 @@ function FormatControls({
             align="center"
             triggerClassName="h-[30px] rounded"
             triggerChildren={
-              <span className="h-3 w-3 rounded-sm border border-black/15" style={{ background: loadLastColor() }} />
+              <span className="h-3 w-3 rounded-sm border border-black/15" style={{ background: lastColor }} />
             }
             triggerOnMouseDown={preventSelectionLoss}
           />

@@ -23,6 +23,12 @@ test("桌面：选区存在时拾色器可调色并应用", async ({ page, isMob
   const swatchButton = page.getByRole("button", { name: "应用文字颜色", exact: true });
   const swatchBg = () =>
     swatchButton.locator("span").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+  // 另一处拾色器实例：选区浮动工具栏的色块（验证跨实例工作色同步）。
+  const floatingSwatch = page
+    .getByRole("toolbar", { name: "选区浮动工具栏" })
+    .getByRole("button", { name: "应用选区文字颜色" })
+    .locator("span")
+    .first();
   const open = async () => {
     await arrowButton.click();
     await expect(page.getByLabel("拾色器")).toBeVisible();
@@ -52,6 +58,10 @@ test("桌面：选区存在时拾色器可调色并应用", async ({ page, isMob
   await page.mouse.click(rootBox.x + rootBox.width * 0.4, rootBox.y + rootBox.height / 2);
   // 色块跟随草稿变化（未应用）
   await expect.poll(swatchBg).not.toBe("rgb(32, 39, 44)");
+  // 工作色跨实例同步：选区浮动工具栏的色块实时跟随草稿
+  await expect
+    .poll(() => floatingSwatch.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .not.toBe("rgb(32, 39, 44)");
   // 面板仍打开
   await expect(page.getByLabel("拾色器")).toBeVisible();
 
@@ -65,7 +75,12 @@ test("桌面：选区存在时拾色器可调色并应用", async ({ page, isMob
   await expect.poll(swatchBg).toBe("rgb(25, 124, 115)");
   await expect(page.getByLabel("拾色器")).not.toBeVisible();
 
-  // 5. 记忆色：重新打开后草稿显示上次应用的颜色（#197c73）
+  // 5. 记忆色全局同步：选区浮动工具栏的色块应显示同一颜色（#197c73）
+  await expect
+    .poll(() => floatingSwatch.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe("rgb(25, 124, 115)");
+
+  // 6. 记忆色：重新打开后草稿显示上次应用的颜色（#197c73）
   await open();
   await expect(page.getByLabel("Hex 色值")).toHaveValue("#197c73");
 });
@@ -86,22 +101,52 @@ test("移动端：文字格式折叠组内紧凑拾色器可交互", async ({ pa
   await expect(menu).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: /字体/ })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: /字号/ })).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: /文字颜色/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /颜色/ })).toBeVisible();
   await expect(menu.getByLabel("Hex 色值")).not.toBeVisible();
 
-  // 文字颜色菜单项带色块：色块可单独点击直接应用（记忆色）
+  // 颜色菜单项带色块：色块可单独点击直接应用（记忆色）
   await menu.getByRole("button", { name: "应用文字颜色" }).tap();
   await expect(editor.locator('[style*="color"]').first()).toBeVisible();
 
-  // 右侧箭头展开完整选色面板（含 SV 矩形 + 透明度 + Hex + 已存色块）
-  await menu.getByRole("menuitem", { name: /文字颜色/ }).tap();
-  const subMenu = page.getByRole("menu").last();
-  await expect(subMenu).toBeVisible();
-  await expect(subMenu.getByRole("slider", { name: "饱和度与亮度" })).toBeVisible();
-  await expect(subMenu.getByRole("slider", { name: "透明度" })).toBeVisible();
-  await expect(subMenu.getByLabel("Hex 色值")).toBeVisible();
-  await subMenu.getByLabel("文字颜色 #197c73", { exact: true }).tap();
-  await expect(editor.locator('[style*="color"]').first()).toBeVisible();
+  // 点「颜色」菜单项 → 独立取色弹层（含 SV 矩形）
+  await menu.getByRole("menuitem", { name: /^颜色$/ }).tap();
+  const panel = page.getByLabel("拾色器");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("slider", { name: "饱和度与亮度" })).toBeVisible();
+  await expect(panel.getByRole("slider", { name: "透明度" })).toBeVisible();
+  await expect(panel.getByLabel("Hex 色值")).toBeVisible();
+
+  // SV 矩形拖动取色 → 不跳回旧色（弹层不随指针移出关闭）
+  const sv = panel.getByRole("slider", { name: "饱和度与亮度" });
+  const svBox = await sv.boundingBox();
+  if (!svBox) throw new Error("SV 面板不可见");
+  const before = await panel.getByLabel("Hex 色值").inputValue();
+  await page.mouse.move(svBox.x + svBox.width * 0.9, svBox.y + svBox.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(svBox.x + svBox.width * 0.7, svBox.y + svBox.height * 0.5, { steps: 4 });
+  await page.mouse.up();
+  // Hex 值应变化（不再是记忆色 #20272c），弹层仍打开
+  await expect.poll(() => panel.getByLabel("Hex 色值").inputValue()).not.toBe(before);
+  await expect(panel).toBeVisible();
+  // 取色弹层是「文字格式」菜单 DismissableLayer 的 branch：SV 取色不关闭菜单
+  await expect(menu).toBeVisible();
+  // 草稿实时同步为工作色：菜单色块跟随 SV 取色
+  const menuSwatch = menu.getByRole("button", { name: "应用文字颜色" });
+  await expect
+    .poll(() =>
+      menuSwatch.locator("span").first().evaluate((el) => getComputedStyle(el).backgroundColor),
+    )
+    .not.toBe("rgb(32, 39, 44)");
+  // Escape 关闭取色弹层（菜单保持打开），点菜单色块把 SV 取的色应用到选区
+  await page.keyboard.press("Escape");
+  await expect(panel).not.toBeVisible();
+  await expect(menu).toBeVisible();
+  await menuSwatch.tap();
+  const firstColored = editor.locator('[style*="color"]').first();
+  await expect(firstColored).toBeVisible();
+  await expect
+    .poll(() => firstColored.evaluate((el) => getComputedStyle(el).color))
+    .not.toBe("rgb(32, 39, 44)");
 });
 /** 3. 桌面无选区：setColor 聚焦编辑器不应关闭拾色器（focusin 拦截）。 */
 test("桌面：无选区时滑杆拖动生效且 popover 保持打开", async ({ page, isMobile }) => {

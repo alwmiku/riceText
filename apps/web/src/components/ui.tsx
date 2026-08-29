@@ -122,7 +122,7 @@ export function DropdownMenuContent({ children, align = 'start', side = 'bottom'
 }
 
 /** 菜单命令项；仅在值存在时传递可选属性以兼容严格 TS 配置。 */
-export function DropdownMenuItem({ children, onSelect, disabled, className }: { children: ReactNode; onSelect?: () => void; disabled?: boolean; className?: string }) {
+export function DropdownMenuItem({ children, onSelect, disabled, className }: { children: ReactNode; onSelect?: (event: Event) => void; disabled?: boolean; className?: string }) {
   return (
     <DropdownMenuPrimitive.Item {...(disabled === undefined ? {} : { disabled })} {...(onSelect ? { onSelect } : {})} className={cn('flex min-h-9 cursor-default select-none items-center gap-2 rounded px-2.5 text-sm outline-none data-[disabled]:opacity-45 data-[highlighted]:bg-muted', className)}>
       {children}
