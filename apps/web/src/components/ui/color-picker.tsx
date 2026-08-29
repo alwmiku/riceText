@@ -1,9 +1,4 @@
-import {
-  Check,
-  ChevronDown,
-  Palette,
-  Plus,
-} from "lucide-react";
+import { Check, ChevronDown, Plus } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -221,10 +216,10 @@ export interface ColorPickerProps {
   value?: string;
   /** 应用颜色回调，产出 #rrggbb 或 #rrggbbaa。 */
   onChange: (color: string) => void;
-  /** 草稿变化回调：完整模式调色区（SV/滑杆/Hex）实时同步到触发按钮色块。 */
+  /** 草稿变化回调：调色区（SV/滑杆/Hex）实时同步到触发按钮色块。 */
   onDraftChange?: (color: string) => void;
-  /** 紧凑模式（移动端）：仅保留色板、Hex 输入与透明度，省略取色面板；所有操作直接应用。 */
-  compact?: boolean;
+  /** 直接应用模式：无触发按钮的内联场景（如移动端折叠菜单）下，调色即应用。 */
+  direct?: boolean;
   disabled?: boolean;
   className?: string;
 }
@@ -234,7 +229,7 @@ export function ColorPicker({
   value,
   onChange,
   onDraftChange,
-  compact = false,
+  direct = false,
   disabled = false,
   className,
 }: ColorPickerProps) {
@@ -297,8 +292,8 @@ export function ColorPicker({
   const commitHexText = () => {
     const clean = hexText.trim().replace(/^#/u, "").toLowerCase();
     if (/^[0-9a-f]{6}$/u.test(clean)) {
-      // 完整模式：Hex 只是设置草稿，点「应用到文字」才生效；紧凑模式直接应用。
-      if (compact) {
+      // 有触发按钮（popover）时 Hex 为草稿，点色块按钮才应用；内联场景直接应用。
+      if (direct) {
         apply("#" + clean, draft.alpha);
       } else {
         setDraftColor("#" + clean, draft.alpha);
@@ -307,7 +302,7 @@ export function ColorPicker({
     }
     if (/^[0-9a-f]{8}$/u.test(clean)) {
       const { hex6, alpha } = splitAlpha("#" + clean);
-      if (compact) {
+      if (direct) {
         apply(hex6, alpha);
       } else {
         setDraftColor(hex6, alpha);
@@ -325,13 +320,11 @@ export function ColorPicker({
       aria-label="拾色器"
       className={cn(
         "flex flex-col gap-2",
-        compact ? "w-56" : "w-[236px]",
+        "w-[236px]",
         className,
       )}
     >
-      {!compact && (
-        <>
-          {/* 饱和度 / 明度面板 */}
+      {/* 饱和度 / 明度面板 */}
           <div
             ref={svRef}
             role="slider"
@@ -418,90 +411,60 @@ export function ColorPicker({
               setDraftColor(draft.hex6, percent / 100);
             }}
           />
-        </>
-      )}
 
       {/* Hex 输入与透明度读数 */}
       <div className="flex items-center gap-1.5">
-        <span className="text-xs font-semibold text-muted-foreground">Hex</span>
-        <Input
-          aria-label="Hex 色值"
-          value={hexText}
-          disabled={disabled}
-          spellCheck={false}
-          autoComplete="off"
-          className="h-7 w-[104px] font-mono text-xs uppercase"
-          onChange={(event) => setHexText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              commitHexText();
-            } else if (event.key === "Escape") {
-              setHexText(draft.hex6);
-            } else if (event.key !== "Tab") {
-              // 阻止 Radix 菜单的键盘导航/类型查找拦截输入。
-              event.stopPropagation();
-            }
-          }}
-          onBlur={commitHexText}
-        />
-        <span
-          aria-label="透明度读数"
-          className="ml-auto text-xs tabular-nums text-muted-foreground"
-        >
-          {Math.round(draft.alpha * 100)}%
+          <span className="text-xs font-semibold text-muted-foreground">Hex</span>
+          <Input
+            aria-label="Hex 色值"
+            value={hexText}
+            disabled={disabled}
+            spellCheck={false}
+            autoComplete="off"
+            className="h-7 w-[104px] font-mono text-xs uppercase"
+            onChange={(event) => setHexText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitHexText();
+              } else if (event.key === "Escape") {
+                setHexText(draft.hex6);
+              } else if (event.key !== "Tab") {
+                // 阻止 Radix 菜单的键盘导航/类型查找拦截输入。
+                event.stopPropagation();
+              }
+            }}
+            onBlur={commitHexText}
+          />
+          <span
+            aria-label="透明度读数"
+            className="ml-auto text-xs tabular-nums text-muted-foreground"
+          >
+            {Math.round(draft.alpha * 100)}%
+          </span>
+        </div>
+
+      {/* 已存颜色 */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs font-semibold text-muted-foreground">
+          已存颜色
         </span>
+        <button
+          type="button"
+          aria-label="添加当前颜色"
+          disabled={disabled}
+          onClick={addSaved}
+          className="ml-auto inline-flex items-center gap-0.5 rounded border border-input px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-45"
+        >
+          <Plus size={11} />
+          添加
+        </button>
       </div>
 
-      {compact && (
-        <Slider
-          aria-label="透明度"
-          thumbAriaLabel="透明度"
-          min={0}
-          max={100}
-          step={1}
-          value={[Math.round(draft.alpha * 100)]}
-          disabled={disabled}
-          rangeClassName="bg-white/40"
-          trackStyle={{
-            background: `linear-gradient(to right, rgb(0 0 0 / 0), ${draft.hex6}), repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 0 0 / 10px 10px`,
-          }}
-          onValueChange={([percent]) => {
-            if (percent === undefined) return;
-            apply(draft.hex6, percent / 100);
-          }}
-        />
-      )}
-
-      {!compact && (
-        <>
-
-          {/* 已存颜色 */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-muted-foreground">
-              已存颜色
-            </span>
-            <button
-              type="button"
-              aria-label="添加当前颜色"
-              disabled={disabled}
-              onClick={addSaved}
-              className="ml-auto inline-flex items-center gap-0.5 rounded border border-input px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-45"
-            >
-              <Plus size={11} />
-              添加
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* 已存颜色（紧凑模式为唯一快速选择区） */}
+      {/* 已存色块（横向可滚动） */}
       <div
         aria-label="已存颜色色板"
-        className={cn(
-          "flex items-center gap-1.5",
-          compact && "overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-        )}
+        className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {saved.map((color) => (
           <button
@@ -512,38 +475,14 @@ export function ColorPicker({
             disabled={disabled}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => pickSaved(color)}
-            className={cn(
-              "shrink-0 rounded-full border border-black/10 disabled:pointer-events-none disabled:opacity-45",
-              compact ? "size-7" : "size-6",
-            )}
+            className="size-6 shrink-0 rounded-full border border-black/10 disabled:pointer-events-none disabled:opacity-45"
             style={{ background: color }}
           >
             {normalizeHex(current) === color && (
-              <Check size={compact ? 14 : 12} className="mx-auto text-white drop-shadow-[0_0_1px_rgb(0_0_0/0.8)]" aria-hidden="true" />
+              <Check size={12} className="mx-auto text-white drop-shadow-[0_0_1px_rgb(0_0_0/0.8)]" aria-hidden="true" />
             )}
           </button>
         ))}
-        {compact && (
-          <label
-            aria-label="系统取色器"
-            title="系统取色器"
-            className="ml-auto inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded border border-input text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-45"
-          >
-            <input
-              type="color"
-              aria-hidden="true"
-              tabIndex={-1}
-              disabled={disabled}
-              value={draft.hex6}
-              onChange={(event) => {
-                const { hex6, alpha } = splitAlpha(event.target.value);
-                apply(hex6, alpha);
-              }}
-              className="sr-only"
-            />
-            <Palette size={14} aria-hidden="true" />
-          </label>
-        )}
       </div>
     </div>
   );
@@ -574,7 +513,6 @@ export interface ColorPickerPopoverProps extends ColorPickerProps {
  */
 export function ColorPickerPopover({
   onChange,
-  compact = false,
   disabled = false,
   label = "文字颜色",
   swatchLabel = "应用文字颜色",
@@ -664,7 +602,6 @@ export function ColorPickerPopover({
         <ColorPicker
           onChange={handlePanelApply}
           onDraftChange={setDisplayColor}
-          compact={compact}
           disabled={disabled}
           {...(className ? { className } : {})}
         />

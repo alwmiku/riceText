@@ -132,25 +132,21 @@ describe("ColorPicker 组件", () => {
     expect(stored).toContain("#123456");
   });
 
-  it("紧凑模式 Hex 输入回车直接应用", () => {
+  it("direct 模式（无触发按钮内联）下调色即直接应用", () => {
     const onChange = vi.fn();
-    render(<ColorPicker value="#000000" onChange={onChange} compact />);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 236, 144),
+    );
+    render(<ColorPicker value="#000000" onChange={onChange} direct />);
+    // Hex 回车直接应用
     const input = screen.getByLabelText("Hex 色值");
     fireEvent.change(input, { target: { value: "#4F46E5" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onChange).toHaveBeenLastCalledWith("#4f46e5");
-  });
-
-  it("紧凑模式省略 SV 面板与色相滑杆，保留透明度与系统取色器，且无应用按钮（全部直接应用）", () => {
-    render(<ColorPicker value="#000000" onChange={vi.fn()} compact />);
-    expect(
-      screen.queryByRole("slider", { name: "饱和度与亮度" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole("slider", { name: "色相" })).not.toBeInTheDocument();
-    expect(screen.getByRole("slider", { name: "透明度" })).toBeInTheDocument();
-    expect(screen.getByLabelText("系统取色器")).toBeInTheDocument();
-    expect(screen.getByLabelText("文字颜色 #197c73")).toBeInTheDocument();
-    expect(screen.queryByLabelText("色板")).not.toBeInTheDocument();
+    // 透明度滑杆点击直接应用
+    const sliderRoot = screen.getByRole("slider", { name: "透明度" });
+    fireEvent.keyDown(sliderRoot, { key: "ArrowLeft" });
+    expect(onChange).toHaveBeenCalled();
   });
 
   it("Popover 包装器：色块按钮直接应用，箭头按钮打开面板，色块跟随草稿", () => {

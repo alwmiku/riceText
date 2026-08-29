@@ -5,13 +5,11 @@ import {
   Italic,
   List,
   ListOrdered,
-  Palette,
   Underline as UnderlineIcon,
 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { IconButton } from "../../components/ui";
 import {
-  ColorPicker,
   ColorPickerPopover,
   loadLastColor,
 } from "../../components/ui/color-picker";
@@ -182,11 +180,17 @@ function FormatControls({
           <UnderlineIcon size={15} />
         </IconButton>
         {mobile ? (
-          <ColorPicker
+          // 移动端悬浮工具栏空间紧张：与桌面一致的「色块 + 箭头」紧凑入口，
+          // 点色块直接应用，箭头展开色板面板。
+          <ColorPickerPopover
             onChange={(color) => setColor(editor, color)}
-            compact
+            label="选区文字颜色"
+            swatchLabel="应用选区文字颜色"
             disabled={spoilerActive}
-            className="min-w-[190px] border-x border-[#e3e3e3] px-1"
+            align="center"
+            side="top"
+            triggerClassName="h-[26px] rounded"
+            triggerOnMouseDown={preventSelectionLoss}
           />
         ) : (
           <ColorPickerPopover
@@ -197,13 +201,7 @@ function FormatControls({
             align="center"
             triggerClassName="h-[30px] rounded"
             triggerChildren={
-              <span className="flex items-center gap-1">
-                <Palette size={14} aria-hidden="true" />
-                <span
-                  className="h-3 w-3 rounded-sm border border-black/15"
-                  style={{ background: loadLastColor() }}
-                />
-              </span>
+              <span className="h-3 w-3 rounded-sm border border-black/15" style={{ background: loadLastColor() }} />
             }
             triggerOnMouseDown={preventSelectionLoss}
           />

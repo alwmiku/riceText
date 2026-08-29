@@ -83,14 +83,11 @@ test("移动端：文字格式折叠组内紧凑拾色器可交互", async ({ pa
   await page.getByRole("button", { name: "文字格式" }).tap();
   const menu = page.getByRole("menu");
   await expect(menu).toBeVisible();
+  // 菜单内是完整拾色器（SV/色相/透明度/Hex），无浏览器原生取色器
+  await expect(menu.getByRole("slider", { name: "饱和度与亮度" })).toBeVisible();
+  await expect(menu.getByRole("slider", { name: "透明度" })).toBeVisible();
   await expect(menu.getByLabel("Hex 色值")).toBeVisible();
-
-  // 透明度滑杆轨道点击
-  const sliderRoot = menu.locator("[data-slot=slider]");
-  const rootBox = await sliderRoot.boundingBox();
-  if (!rootBox) throw new Error("透明度滑杆不可见");
-  await page.mouse.click(rootBox.x + rootBox.width * 0.3, rootBox.y + rootBox.height / 2);
-  await expect(menu.getByLabel("透明度读数")).not.toHaveText("100%");
+  await expect(menu.getByLabel("系统取色器")).not.toBeVisible();
 
   // 已存色块点击 → 编辑器选区文字出现颜色标记
   await menu.getByLabel("文字颜色 #197c73").tap();

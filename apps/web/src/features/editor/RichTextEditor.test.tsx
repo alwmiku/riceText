@@ -330,7 +330,9 @@ describe("RichTextEditor presets", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("选区字体")).toBeInTheDocument();
     expect(screen.getByLabelText("选区字号")).toBeInTheDocument();
-    expect(screen.getByLabelText("文字颜色 #197c73")).toBeInTheDocument();
+    // 悬浮工具栏的拾色器是紧凑「色块 + 箭头」入口（色块行在展开面板里）
+    expect(screen.getByLabelText("应用选区文字颜色")).toBeInTheDocument();
+    expect(screen.getByLabelText("选区文字颜色")).toBeInTheDocument();
   });
 
   it("移动端长按不会打开右键菜单并保留选区工具栏", async () => {
@@ -510,7 +512,7 @@ describe("RichTextEditor presets", () => {
     expect(readyEditor.getAttributes("textStyle").color).toBe("#197c73");
   });
 
-  it("移动端文字格式折叠组内可用紧凑拾色器输入自定义 Hex", async () => {
+  it("移动端文字格式折叠组内用紧凑拾色器色块直接应用", async () => {
     window.localStorage.clear();
     const editorRef: { current: Editor | null } = { current: null };
     render(
@@ -534,9 +536,7 @@ describe("RichTextEditor presets", () => {
     });
     // 选区内浮动的选区格式菜单里也有一个紧凑拾色器，须限定在折叠组菜单内查询。
     const menu = await screen.findByRole("menu");
-    const hexInput = within(menu).getByLabelText("Hex 色值");
-    fireEvent.change(hexInput, { target: { value: "#4F46E5" } });
-    fireEvent.keyDown(hexInput, { key: "Enter" });
-    expect(readyEditor.getAttributes("textStyle").color).toBe("#4f46e5");
+    fireEvent.click(within(menu).getByLabelText("文字颜色 #197c73"));
+    expect(readyEditor.getAttributes("textStyle").color).toBe("#197c73");
   });
 });

@@ -118,10 +118,10 @@ export function CompactToolbarControls({
           字号 18px
         </DropdownMenuItem>
         <div className="border-t border-border p-2">
-          {/* 拾色器自持记忆色，不随选区文字颜色同步。 */}
+          {/* 拾色器自持记忆色，不随选区文字颜色同步；菜单内无触发按钮，直接应用。 */}
           <ColorPicker
             onChange={(color) => setColor(editor, color)}
-            compact
+            direct
             disabled={spoilerActive}
           />
         </div>
