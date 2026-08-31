@@ -18,6 +18,7 @@ import {
   DiceDialog,
   ExcerptDialog,
   ImageDialog,
+  LinkDialog,
   MentionDialog,
   PollDialog,
   type PollDialogValues,
@@ -79,6 +80,9 @@ export function ToolbarDialogs({
     useState<AttachmentInitial | null>(null);
   const [pollOpen, setPollOpen] = useState(false);
   const [pollInitial, setPollInitial] = useState<PollDialogValues | null>(null);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkInitialHref, setLinkInitialHref] = useState<string | null>(null);
+  const [linkCanRemove, setLinkCanRemove] = useState(false);
 
   const requestInsert = useCallback(
     (tool: InsertTool) => {
@@ -192,6 +196,15 @@ export function ToolbarDialogs({
         case "excerpt":
           setExcerptOpen(true);
           break;
+        case "link": {
+          const attrs = editor.getAttributes("link") as { href?: unknown };
+          setLinkInitialHref(
+            typeof attrs.href === "string" ? attrs.href : null,
+          );
+          setLinkCanRemove(editor.isActive("link"));
+          setLinkOpen(true);
+          break;
+        }
         case "comment":
           insertCommentAnchor(editor);
           break;
@@ -316,6 +329,32 @@ export function ToolbarDialogs({
                   avatarUrl: user.avatarUrl,
                 },
               })
+            }
+          />
+          <LinkDialog
+            open={linkOpen}
+            onOpenChange={setLinkOpen}
+            {...(linkInitialHref !== null
+              ? { initialHref: linkInitialHref }
+              : {})}
+            {...(linkCanRemove
+              ? {
+                  onRemove: () =>
+                    editor
+                      .chain()
+                      .focus()
+                      .extendMarkRange("link")
+                      .unsetLink()
+                      .run(),
+                }
+              : {})}
+            onInsert={(href) =>
+              editor
+                .chain()
+                .focus()
+                .extendMarkRange("link")
+                .setLink({ href })
+                .run()
             }
           />
         </>

@@ -65,16 +65,14 @@ describe("RichTextEditor presets", () => {
 
   it("完整模式展示全工具栏并执行格式与插入命令", async () => {
     const onChange = vi.fn();
-    let readyEditor: Editor | null = null;
-    vi.spyOn(window, "prompt").mockReturnValue("javascript:alert(1)");
-    const alert = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    const editorRef: { current: Editor | null } = { current: null };
     render(
       <RichTextEditor
         content={defaultDocument.content}
         mode="full"
         onChange={onChange}
-        onReady={(editor) => {
-          readyEditor = editor;
+        onReady={(value) => {
+          editorRef.current = value;
         }}
       />,
     );
@@ -107,9 +105,34 @@ describe("RichTextEditor presets", () => {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
 
-    await waitFor(() => expect(readyEditor).not.toBeNull());
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const readyEditor = editorRef.current;
+    if (!readyEditor) throw new Error("编辑器未初始化");
+    // 链接使用应用内对话框（window.prompt 在 Android Chrome 上不可用）；
+    // 非法地址被拦截并提示，合法地址写入光标处的 stored mark。
     fireEvent.click(screen.getByRole("button", { name: "链接" }));
-    expect(alert).toHaveBeenCalledWith("仅允许 HTTP(S) 链接");
+    const linkDialog = await screen.findByRole("dialog");
+    const linkInput = within(linkDialog).getByLabelText("链接地址");
+    expect(linkInput).toHaveValue("https://");
+    fireEvent.change(linkInput, {
+      target: { value: "javascript:alert(1)" },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("仅允许 HTTP(S) 链接");
+    expect(
+      within(linkDialog).getByRole("button", { name: "插入链接" }),
+    ).toBeDisabled();
+    fireEvent.change(linkInput, {
+      target: { value: "https://ricetext.dev" },
+    });
+    fireEvent.click(
+      within(linkDialog).getByRole("button", { name: "插入链接" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(readyEditor.getAttributes("link").href).toBe(
+      "https://ricetext.dev",
+    );
     fireEvent.change(screen.getByLabelText("字号"), {
       target: { value: "20px" },
     });
@@ -401,6 +424,45 @@ describe("RichTextEditor presets", () => {
     const mobileMenu = await screen.findByRole("menu");
     expect(mobileMenu).toHaveAttribute("data-side", "top");
     expect(screen.getByRole("menuitem", { name: /撤销/ })).toBeInTheDocument();
+  });
+
+  it("移动端通过「插入内容 → 链接」对话框插入链接", async () => {
+    const editorRef: { current: Editor | null } = { current: null };
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="mobile"
+        onChange={vi.fn()}
+        onReady={(value) => {
+          editorRef.current = value;
+        }}
+      />,
+    );
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const readyEditor = editorRef.current;
+    if (!readyEditor) throw new Error("编辑器未初始化");
+    readyEditor.commands.setTextSelection({ from: 1, to: 4 });
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "插入内容" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    const menu = await screen.findByRole("menu");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /链接/ }));
+
+    const linkDialog = await screen.findByRole("dialog");
+    fireEvent.change(within(linkDialog).getByLabelText("链接地址"), {
+      target: { value: "https://example.com/mobile" },
+    });
+    fireEvent.click(
+      within(linkDialog).getByRole("button", { name: "插入链接" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(readyEditor.getAttributes("link").href).toBe(
+      "https://example.com/mobile",
+    );
   });
 
   it("只读状态同步到 ProseMirror，空的紧凑插入菜单不渲染", async () => {

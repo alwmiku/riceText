@@ -1,7 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { useEffect, useRef, useState } from "react";
 import { CompactToolbarControls } from "../CompactToolbarControls";
-import { addLink } from "../editor-actions";
 import { ToolbarDialogs, useInsertRequest } from "../ToolbarDialogs";
 import { useEditorSelectionState } from "../useEditorSelectionState";
 import {
@@ -52,11 +51,7 @@ export function Toolbar({
       aria-label="富文本工具栏"
     >
       {compactLayout ? (
-        <CompactToolbarControls
-          editor={editor}
-          mobile={condensed}
-          onLink={() => addLink(editor)}
-        />
+        <CompactToolbarControls editor={editor} mobile={condensed} />
       ) : (
         <>
           <UndoRedoGroup editor={editor} />

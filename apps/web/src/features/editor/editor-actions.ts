@@ -85,18 +85,6 @@ export function setFontFamily(editor: Editor, fontFamily: string): boolean {
     : editor.chain().focus().unsetFontFamily().run();
 }
 
-/** 通过 window.prompt 输入并校验 HTTP(S) 链接后套用到选区。 */
-export function addLink(editor: Editor): void {
-  const previous = editor.getAttributes("link").href as string | undefined;
-  const href = window.prompt("输入 HTTP(S) 链接", previous ?? "https://");
-  if (href === null) return;
-  if (!/^https?:\/\//i.test(href)) {
-    window.alert("仅允许 HTTP(S) 链接");
-    return;
-  }
-  editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
-}
-
 /** 在光标处插入任意 JSON 节点并聚焦。 */
 export function insertNode(
   editor: Editor,

@@ -4,6 +4,7 @@ import {
   Dice5,
   FileText,
   ImagePlus,
+  Link2,
   MessageCirclePlus,
   TextQuote,
   UnlockKeyhole,
@@ -23,7 +24,8 @@ export type InsertTool =
   | "excerpt"
   | "comment"
   | "gate"
-  | "ungate";
+  | "ungate"
+  | "link";
 
 export interface InsertToolDefinition {
   tool: InsertTool;
@@ -127,11 +129,22 @@ export const MORE_INSERT_TOOLS: readonly InsertToolDefinition[] = [
   },
 ];
 
+/**
+ * 链接：不走「插入内容」菜单的自动枚举（桌面工具栏与折叠菜单有专用入口），
+ * 仅提供定义并纳入 INSERT_TOOL_DEFINITIONS 索引。
+ */
+export const LINK_TOOL: InsertToolDefinition = {
+  tool: "link",
+  label: "链接",
+  icon: Link2,
+  isActive: (editor) => editor.isActive("link"),
+};
+
 /** 全部插入工具按 ID 索引，供业务节点分组直接取用。 */
 export const INSERT_TOOL_DEFINITIONS: Readonly<
   Record<InsertTool, InsertToolDefinition>
 > = Object.fromEntries(
-  [...INSERT_CONTENT_TOOLS, ...MORE_INSERT_TOOLS].map((definition) => [
+  [...INSERT_CONTENT_TOOLS, ...MORE_INSERT_TOOLS, LINK_TOOL].map((definition) => [
     definition.tool,
     definition,
   ]),

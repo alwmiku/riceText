@@ -74,11 +74,9 @@ import { ToolbarGroup } from "./toolbar/ToolbarGroup";
 export function CompactToolbarControls({
   editor,
   mobile = false,
-  onLink,
 }: {
   editor: Editor;
   mobile?: boolean;
-  onLink?: () => void;
 }) {
   const requestInsert = useInsertRequest();
   const spoilerActive = editor.isActive("spoiler");
@@ -236,10 +234,7 @@ export function CompactToolbarControls({
         collapsed
         mobile={mobile}
       >
-        <DropdownMenuItem
-          disabled={!onLink}
-          {...(onLink ? { onSelect: onLink } : {})}
-        >
+        <DropdownMenuItem onSelect={() => requestInsert?.("link")}>
           <Link2 />
           链接
         </DropdownMenuItem>

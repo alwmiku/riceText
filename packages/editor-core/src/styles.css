@@ -409,6 +409,11 @@
   width: 12px;
   height: 44px;
   padding: 0;
+  /* 触摸拖动不被页面滚动抢走（否则浏览器会在位移超过阈值后
+     取消 pointer 序列，缩放中途被 pointercancel 打断） */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
   background: var(--rt-primary);
   border: 2px solid #ffffff;
   border-radius: 999px;
@@ -1107,6 +1112,13 @@
   border-color: #4b5551;
 }
 
+/* 触屏设备加宽缩放拖柄，降低手指误按的难度（仍贴着图片边缘）。 */
+@media (pointer: coarse) {
+  .rt-rich-image__resize {
+    width: 18px;
+  }
+}
+
 @media (max-width: 640px) {
   .rt-editor .tiptap,
   .rt-editor__content {
@@ -1114,9 +1126,9 @@
     padding-left: 15px;
   }
 
-  .rt-rich-image {
-    width: 100% !important;
-  }
+  /* 注意：不要在这里强制 .rt-rich-image width:100%!important——
+     它会覆盖节点视图的内联 width 百分比，导致移动端拖拽缩放手柄完全无效。
+     基础规则里的 max-width:100% 已保证不溢出。 */
 
   .rt-attachment {
     grid-template-columns: minmax(0, 1fr);

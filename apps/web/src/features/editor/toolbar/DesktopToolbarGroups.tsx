@@ -29,7 +29,6 @@ import {
 import { ColorPickerPopover } from "../../../components/ui/color-picker";
 import { cmd } from "../commands";
 import {
-  addLink,
   clearFormatting,
   redo,
   setColor,
@@ -266,7 +265,7 @@ export function BusinessNodeGroup({
         <ToolbarButton
           label="链接"
           active={editor.isActive("link")}
-          onClick={() => addLink(editor)}
+          onClick={() => requestInsert?.("link")}
         >
           <Link2 size={16} />
         </ToolbarButton>

@@ -11,6 +11,7 @@ import {
   DiceDialog,
   ExcerptDialog,
   ImageDialog,
+  LinkDialog,
   MentionDialog,
   PollDialog,
 } from "./dialogs";
@@ -328,6 +329,68 @@ describe("editor dialogs", () => {
       name: "陌生读者42",
       resolved: false,
       avatarUrl: null,
+    });
+  });
+
+  describe("LinkDialog", () => {
+    it("默认填入 https:// 前缀并校验非法地址", () => {
+      const onInsert = vi.fn();
+      const onOpenChange = vi.fn();
+      render(
+        <LinkDialog open onOpenChange={onOpenChange} onInsert={onInsert} />,
+      );
+      const input = screen.getByLabelText("链接地址");
+      expect(input).toHaveValue("https://");
+
+      fireEvent.change(input, { target: { value: "javascript:alert(1)" } });
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "仅允许 HTTP(S) 链接",
+      );
+      expect(
+        screen.getByRole("button", { name: "插入链接" }),
+      ).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: "插入链接" }));
+      expect(onInsert).not.toHaveBeenCalled();
+      expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    });
+
+    it("合法地址提交裁剪后的文本并关闭", () => {
+      const onInsert = vi.fn();
+      const onOpenChange = vi.fn();
+      render(
+        <LinkDialog open onOpenChange={onOpenChange} onInsert={onInsert} />,
+      );
+      fireEvent.change(screen.getByLabelText("链接地址"), {
+        target: { value: "  https://example.com/a  " },
+      });
+      fireEvent.keyDown(screen.getByLabelText("链接地址"), {
+        key: "Enter",
+      });
+      expect(onInsert).toHaveBeenCalledWith("https://example.com/a");
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it("初始地址回填并支持移除既有链接", () => {
+      const onInsert = vi.fn();
+      const onRemove = vi.fn();
+      const onOpenChange = vi.fn();
+      render(
+        <LinkDialog
+          open
+          onOpenChange={onOpenChange}
+          onInsert={onInsert}
+          initialHref="https://old.example.com"
+          onRemove={onRemove}
+        />,
+      );
+      expect(screen.getByLabelText("链接地址")).toHaveValue(
+        "https://old.example.com",
+      );
+      expect(screen.getByRole("button", { name: "保存修改" })).toBeEnabled();
+      fireEvent.click(screen.getByRole("button", { name: "移除链接" }));
+      expect(onRemove).toHaveBeenCalledTimes(1);
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(onInsert).not.toHaveBeenCalled();
     });
   });
 });

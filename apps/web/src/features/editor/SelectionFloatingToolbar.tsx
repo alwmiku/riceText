@@ -7,7 +7,7 @@ import {
   ListOrdered,
   Underline as UnderlineIcon,
 } from "lucide-react";
-import type { MouseEvent } from "react";
+import { useEffect, useRef, type MouseEvent } from "react";
 import { IconButton } from "../../components/ui";
 import {
   ColorPickerPopover,
@@ -27,57 +27,65 @@ import {
 } from "./editor-actions";
 import { FONT_FAMILIES, FONT_SIZES } from "./editor-tool-definitions";
 
-export type FloatingPosition = { x: number; y: number } | null;
+export type ToolbarPosition = { x: number; y: number };
 
 function preventSelectionLoss(event: MouseEvent<HTMLElement>) {
   event.preventDefault();
 }
 
-function selectionMenuPosition(editor: Editor): FloatingPosition {
-  const nativeSelection = window.getSelection();
-  if (nativeSelection?.rangeCount) {
-    const rect = nativeSelection.getRangeAt(0).getBoundingClientRect();
-    if (rect.width || rect.height) {
-      return {
-        x: Math.min(
-          Math.max(rect.left + rect.width / 2, 184),
-          window.innerWidth - 184,
-        ),
-        y: Math.max(rect.top, 10),
-      };
-    }
-  }
+const clampX = (x: number) =>
+  Math.min(Math.max(x, 184), window.innerWidth - 184);
 
+function fallbackSelectionPosition(editor: Editor): ToolbarPosition {
   try {
     const coords = editor.view.coordsAtPos(editor.state.selection.from);
     if (Number.isFinite(coords.left) && Number.isFinite(coords.top)) {
       return {
-        x: Math.min(Math.max(coords.left, 184), window.innerWidth - 184),
+        x: clampX(coords.left),
         y: Math.max(coords.top, 10),
       };
     }
   } catch {
     // jsdom and some IME selection states do not expose usable coordinates.
   }
-
   return {
-    x: Math.min(Math.max(window.innerWidth / 2, 184), window.innerWidth - 184),
+    x: clampX(window.innerWidth / 2),
     y: 80,
   };
 }
 
-/** 移动端优先把格式菜单放在选区附近；选区太靠近顶部时改到选区下方，避免被裁掉。 */
-function mobileSelectionMenuPosition(editor: Editor): FloatingPosition {
-  const position = selectionMenuPosition(editor) ?? {
-    x: Math.min(Math.max(window.innerWidth / 2, 184), window.innerWidth - 184),
-    y: 80,
-  };
+/**
+ * 读取编辑器 DOM 内的原生选区矩形。选区不在编辑器内（例如焦点落在
+ * 链接/图片对话框的输入框上）或不可用时返回 null，避免浮动工具栏
+ * 按浏览器选区跳到错误位置，此时退回 ProseMirror 选区坐标。
+ */
+function nativeSelectionRect(editor: Editor): DOMRect | null {
   const nativeSelection = window.getSelection();
-  let selectionBottom = 80;
-  if (nativeSelection?.rangeCount) {
-    const rect = nativeSelection.getRangeAt(0).getBoundingClientRect();
-    if (rect.width || rect.height) selectionBottom = rect.bottom;
+  if (!nativeSelection?.rangeCount) return null;
+  const range = nativeSelection.getRangeAt(0);
+  const container = nativeSelection.anchorNode ?? range.startContainer;
+  if (!container || !editor.view.dom.contains(container)) return null;
+  const rect = range.getBoundingClientRect();
+  return rect.width || rect.height ? rect : null;
+}
+
+function selectionMenuPosition(editor: Editor): ToolbarPosition {
+  const rect = nativeSelectionRect(editor);
+  if (rect) {
+    return {
+      x: clampX(rect.left + rect.width / 2),
+      y: Math.max(rect.top, 10),
+    };
   }
+  return fallbackSelectionPosition(editor);
+}
+
+/** 移动端优先把格式菜单放在选区附近；选区太靠近顶部时改到选区下方，避免被裁掉。 */
+function mobileSelectionMenuPosition(editor: Editor): ToolbarPosition {
+  const position = selectionMenuPosition(editor) ?? fallbackSelectionPosition(editor);
+  let selectionBottom = 80;
+  const rect = nativeSelectionRect(editor);
+  if (rect) selectionBottom = rect.bottom;
   if (position.y < 220) {
     return {
       x: position.x,
@@ -232,9 +240,69 @@ function FormatControls({
 }
 
 /**
+ * 移动端选区浮动格式工具栏。
+ *
+ * Android 拖动选区手柄期间浏览器不派发 selectionchange/selectionUpdate，
+ * 渲染期坐标会在旧选区处冻结：这里用 rAF 轮询原生选区矩形并通过 ref
+ * 直接写 left/top（不触发 React 渲染），让工具栏实时贴住移动中的选区，
+ * 同时覆盖选区拖动时的自动滚动；没有 rAF 的环境（jsdom/旧浏览器）回退为
+ * 66ms 定时器。选区在编辑器之外（如对话框输入框）时退回 ProseMirror 坐标。
+ */
+function MobileSelectionFloatingToolbar({
+  editor,
+  position,
+}: {
+  editor: Editor;
+  position: ToolbarPosition;
+}) {
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = toolbarRef.current;
+    if (!element) return undefined;
+    let frame = 0;
+    let lastX = Number.NaN;
+    let lastY = Number.NaN;
+    const apply = () => {
+      const next = mobileSelectionMenuPosition(editor);
+      if (next && (next.x !== lastX || next.y !== lastY)) {
+        lastX = next.x;
+        lastY = next.y;
+        element.style.left = `${next.x}px`;
+        element.style.top = `${next.y}px`;
+      }
+      frame =
+        typeof requestAnimationFrame === "function"
+          ? requestAnimationFrame(apply)
+          : (window.setTimeout(apply, 66) as unknown as number);
+    };
+    frame =
+      typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame(apply)
+        : (window.setTimeout(apply, 66) as unknown as number);
+    return () => {
+      if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(frame);
+      else window.clearTimeout(frame);
+    };
+  }, [editor]);
+
+  return (
+    <div
+      ref={toolbarRef}
+      className="fixed z-[60] w-max max-w-[calc(100vw-16px)] overflow-visible rounded-lg border border-border bg-white/[0.98] p-1.5 shadow-[0_8px_24px_rgb(15_23_42/0.18)] -translate-x-1/2 -translate-y-[calc(100%+8px)] [&_.flex]:overflow-x-auto [&_.flex]:[scrollbar-width:none] [&_.flex::-webkit-scrollbar]:hidden [&_select:first-of-type]:w-[min(132px,36vw)] [&_select:nth-of-type(2)]:w-[74px]"
+      role="toolbar"
+      aria-label="选区格式菜单"
+      style={{ left: position.x, top: position.y }}
+    >
+      <FormatControls editor={editor} mobile />
+    </div>
+  );
+}
+
+/**
  * 选区浮动格式工具栏（桌面与移动端两套样式）。
  * 位置在渲染期按当前 DOM 选区计算：selectionUpdate/transaction 触发
- * 的父级重渲染会自然刷新坐标，无需额外订阅。
+ * 的父级重渲染会自然刷新坐标，无需额外订阅；移动端由
+ * {@link MobileSelectionFloatingToolbar} 在选区拖拽期间实时跟踪。
  */
 export function SelectionFloatingToolbar({
   editor,
@@ -246,23 +314,18 @@ export function SelectionFloatingToolbar({
   visible: boolean;
 }) {
   if (!editor || !visible) return null;
-  const position = mobile
-    ? mobileSelectionMenuPosition(editor)
-    : selectionMenuPosition(editor);
-  if (!position) return null;
 
   if (mobile) {
+    const mobilePosition = mobileSelectionMenuPosition(editor);
     return (
-      <div
-        className="fixed z-[60] w-max max-w-[calc(100vw-16px)] overflow-visible rounded-lg border border-border bg-white/[0.98] p-1.5 shadow-[0_8px_24px_rgb(15_23_42/0.18)] -translate-x-1/2 -translate-y-[calc(100%+8px)] [&_.flex]:overflow-x-auto [&_.flex]:[scrollbar-width:none] [&_.flex::-webkit-scrollbar]:hidden [&_select:first-of-type]:w-[min(132px,36vw)] [&_select:nth-of-type(2)]:w-[74px]"
-        role="toolbar"
-        aria-label="选区格式菜单"
-        style={{ left: position.x, top: position.y }}
-      >
-        <FormatControls editor={editor} mobile />
-      </div>
+      <MobileSelectionFloatingToolbar
+        editor={editor}
+        position={mobilePosition}
+      />
     );
   }
+
+  const position = selectionMenuPosition(editor);
 
   return (
     <div
