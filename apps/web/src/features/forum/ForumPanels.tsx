@@ -10,6 +10,7 @@ import {
   MapPin,
   MessageSquareText,
   Paperclip,
+  Plus,
   RotateCcw,
   Users,
   Vote,
@@ -42,11 +43,20 @@ export function ChapterRail({
   chapters,
   currentIndex,
   onSelect,
+  onAddChapter,
+  activeCharCount,
+  activeRevision,
   className,
 }: {
   chapters: readonly { id: string; title: string }[];
   currentIndex: number;
   onSelect: (index: number) => void;
+  /** 目录底部「新增章节」入口；不提供时隐藏。 */
+  onAddChapter?: () => void;
+  /** 当前章节的真实字数（未提供时显示占位）。 */
+  activeCharCount?: number;
+  /** 当前章节的真实修订号。 */
+  activeRevision?: number;
   className?: string;
 }) {
   return (
@@ -92,19 +102,37 @@ export function ChapterRail({
             );
           })}
         </nav>
+        {onAddChapter ? (
+          <button
+            type="button"
+            onClick={onAddChapter}
+            className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1 rounded-[5px] border border-dashed border-[#b7c9c3] px-2.5 py-2 text-xs font-semibold text-[#176e66] hover:bg-[#edf7f5]"
+          >
+            <Plus size={13} />
+            新增章节
+          </button>
+        ) : null}
       </div>
       <div className="border-b border-border p-3.5 last:border-b-0">
         <p className="mb-2 text-xs font-semibold tracking-normal text-muted-foreground uppercase">
-          本章统计
+          章节总结
         </p>
         <dl className="grid grid-cols-2 gap-2 text-xs">
           <div>
             <dt className="text-muted-foreground">字数</dt>
-            <dd className="mt-1 font-bold">3,842</dd>
+            <dd className="mt-1 font-bold">
+              {activeCharCount !== undefined
+                ? activeCharCount.toLocaleString()
+                : "—"}
+            </dd>
           </div>
           <div>
             <dt className="text-muted-foreground">修订</dt>
-            <dd className="mt-1 font-bold">18</dd>
+            <dd className="mt-1 font-bold">
+              {activeRevision !== undefined
+                ? activeRevision.toLocaleString()
+                : "—"}
+            </dd>
           </div>
         </dl>
       </div>

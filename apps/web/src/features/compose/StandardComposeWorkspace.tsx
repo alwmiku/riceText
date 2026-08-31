@@ -16,6 +16,9 @@ export function StandardComposeWorkspace({
   documentId,
   revision,
   saveDisabled,
+  activeCharCount,
+  activeRevision,
+  onAddChapter,
   onSelectChapter,
   onSave,
   onRestore,
@@ -31,6 +34,12 @@ export function StandardComposeWorkspace({
   documentId: string;
   revision: number;
   saveDisabled: boolean;
+  /** 当前章节的真实字数，展示在目录「章节总结」中。 */
+  activeCharCount?: number;
+  /** 当前章节的真实修订号，展示在目录「章节总结」中。 */
+  activeRevision?: number;
+  /** 目录底部「新增章节」入口。 */
+  onAddChapter?: () => void;
   onSelectChapter: (index: number) => void;
   onSave: () => void;
   onRestore: (revision: number) => void;
@@ -50,6 +59,9 @@ export function StandardComposeWorkspace({
           chapters={chapters}
           currentIndex={activeIndex}
           onSelect={onSelectChapter}
+          {...(onAddChapter ? { onAddChapter } : {})}
+          {...(activeCharCount !== undefined ? { activeCharCount } : {})}
+          {...(activeRevision !== undefined ? { activeRevision } : {})}
         />
         <section className="min-w-0">
           <div className="mb-2 flex min-h-[52px] items-center justify-between gap-3 rounded-lg border border-border bg-white py-2 pr-2.5 pl-3.5 shadow-panel max-[430px]:min-h-12 max-[430px]:pr-3 max-[430px]:pl-3">
@@ -122,6 +134,9 @@ export function StandardComposeWorkspace({
                     onSelectChapter(index);
                     setMobileChapterRailOpen(false);
                   }}
+                  {...(onAddChapter ? { onAddChapter } : {})}
+                  {...(activeCharCount !== undefined ? { activeCharCount } : {})}
+                  {...(activeRevision !== undefined ? { activeRevision } : {})}
                   className="static max-h-[calc(100vh-78px)] rounded-md shadow-none"
                 />
               </div>

@@ -187,12 +187,14 @@ describe("ForumPanels", () => {
     });
   });
 
-  it("展示章节目录、当前章节和统计", () => {
+  it("展示章节目录、当前章节和章节总结（真实字数与修订）", () => {
     renderWithQuery(
       <ChapterRail
         chapters={chaptersFixture}
         currentIndex={1}
         onSelect={vi.fn()}
+        activeCharCount={3842}
+        activeRevision={18}
       />,
     );
     expect(
@@ -204,8 +206,49 @@ describe("ForumPanels", () => {
     expect(
       screen.getByRole("button", { name: /第三章.*没有寄件人的信/ }),
     ).toBeInTheDocument();
-    expect(screen.getByText("3,842")).toBeInTheDocument();
     expect(screen.getByText("创作中")).toBeInTheDocument();
+    expect(screen.getByText("章节总结")).toBeInTheDocument();
+    expect(screen.getByText("3,842")).toBeInTheDocument();
+    expect(screen.getByText("18")).toBeInTheDocument();
+  });
+
+  it("没有统计数据时章节总结显示占位", () => {
+    renderWithQuery(
+      <ChapterRail
+        chapters={chaptersFixture}
+        currentIndex={0}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("章节总结")).toBeInTheDocument();
+    expect(screen.getAllByText("—")).toHaveLength(2);
+  });
+
+  it("目录底部提供「新增章节」入口并触发回调", () => {
+    const onAddChapter = vi.fn();
+    renderWithQuery(
+      <ChapterRail
+        chapters={chaptersFixture}
+        currentIndex={0}
+        onSelect={vi.fn()}
+        onAddChapter={onAddChapter}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /新增章节/ }));
+    expect(onAddChapter).toHaveBeenCalledTimes(1);
+  });
+
+  it("未提供 onAddChapter 时隐藏新增章节入口", () => {
+    renderWithQuery(
+      <ChapterRail
+        chapters={chaptersFixture}
+        currentIndex={0}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /新增章节/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("点击章节触发切换回调", () => {

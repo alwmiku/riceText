@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppContext } from '../app-context';
 import { defaultDocument, identities } from '../lib/seed';
-import type { RichTextNode, SaveState } from '../lib/types';
+import type { DocumentEnvelope, RichTextNode, SaveState } from '../lib/types';
 import ComposePage from './ComposePage';
 
 const mocks = vi.hoisted(() => ({
@@ -38,10 +38,11 @@ vi.mock('../features/editor/RichTextEditor', () => ({
   </section>,
 }));
 vi.mock('../features/forum/ForumPanels', () => ({
-  ChapterRail: (props: { onSelect: (index: number) => void; className?: string }) => (
-    <aside className={props.className} aria-label="章节目录">
+  ChapterRail: (props: { chapters?: readonly unknown[]; onSelect: (index: number) => void; onAddChapter?: () => void; className?: string }) => (
+    <aside className={props.className} aria-label="章节目录" data-chapters={String(props.chapters?.length ?? 0)}>
       <span>模拟章节目录</span>
       <button type="button" onClick={() => props.onSelect(0)}>模拟章节 1</button>
+      <button type="button" onClick={() => props.onAddChapter?.()}>模拟新增章节</button>
     </aside>
   ),
   ForumBusinessPanel: (props: { onRestore: (revision: number) => void }) => <aside><span>模拟创作工具</span><button type="button" onClick={() => props.onRestore(17)}>模拟回退</button></aside>,
@@ -111,6 +112,48 @@ describe('ComposePage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '模拟章节 1' }));
     expect(screen.queryByRole('dialog', { name: '章节目录' })).not.toBeInTheDocument();
+  });
+
+  it('目录「新增章节」在文档末尾追加空章节并切换到新章节', async () => {
+    // 用带一个 H2 章节的文档：追加后目录从 1 章变 2 章（web 演示种子没有 H2，
+    // 追加会把旧内容归入 lead，不适合验证章节计数）。
+    const chapterDoc: DocumentEnvelope = {
+      ...defaultDocument,
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'heading',
+            attrs: { level: 1 },
+            content: [{ type: 'text', text: '雾港来信' }],
+          },
+          {
+            type: 'heading',
+            attrs: { level: 2 },
+            content: [{ type: 'text', text: '第一章 潮汐表' }],
+          },
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: '潮声沿着旧城墙漫上来。' }],
+          },
+        ],
+      },
+    };
+    mocks.getDocument.mockResolvedValueOnce(chapterDoc);
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByTestId('editor')).toHaveAttribute(
+        'data-editable',
+        'true',
+      ),
+    );
+    const rail = screen.getByRole('complementary', { name: '章节目录' });
+    expect(rail).toHaveAttribute('data-chapters', '1');
+
+    fireEvent.click(screen.getByRole('button', { name: '模拟新增章节' }));
+
+    expect(rail).toHaveAttribute('data-chapters', '2');
+    expect(screen.getByText(/已新增第 2 章/)).toBeInTheDocument();
   });
 
   it('发布前 flush 自动保存，并可关闭成功提示', async () => {

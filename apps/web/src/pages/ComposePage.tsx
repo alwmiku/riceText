@@ -22,9 +22,36 @@ import { useLongTextWorkspace } from "../features/compose/useLongTextWorkspace";
 import { EditorErrorBoundary } from "../features/editor/errors/EditorErrorBoundary";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
 import { getCommentThread, listForumChapters } from "../lib/api";
-import { splitDocumentByHeadings } from "../lib/chapters";
+import {
+  chapterTextLines,
+  splitDocumentByHeadings,
+} from "../lib/chapters";
 import type { CommentReply, EditorMode, RichTextNode } from "../lib/types";
 import { cn } from "../lib/utils";
+
+const CHINESE_NUMERALS = [
+  "零",
+  "一",
+  "二",
+  "三",
+  "四",
+  "五",
+  "六",
+  "七",
+  "八",
+  "九",
+] as const;
+
+/** 把章节序号转成中文数字（1→一，11→十一，23→二十三），与种子章节命名一致。 */
+function toChineseNumber(value: number): string {
+  if (value < 10) return CHINESE_NUMERALS[value] ?? String(value);
+  if (value < 20)
+    return `十${value > 10 ? CHINESE_NUMERALS[value % 10] : ""}`;
+  const tens = Math.floor(value / 10);
+  const units = value % 10;
+  if (tens > 9 || units === 0) return String(value);
+  return `${CHINESE_NUMERALS[tens]}十${CHINESE_NUMERALS[units]}`;
+}
 
 /** 创作页编排层：组合文档、长文本、上传和展示控制器，不承载各领域内部状态机。 */
 export default function ComposePage() {
@@ -69,6 +96,17 @@ export default function ComposePage() {
     [compose.content],
   );
   const activeIndex = Math.min(chapterIndex, Math.max(0, chapters.length - 1));
+  // 目录「章节总结」的真实数据：字数按当前章节正文的非空白字符统计，
+  // 修订号取该章节在服务端目录中的独立版本号。
+  const activeCharCount = useMemo(() => {
+    const chapter = chapters[activeIndex];
+    if (!chapter) return 0;
+    return chapterTextLines(chapter.blocks)
+      .join("")
+      .replace(/\s+/gu, "").length;
+  }, [activeIndex, chapters]);
+  const activeRevision =
+    chapterDirectory[activeIndex]?.revision ?? compose.autosave.revision;
   const editorContent = useMemo<RichTextNode>(
     () => ({ type: "doc", content: chapters[activeIndex]?.blocks ?? [] }),
     [activeIndex, chapters],
@@ -86,6 +124,29 @@ export default function ComposePage() {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "版本回退失败");
     }
+  };
+
+  // 在文档末尾追加一个空章节并切换到它；保存时随整篇正文一起入库。
+  const addChapter = () => {
+    const current = compose.contentRef.current;
+    const number = splitDocumentByHeadings(current).chapters.length + 1;
+    const next: RichTextNode = {
+      type: "doc",
+      content: [
+        ...(current.content ?? []),
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [
+            { type: "text", text: `第${toChineseNumber(number)}章 新章节` },
+          ],
+        },
+        { type: "paragraph", content: [] },
+      ],
+    };
+    compose.replaceContent(next);
+    setChapterIndex(number - 1);
+    setNotice(`已新增第 ${number} 章，保存后目录与版本号会同步更新`);
   };
 
   const publish = async (latestContent?: RichTextNode) => {
@@ -296,6 +357,9 @@ export default function ComposePage() {
           documentId={compose.document.id}
           revision={compose.autosave.revision}
           saveDisabled={compose.isPlaceholderData}
+          activeCharCount={activeCharCount}
+          activeRevision={activeRevision}
+          onAddChapter={addChapter}
           onSelectChapter={setChapterIndex}
           onSave={() => void publish()}
           onRestore={(revision) => void rollback(revision)}
