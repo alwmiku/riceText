@@ -92,7 +92,10 @@ test("移动端：文字格式折叠组内紧凑拾色器可交互", async ({ pa
   const editor = page.locator(".ProseMirror");
   await expect(editor).toBeVisible();
   await editor.click();
-  await page.keyboard.press("Control+a");
+  // 选中第一段而非全选：全选时选区浮动菜单贴着文档末尾展开，会遮挡底部
+  // 工具栏的「文字格式」按钮；且文档内容长度是外部状态，测试不应依赖。
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.press("Shift+ArrowDown");
   await expect(page.getByRole("toolbar", { name: "选区格式菜单" })).toBeVisible();
 
   // 文字格式菜单：一级菜单为格式项 + 字体/字号/颜色子菜单，不直接平铺

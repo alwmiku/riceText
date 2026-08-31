@@ -113,6 +113,11 @@
 .tiptap li {
   @apply my-[0.2em] flex items-center gap-2;
 }
+/* li 是 flex 行：内部段落的下边距会把 ::before 标记压低约半个行距，
+   导致标记与文字垂直不齐；列表内边距交给 li 自身的 my-[0.2em]。 */
+.tiptap li p {
+  @apply m-0;
+}
 .tiptap ul > li::before {
   content: "•";
   flex: 0 0 auto;
@@ -133,6 +138,14 @@
 }
 .tiptap li[style*="text-align: justify"] {
   justify-content: space-between;
+}
+/* 旧文档可能只给段落（而非 listItem）写了 text-align：标记跟随段落对齐，
+   避免「标记留在左边、文字单独居中」的发散状态。 */
+.tiptap li:has(> p[style*="text-align: center"]) {
+  justify-content: center;
+}
+.tiptap li:has(> p[style*="text-align: right"]) {
+  justify-content: flex-end;
 }
 .tiptap a {
   @apply text-[#14766d] underline underline-offset-[3px];

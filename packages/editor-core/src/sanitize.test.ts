@@ -73,6 +73,26 @@ describe('document sanitization', () => {
     expect(stringifyDocument(safe)).not.toContain('base64')
   })
 
+  it('treats null textStyle attrs as unset instead of invalid (Tiptap serialization)', () => {
+    // Tiptap getJSON 会为未设置的 textStyle 属性输出 null：color 有值而
+    // fontFamily/fontSize 为 null 的 mark 是普通上色文本，不应被拒绝保存。
+    const result = validateDocument({
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'colored', marks: [{ type: 'textStyle', attrs: { color: '#197c73', fontFamily: null, fontSize: null } }] },
+          { type: 'text', text: 'plain', marks: [{ type: 'textStyle', attrs: { color: null, fontFamily: null, fontSize: null } }] },
+        ],
+      }],
+    })
+
+    expect(result.valid).toBe(true)
+    expect(result.issues).toEqual([])
+    const marks = result.document.content?.[0]?.content?.[0]?.marks
+    expect(marks).toEqual([{ type: 'textStyle', attrs: { color: '#197c73' } }])
+  })
+
   it('uses protocol allowlists and handles malformed serialized JSON', () => {
     expect(sanitizeUrl('https://example.com/a', 'image')).toBe('https://example.com/a')
     expect(sanitizeUrl('/uploads/a.jpg', 'image')).toBe('/uploads/a.jpg')

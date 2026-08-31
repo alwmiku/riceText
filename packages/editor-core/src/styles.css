@@ -295,6 +295,12 @@
   gap: 0.5em;
   margin: 0.2em 0;
 }
+/* li 是 flex 行：内部段落的下边距会把 ::before 标记压低约半个行距，
+   导致标记与文字垂直不齐；列表内边距交给 li 自身的 margin。 */
+.rt-viewer li > p,
+.rt-editor li > p {
+  margin: 0;
+}
 .rt-viewer ul > li::before,
 .rt-editor ul > li::before {
   content: "•";
@@ -321,6 +327,16 @@
 .rt-viewer li[style*="text-align: justify"],
 .rt-editor li[style*="text-align: justify"] {
   justify-content: space-between;
+}
+/* 旧文档可能只给段落（而非 listItem）写了 text-align：标记跟随段落对齐，
+   避免「标记留在左边、文字单独居中」的发散状态。 */
+.rt-viewer li:has(> p[style*="text-align: center"]),
+.rt-editor li:has(> p[style*="text-align: center"]) {
+  justify-content: center;
+}
+.rt-viewer li:has(> p[style*="text-align: right"]),
+.rt-editor li:has(> p[style*="text-align: right"]) {
+  justify-content: flex-end;
 }
 
 .rt-viewer pre,

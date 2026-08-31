@@ -7,7 +7,12 @@ import { FontSize, TextStyle } from "@tiptap/extension-text-style";
 import { Underline } from "@tiptap/extension-underline";
 import { StarterKit } from "@tiptap/starter-kit";
 
-import { sanitizeUrl } from "../sanitize.js";
+import {
+  ALLOWED_FONT_FAMILIES,
+  sanitizeColor,
+  sanitizeFontSize,
+  sanitizeUrl,
+} from "../sanitize.js";
 import type {
   AttachmentReferenceAttributes,
   DiceRollAttributes,
@@ -108,6 +113,31 @@ export interface EditorExtensionsOptions {
 }
 
 /**
+ * 粘贴入口白名单：Tiptap 的 Color/FontFamily/FontSize 属性默认原样吸收外部
+ * HTML 的 inline style，而持久化策略（document-core 白名单）会在保存时
+ * fail-closed 拒绝整篇文档。这里在 HTML → 文档的入口处用同一份白名单过滤，
+ * 白名单外的粘贴样式直接丢弃，保证编辑器产出的文档始终可保存。
+ */
+
+/** 字体栈取第一项（去引号）后与持久化白名单精确匹配。 */
+function parseAllowedFontFamily(element: HTMLElement): string | null {
+  const raw = element.style.fontFamily?.trim() ?? "";
+  if (!raw) return null;
+  const firstFamily = raw.split(",")[0]?.trim().replace(/^["']+|["']+$/g, "") ?? "";
+  return (ALLOWED_FONT_FAMILIES as readonly string[]).includes(firstFamily)
+    ? firstFamily
+    : null;
+}
+
+/** 仅接受白名单内的整数像素字号（与 sanitizeFontSize 归一化结果一致）。 */
+function parseAllowedFontSize(element: HTMLElement): string | null {
+  const raw = element.style.fontSize?.trim() ?? "";
+  const match = raw.match(/^(\d+)px$/u);
+  if (!match) return null;
+  return sanitizeFontSize(match[1]);
+}
+
+/**
  * 创建持久化文档与编辑器 UI 共用的规范 Tiptap schema。
  * 每个编辑器实例都应创建一份全新的数组。
  */
@@ -126,9 +156,72 @@ export function editorExtensions(
       HTMLAttributes: { rel: "noopener noreferrer nofollow", target: "_blank" },
     }),
     TextStyle,
-    Color.configure({ types: ["textStyle"] }),
-    FontFamily.configure({ types: ["textStyle"] }),
-    FontSize.configure({ types: ["textStyle"] }),
+    Color.extend({
+      // 粘贴颜色经 sanitizeColor 白名单：命名色 / rgba 等不可持久化的值不进文档。
+      addGlobalAttributes() {
+        return [
+          {
+            types: this.options.types,
+            attributes: {
+              color: {
+                default: null,
+                parseHTML: (element) => sanitizeColor(element.style.color ?? ""),
+                renderHTML: (attributes) => {
+                  if (!attributes.color) {
+                    return {};
+                  }
+                  return { style: `color: ${attributes.color}` };
+                },
+              },
+            },
+          },
+        ];
+      },
+    }).configure({ types: ["textStyle"] }),
+    FontFamily.extend({
+      // 粘贴字体栈经 ALLOWED_FONT_FAMILIES 白名单（同 parseAllowedFontFamily）。
+      addGlobalAttributes() {
+        return [
+          {
+            types: this.options.types,
+            attributes: {
+              fontFamily: {
+                default: null,
+                parseHTML: (element) => parseAllowedFontFamily(element),
+                renderHTML: (attributes) => {
+                  if (!attributes.fontFamily) {
+                    return {};
+                  }
+                  return { style: `font-family: ${attributes.fontFamily}` };
+                },
+              },
+            },
+          },
+        ];
+      },
+    }).configure({ types: ["textStyle"] }),
+    FontSize.extend({
+      // 粘贴字号仅接受白名单内的整数 px（同 parseAllowedFontSize）。
+      addGlobalAttributes() {
+        return [
+          {
+            types: this.options.types,
+            attributes: {
+              fontSize: {
+                default: null,
+                parseHTML: (element) => parseAllowedFontSize(element),
+                renderHTML: (attributes) => {
+                  if (!attributes.fontSize) {
+                    return {};
+                  }
+                  return { style: `font-size: ${attributes.fontSize}` };
+                },
+              },
+            },
+          },
+        ];
+      },
+    }).configure({ types: ["textStyle"] }),
     TextAlign.configure({
       types: ["heading", "paragraph", "listItem"],
       alignments: ["left", "center", "right", "justify"],

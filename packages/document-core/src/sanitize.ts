@@ -175,9 +175,11 @@ function sanitizeMarks(value: unknown, path: string, context: SanitizerContext):
       const color = sanitizeColor(attrs.color)
       const fontFamily = sanitizeFontFamily(attrs.fontFamily)
       const fontSize = sanitizeFontSize(attrs.fontSize)
-      if (attrs.color !== undefined && !color) addIssue(context, { code: 'invalid-attribute', path: `${markPath}.attrs.color`, message: 'Invalid text color was removed.' })
-      if (attrs.fontFamily !== undefined && !fontFamily) addIssue(context, { code: 'invalid-attribute', path: `${markPath}.attrs.fontFamily`, message: 'Font family is not in the allowlist.' })
-      if (attrs.fontSize !== undefined && !fontSize) addIssue(context, { code: 'invalid-attribute', path: `${markPath}.attrs.fontSize`, message: 'Font size is not in the allowlist.' })
+      // Tiptap 序列化 mark 时未设置的属性是 null（而非缺省）：null 视为
+      // 「未设置」直接跳过；只有真正非法的字符串值才判定为校验问题。
+      if (attrs.color != null && !color) addIssue(context, { code: 'invalid-attribute', path: `${markPath}.attrs.color`, message: 'Invalid text color was removed.' })
+      if (attrs.fontFamily != null && !fontFamily) addIssue(context, { code: 'invalid-attribute', path: `${markPath}.attrs.fontFamily`, message: 'Font family is not in the allowlist.' })
+      if (attrs.fontSize != null && !fontSize) addIssue(context, { code: 'invalid-attribute', path: `${markPath}.attrs.fontSize`, message: 'Font size is not in the allowlist.' })
       if (color) safeAttrs.color = color
       if (fontFamily) safeAttrs.fontFamily = fontFamily
       if (fontSize) safeAttrs.fontSize = fontSize
