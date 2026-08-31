@@ -15,7 +15,7 @@ import {
   loadLongTextRaw,
   saveLongTextRaw,
 } from "../../lib/long-text-draft-storage";
-import { createLongTextDocument } from "../editor/long-text-import";
+import { createLongTextDocument } from "../editor/long-text/long-text-import";
 import {
   appendGapLongTextChapter,
   appendLongTextChapter,
@@ -23,7 +23,7 @@ import {
   mergeLongTextChapter,
   moveLongTextChapter,
   splitLongTextChapter,
-} from "../editor/long-text-chapter-operations";
+} from "../editor/long-text/long-text-chapter-operations";
 import {
   activeLongTextChapter,
   mapLongTextCoverage,

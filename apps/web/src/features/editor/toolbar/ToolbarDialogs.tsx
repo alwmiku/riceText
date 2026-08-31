@@ -14,14 +14,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "../../components/ui/alert-dialog";
-import { createId } from "../../lib/utils";
-import { isRichNodeActive, unwrapOutermostReplyGate } from "./commands";
+} from "../../../components/ui/alert-dialog";
+import { createId } from "../../../lib/utils";
+import { isRichNodeActive, unwrapOutermostReplyGate } from "../commands";
 import {
   insertCommentAnchor,
   insertNode,
   insertReplyGate,
-} from "./editor-actions";
+} from "../editor-actions";
 import {
   AttachmentDialog,
   DiceDialog,
@@ -31,8 +31,8 @@ import {
   MentionDialog,
   PollDialog,
   type PollDialogValues,
-} from "./dialogs";
-import type { InsertTool } from "./editor-tool-definitions";
+} from "../dialogs";
+import type { InsertTool } from "../editor-tool-definitions";
 
 type InsertRequest = (tool: InsertTool) => void;
 

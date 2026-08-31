@@ -19,9 +19,9 @@ import {
 import type { EditorMode, RichTextNode } from "../../lib/types";
 import { formatTime } from "../../lib/utils";
 import { describeSteps, type StepJson } from "./commands";
-import { SelectionFormatMenu } from "./SelectionFormatMenu";
+import { SelectionFormatMenu } from "./toolbar/SelectionFormatMenu";
 import { Toolbar } from "./toolbar/Toolbar";
-import { ToolbarDialogs } from "./ToolbarDialogs";
+import { ToolbarDialogs } from "./toolbar/ToolbarDialogs";
 
 /** RichTextEditor 的稳定公共属性；宿主只需持有 JSON，不接触 ProseMirror 实例。 */
 export interface RichTextEditorProps {

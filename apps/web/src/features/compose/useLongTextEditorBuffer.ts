@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import type { RichTextNode } from "../../lib/types";
-import { updateLongTextChapter } from "../editor/long-text-chapter-operations";
+import { updateLongTextChapter } from "../editor/long-text/long-text-chapter-operations";
 
 interface LongTextEditorBufferOptions {
   contentRef: MutableRefObject<RichTextNode>;

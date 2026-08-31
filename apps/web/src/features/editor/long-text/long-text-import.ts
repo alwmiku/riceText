@@ -2,7 +2,7 @@ import {
   splitChaptersByStyle,
   type ChapterTitleStyle,
 } from "@ricetext/editor-core";
-import type { RichTextNode } from "../../lib/types";
+import type { RichTextNode } from "../../../lib/types";
 
 /** 将导入的纯文本转换为本地章节节点，避免生成海量普通段落。 */
 export function createLongTextDocument(

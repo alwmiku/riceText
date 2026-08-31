@@ -14,7 +14,7 @@ import {
 import { mergeChapter } from "../../lib/chapters";
 import { defaultDocument } from "../../lib/seed";
 import type { DocumentEnvelope, RichTextNode } from "../../lib/types";
-import { useAutosave } from "../editor/useAutosave";
+import { useAutosave } from "../editor/hooks/useAutosave";
 
 export interface ComposeDocumentController {
   document: DocumentEnvelope;

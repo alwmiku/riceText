@@ -8,12 +8,12 @@ import {
   Underline as UnderlineIcon,
 } from "lucide-react";
 import { useEffect, useRef, type MouseEvent } from "react";
-import { IconButton } from "../../components/ui";
+import { IconButton } from "../../../components/ui";
 import {
   ColorPickerPopover,
   useLastColor,
-} from "../../components/ui/color-picker";
-import { cmd } from "./commands";
+} from "../../../components/ui/color-picker";
+import { cmd } from "../commands";
 import {
   clearFormatting,
   setColor,
@@ -24,8 +24,8 @@ import {
   toggleItalic,
   toggleOrderedList,
   toggleUnderline,
-} from "./editor-actions";
-import { FONT_FAMILIES, FONT_SIZES } from "./editor-tool-definitions";
+} from "../editor-actions";
+import { FONT_FAMILIES, FONT_SIZES } from "../editor-tool-definitions";
 
 export type ToolbarPosition = { x: number; y: number };
 

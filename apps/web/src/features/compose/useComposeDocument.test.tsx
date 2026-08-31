@@ -22,7 +22,7 @@ vi.mock("../../lib/api", () => ({
   getDocument: mocks.getDocument,
   restoreRevision: mocks.restoreRevision,
 }));
-vi.mock("../editor/useAutosave", () => ({ useAutosave: mocks.autosave }));
+vi.mock("../editor/hooks/useAutosave", () => ({ useAutosave: mocks.autosave }));
 
 const serverDocument: DocumentEnvelope = {
   ...defaultDocument,

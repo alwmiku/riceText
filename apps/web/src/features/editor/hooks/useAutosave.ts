@@ -1,16 +1,16 @@
 import { diffDocuments } from "@ricetext/document-core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, saveDocumentSteps } from "../../lib/api";
+import { ApiError, saveDocumentSteps } from "../../../lib/api";
 import {
   clearLocalDocumentDraft,
   saveLocalDocumentDraft,
-} from "../../lib/local-document-draft-storage";
-import { createId } from "../../lib/utils";
+} from "../../../lib/local-document-draft-storage";
+import { createId } from "../../../lib/utils";
 import type {
   DocumentEnvelope,
   RichTextNode,
   SaveState,
-} from "../../lib/types";
+} from "../../../lib/types";
 
 /** 保存控制器对页面暴露的只读状态与显式操作。 */
 export interface AutosaveResult {

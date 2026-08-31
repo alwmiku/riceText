@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RichTextNode } from "../../lib/types";
+import type { RichTextNode } from "../../../lib/types";
 import {
   appendGapLongTextChapter,
   appendLongTextChapter,

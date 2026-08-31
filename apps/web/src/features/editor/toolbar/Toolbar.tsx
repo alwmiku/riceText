@@ -1,8 +1,8 @@
 import type { Editor } from "@tiptap/react";
 import { useEffect, useRef, useState } from "react";
-import { CompactToolbarControls } from "../CompactToolbarControls";
-import { ToolbarDialogs, useInsertRequest } from "../ToolbarDialogs";
-import { useEditorSelectionState } from "../useEditorSelectionState";
+import { useEditorSelectionState } from "../hooks/useEditorSelectionState";
+import { CompactToolbarControls } from "./CompactToolbarControls";
+import { ToolbarDialogs, useInsertRequest } from "./ToolbarDialogs";
 import {
   BusinessNodeGroup,
   ParagraphGroup,

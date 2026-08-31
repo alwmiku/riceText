@@ -30,14 +30,14 @@ import {
   toggleItalic,
   toggleUnderline,
   undo,
-} from "./editor-actions";
+} from "../editor-actions";
 import {
   FONT_FAMILIES,
   FONT_SIZES,
   INSERT_CONTENT_TOOLS,
   TOOLBAR_COLORS,
   type InsertTool,
-} from "./editor-tool-definitions";
+} from "../editor-tool-definitions";
 import { useInsertRequest } from "./ToolbarDialogs";
 
 /** 右键菜单的插入请求延迟一拍派发：等菜单完全关闭后再打开对话框。 */

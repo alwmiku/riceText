@@ -50,7 +50,7 @@ import {
   FONT_SIZES,
   INSERT_TOOL_DEFINITIONS,
 } from "../editor-tool-definitions";
-import { useInsertRequest } from "../ToolbarDialogs";
+import { useInsertRequest } from "./ToolbarDialogs";
 import { ToolbarButton } from "./ToolbarButton";
 
 const groupClassName =

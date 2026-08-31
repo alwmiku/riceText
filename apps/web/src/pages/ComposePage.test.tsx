@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   restoreRevision: vi.fn(),
 }));
 
-vi.mock('../features/editor/useAutosave', () => ({ useAutosave: mocks.autosave }));
+vi.mock('../features/editor/hooks/useAutosave', () => ({ useAutosave: mocks.autosave }));
 vi.mock('../lib/api', () => ({
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,

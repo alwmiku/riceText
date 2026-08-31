@@ -2,7 +2,7 @@ import type { Editor } from "@tiptap/react";
 import type { ReactNode } from "react";
 import { EditorContextMenu } from "./EditorContextMenu";
 import { SelectionFloatingToolbar } from "./SelectionFloatingToolbar";
-import { getSelectedText, useEditorSelectionState } from "./useEditorSelectionState";
+import { getSelectedText, useEditorSelectionState } from "../hooks/useEditorSelectionState";
 
 /** Text-selection actions for desktop context menus and mobile selection toolbars. */
 export function SelectionFormatMenu({

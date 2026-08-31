@@ -14,14 +14,14 @@ import {
   LinkDialog,
   MentionDialog,
   PollDialog,
-} from "./dialogs";
+} from "./index";
 
 const { createDiceMock, uploadAssetMock } = vi.hoisted(() => ({
   createDiceMock: vi.fn(),
   uploadAssetMock: vi.fn(),
 }));
 
-vi.mock("../../lib/api", () => ({
+vi.mock("../../../lib/api", () => ({
   createDice: createDiceMock,
   uploadAsset: uploadAssetMock,
 }));

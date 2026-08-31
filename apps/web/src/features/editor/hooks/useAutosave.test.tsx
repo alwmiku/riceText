@@ -1,17 +1,17 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as ApiModule from "../../lib/api";
-import { defaultDocument } from "../../lib/seed";
-import type { DocumentEnvelope, RichTextNode } from "../../lib/types";
-import { ApiError } from "../../lib/api";
+import type * as ApiModule from "../../../lib/api";
+import { defaultDocument } from "../../../lib/seed";
+import type { DocumentEnvelope, RichTextNode } from "../../../lib/types";
+import { ApiError } from "../../../lib/api";
 import { useAutosave } from "./useAutosave";
 
 const { saveDocumentStepsMock } = vi.hoisted(() => ({
   saveDocumentStepsMock: vi.fn(),
 }));
 
-vi.mock("../../lib/api", async () => {
-  const actual = await vi.importActual<typeof ApiModule>("../../lib/api");
+vi.mock("../../../lib/api", async () => {
+  const actual = await vi.importActual<typeof ApiModule>("../../../lib/api");
   return { ...actual, saveDocumentSteps: saveDocumentStepsMock };
 });
 

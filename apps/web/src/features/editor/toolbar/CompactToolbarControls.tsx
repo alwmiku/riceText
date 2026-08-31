@@ -26,24 +26,24 @@ import {
   UnlockKeyhole,
   XCircle,
 } from "lucide-react";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../lib/utils";
 import {
   DropdownMenuItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-} from "../../components/ui";
+} from "../../../components/ui";
 import {
   Popover,
   PopoverAnchor,
   PopoverContent,
-} from "../../components/ui/popover";
+} from "../../../components/ui/popover";
 import {
   ColorPicker,
   persistLastColor,
   useLastColor,
-} from "../../components/ui/color-picker";
-import { cmd } from "./commands";
+} from "../../../components/ui/color-picker";
+import { cmd } from "../commands";
 import {
   clearFormatting,
   redo,
@@ -60,16 +60,16 @@ import {
   toggleSpoiler,
   toggleUnderline,
   undo,
-} from "./editor-actions";
+} from "../editor-actions";
 import {
   FONT_FAMILIES,
   FONT_SIZES,
   INSERT_CONTENT_TOOLS,
   INSERT_TOOL_DEFINITIONS,
-} from "./editor-tool-definitions";
+} from "../editor-tool-definitions";
 import { useInsertRequest } from "./ToolbarDialogs";
-import { ToolbarButton } from "./toolbar/ToolbarButton";
-import { ToolbarGroup } from "./toolbar/ToolbarGroup";
+import { ToolbarButton } from "./ToolbarButton";
+import { ToolbarGroup } from "./ToolbarGroup";
 
 export function CompactToolbarControls({
   editor,

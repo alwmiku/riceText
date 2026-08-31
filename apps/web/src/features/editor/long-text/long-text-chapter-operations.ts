@@ -1,5 +1,5 @@
 import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
-import type { RichTextNode } from "../../lib/types";
+import type { RichTextNode } from "../../../lib/types";
 import {
   rawRangeForGapChapter,
   splitRawRangeAtCursor,

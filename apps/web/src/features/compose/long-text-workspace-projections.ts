@@ -1,7 +1,7 @@
 import type { RichTextNode } from "../../lib/types";
 import type { CoverageChapter } from "../novel/ChapterCoverageDialog";
 import type { ChapterSummary } from "../novel/ChapterSidebar";
-import { expandRawRangeToIncludeLeadingTitle } from "../editor/long-text-ranges";
+import { expandRawRangeToIncludeLeadingTitle } from "../editor/long-text/long-text-ranges";
 
 /** 从完整章节 JSON 提取目录需要的轻量字段，避免侧栏持有正文节点。 */
 export function summarizeLongTextChapters(

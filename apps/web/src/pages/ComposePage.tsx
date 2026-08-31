@@ -19,7 +19,7 @@ import { StandardComposeWorkspace } from "../features/compose/StandardComposeWor
 import { useChapterUpload } from "../features/compose/useChapterUpload";
 import { useComposeDocument } from "../features/compose/useComposeDocument";
 import { useLongTextWorkspace } from "../features/compose/useLongTextWorkspace";
-import { EditorErrorBoundary } from "../features/editor/EditorErrorBoundary";
+import { EditorErrorBoundary } from "../features/editor/errors/EditorErrorBoundary";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
 import { getCommentThread, listForumChapters } from "../lib/api";
 import { splitDocumentByHeadings } from "../lib/chapters";
