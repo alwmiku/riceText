@@ -22,6 +22,25 @@ interface UserRow {
   is_friend: number;
   bio: string;
 }
+
+/** 深度按键名排序：文档比较只关心内容，不关心属性键的书写顺序。 */
+function sortObjectKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortObjectKeys);
+  if (value !== null && typeof value === "object") {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      sorted[key] = sortObjectKeys(
+        (value as Record<string, unknown>)[key] as unknown,
+      );
+    }
+    return sorted;
+  }
+  return value;
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(sortObjectKeys(value));
+}
 interface SuggestionRow {
   id: string;
   document_id: string;
@@ -138,7 +157,7 @@ function expectedBatchDocument(
     type: "doc" as const,
     content: current.content.slice(range.start, range.end),
   };
-  if (JSON.stringify(existing) !== JSON.stringify(before)) return null;
+  if (canonicalJson(existing) !== canonicalJson(before)) return null;
   const content = [...current.content];
   content.splice(range.start, range.end - range.start, ...after.content);
   return { type: "doc", content };
@@ -360,7 +379,7 @@ export class ForumService {
       : null;
     if (
       !normalizedExpected ||
-      JSON.stringify(applied) !== JSON.stringify(normalizedExpected)
+      canonicalJson(applied) !== canonicalJson(normalizedExpected)
     )
       throw new HttpError(
         422,

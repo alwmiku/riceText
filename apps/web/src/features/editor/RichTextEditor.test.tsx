@@ -17,6 +17,7 @@ import {
   vi,
 } from "vitest";
 import type * as ApiModule from "../../lib/api";
+import { validateDocument } from "@ricetext/document-core";
 import { defaultDocument } from "../../lib/seed";
 import type { RichTextNode } from "../../lib/types";
 import { CompactInsertMenu, RichTextEditor } from "./RichTextEditor";
@@ -108,8 +109,47 @@ describe("RichTextEditor presets", () => {
     await waitFor(() => expect(editorRef.current).not.toBeNull());
     const readyEditor = editorRef.current;
     if (!readyEditor) throw new Error("编辑器未初始化");
-    // 链接使用应用内对话框（window.prompt 在 Android Chrome 上不可用）；
-    // 非法地址被拦截并提示，合法地址写入光标处的 stored mark。
+    // 未选中文字时插入链接：弹出「未选择文字」提示，不打开链接输入框
+    fireEvent.click(screen.getByRole("button", { name: "链接" }));
+    const noSelectionAlert = await screen.findByRole("alertdialog");
+    expect(noSelectionAlert).toHaveTextContent("未选择文字");
+    fireEvent.click(screen.getByRole("button", { name: "知道了" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByLabelText("字号"), {
+      target: { value: "20px" },
+    });
+    fireEvent.change(screen.getByLabelText("字体"), {
+      target: { value: "Noto Serif SC Variable" },
+    });
+    expect(screen.getByLabelText("字体")).toHaveValue("Noto Serif SC Variable");
+    fireEvent.click(screen.getByRole("button", { name: "加粗" }));
+    fireEvent.click(screen.getByRole("button", { name: "间贴锚点" }));
+    act(() => {
+      if (!readyEditor) throw new Error("编辑器未初始化");
+      readyEditor.commands.insertContent("真实输入");
+    });
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+  });
+
+  it("选中文字后插入链接，文档能通过保存校验", async () => {
+    const editorRef: { current: Editor | null } = { current: null };
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="full"
+        onChange={vi.fn()}
+        onReady={(value) => {
+          editorRef.current = value;
+        }}
+      />,
+    );
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const readyEditor = editorRef.current;
+    if (!readyEditor) throw new Error("编辑器未初始化");
+    readyEditor.commands.setTextSelection({ from: 1, to: 12 });
+
     fireEvent.click(screen.getByRole("button", { name: "链接" }));
     const linkDialog = await screen.findByRole("dialog");
     const linkInput = within(linkDialog).getByLabelText("链接地址");
@@ -130,23 +170,15 @@ describe("RichTextEditor presets", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
+
     expect(readyEditor.getAttributes("link").href).toBe(
       "https://ricetext.dev",
     );
-    fireEvent.change(screen.getByLabelText("字号"), {
-      target: { value: "20px" },
-    });
-    fireEvent.change(screen.getByLabelText("字体"), {
-      target: { value: "Noto Serif SC Variable" },
-    });
-    expect(screen.getByLabelText("字体")).toHaveValue("Noto Serif SC Variable");
-    fireEvent.click(screen.getByRole("button", { name: "加粗" }));
-    fireEvent.click(screen.getByRole("button", { name: "间贴锚点" }));
-    act(() => {
-      if (!readyEditor) throw new Error("编辑器未初始化");
-      readyEditor.commands.insertContent("真实输入");
-    });
-    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    // 链接 mark 的属性必须落在持久化契约白名单（href/target/rel）内，
+    // 否则保存校验 fail-closed 会拒绝整篇文档。
+    const validation = validateDocument(readyEditor.getJSON());
+    expect(validation.valid).toBe(true);
+    expect(validation.issues).toEqual([]);
   });
 
   it("完整模式可以从工具栏打开骰子、图片与提及对话框", async () => {

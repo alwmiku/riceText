@@ -154,6 +154,20 @@ export function editorExtensions(
       protocols: ["http", "https", "mailto"],
       isAllowedUri: (url) => sanitizeUrl(url, "link") !== null,
       HTMLAttributes: { rel: "noopener noreferrer nofollow", target: "_blank" },
+    }).extend({
+      // 持久化契约（document-core 白名单）只接受 href/target/rel：
+      // 覆盖 Tiptap 默认的 class/title 属性，否则编辑器产出的 JSON 会在
+      // 保存校验（fail-closed）时因 unknown-attribute 被整篇拒绝。
+      addAttributes() {
+        return {
+          href: {
+            default: null,
+            parseHTML: (element) => element.getAttribute("href"),
+          },
+          target: { default: this.options.HTMLAttributes.target ?? null },
+          rel: { default: this.options.HTMLAttributes.rel ?? null },
+        };
+      },
     }),
     TextStyle,
     Color.extend({

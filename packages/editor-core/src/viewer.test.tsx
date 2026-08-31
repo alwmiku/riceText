@@ -251,6 +251,14 @@ describe('RichTextViewer', () => {
     expect(onLinkActivate).toHaveBeenCalledWith('https://example.com/source', expect.anything())
   })
 
+  it('没有 onLinkActivate 时放行安全链接的原生跳转', async () => {
+    render(<RichTextViewer content={interactiveDocument} enableLightbox={false} />)
+    const link = await screen.findByRole('link', { name: 'source' })
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    link.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+  })
+
   it('shows visible gated content and disables unavailable business actions', async () => {
     render(<RichTextViewer
       content={interactiveDocument}

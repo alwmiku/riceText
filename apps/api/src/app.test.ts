@@ -83,6 +83,86 @@ describe("RiceText API", () => {
     expect(unsafe.json().error.code).toBe("UNSAFE_URL");
   });
 
+  it("清洗保留链接：href 原样可访问，target/rel 补齐", async () => {
+    const linkContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "文档",
+              marks: [
+                { type: "link", attrs: { href: "https://example.com/docs" } },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const saved = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "link-save", content: linkContent } });
+    expect(saved.statusCode, saved.body).toBe(201);
+    expect(saved.json().content.content[0].content[0].marks[0]).toMatchObject({
+      type: "link",
+      attrs: {
+        href: "https://example.com/docs",
+        target: "_blank",
+        rel: "noopener noreferrer nofollow",
+      },
+    });
+
+    const loaded = await app.inject({ method: "GET", url: "/api/documents/demo-post" });
+    expect(loaded.statusCode).toBe(200);
+    expect(loaded.json().content.content[0].content[0].marks[0]).toMatchObject({
+      type: "link",
+      attrs: {
+        href: "https://example.com/docs",
+        target: "_blank",
+        rel: "noopener noreferrer nofollow",
+      },
+    });
+  });
+
+  it("读取时净化被污染的历史内容（防御 XSS）", async () => {
+    const base = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "pollute-base", content: validContent("先保存") } });
+    expect(base.statusCode).toBe(201);
+
+    // 模拟绕过写入校验的污染：直接改库，把 javascript: 链接塞进当前修订。
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(join(directory, "test.sqlite"));
+    const polluted = JSON.stringify({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "被污染",
+              marks: [
+                {
+                  type: "link",
+                  attrs: { href: "javascript:alert(1)", target: "_blank", rel: "noopener" },
+                },
+              ],
+            },
+            { type: "text", text: "正文" },
+          ],
+        },
+      ],
+    });
+    db.prepare("UPDATE document_revisions SET content_json = ? WHERE document_id = ? AND revision = ?").run(polluted, "demo-post", 2);
+    db.close();
+
+    // 读取不 422：交付清洗后的重建文档，危险链接被剥离。
+    const loaded = await app.inject({ method: "GET", url: "/api/documents/demo-post" });
+    expect(loaded.statusCode).toBe(200);
+    const marks = loaded.json().content.content[0].content[0].marks ?? [];
+    expect(marks).toEqual([]);
+    expect(loaded.json().content.content[0].content[1].text).toBe("正文");
+  });
+
   it("持久化骰子，只有显式重投才创建新结果", async () => {
     const created = await app.inject({ method: "POST", url: "/api/dice", payload: { expression: "3d5" } });
     expect(created.statusCode).toBe(201);

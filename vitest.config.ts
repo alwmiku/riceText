@@ -23,7 +23,7 @@ export default defineConfig({
         "**/server.ts",
         // shadcn 以源码形式 vendored 的基础 UI 组件：仅用于定制样式，不写测试、不计入覆盖率。
         // 注意 color-picker.tsx 是项目自研组件且有配套测试，保留在覆盖率内。
-        "**/components/ui/{button,context-menu,input,popover,scroll-area,separator,sheet,sidebar,skeleton,slider,tooltip}.tsx",
+        "**/components/ui/{alert-dialog,button,context-menu,input,popover,scroll-area,separator,sheet,sidebar,skeleton,slider,tooltip}.tsx",
         "**/hooks/use-mobile.ts", // shadcn sidebar 附带的 use-mobile hook
       ],
       thresholds: {

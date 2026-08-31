@@ -2,7 +2,7 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { useEffect, useMemo, useRef } from 'react'
 
-import { sanitizeDocument } from './sanitize.js'
+import { sanitizeDocument, sanitizeUrl } from './sanitize.js'
 import { useRichTextViewerController } from './viewer/controller.js'
 import { ImageLightbox } from './viewer/lightbox.js'
 import { createViewerExtensions } from './viewer/node-views.js'
@@ -129,8 +129,19 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
       const link = target.closest('a')
       if (link?.getAttribute('href')) {
         const href = link.getAttribute('href')!
+        // 渲染期二次白名单（防御纵深）：即使存储内容绕过服务端与查看器的
+        // 整篇净化，javascript: 等危险协议也绝不会触发任何导航/脚本执行。
+        if (sanitizeUrl(href, 'link') === null) {
+          event.preventDefault()
+          return
+        }
         current.interactions.onLinkActivate?.(href, event as unknown as ReactMouseEvent<HTMLAnchorElement>)
-        if (!event.defaultPrevented) event.preventDefault()
+        // 宿主没有接管链接时放行浏览器原生跳转（renderHTML 已输出
+        // target=_blank + rel=noopener noreferrer nofollow）；
+        // 宿主接管时保持拦截，由回调决定是否继续阻止默认行为。
+        if (current.interactions.onLinkActivate !== undefined && !event.defaultPrevented) {
+          event.preventDefault()
+        }
         return
       }
 

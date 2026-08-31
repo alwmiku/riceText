@@ -6,6 +6,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 import { createId } from "../../lib/utils";
 import { isRichNodeActive, unwrapOutermostReplyGate } from "./commands";
 import {
@@ -83,6 +92,7 @@ export function ToolbarDialogs({
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkInitialHref, setLinkInitialHref] = useState<string | null>(null);
   const [linkCanRemove, setLinkCanRemove] = useState(false);
+  const [linkNoSelectionOpen, setLinkNoSelectionOpen] = useState(false);
 
   const requestInsert = useCallback(
     (tool: InsertTool) => {
@@ -197,6 +207,12 @@ export function ToolbarDialogs({
           setExcerptOpen(true);
           break;
         case "link": {
+          // 链接必须套在文字上：没有选区且光标不在已有链接上时，
+          // 提示用户先选中文字（移动端与桌面共用这条通道）。
+          if (editor.state.selection.empty && !editor.isActive("link")) {
+            setLinkNoSelectionOpen(true);
+            break;
+          }
           const attrs = editor.getAttributes("link") as { href?: unknown };
           setLinkInitialHref(
             typeof attrs.href === "string" ? attrs.href : null,
@@ -357,6 +373,22 @@ export function ToolbarDialogs({
                 .run()
             }
           />
+          <AlertDialog
+            open={linkNoSelectionOpen}
+            onOpenChange={setLinkNoSelectionOpen}
+          >
+            <AlertDialogContent size="sm">
+              <AlertDialogHeader>
+                <AlertDialogTitle>未选择文字</AlertDialogTitle>
+                <AlertDialogDescription>
+                  请先选中要添加链接的文字，再使用「链接」。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogAction>知道了</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </>
       ) : null}
     </InsertRequestContext.Provider>

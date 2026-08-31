@@ -75,7 +75,19 @@ export function sanitizeDocument(input: unknown): TiptapDocument {
       { path: issue.path },
     );
   }
-  return parsed.data;
+  // 持久化/返回的一律是清洗后的重建文档：链接 href 等白名单值原样保留，
+  // 多余属性（如旧版 link 的 class/title）与不安全值被剔除、URL 归一化。
+  return result.document as unknown as TiptapDocument;
+}
+
+/**
+ * 读取时的宽容清洗：不拒绝整篇文档，而是返回剔除不安全内容后的重建文档，
+ * 保证读者端永远拿到白名单内的内容（写入入口仍严格失败关闭）。
+ * 即使数据库被绕过写入校验污染（如手工插入 javascript: 链接），
+ * 读取端也会在交付前把危险内容剥离，防止 XSS。
+ */
+export function repairDocument(input: unknown): TiptapDocument {
+  return validateDocument(input).document as unknown as TiptapDocument;
 }
 
 /** 在 Tiptap text 节点中仅替换第一次匹配，供审核建议合并。 */
@@ -465,7 +477,8 @@ export class DocumentService {
       schemaVersion: row.schema_version,
       revision: row.revision,
       savedAt: row.created_at,
-      content: sanitizeDocument(JSON.parse(row.content_json)),
+      // 读取一律交付清洗后的重建文档（宽容修复），不因单个问题整篇 422。
+      content: repairDocument(JSON.parse(row.content_json)),
     };
   }
 }

@@ -39,6 +39,20 @@ export function createDocumentExtensions(
       protocols: ["http", "https", "mailto"],
       isAllowedUri: (url) => sanitizeUrl(url, "link") !== null,
       HTMLAttributes: { rel: "noopener noreferrer nofollow", target: "_blank" },
+    }).extend({
+      // 持久化契约（DOCUMENT_MARK_ATTRIBUTES）只接受 href/target/rel：
+      // 与 editor-core 的 Link 配置保持一致，去掉 Tiptap 默认的
+      // class/title 属性，保证服务端 schema 与编辑器 schema 完全一致。
+      addAttributes() {
+        return {
+          href: {
+            default: null,
+            parseHTML: (element) => element.getAttribute("href"),
+          },
+          target: { default: this.options.HTMLAttributes.target ?? null },
+          rel: { default: this.options.HTMLAttributes.rel ?? null },
+        };
+      },
     }),
     TextStyle,
     Color.configure({ types: ["textStyle"] }),
