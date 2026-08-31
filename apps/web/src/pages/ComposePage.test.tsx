@@ -38,11 +38,12 @@ vi.mock('../features/editor/RichTextEditor', () => ({
   </section>,
 }));
 vi.mock('../features/forum/ForumPanels', () => ({
-  ChapterRail: (props: { chapters?: readonly unknown[]; onSelect: (index: number) => void; onAddChapter?: () => void; className?: string }) => (
-    <aside className={props.className} aria-label="章节目录" data-chapters={String(props.chapters?.length ?? 0)}>
+  ChapterRail: (props: { chapters?: readonly unknown[]; currentIndex?: number; onSelect: (index: number) => void; onAddChapter?: () => void; onDelete?: (index: number) => void; className?: string }) => (
+    <aside className={props.className} aria-label="章节目录" data-chapters={String(props.chapters?.length ?? 0)} data-active-index={String(props.currentIndex ?? 0)}>
       <span>模拟章节目录</span>
       <button type="button" onClick={() => props.onSelect(0)}>模拟章节 1</button>
       <button type="button" onClick={() => props.onAddChapter?.()}>模拟新增章节</button>
+      <button type="button" onClick={() => props.onDelete?.(0)}>模拟删除章节</button>
     </aside>
   ),
   ForumBusinessPanel: (props: { onRestore: (revision: number) => void }) => <aside><span>模拟创作工具</span><button type="button" onClick={() => props.onRestore(17)}>模拟回退</button></aside>,
@@ -68,12 +69,28 @@ function autosaveValue(state: SaveState = 'saved') {
   };
 }
 
+/** 带两个章节标记（chapterStart）的文档，供删除与章节位置用例使用。 */
+const twoChapterDoc: DocumentEnvelope = {
+  ...defaultDocument,
+  content: {
+    type: 'doc',
+    content: [
+      { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: '雾港来信' }] },
+      { type: 'heading', attrs: { level: 2, chapterStart: true }, content: [{ type: 'text', text: '第一章 潮汐表' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: '潮声沿着旧城墙漫上来。' }] },
+      { type: 'heading', attrs: { level: 2, chapterStart: true }, content: [{ type: 'text', text: '第二章 陌生船票' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: '他在抽屉底层找到一张陌生的船票。' }] },
+    ],
+  },
+};
+
 describe('ComposePage', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       value: vi.fn(() => ({ matches: false, media: '', addEventListener: vi.fn(), removeEventListener: vi.fn() })),
     });
+    window.localStorage.clear();
     mocks.autosave.mockReset().mockReturnValue(autosaveValue());
     mocks.flush.mockReset().mockResolvedValue(true);
     mocks.getDocument.mockReset().mockResolvedValue(defaultDocument);
@@ -154,6 +171,56 @@ describe('ComposePage', () => {
 
     expect(rail).toHaveAttribute('data-chapters', '2');
     expect(screen.getByText(/已新增第 2 章/)).toBeInTheDocument();
+  });
+
+  it('目录「删除章节」移除对应章节并提示仅本地生效', async () => {
+    mocks.getDocument.mockResolvedValueOnce(twoChapterDoc);
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByTestId('editor')).toHaveAttribute(
+        'data-editable',
+        'true',
+      ),
+    );
+    const rail = screen.getByRole('complementary', { name: '章节目录' });
+    expect(rail).toHaveAttribute('data-chapters', '2');
+
+    fireEvent.click(screen.getByRole('button', { name: '模拟删除章节' }));
+
+    expect(rail).toHaveAttribute('data-chapters', '1');
+    expect(
+      screen.getByText(/已删除章节「第一章 潮汐表」/),
+    ).toBeInTheDocument();
+  });
+
+  it('记住上次编辑的章节：刷新后仍停留在原章节（移动端）', async () => {
+    window.localStorage.setItem('ricetext:active-chapter:demo-post', '1');
+    mocks.getDocument.mockResolvedValueOnce(twoChapterDoc);
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByTestId('editor')).toHaveAttribute(
+        'data-editable',
+        'true',
+      ),
+    );
+    expect(
+      screen.getByRole('complementary', { name: '章节目录' }),
+    ).toHaveAttribute('data-active-index', '1');
+  });
+
+  it('切换章节后把当前位置写入本地存储', async () => {
+    mocks.getDocument.mockResolvedValueOnce(twoChapterDoc);
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByTestId('editor')).toHaveAttribute(
+        'data-editable',
+        'true',
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '模拟章节 1' }));
+    expect(
+      window.localStorage.getItem('ricetext:active-chapter:demo-post'),
+    ).toBe('0');
   });
 
   it('发布前 flush 自动保存，并可关闭成功提示', async () => {

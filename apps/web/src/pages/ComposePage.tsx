@@ -9,7 +9,7 @@ import {
   Smartphone,
   X,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useAppContext } from "../app-context";
 import { Button, Dialog, Segmented } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
@@ -59,7 +59,30 @@ export default function ComposePage() {
   const [mode, setMode] = useState<EditorMode>(() =>
     window.matchMedia("(max-width: 600px)").matches ? "mobile" : "full",
   );
-  const [chapterIndex, setChapterIndex] = useState(1);
+  // 记住上次编辑的章节：刷新/重进页面后仍停留在原章节（移动端尤其依赖）。
+  // 索引按文档 ID 隔离，超出章节数时由 activeIndex 钳制。
+  const ACTIVE_CHAPTER_STORAGE_KEY = "ricetext:active-chapter:demo-post";
+  const [chapterIndex, setChapterIndex] = useState<number>(() => {
+    try {
+      const stored = Number.parseInt(
+        window.localStorage.getItem(ACTIVE_CHAPTER_STORAGE_KEY) ?? "",
+        10,
+      );
+      return Number.isFinite(stored) && stored >= 0 ? stored : 1;
+    } catch {
+      return 1;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        ACTIVE_CHAPTER_STORAGE_KEY,
+        String(chapterIndex),
+      );
+    } catch {
+      // 隐私模式等场景下忽略持久化失败。
+    }
+  }, [chapterIndex, ACTIVE_CHAPTER_STORAGE_KEY]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const editorRef = useRef<Editor | null>(null);
@@ -159,6 +182,23 @@ export default function ComposePage() {
     compose.replaceContent(next);
     setChapterIndex(number - 1);
     setNotice(`已新增第 ${number} 章，保存后目录与版本号会同步更新`);
+  };
+
+  // 删除章节：只改本地正文（自动保存只写浏览器草稿），点击「保存」才同步服务器。
+  const deleteChapter = (index: number) => {
+    const current = compose.contentRef.current;
+    const { chapters } = splitDocumentByHeadings(current);
+    const chapter = chapters[index];
+    if (!chapter) return;
+    const content = [...(current.content ?? [])];
+    content.splice(chapter.start, chapter.end - chapter.start);
+    const next: RichTextNode = { type: "doc", content };
+    compose.replaceContent(next);
+    const remaining = splitDocumentByHeadings(next).chapters.length;
+    setChapterIndex(Math.min(index, Math.max(0, remaining - 1)));
+    setNotice(
+      `已删除章节「${chapter.title}」（仅本地草稿，点保存后生效）`,
+    );
   };
 
   const publish = async (latestContent?: RichTextNode) => {
@@ -372,6 +412,7 @@ export default function ComposePage() {
           activeCharCount={activeCharCount}
           activeRevision={activeRevision}
           onAddChapter={addChapter}
+          onDeleteChapter={deleteChapter}
           onSelectChapter={setChapterIndex}
           onSave={() => void publish()}
           onRestore={(revision) => void rollback(revision)}

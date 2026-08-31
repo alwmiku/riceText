@@ -89,7 +89,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px]" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/25" />
         <DialogPrimitive.Content className={cn('fixed left-1/2 top-1/2 z-50 max-h-[88vh] w-[calc(100%-24px)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-lg border border-border bg-white shadow-2xl', className)}>
           <div className="border-b border-border px-5 py-4 pr-12">
             <DialogPrimitive.Title className="text-base font-bold text-foreground">{title}</DialogPrimitive.Title>

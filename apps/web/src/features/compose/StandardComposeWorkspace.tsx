@@ -19,6 +19,7 @@ export function StandardComposeWorkspace({
   activeCharCount,
   activeRevision,
   onAddChapter,
+  onDeleteChapter,
   onSelectChapter,
   onSave,
   onRestore,
@@ -40,6 +41,8 @@ export function StandardComposeWorkspace({
   activeRevision?: number;
   /** 目录底部「新增章节」入口。 */
   onAddChapter?: () => void;
+  /** 章节行内「删除章节」入口（带确认，仅改本地草稿）。 */
+  onDeleteChapter?: (index: number) => void;
   onSelectChapter: (index: number) => void;
   onSave: () => void;
   onRestore: (revision: number) => void;
@@ -60,6 +63,7 @@ export function StandardComposeWorkspace({
           currentIndex={activeIndex}
           onSelect={onSelectChapter}
           {...(onAddChapter ? { onAddChapter } : {})}
+          {...(onDeleteChapter ? { onDelete: onDeleteChapter } : {})}
           {...(activeCharCount !== undefined ? { activeCharCount } : {})}
           {...(activeRevision !== undefined ? { activeRevision } : {})}
         />
@@ -135,6 +139,7 @@ export function StandardComposeWorkspace({
                     setMobileChapterRailOpen(false);
                   }}
                   {...(onAddChapter ? { onAddChapter } : {})}
+                  {...(onDeleteChapter ? { onDelete: onDeleteChapter } : {})}
                   {...(activeCharCount !== undefined ? { activeCharCount } : {})}
                   {...(activeRevision !== undefined ? { activeRevision } : {})}
                   className="static max-h-[calc(100vh-78px)] rounded-md shadow-none"

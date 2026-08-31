@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { TriangleAlert } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,6 +14,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogMedia,
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
 import { createId } from "../../../lib/utils";
@@ -379,6 +381,9 @@ export function ToolbarDialogs({
           >
             <AlertDialogContent size="sm">
               <AlertDialogHeader>
+                <AlertDialogMedia className="bg-[#fff3df] text-[#b66a0a]">
+                  <TriangleAlert />
+                </AlertDialogMedia>
                 <AlertDialogTitle>未选择文字</AlertDialogTitle>
                 <AlertDialogDescription>
                   请先选中要添加链接的文字，再使用「链接」。

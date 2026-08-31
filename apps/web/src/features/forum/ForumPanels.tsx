@@ -12,12 +12,24 @@ import {
   Paperclip,
   Plus,
   RotateCcw,
+  Trash2,
   Users,
   Vote,
   X,
 } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button } from "../../components/ui";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 import {
   getAttachment,
   getPoll,
@@ -44,6 +56,7 @@ export function ChapterRail({
   currentIndex,
   onSelect,
   onAddChapter,
+  onDelete,
   activeCharCount,
   activeRevision,
   className,
@@ -53,12 +66,18 @@ export function ChapterRail({
   onSelect: (index: number) => void;
   /** 目录底部「新增章节」入口；不提供时隐藏。 */
   onAddChapter?: () => void;
+  /** 章节行内删除入口；不提供时隐藏。删除只改本地草稿，保存后才同步服务器。 */
+  onDelete?: (index: number) => void;
   /** 当前章节的真实字数（未提供时显示占位）。 */
   activeCharCount?: number;
   /** 当前章节的真实修订号。 */
   activeRevision?: number;
   className?: string;
 }) {
+  const [pendingDelete, setPendingDelete] = useState<number | null>(null);
+  const pendingChapter =
+    pendingDelete !== null ? chapters[pendingDelete] : undefined;
+
   return (
     <aside
       className={cn(
@@ -80,25 +99,37 @@ export function ChapterRail({
             const [main, sub] = chapter.title.split(" · ");
             const active = order === currentIndex;
             return (
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center gap-[9px] rounded-[5px] px-2.5 py-[9px] text-left text-[13px] text-[#4c5761] hover:bg-[#edf7f5] hover:text-[#176e66] data-[active=true]:bg-[#edf7f5] data-[active=true]:text-[#176e66]"
-                data-active={active}
-                key={chapter.id}
-                onClick={() => onSelect(order)}
-              >
-                <span className="min-w-0 flex-1">
-                  <strong className="block truncate font-semibold">
-                    {main}
-                  </strong>
-                  {sub ? (
-                    <small className="block truncate text-[10px] text-muted-foreground">
-                      {sub}
-                    </small>
-                  ) : null}
-                </span>
-                <ChevronRight size={13} />
-              </button>
+              <div key={chapter.id} className="group relative">
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer items-center gap-[9px] rounded-[5px] px-2.5 py-[9px] pr-9 text-left text-[13px] text-[#4c5761] hover:bg-[#edf7f5] hover:text-[#176e66] data-[active=true]:bg-[#edf7f5] data-[active=true]:text-[#176e66]"
+                  data-active={active}
+                  onClick={() => onSelect(order)}
+                >
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate font-semibold">
+                      {main}
+                    </strong>
+                    {sub ? (
+                      <small className="block truncate text-[10px] text-muted-foreground">
+                        {sub}
+                      </small>
+                    ) : null}
+                  </span>
+                  <ChevronRight size={13} />
+                </button>
+                {onDelete ? (
+                  <button
+                    type="button"
+                    aria-label={`删除章节 ${chapter.title}`}
+                    title="删除章节（仅本地草稿，保存后才会同步到服务器）"
+                    onClick={() => setPendingDelete(order)}
+                    className="absolute top-1/2 right-7 grid h-[22px] w-[22px] -translate-y-1/2 cursor-pointer place-items-center rounded border-0 bg-transparent text-[#a8544d] opacity-0 transition-opacity hover:bg-[#fbeae8] hover:text-[#a33028] focus-visible:opacity-100 group-hover:opacity-100 max-[640px]:opacity-100"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                ) : null}
+              </div>
             );
           })}
         </nav>
@@ -136,6 +167,37 @@ export function ChapterRail({
           </div>
         </dl>
       </div>
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-destructive/10 text-destructive">
+              <Trash2 />
+            </AlertDialogMedia>
+            <AlertDialogTitle>删除章节</AlertDialogTitle>
+            <AlertDialogDescription>
+              将删除「{pendingChapter?.title ?? ""}」及其正文。此操作只修改
+              本地草稿，点击「保存」后才会同步到服务器。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (pendingDelete !== null) onDelete?.(pendingDelete);
+                setPendingDelete(null);
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </aside>
   );
 }

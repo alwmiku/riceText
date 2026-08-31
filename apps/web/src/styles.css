@@ -15,11 +15,17 @@
   text-rendering: optimizeLegibility;
   --background: 210 20% 98%;
   --foreground: 220 18% 14%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 18% 14%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 18% 14%;
   --border: 216 18% 88%;
   --input: 216 18% 84%;
   --ring: 174 62% 34%;
   --primary: 174 62% 31%;
   --primary-foreground: 0 0% 100%;
+  --secondary: 174 38% 93%;
+  --secondary-foreground: 174 72% 21%;
   --muted: 210 20% 95%;
   --muted-foreground: 215 12% 43%;
   --accent: 174 38% 93%;

@@ -251,6 +251,63 @@ describe("ForumPanels", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("章节行提供默认隐藏的删除按钮，确认后触发回调", () => {
+    const onDelete = vi.fn();
+    renderWithQuery(
+      <ChapterRail
+        chapters={chaptersFixture}
+        currentIndex={1}
+        onSelect={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+    const deleteButton = screen.getByRole("button", {
+      name: /删除章节 第二章/,
+    });
+    // 默认隐藏，悬停/触屏才显示
+    expect(deleteButton).toHaveClass("opacity-0");
+
+    fireEvent.click(deleteButton);
+    expect(
+      screen.getByRole("alertdialog", { name: "删除章节" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/第二章 · 陌生船票/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    expect(onDelete).toHaveBeenCalledWith(2);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("删除确认可以取消，不触发回调", () => {
+    const onDelete = vi.fn();
+    renderWithQuery(
+      <ChapterRail
+        chapters={chaptersFixture}
+        currentIndex={0}
+        onSelect={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /删除章节 楔子/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it("未提供 onDelete 时章节行不渲染删除按钮", () => {
+    renderWithQuery(
+      <ChapterRail
+        chapters={chaptersFixture}
+        currentIndex={0}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /删除章节/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("点击章节触发切换回调", () => {
     const onSelect = vi.fn();
     renderWithQuery(
