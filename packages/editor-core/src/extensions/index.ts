@@ -1,4 +1,5 @@
 import { type Extensions, type JSONContent } from "@tiptap/core";
+import { chapterStartExtension } from "@ricetext/document-core";
 import { Color } from "@tiptap/extension-color";
 import { FontFamily } from "@tiptap/extension-font-family";
 import { Link } from "@tiptap/extension-link";
@@ -240,6 +241,7 @@ export function editorExtensions(
       types: ["heading", "paragraph", "listItem"],
       alignments: ["left", "center", "right", "justify"],
     }),
+    chapterStartExtension,
     InlineCommentAnchor,
     RichImage.configure({ resizable: options.resizableImages === true }),
     DiceRoll,

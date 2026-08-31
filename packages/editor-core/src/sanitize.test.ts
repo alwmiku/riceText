@@ -228,7 +228,7 @@ describe('document sanitization', () => {
       ],
     })
 
-    expect(result.document.content?.[0]?.attrs).toEqual({ level: 6, textAlign: 'justify' })
+    expect(result.document.content?.[0]?.attrs).toEqual({ level: 6, textAlign: 'justify', chapterStart: false })
     expect(result.document.content?.[1]?.attrs).toEqual({ start: 1 })
     expect(result.document.content?.[2]?.attrs).toEqual({ language: null })
     expect(result.document.content?.[2]?.content?.[0]?.marks).toBeUndefined()
@@ -241,6 +241,19 @@ describe('document sanitization', () => {
     expect(result.document.content?.[7]?.attrs).toMatchObject({ size: 0, priceCoins: 1_000_000_000 })
     expect(result.document.content?.[8]?.attrs).toMatchObject({ multiple: false, options: [{ id: 'yes', label: 'Yes' }] })
     expect(result.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining(['unsafe-url', 'invalid-structure']))
+  })
+
+  it('keeps the chapterStart marker only as an explicit boolean', () => {
+    const result = validateDocument({
+      type: 'doc',
+      content: [
+        { type: 'heading', attrs: { level: 2, chapterStart: true }, content: [{ type: 'text', text: '第一章' }] },
+        { type: 'heading', attrs: { level: 2, chapterStart: 'yes' }, content: [{ type: 'text', text: '第二章' }] },
+      ],
+    })
+    expect(result.document.content?.[0]?.attrs).toMatchObject({ level: 2, chapterStart: true })
+    expect(result.document.content?.[1]?.attrs).toMatchObject({ level: 2, chapterStart: false })
+    expect(result.valid).toBe(true)
   })
 
   it('removes malformed text and child content from atomic nodes', () => {

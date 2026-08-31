@@ -3,7 +3,11 @@ export type { JSONContent } from "@tiptap/core";
 export { ApplyStepsError } from "./errors.js";
 export { parseInteger, parseJsonArray } from "./helpers.js";
 export * from "./nodes.js";
-export { createDocumentExtensions, createDocumentSchema } from "./schema.js";
+export {
+  chapterStartExtension,
+  createDocumentExtensions,
+  createDocumentSchema,
+} from "./schema.js";
 export {
   parseDocument,
   applyStepsToDocument,

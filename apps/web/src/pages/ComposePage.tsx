@@ -129,14 +129,26 @@ export default function ComposePage() {
   // 在文档末尾追加一个空章节并切换到它；保存时随整篇正文一起入库。
   const addChapter = () => {
     const current = compose.contentRef.current;
-    const number = splitDocumentByHeadings(current).chapters.length + 1;
+    // 迁移历史文档：把既有二级标题全部升级为章节起始标记。否则一旦出现
+    // 第一个标记，切分规则会从「二级标题兜底」切到「仅标记」，旧章节会
+    // 全部塌缩成 lead；迁移后边界集合不变。
+    const migrated = (current.content ?? []).map((node) =>
+      node.type === "heading" &&
+      node.attrs?.level === 2 &&
+      node.attrs?.chapterStart !== true
+        ? { ...node, attrs: { ...node.attrs, chapterStart: true } }
+        : node,
+    );
+    const number =
+      splitDocumentByHeadings({ type: "doc", content: migrated }).chapters
+        .length + 1;
     const next: RichTextNode = {
       type: "doc",
       content: [
-        ...(current.content ?? []),
+        ...migrated,
         {
           type: "heading",
-          attrs: { level: 2 },
+          attrs: { level: 2, chapterStart: true },
           content: [
             { type: "text", text: `第${toChineseNumber(number)}章 新章节` },
           ],

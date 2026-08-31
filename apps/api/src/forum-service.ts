@@ -132,9 +132,19 @@ function mapSuggestionBatch(row: SuggestionBatchRow) {
 }
 
 function chapterRange(content: TiptapDocument, chapterIndex: number) {
+  // 与编辑器切分规则一致：带 chapterStart 标记的标题是章节边界；
+  // 整篇无标记（历史数据）时按二级标题兜底。
+  const hasChapterMarkers = content.content.some(
+    (node) =>
+      node.type === "heading" && node.attrs?.chapterStart === true,
+  );
   const starts: number[] = [];
   content.content.forEach((node, index) => {
-    if (node.type === "heading" && node.attrs?.level === 2) starts.push(index);
+    if (node.type !== "heading") return;
+    const isChapterStart = hasChapterMarkers
+      ? node.attrs?.chapterStart === true
+      : node.attrs?.level === 2;
+    if (isChapterStart) starts.push(index);
   });
   if (starts.length === 0 && chapterIndex === 0)
     return { start: 0, end: content.content.length };

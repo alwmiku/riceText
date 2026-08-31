@@ -27,18 +27,36 @@ function extractText(node: JSONContent): string {
 }
 
 /**
- * 按二级标题把文档切分为章节。
- * 没有二级标题时整个文档视为单章，保证编辑器/阅读器始终有一个可编辑片段。
+ * 章节起始判定：带 chapterStart 标记的标题是章节边界；整篇文档都没有
+ * 标记时（历史数据）按二级标题兜底切分，行为与旧版一致。
+ * 正文内的普通一级/二级标题只是排版，不会切出章节。
+ */
+function isChapterHeading(
+  node: JSONContent,
+  hasChapterMarkers: boolean,
+): boolean {
+  if (node.type !== "heading") return false;
+  if (hasChapterMarkers) return node.attrs?.chapterStart === true;
+  return node.attrs?.level === 2;
+}
+
+/**
+ * 按章节标题把文档切分为章节。
+ * 没有章节标题时整个文档视为单章，保证编辑器/阅读器始终有一个可编辑片段。
  */
 export function splitDocumentByHeadings(doc: JSONContent): SplitDocument {
   const content = doc.content ?? [];
+  const hasChapterMarkers = content.some(
+    (node) =>
+      node.type === "heading" && node.attrs?.chapterStart === true,
+  );
   const chapters: ChapterSection[] = [];
   const lead: JSONContent[] = [];
   let current: ChapterSection | null = null;
 
   content.forEach((node, index) => {
-    const isChapterHeading = node.type === "heading" && node.attrs?.level === 2;
-    if (isChapterHeading) {
+    const isChapterTitle = isChapterHeading(node, hasChapterMarkers);
+    if (isChapterTitle) {
       if (current) current.end = index;
       current = {
         id: `chapter-${chapters.length}`,

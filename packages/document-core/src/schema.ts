@@ -1,4 +1,5 @@
 import {
+  Extension,
   getSchema,
   Mark,
   Node,
@@ -20,6 +21,32 @@ export interface DocumentExtensionsOptions {
   /** 附加到共享 schema 之后的额外扩展。 */
   additionalExtensions?: Extensions;
 }
+
+/**
+ * 章节起始标记：挂在 heading 节点上的布尔属性（chapterStart）。
+ * 章节目录只把带此标记的标题视为章节边界，正文内的普通 H1/H2
+ * 只是排版标题，不会再被切分成新章节。旧文档（无任何标记）仍按
+ * 二级标题兜底切分，保证历史数据行为不变。
+ */
+export const chapterStartExtension = Extension.create({
+  name: "chapterStart",
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["heading"],
+        attributes: {
+          chapterStart: {
+            default: false,
+            parseHTML: (element) =>
+              element.getAttribute("data-chapter-start") === "true",
+            renderHTML: (attributes) =>
+              attributes.chapterStart ? { "data-chapter-start": "true" } : {},
+          },
+        },
+      },
+    ];
+  },
+});
 
 /**
  * 服务端与编辑器共用的规范扩展清单（无 React 依赖）。
@@ -62,6 +89,7 @@ export function createDocumentExtensions(
       types: ["heading", "paragraph", "listItem"],
       alignments: ["left", "center", "right", "justify"],
     }),
+    chapterStartExtension,
     ...sharedNodeSpecs.map((spec) => Node.create(spec)),
     ...sharedMarkSpecs.map((spec) => Mark.create(spec)),
     ...(options.additionalExtensions ?? []),

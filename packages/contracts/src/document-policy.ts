@@ -4,7 +4,7 @@ export const DOCUMENT_NODE_ATTRIBUTES = {
   doc: [],
   paragraph: ["textAlign"],
   text: [],
-  heading: ["level", "textAlign"],
+  heading: ["level", "textAlign", "chapterStart"],
   bulletList: [],
   orderedList: ["start"],
   listItem: ["textAlign"],

@@ -227,7 +227,14 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
     case 'heading':
     case 'listItem': {
       const textAlign = raw.textAlign === 'center' || raw.textAlign === 'right' || raw.textAlign === 'justify' ? raw.textAlign : 'left'
-      return type === 'heading' ? { level: finiteInteger(raw.level, 2, 1, 6), textAlign } : { textAlign }
+      if (type !== 'heading') return { textAlign }
+      // 与 PM 归一化一致：章节起始标记始终显式保留（false 也写入），
+      // 避免清洗重建与 steps 应用结果在比较时因缺键/默认值不一致。
+      return {
+        level: finiteInteger(raw.level, 2, 1, 6),
+        textAlign,
+        chapterStart: raw.chapterStart === true,
+      }
     }
     case 'orderedList': return { start: finiteInteger(raw.start, 1, 1, 1_000_000) }
     case 'codeBlock': return { language: nullableString(raw.language, 40) }
