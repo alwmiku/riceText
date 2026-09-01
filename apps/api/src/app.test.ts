@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import {
+  appendChapter,
   diffDocuments,
   replaceChapter,
   splitDocumentByChapters,
@@ -160,6 +161,92 @@ describe("RiceText API", () => {
     expect(chapterTwoAfter.savedAt).toBe(chapterTwoBefore.savedAt);
   });
 
+  it("新增章节先注册目录，再用服务器 id 保存归集历史", async () => {
+    const initial = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json();
+    const appended = appendChapter(initial.content, "第五章 新章节");
+
+    // 1. 客户端先调新增章节接口：服务端分配 id 并返回行（同位置重复注册幂等）。
+    const created = await app.inject({ method: "POST", url: "/api/documents/demo-post/chapters", headers: { "x-user-id": "author" }, payload: { title: "第五章 新章节", order: 5 } });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json()).toMatchObject({ id: "chapter-5", title: "第五章 新章节", order: 5, documentId: "demo-post", revision: 0 });
+    const chapterId = created.json().id as string;
+
+    const repeated = await app.inject({ method: "POST", url: "/api/documents/demo-post/chapters", headers: { "x-user-id": "author" }, payload: { title: "第五章 新章节", order: 5 } });
+    expect(repeated.statusCode).toBe(201);
+    expect(repeated.json().id).toBe(chapterId);
+
+    // 2. 用服务器返回的 id 保存文档：历史与目录版本号按该 id 归集。
+    const saved = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "save-new-chapter", chapterId, content: appended.document } });
+    expect(saved.statusCode, saved.body).toBe(201);
+    expect(saved.json().revision).toBe(2);
+
+    const history = (await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions?chapterId=" + chapterId })).json().items as Array<{ revision: number }>;
+    // 种子版本不属于新章节；只有创建它的保存可见。
+    expect(history.map((item) => item.revision)).toEqual([2]);
+
+    const directory = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number; title: string }>;
+    expect(directory.find((item) => item.id === chapterId)).toMatchObject({ title: "第五章 新章节", revision: 1 });
+
+    // 3. 再次编辑新章节：继续产生按章归集的历史记录。
+    const existing = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json();
+    const chapter = splitDocumentByChapters(existing.content).chapters[5]!;
+    const secondContent = replaceChapter(existing.content, 5, { type: "doc", content: [...chapter.blocks, { type: "paragraph", content: [{ type: "text", text: "新章节正文" }] }] });
+    const second = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 2, clientMutationId: "save-new-chapter-twice", chapterId, content: secondContent } });
+    expect(second.statusCode, second.body).toBe(201);
+    const historyAfter = (await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions?chapterId=" + chapterId })).json().items as Array<{ revision: number }>;
+    expect(historyAfter.map((item) => item.revision)).toEqual([3, 2]);
+    const directoryAfter = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number }>;
+    expect(directoryAfter.find((item) => item.id === chapterId)?.revision).toBe(2);
+  });
+  it("删除章节目录行幂等，并解除关联校订的章节归属", async () => {
+    // 1. 注册一章，并提交一条指向该章的校订建议。
+    const registered = await app.inject({ method: "POST", url: "/api/documents/demo-post/chapters", headers: { "x-user-id": "author" }, payload: { title: "第五章 待删除", order: 5 } });
+    expect(registered.statusCode).toBe(201);
+    const chapterId = registered.json().id as string;
+    const submitted = await app.inject({ method: "POST", url: "/api/forum/documents/demo-post/suggestions", headers: { "x-user-id": "reader" }, payload: { fromText: "潮声", toText: "海潮声", reason: "措辞更清楚", chapterId, chapterTitle: "第五章 待删除", lineNo: 2, lineText: "潮声沿着旧城墙漫上来" } });
+    expect(submitted.statusCode, submitted.body).toBe(201);
+
+    // 2. 删除目录行成功，且不会因 suggestions.chapter_id 外键而失败。
+    const deleted = await app.inject({ method: "DELETE", url: `/api/documents/demo-post/chapters/${chapterId}`, headers: { "x-user-id": "author" } });
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(deleted.json()).toEqual({ id: chapterId, deleted: true });
+
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(join(directory, "test.sqlite"));
+    const suggestion = db.prepare("SELECT chapter_id FROM suggestions WHERE id = ?").get(submitted.json().id) as { chapter_id: string | null };
+    db.close();
+    expect(suggestion.chapter_id).toBeNull();
+
+    const catalog = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string }>;
+    expect(catalog.some((item) => item.id === chapterId)).toBe(false);
+
+    // 3. 幂等：重复删除返回 deleted = false。
+    const repeated = await app.inject({ method: "DELETE", url: `/api/documents/demo-post/chapters/${chapterId}`, headers: { "x-user-id": "author" } });
+    expect(repeated.statusCode).toBe(200);
+    expect(repeated.json()).toEqual({ id: chapterId, deleted: false });
+
+    // 4. 权限：reader 不能删除。
+    const forbidden = await app.inject({ method: "DELETE", url: `/api/documents/demo-post/chapters/chapter-0`, headers: { "x-user-id": "reader" } });
+    expect(forbidden.statusCode).toBe(403);
+  });
+  it("新建章节历史只包含按该章节 id 保存的修订，不混入无归属的旧修订", async () => {
+    // 旧会话的历史：正文已在位置 5 出现该章，但保存不带 chapterId（模拟改版前的脏数据）。
+    const initial = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json();
+    const appended = appendChapter(initial.content, "第五章 新章节");
+    const anonymous = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "anonymous-era-save", content: appended.document } });
+    expect(anonymous.statusCode, anonymous.body).toBe(201);
+
+    // 新会话：注册章节并按服务器 id 保存一次。
+    const created = await app.inject({ method: "POST", url: "/api/documents/demo-post/chapters", headers: { "x-user-id": "author" }, payload: { title: "第五章 新章节", order: 5 } });
+    expect(created.statusCode).toBe(201);
+    const chapterId = created.json().id as string;
+    const saved = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 2, clientMutationId: "attributed-save", chapterId, content: appended.document } });
+    expect(saved.statusCode, saved.body).toBe(201);
+
+    const history = (await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions?chapterId=" + chapterId })).json().items as Array<{ revision: number }>;
+    // 只有按该章节 id 保存的那一次；无归属旧修订与种子基线都不混入。
+    expect(history.map((item) => item.revision)).toEqual([3]);
+  });
   it("拒绝 reader 写入和不安全正文", async () => {
     const forbidden = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "reader" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "reader-save", content: validContent() } });
     expect(forbidden.statusCode).toBe(403);

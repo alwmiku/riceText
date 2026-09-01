@@ -49,6 +49,90 @@ export class ChapterService {
   }
 
   /**
+   * 注册正文中已出现但目录缺失的新章节（编辑器「新增章节」只改正文）。
+   *
+   * id 由服务端按位置分配（chapter-<order>）；同位置重复注册幂等返回同一行，
+   * 行标题与排序跟随本次输入。返回行供客户端把服务器 id 同步回本地目录。
+   * 新行以 revision = 0 落库（尚未真正保存），保存文档时再递增为 1。
+   */
+  createChapter(
+    documentId: string,
+    input: { title: string; order: number },
+  ): {
+    id: string;
+    title: string;
+    order: number;
+    documentId: string;
+    revision: number;
+    savedAt: string;
+  } {
+    const id = `chapter-${input.order}`;
+    const now = new Date().toISOString();
+    this.#db
+      .prepare(
+        `INSERT INTO chapters(id, title, sort_order, document_id, revision, updated_at)
+         VALUES (?, ?, ?, ?, 0, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           title = excluded.title,
+           sort_order = excluded.sort_order,
+           document_id = excluded.document_id`,
+      )
+      .run(id, input.title, input.order, documentId, now);
+    const row = this.#db
+      .prepare(
+        "SELECT id, title, sort_order, document_id, revision, updated_at FROM chapters WHERE id = ? AND document_id = ?",
+      )
+      .get(id, documentId) as {
+      id: string;
+      title: string;
+      sort_order: number;
+      document_id: string;
+      revision: number;
+      updated_at: string;
+    };
+    return {
+      id: row.id,
+      title: row.title,
+      order: row.sort_order,
+      documentId: row.document_id,
+      revision: row.revision,
+      savedAt: row.updated_at,
+    };
+  }
+
+  /**
+   * 删除章节目录行（幂等：不存在时返回 deleted = false）。
+   *
+   * 历史修订、独立章节版本号均不受影响；关联校订建议解除章节归属（不删除，
+   * 保留审核轨迹）——否则 suggestions.chapter_id 的外键会阻止删除。
+   */
+  deleteChapter(
+    documentId: string,
+    chapterId: string,
+  ): { id: string; deleted: boolean } {
+    const exists = this.#db
+      .prepare("SELECT 1 AS found FROM chapters WHERE id = ? AND document_id = ?")
+      .get(chapterId, documentId) as { found: number } | undefined;
+    if (!exists) return { id: chapterId, deleted: false };
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      this.#db
+        .prepare(
+          "UPDATE suggestions SET chapter_id = NULL WHERE chapter_id = ?",
+        )
+        .run(chapterId);
+      this.#db
+        .prepare("DELETE FROM chapters WHERE id = ? AND document_id = ?")
+        .run(chapterId, documentId);
+      this.#db.exec("COMMIT");
+      return { id: chapterId, deleted: true };
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /**
    * 保存章节内容（幂等写入由调用方负责）。返回更新后的章节与版本号。
    * content_hash 用于后续差异对比；相同哈希视为内容未变化。
    */

@@ -9,9 +9,11 @@ import {
   CommentThreadSchema,
   CreateCommentReplyRequestSchema,
   CreateDiceRollRequestSchema,
+  CreateDocumentChapterRequestSchema,
   CreateSuggestionBatchRequestSchema,
   CreateSuggestionRequestSchema,
   CursorQuerySchema,
+  DeleteDocumentChapterResponseSchema,
   ForumUserSchema,
   DiceRollSchema,
   DocumentEnvelopeSchema,
@@ -42,7 +44,7 @@ import {
 } from "./schemas.js";
 
 /** 契约使用的 HTTP 方法。 */
-export type ContractMethod = "GET" | "POST" | "PUT" | "PATCH";
+export type ContractMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** 单个状态码的响应契约。 */
 export interface ContractResponse {
@@ -96,6 +98,7 @@ const attachmentParams = z.object({ attachmentId: EntityIdSchema }).strict();
 const pollParams = z.object({ pollId: EntityIdSchema }).strict();
 const novelParams = z.object({ novelId: EntityIdSchema.describe("章节所属的文档/小说 ID") }).strict();
 const novelChapterParams = z.object({ novelId: EntityIdSchema, chapterId: EntityIdSchema }).strict();
+const documentChapterParams = z.object({ documentId: EntityIdSchema, chapterId: EntityIdSchema }).strict();
 
 /** 全部REST 契约；OpenAPI 和 Fastify schema 均由此生成。 */
 export const contractRoutes: readonly ContractRoute[] = [
@@ -110,6 +113,18 @@ export const contractRoutes: readonly ContractRoute[] = [
     summary: "保存文档并创建修订", description: "需要 author 或 moderator。baseRevision 过期返回 409；相同 clientMutationId 重试返回首次结果且不重复建版。",
     params: documentParams, body: UpdateDocumentRequestSchema,
     responses: { 200: { description: "幂等重试命中的既有修订。", schema: DocumentEnvelopeSchema }, 201: { description: "新建的不可变修订。", schema: DocumentEnvelopeSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 409: { description: "当前 revision 与 baseRevision 冲突，details.currentRevision 可用于刷新。", schema: ApiErrorSchema }, 422: { description: "正文包含非法节点、属性或 URL。", schema: ApiErrorSchema } },
+  },
+  {
+    operationId: "deleteDocumentChapter", method: "DELETE", path: "/api/documents/:documentId/chapters/:chapterId", tags: ["文档"], implementationStatus: "implemented",
+    summary: "删除章节目录中的章节", description: "需要 author 或 moderator。编辑器「删除章节」移除正文后再调用本接口删除对应目录行（幂等：不存在时返回 deleted = false）；历史修订与章节独立版本号不受影响，关联校订建议解除章节归属但不删除。",
+    params: documentChapterParams,
+    responses: { 200: { description: "删除结果；deleted = false 表示目录中本就没有该章。", schema: DeleteDocumentChapterResponseSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 404: { description: "文档不存在。", schema: ApiErrorSchema } },
+  },
+  {
+    operationId: "createDocumentChapter", method: "POST", path: "/api/documents/:documentId/chapters", tags: ["文档"], implementationStatus: "implemented",
+    summary: "注册正文中出现的新章节", description: "需要 author 或 moderator。编辑器的「新增章节」只修改正文；保存前客户端必须把正文中服务器目录缺失的新章节注册进来。服务端按位置分配章节 id（chapter-<order>，同位置重复注册幂等返回同一行），客户端用返回的 id 同步本地目录并执行文档保存——新章节历史与独立版本号才能按该 id 归集。",
+    params: documentParams, body: CreateDocumentChapterRequestSchema,
+    responses: { 200: { description: "重复注册命中的已有章节行。", schema: ChapterSchema }, 201: { description: "新建的章节行，客户端应把该 id 同步回本地目录。", schema: ChapterSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 404: { description: "文档不存在。", schema: ApiErrorSchema }, 422: { description: "标题或顺序非法。", schema: ApiErrorSchema } },
   },
   {
     operationId: "updateDocumentSteps", method: "PATCH", path: "/api/documents/:documentId/steps", tags: ["文档"],

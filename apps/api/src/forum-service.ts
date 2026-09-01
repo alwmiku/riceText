@@ -64,6 +64,29 @@ export class ForumService {
     return this.#chapters.chapterHashes(documentId);
   }
 
+  /** 删除章节目录行（幂等）；历史修订不受影响。 */
+  deleteChapter(
+    documentId: string,
+    chapterId: string,
+  ): { id: string; deleted: boolean } {
+    return this.#chapters.deleteChapter(documentId, chapterId);
+  }
+
+  /** 注册正文中已出现但目录缺失的新章节，返回服务器分配的章节行。 */
+  createChapter(
+    documentId: string,
+    input: { title: string; order: number },
+  ): {
+    id: string;
+    title: string;
+    order: number;
+    documentId: string;
+    revision: number;
+    savedAt: string;
+  } {
+    return this.#chapters.createChapter(documentId, input);
+  }
+
   saveChapter(
     documentId: string,
     chapterId: string,

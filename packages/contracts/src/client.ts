@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type {
   Asset,
   ChapterSchema,
+  DeleteDocumentChapterResponseSchema,
   CommentReply,
   CommentThread,
   ForumUser,
@@ -55,6 +56,10 @@ export interface RiceTextApiClient {
   updateDocument(documentId: string, body: { schemaVersion: number; baseRevision: number; clientMutationId: string; content: DocumentEnvelope["content"] }, signal?: AbortSignal): Promise<DocumentEnvelope>;
   /** 使用 ProseMirror 增量 steps 更新文档（服务端完整应用）。 */
   updateDocumentSteps(documentId: string, body: { schemaVersion: number; baseRevision: number; clientMutationId: string; steps: Array<Record<string, unknown>>; chapterId?: string }, signal?: AbortSignal): Promise<DocumentEnvelope>;
+  /** 注册正文中出现、但目录缺失的新章节；返回服务器分配的章节 id，客户端应同步回本地目录。 */
+  createDocumentChapter(documentId: string, body: { title: string; order: number }, signal?: AbortSignal): Promise<z.infer<typeof ChapterSchema>>;
+  /** 删除章节目录行（幂等）；历史修订不受影响。 */
+  deleteDocumentChapter(documentId: string, chapterId: string, signal?: AbortSignal): Promise<z.infer<typeof DeleteDocumentChapterResponseSchema>>;
   /** 对比章节内容哈希，返回需要上传与已存在的章节 ID。 */
   syncNovelChapters(novelId: string, chapters: Array<{ id: string; title: string; order: number; hash: string }>, signal?: AbortSignal): Promise<{ toUpdate: string[]; existing: string[] }>;
   /** 保存单个章节内容并递增该章节版本号。 */
@@ -144,6 +149,8 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     getDocument: (id, signal) => request(`/api/documents/${id}`, { signal }),
     updateDocument: (id, body, signal) => request(`/api/documents/${id}`, { method: "PUT", body: json(body), signal }),
     updateDocumentSteps: (id, body, signal) => request(`/api/documents/${id}/steps`, { method: "PATCH", body: json(body), signal }),
+    createDocumentChapter: (id, body, signal) => request(`/api/documents/${id}/chapters`, { method: "POST", body: json(body), signal }),
+    deleteDocumentChapter: (id, chapterId, signal) => request(`/api/documents/${id}/chapters/${chapterId}`, { method: "DELETE", signal }),
     syncNovelChapters: (novelId, chapters, signal) => request(`/api/forum/novels/${novelId}/chapters/sync`, { method: "POST", body: json({ chapters }), signal }),
     saveNovelChapter: (novelId, chapterId, input, signal) => request(`/api/forum/novels/${novelId}/chapters/${chapterId}`, { method: "PUT", body: json(input), signal }),
     listRevisions: (id, cursor, chapterId, signal) => request(`/api/documents/${id}/revisions${query({ cursor, chapterId })}`, { signal }),

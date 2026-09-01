@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  CreateDocumentChapterRequestSchema,
   RevisionQuerySchema,
   RollbackDocumentRequestSchema,
   UpdateDocumentRequestSchema,
@@ -75,6 +76,37 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
         user.id,
       );
       return reply.status(result.created ? 201 : 200).send(result.envelope);
+    },
+  );
+
+  // 编辑器「删除章节」移出正文后调用本接口删除对应目录行（幂等），
+  // 历史修订与版本号不受影响；关联校订建议解除归属但不删除。
+  app.delete(
+    "/api/documents/:documentId/chapters/:chapterId",
+    { schema: getFastifySchema("deleteDocumentChapter") },
+    async (request) => {
+      requireEditor(dependencies, request);
+      const documentId = params(request).documentId!;
+      dependencies.documents.get(documentId);
+      return dependencies.forum.deleteChapter(
+        documentId,
+        params(request).chapterId!,
+      );
+    },
+  );
+
+  // 编辑器「新增章节」只改正文；保存前客户端先把新章节注册进服务器目录，
+  // 并把返回的服务器 id 同步回本地，再用该 id 保存文档（历史与版本号按 id 归集）。
+  app.post(
+    "/api/documents/:documentId/chapters",
+    { schema: getFastifySchema("createDocumentChapter") },
+    async (request, reply) => {
+      requireEditor(dependencies, request);
+      const body = CreateDocumentChapterRequestSchema.parse(request.body);
+      const documentId = params(request).documentId!;
+      dependencies.documents.get(documentId);
+      const chapter = dependencies.forum.createChapter(documentId, body);
+      return reply.status(201).send(chapter);
     },
   );
 

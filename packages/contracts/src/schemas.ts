@@ -397,6 +397,30 @@ export const SaveNovelChapterRequestSchema = z
     baseRevision: z.number().int().nonnegative(),
   })
   .strict();
+/** 新增章节请求：编辑器保存前把正文中已出现但服务器目录缺失的新章节注册进目录。 */
+export const CreateDocumentChapterRequestSchema = z
+  .object({
+    title: z.string().min(1).max(500),
+    order: z.number().int().nonnegative(),
+  })
+  .strict();
+/** 新增章节请求。 */
+export type CreateDocumentChapterRequest = z.infer<
+  typeof CreateDocumentChapterRequestSchema
+>;
+
+/** 删除章节目录行后的响应（幂等：未命中时 deleted = false）。 */
+export const DeleteDocumentChapterResponseSchema = z
+  .object({
+    id: EntityIdSchema,
+    deleted: z.boolean(),
+  })
+  .strict();
+/** 删除章节目录行后的响应。 */
+export type DeleteDocumentChapterResponse = z.infer<
+  typeof DeleteDocumentChapterResponseSchema
+>;
+
 /** 保存章节后的版本摘要（不重复传输正文）。 */
 export const SaveNovelChapterResponseSchema = z
   .object({

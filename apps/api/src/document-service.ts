@@ -371,11 +371,13 @@ export class DocumentService {
       const snapshot = (contentJson: string | undefined) => {
         if (!contentJson) return null;
         const content = TiptapDocumentSchema.parse(JSON.parse(contentJson));
-        return JSON.stringify(
-          splitDocumentByChapters(content as JSONContent).chapters[
-            chapter.sort_order
-          ]?.blocks ?? null,
-        );
+        // 章节在该修订中尚不存在时返回 null（而非 JSON 字符串 "null"）：
+        // 才能把「章尚未创建」与「空章节」区分开，避免把整篇种子版本
+        // 误归入后来才创建的新章节历史。
+        const section = splitDocumentByChapters(content as JSONContent).chapters[
+          chapter.sort_order
+        ];
+        return section ? JSON.stringify(section.blocks) : null;
       };
       matchingRows = rows.filter((row) => {
         const mutation = this.#db
@@ -392,14 +394,13 @@ export class DocumentService {
           if (typeof request.chapterId === "string")
             return request.chapterId === chapterId;
         }
-        const previous = this.#db
-          .prepare(
-            "SELECT content_json FROM document_revisions WHERE document_id = ? AND revision = ?",
-          )
-          .get(documentId, row.revision - 1) as
-          | { content_json: string }
-          | undefined;
-        return snapshot(row.content_json) !== snapshot(previous?.content_json);
+        // 无 chapterId 的修订（种子、回滚、建议合并等）只把「种子基线」归入：
+        // 该章在整篇种子文档中已存在时，修订 1 是它的创建基线；不再采用
+        // 「相邻修订内容差异」折叠——章节位置错位（插入/删除/改名）时会把
+        // 其他章节的旧修订误算给新建章节（新建章节只点一次保存不该出现若干条无关历史）。
+        return (
+          row.operation === "seed" && snapshot(row.content_json) !== null
+        );
       });
     }
     const hasMore = matchingRows.length > limit;
