@@ -259,8 +259,9 @@ describe('ComposePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '模拟比较' }));
     await waitFor(() => expect(mocks.getRevision).toHaveBeenCalledWith('demo-post', 17));
     expect(await screen.findByRole('region', { name: '版本格式比较视图' })).toBeInTheDocument();
-    expect(screen.getAllByText('历史版本内容').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('当前版本内容').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('历史内容').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('新增或修改内容').length).toBeGreaterThan(0);
+    expect(screen.queryByText('当前版本')).not.toBeInTheDocument();
     await waitFor(() => expect(container.querySelectorAll('.ProseMirror')).toHaveLength(1));
     expect(screen.queryByTestId('editor')).not.toBeInTheDocument();
 

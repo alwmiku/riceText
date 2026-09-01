@@ -359,6 +359,8 @@ export const ChapterSchema = z
     documentId: EntityIdSchema,
     /** 该章节独立的保存版本号。 */
     revision: z.number().int().nonnegative(),
+    /** 该章节最近一次由服务器确认的保存时间。 */
+    savedAt: IsoDateSchema,
   })
   .strict();
 /** 章节差异同步清单中的单个本地章节。 */
