@@ -355,21 +355,3 @@ export function BusinessNodeGroup({
     </span>
   );
 }
-
-/** 桌面完整工具栏的四个分组（紧凑折叠时由 CompactToolbarControls 替代）。 */
-export function DesktopToolbarGroups({
-  editor,
-  condensed,
-}: {
-  editor: Editor;
-  condensed: boolean;
-}) {
-  return (
-    <>
-      <UndoRedoGroup editor={editor} />
-      <TextFormatGroup editor={editor} condensed={condensed} />
-      <ParagraphGroup editor={editor} condensed={condensed} />
-      <BusinessNodeGroup editor={editor} condensed={condensed} />
-    </>
-  );
-}

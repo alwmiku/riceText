@@ -86,7 +86,7 @@ export function sanitizeDocument(input: unknown): TiptapDocument {
  * 即使数据库被绕过写入校验污染（如手工插入 javascript: 链接），
  * 读取端也会在交付前把危险内容剥离，防止 XSS。
  */
-export function repairDocument(input: unknown): TiptapDocument {
+function repairDocument(input: unknown): TiptapDocument {
   return validateDocument(input).document as unknown as TiptapDocument;
 }
 

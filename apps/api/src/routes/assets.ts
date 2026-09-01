@@ -17,7 +17,7 @@ interface AssetRow {
 }
 
 /** 通过文件魔数识别图片，不能只信任客户端声明的 MIME。 */
-export function detectImageMime(buffer: Buffer): AssetRow["mime_type"] | null {
+function detectImageMime(buffer: Buffer): AssetRow["mime_type"] | null {
   if (
     buffer.length >= 8 &&
     buffer
@@ -51,7 +51,7 @@ export function detectImageMime(buffer: Buffer): AssetRow["mime_type"] | null {
 }
 
 /** 返回白名单 MIME 对应的不可执行文件扩展名。 */
-export function extensionFor(mime: AssetRow["mime_type"]): string {
+function extensionFor(mime: AssetRow["mime_type"]): string {
   return {
     "image/png": "png",
     "image/jpeg": "jpg",

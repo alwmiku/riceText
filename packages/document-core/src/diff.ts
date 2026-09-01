@@ -313,7 +313,7 @@ export function diffDocuments(
         i -= 1;
       }
     } else {
-      const anchor = i >= 0 ? beforeBlock.end : 0;
+      const anchor = beforeBlock.end;
       steps.push({
         stepType: "replace",
         from: anchor,

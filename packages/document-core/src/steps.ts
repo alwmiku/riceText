@@ -23,7 +23,7 @@ export function stepFromJson(schema: Schema, json: unknown): Step {
   if (!isRecord(json) || typeof json.stepType !== "string") {
     throw new ApplyStepsError("INVALID_STEP", "步骤必须是带 stepType 的 JSON 对象");
   }
-  let step: Step | null;
+  let step: Step;
   try {
     step = Step.fromJSON(schema, json);
   } catch (error) {
@@ -31,9 +31,6 @@ export function stepFromJson(schema: Schema, json: unknown): Step {
       "INVALID_STEP",
       `无法解析步骤 ${json.stepType}: ${error instanceof Error ? error.message : "未知错误"}`,
     );
-  }
-  if (!step) {
-    throw new ApplyStepsError("INVALID_STEP", `未知步骤类型 ${json.stepType}`);
   }
   return step;
 }

@@ -12,20 +12,17 @@
     "test": "vitest run --root ../.. packages/editor-core/src"
   },
   "dependencies": {
+    "@ricetext/document-core": "workspace:^",
     "@tiptap/core": "^3.30.2",
-    "@tiptap/pm": "^3.30.2",
     "@tiptap/extension-color": "^3.30.2",
     "@tiptap/extension-font-family": "^3.30.2",
-    "@tiptap/extension-highlight": "^3.30.2",
     "@tiptap/extension-link": "^3.30.2",
-    "@tiptap/extension-placeholder": "^3.30.2",
     "@tiptap/extension-text-align": "^3.30.2",
     "@tiptap/extension-text-style": "^3.30.2",
     "@tiptap/extension-underline": "^3.30.2",
+    "@tiptap/pm": "^3.30.2",
     "@tiptap/react": "^3.30.2",
     "@tiptap/starter-kit": "^3.30.2",
-    "@ricetext/contracts": "workspace:^",
-    "@ricetext/document-core": "workspace:^",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   }

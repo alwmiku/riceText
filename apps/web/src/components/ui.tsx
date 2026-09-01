@@ -40,7 +40,7 @@ export function Button({ className, variant = 'default', size = 'default', type 
 }
 
 /** Radix tooltip 包装器，为不带文字的工具按钮提供可访问名称说明。 */
-export function Tooltip({ label, children }: { label: string; children: ReactNode }) {
+function Tooltip({ label, children }: { label: string; children: ReactNode }) {
   return (
     <TooltipPrimitive.Provider delayDuration={350}>
       <TooltipPrimitive.Root>
