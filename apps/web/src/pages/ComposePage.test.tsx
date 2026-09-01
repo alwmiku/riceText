@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppContext } from '../app-context';
 import { defaultDocument, identities } from '../lib/seed';
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   listForumChapters: vi.fn(),
   restoreRevision: vi.fn(),
   getRevision: vi.fn(),
+  setDocumentChapterHidden: vi.fn(),
 }));
 
 vi.mock('../features/editor/hooks/useAutosave', () => ({ useAutosave: mocks.autosave }));
@@ -27,6 +29,7 @@ vi.mock('../lib/api', () => ({
   getDocument: mocks.getDocument,
   listForumChapters: mocks.listForumChapters,
   restoreRevision: mocks.restoreRevision,
+  setDocumentChapterHidden: mocks.setDocumentChapterHidden,
 }));
 vi.mock('../lib/api/revisions', () => ({
   getRevision: mocks.getRevision,
@@ -65,7 +68,7 @@ vi.mock('../features/comments/CommentThread', () => ({
 function renderPage(identity = identities[0]!) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><AppContext.Provider value={{ identity, setIdentity: vi.fn() }}>{children}</AppContext.Provider></QueryClientProvider>;
-  return render(<ComposePage />, { wrapper });
+  return render(<MemoryRouter><ComposePage /></MemoryRouter>, { wrapper });
 }
 
 function autosaveValue(state: SaveState = 'saved') {

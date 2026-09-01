@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppContext } from '../app-context';
 import { defaultDocument, identities, seedComments, seedSuggestions } from '../lib/seed';
@@ -10,6 +11,7 @@ import ReadPage from './ReadPage';
 const mocks = vi.hoisted(() => ({
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
+  listForumChapters: vi.fn(),
   listSuggestionBatches: vi.fn(),
   listSuggestions: vi.fn(),
   reviewSuggestionBatch: vi.fn(),
@@ -21,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../lib/api', () => ({
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
+  listForumChapters: mocks.listForumChapters,
   listSuggestionBatches: mocks.listSuggestionBatches,
   listSuggestions: mocks.listSuggestions,
   reviewSuggestionBatch: mocks.reviewSuggestionBatch,
@@ -57,13 +60,14 @@ const interactiveDocument: DocumentEnvelope = {
 function renderPage(identity: SeedIdentity) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><AppContext.Provider value={{ identity, setIdentity: vi.fn() }}>{children}</AppContext.Provider></QueryClientProvider>;
-  return render(<ReadPage />, { wrapper });
+  return render(<MemoryRouter><ReadPage /></MemoryRouter>, { wrapper });
 }
 
 describe('ReadPage', () => {
   beforeEach(() => {
     mocks.getDocument.mockReset().mockResolvedValue(interactiveDocument);
     mocks.getCommentThread.mockReset().mockResolvedValue(seedComments);
+    mocks.listForumChapters.mockReset().mockResolvedValue([]);
     mocks.listSuggestionBatches.mockReset().mockResolvedValue([]);
     mocks.listSuggestions.mockReset().mockResolvedValue(seedSuggestions);
     mocks.reviewSuggestionBatch.mockReset();
@@ -161,5 +165,45 @@ describe('ReadPage', () => {
     expect(
       await screen.findByRole('region', { name: '校订对比视图' }),
     ).toBeInTheDocument();
+  });
+
+  it('读者看不到已隐藏章节（目录与正文都移除）', async () => {
+    mocks.listForumChapters.mockResolvedValueOnce([
+      {
+        id: 'chapter-0',
+        title: '正文',
+        order: 0,
+        documentId: 'demo-post',
+        revision: 1,
+        savedAt: '2026-08-20T08:00:00.000Z',
+        hidden: true,
+      },
+    ]);
+    renderPage(identities[1]!);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('navigation', { name: '章节目录' }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it('作者仍可预览与校订已隐藏章节', async () => {
+    mocks.listForumChapters.mockResolvedValueOnce([
+      {
+        id: 'chapter-0',
+        title: '正文',
+        order: 0,
+        documentId: 'demo-post',
+        revision: 1,
+        savedAt: '2026-08-20T08:00:00.000Z',
+        hidden: true,
+      },
+    ]);
+    renderPage(identities[0]!);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('navigation', { name: '章节目录' }),
+      ).toBeInTheDocument(),
+    );
   });
 });

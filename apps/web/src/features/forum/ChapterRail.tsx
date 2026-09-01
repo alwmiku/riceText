@@ -1,4 +1,12 @@
-import { BookOpen, ChevronRight, Plus, Trash2 } from "lucide-react";
+import {
+  BookOpen,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  GitCompareArrows,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
 import { Badge } from "../../components/ui";
 import {
@@ -12,6 +20,11 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../../components/ui/popover";
 import { cn } from "../../lib/utils";
 
 /** 完整创作模式左侧的章节目录：点击切换当前编辑章节。 */
@@ -21,6 +34,9 @@ export function ChapterRail({
   onSelect,
   onAddChapter,
   onDelete,
+  hiddenChapters,
+  onToggleHidden,
+  onProofread,
   activeCharCount,
   activeRevision,
   className,
@@ -30,8 +46,14 @@ export function ChapterRail({
   onSelect: (index: number) => void;
   /** 目录底部「新增章节」入口；不提供时隐藏。 */
   onAddChapter?: () => void;
-  /** 章节行内删除入口；不提供时隐藏。删除只改本地草稿，保存后才同步服务器。 */
+  /** 章节操作弹窗中的删除入口；不提供时隐藏。删除只改本地草稿，保存后才同步服务器。 */
   onDelete?: (index: number) => void;
+  /** 各章节的服务器隐藏状态（按目录顺序对齐）；未提供时视为全部可读。 */
+  hiddenChapters?: ReadonlyArray<boolean>;
+  /** 章节操作弹窗中的隐藏/恢复入口；不提供时隐藏。 */
+  onToggleHidden?: (index: number, hidden: boolean) => void;
+  /** 章节操作弹窗中的校订入口（与阅读页「开始校订」一致）；不提供时隐藏。 */
+  onProofread?: (index: number) => void;
   /** 当前章节的真实字数（未提供时显示占位）。 */
   activeCharCount?: number;
   /** 当前章节的真实修订号。 */
@@ -39,6 +61,7 @@ export function ChapterRail({
   className?: string;
 }) {
   const [pendingDelete, setPendingDelete] = useState<number | null>(null);
+  const [menuIndex, setMenuIndex] = useState<number | null>(null);
   const pendingChapter =
     pendingDelete !== null ? chapters[pendingDelete] : undefined;
 
@@ -62,6 +85,7 @@ export function ChapterRail({
           {chapters.map((chapter, order) => {
             const [main, sub] = chapter.title.split(" · ");
             const active = order === currentIndex;
+            const hidden = hiddenChapters?.[order] ?? false;
             return (
               <div key={chapter.id} className="group relative">
                 <button
@@ -80,19 +104,67 @@ export function ChapterRail({
                       </small>
                     ) : null}
                   </span>
-                  <ChevronRight size={13} />
+                  {hidden ? <Badge tone="amber">已隐藏</Badge> : null}
                 </button>
-                {onDelete ? (
-                  <button
-                    type="button"
-                    aria-label={`删除章节 ${chapter.title}`}
-                    title="删除章节（仅本地草稿，保存后才会同步到服务器）"
-                    onClick={() => setPendingDelete(order)}
-                    className="absolute top-1/2 right-7 grid h-[22px] w-[22px] -translate-y-1/2 cursor-pointer place-items-center rounded border-0 bg-transparent text-[#a8544d] opacity-0 transition-opacity hover:bg-[#fbeae8] hover:text-[#a33028] focus-visible:opacity-100 group-hover:opacity-100 max-[640px]:opacity-100"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                ) : null}
+                {/* 右向箭头：打开章节操作弹窗（删除/隐藏/校订）。 */}
+                <Popover
+                  open={menuIndex === order}
+                  onOpenChange={(open) => setMenuIndex(open ? order : null)}
+                >
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`打开章节操作 ${chapter.title}`}
+                      title="章节操作"
+                      className="absolute top-1/2 right-1.5 grid h-[24px] w-[24px] -translate-y-1/2 cursor-pointer place-items-center rounded border-0 bg-transparent text-[#8a949d] hover:bg-[#edf7f5] hover:text-[#176e66]"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" sideOffset={8} className="w-44 p-1.5">
+                    <div className="flex flex-col gap-1">
+                      {onDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMenuIndex(null);
+                            setPendingDelete(order);
+                          }}
+                          className="flex w-full cursor-pointer items-center gap-2 rounded-md bg-destructive px-2 py-2 text-xs font-semibold text-white hover:bg-destructive/90"
+                        >
+                          <Trash2 size={13} />
+                          删除章节
+                        </button>
+                      ) : null}
+                      {onToggleHidden ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMenuIndex(null);
+                            onToggleHidden(order, !hidden);
+                          }}
+                          className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-2 text-xs font-medium text-[#4c5761] hover:bg-muted"
+                        >
+                          {hidden ? <Eye size={13} /> : <EyeOff size={13} />}
+                          {hidden ? "取消隐藏" : "隐藏章节"}
+                        </button>
+                      ) : null}
+                      {onProofread ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMenuIndex(null);
+                            onProofread(order);
+                          }}
+                          className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-2 text-xs font-medium text-[#4c5761] hover:bg-muted"
+                        >
+                          <GitCompareArrows size={13} />
+                          校订章节
+                        </button>
+                      ) : null}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
             );
           })}

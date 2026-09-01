@@ -226,10 +226,10 @@ describe("ForumPanels", () => {
       screen.getByRole("complementary", { name: "章节目录" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /第一章.*潮汐表/ }),
+      screen.getByRole("button", { name: /^第一章/ }),
     ).toHaveAttribute("data-active", "true");
     expect(
-      screen.getByRole("button", { name: /第三章.*没有寄件人的信/ }),
+      screen.getByRole("button", { name: /^第三章/ }),
     ).toBeInTheDocument();
     expect(screen.getByText("创作中")).toBeInTheDocument();
     expect(screen.getByText("章节总结")).toBeInTheDocument();
@@ -276,7 +276,7 @@ describe("ForumPanels", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("章节行提供默认隐藏的删除按钮，确认后触发回调", () => {
+  it("章节行右向箭头弹出操作窗，删除确认后触发回调", () => {
     const onDelete = vi.fn();
     renderWithQuery(
       <ChapterRail
@@ -286,13 +286,10 @@ describe("ForumPanels", () => {
         onDelete={onDelete}
       />,
     );
-    const deleteButton = screen.getByRole("button", {
-      name: /删除章节 第二章/,
-    });
-    // 默认隐藏，悬停/触屏才显示
-    expect(deleteButton).toHaveClass("opacity-0");
-
-    fireEvent.click(deleteButton);
+    fireEvent.click(
+      screen.getByRole("button", { name: /打开章节操作 第二章/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /删除章节/ }));
     expect(
       screen.getByRole("alertdialog", { name: "删除章节" }),
     ).toBeInTheDocument();
@@ -313,14 +310,15 @@ describe("ForumPanels", () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole("button", { name: /删除章节 楔子/ }),
+      screen.getByRole("button", { name: /打开章节操作 楔子/ }),
     );
+    fireEvent.click(screen.getByRole("button", { name: /删除章节/ }));
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(onDelete).not.toHaveBeenCalled();
   });
 
-  it("未提供 onDelete 时章节行不渲染删除按钮", () => {
+  it("未提供 onDelete 时操作弹窗不渲染删除按钮", () => {
     renderWithQuery(
       <ChapterRail
         chapters={chaptersFixture}
@@ -328,9 +326,45 @@ describe("ForumPanels", () => {
         onSelect={vi.fn()}
       />,
     );
+    fireEvent.click(
+      screen.getByRole("button", { name: /打开章节操作 楔子/ }),
+    );
     expect(
       screen.queryByRole("button", { name: /删除章节/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("操作弹窗提供隐藏/恢复与校订入口并触发回调", () => {
+    const onToggleHidden = vi.fn();
+    const onProofread = vi.fn();
+    renderWithQuery(
+      <ChapterRail
+        chapters={chaptersFixture}
+        currentIndex={1}
+        onSelect={vi.fn()}
+        hiddenChapters={[false, true, false, false, false]}
+        onToggleHidden={onToggleHidden}
+        onProofread={onProofread}
+      />,
+    );
+    // 已隐藏章节：行内显示「已隐藏」，弹窗显示「取消隐藏」。
+    expect(screen.getByText("已隐藏")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /打开章节操作 第一章/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /取消隐藏/ }));
+    expect(onToggleHidden).toHaveBeenCalledWith(1, false);
+    // 未隐藏章节：弹窗显示「隐藏章节」，校订入口与阅读页图标一致（GitCompareArrows）。
+    fireEvent.click(
+      screen.getByRole("button", { name: /打开章节操作 楔子/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /隐藏章节/ }));
+    expect(onToggleHidden).toHaveBeenCalledWith(0, true);
+    fireEvent.click(
+      screen.getByRole("button", { name: /打开章节操作 第一章/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /校订章节/ }));
+    expect(onProofread).toHaveBeenCalledWith(1);
   });
 
   it("点击章节触发切换回调", () => {
@@ -342,7 +376,7 @@ describe("ForumPanels", () => {
         onSelect={onSelect}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /第二章.*陌生船票/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^第二章/ }));
     expect(onSelect).toHaveBeenCalledWith(2);
   });
 

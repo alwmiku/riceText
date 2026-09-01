@@ -17,10 +17,11 @@ export class ChapterService {
     documentId: string;
     revision: number;
     savedAt: string;
+    hidden: boolean;
   }> {
     const rows = this.#db
       .prepare(
-        "SELECT id, title, sort_order, document_id, revision, updated_at FROM chapters ORDER BY sort_order",
+        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden FROM chapters ORDER BY sort_order",
       )
       .all() as Array<{
       id: string;
@@ -29,6 +30,7 @@ export class ChapterService {
       document_id: string;
       revision: number;
       updated_at: string;
+      hidden: number;
     }>;
     return rows.map((row) => ({
       id: row.id,
@@ -37,6 +39,7 @@ export class ChapterService {
       documentId: row.document_id,
       revision: row.revision,
       savedAt: row.updated_at,
+      hidden: row.hidden === 1,
     }));
   }
 
@@ -65,6 +68,7 @@ export class ChapterService {
     documentId: string;
     revision: number;
     savedAt: string;
+    hidden: boolean;
   } {
     const id = `chapter-${input.order}`;
     const now = new Date().toISOString();
@@ -80,7 +84,7 @@ export class ChapterService {
       .run(id, input.title, input.order, documentId, now);
     const row = this.#db
       .prepare(
-        "SELECT id, title, sort_order, document_id, revision, updated_at FROM chapters WHERE id = ? AND document_id = ?",
+        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden FROM chapters WHERE id = ? AND document_id = ?",
       )
       .get(id, documentId) as {
       id: string;
@@ -89,6 +93,7 @@ export class ChapterService {
       document_id: string;
       revision: number;
       updated_at: string;
+      hidden: number;
     };
     return {
       id: row.id,
@@ -97,6 +102,7 @@ export class ChapterService {
       documentId: row.document_id,
       revision: row.revision,
       savedAt: row.updated_at,
+      hidden: row.hidden === 1,
     };
   }
 
@@ -130,6 +136,51 @@ export class ChapterService {
       this.#db.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  /**
+   * 隐藏/恢复章节目录行：隐藏的章节读者不可读，作者写完取消隐藏后恢复可读。
+   */
+  updateChapterHidden(
+    documentId: string,
+    chapterId: string,
+    hidden: boolean,
+  ): {
+    id: string;
+    title: string;
+    order: number;
+    documentId: string;
+    revision: number;
+    savedAt: string;
+    hidden: boolean;
+  } {
+    const result = this.#db
+      .prepare("UPDATE chapters SET hidden = ? WHERE id = ? AND document_id = ?")
+      .run(hidden ? 1 : 0, chapterId, documentId);
+    if (result.changes === 0)
+      throw new HttpError(404, "CHAPTER_NOT_FOUND", "章节目录中不存在该章节");
+    const row = this.#db
+      .prepare(
+        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden FROM chapters WHERE id = ? AND document_id = ?",
+      )
+      .get(chapterId, documentId) as {
+      id: string;
+      title: string;
+      sort_order: number;
+      document_id: string;
+      revision: number;
+      updated_at: string;
+      hidden: number;
+    };
+    return {
+      id: row.id,
+      title: row.title,
+      order: row.sort_order,
+      documentId: row.document_id,
+      revision: row.revision,
+      savedAt: row.updated_at,
+      hidden: row.hidden === 1,
+    };
   }
 
   /**

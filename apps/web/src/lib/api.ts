@@ -8,6 +8,7 @@ export {
   createDocumentChapter,
   deleteDocumentChapter,
   listForumChapters,
+  setDocumentChapterHidden,
   syncLongTextChapters,
   uploadLongTextChapter,
   type ChapterSyncItem,

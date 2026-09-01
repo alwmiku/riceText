@@ -25,6 +25,9 @@ export function StandardComposeWorkspace({
   onCompareRevision,
   onAddChapter,
   onDeleteChapter,
+  hiddenChapters,
+  onToggleHidden,
+  onProofread,
   onSelectChapter,
   onSave,
   onRestore,
@@ -42,6 +45,12 @@ export function StandardComposeWorkspace({
   documentId: string;
   /** 当前章节的服务器目录 id；新建章节未注册时为空。 */
   chapterId?: string | undefined;
+  /** 各章节的服务器隐藏状态（按目录顺序对齐）。 */
+  hiddenChapters?: ReadonlyArray<boolean>;
+  /** 章节操作弹窗的隐藏/恢复回调。 */
+  onToggleHidden?: (index: number, hidden: boolean) => void;
+  /** 章节操作弹窗的校订回调（与阅读页校订一致）。 */
+  onProofread?: (index: number) => void;
   revision: number;
   saveDisabled: boolean;
   /** 当前章节的真实字数，展示在目录「章节总结」中。 */
@@ -77,6 +86,9 @@ export function StandardComposeWorkspace({
           onSelect={onSelectChapter}
           {...(onAddChapter ? { onAddChapter } : {})}
           {...(onDeleteChapter ? { onDelete: onDeleteChapter } : {})}
+          {...(hiddenChapters ? { hiddenChapters } : {})}
+          {...(onToggleHidden ? { onToggleHidden } : {})}
+          {...(onProofread ? { onProofread } : {})}
           {...(activeCharCount !== undefined ? { activeCharCount } : {})}
           {...(activeRevision !== undefined ? { activeRevision } : {})}
         />
@@ -156,6 +168,9 @@ export function StandardComposeWorkspace({
                   }}
                   {...(onAddChapter ? { onAddChapter } : {})}
                   {...(onDeleteChapter ? { onDelete: onDeleteChapter } : {})}
+                  {...(hiddenChapters ? { hiddenChapters } : {})}
+                  {...(onToggleHidden ? { onToggleHidden } : {})}
+                  {...(onProofread ? { onProofread } : {})}
                   {...(activeCharCount !== undefined ? { activeCharCount } : {})}
                   {...(activeRevision !== undefined ? { activeRevision } : {})}
                   className="static max-h-[calc(100vh-78px)] rounded-md shadow-none"

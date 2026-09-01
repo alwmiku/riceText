@@ -38,6 +38,7 @@ import {
   SuggestionSchema,
   SyncNovelChaptersRequestSchema,
   SyncNovelChaptersResponseSchema,
+  UpdateDocumentChapterRequestSchema,
   UpdateDocumentRequestSchema,
   UpdateDocumentStepsRequestSchema,
   VoteCommentRequestSchema,
@@ -113,6 +114,12 @@ export const contractRoutes: readonly ContractRoute[] = [
     summary: "保存文档并创建修订", description: "需要 author 或 moderator。baseRevision 过期返回 409；相同 clientMutationId 重试返回首次结果且不重复建版。",
     params: documentParams, body: UpdateDocumentRequestSchema,
     responses: { 200: { description: "幂等重试命中的既有修订。", schema: DocumentEnvelopeSchema }, 201: { description: "新建的不可变修订。", schema: DocumentEnvelopeSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 409: { description: "当前 revision 与 baseRevision 冲突，details.currentRevision 可用于刷新。", schema: ApiErrorSchema }, 422: { description: "正文包含非法节点、属性或 URL。", schema: ApiErrorSchema } },
+  },
+  {
+    operationId: "updateDocumentChapter", method: "PATCH", path: "/api/documents/:documentId/chapters/:chapterId", tags: ["文档"], implementationStatus: "implemented",
+    summary: "更新章节目录行（隐藏/恢复）", description: "需要 author 或 moderator。隐藏的章节读者不可读；作者写完取消隐藏后恢复可读。",
+    params: documentChapterParams, body: UpdateDocumentChapterRequestSchema,
+    responses: { 200: { description: "更新后的章节目录行。", schema: ChapterSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 404: { description: "文档或章节不存在。", schema: ApiErrorSchema }, 422: { description: "请求字段非法。", schema: ApiErrorSchema } },
   },
   {
     operationId: "deleteDocumentChapter", method: "DELETE", path: "/api/documents/:documentId/chapters/:chapterId", tags: ["文档"], implementationStatus: "implemented",

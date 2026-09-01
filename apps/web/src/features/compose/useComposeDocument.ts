@@ -151,6 +151,7 @@ export function useComposeDocument(
                 documentId: next.id,
                 revision: 1,
                 savedAt: next.savedAt,
+                hidden: false,
               },
             ];
           },

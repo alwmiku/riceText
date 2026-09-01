@@ -247,6 +247,27 @@ describe("RiceText API", () => {
     // 只有按该章节 id 保存的那一次；无归属旧修订与种子基线都不混入。
     expect(history.map((item) => item.revision)).toEqual([3]);
   });
+  it("隐藏/恢复章节：服务器记录读者不可读状态", async () => {
+    const before = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; hidden: boolean }>;
+    expect(before.find((item) => item.id === "chapter-1")?.hidden).toBe(false);
+
+    const hidden = await app.inject({ method: "PATCH", url: "/api/documents/demo-post/chapters/chapter-1", headers: { "x-user-id": "author" }, payload: { hidden: true } });
+    expect(hidden.statusCode, hidden.body).toBe(200);
+    expect(hidden.json()).toMatchObject({ id: "chapter-1", hidden: true });
+
+    const after = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; hidden: boolean }>;
+    expect(after.find((item) => item.id === "chapter-1")?.hidden).toBe(true);
+
+    const restored = await app.inject({ method: "PATCH", url: "/api/documents/demo-post/chapters/chapter-1", headers: { "x-user-id": "author" }, payload: { hidden: false } });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json().hidden).toBe(false);
+
+    const forbidden = await app.inject({ method: "PATCH", url: "/api/documents/demo-post/chapters/chapter-1", headers: { "x-user-id": "reader" }, payload: { hidden: true } });
+    expect(forbidden.statusCode).toBe(403);
+
+    const missing = await app.inject({ method: "PATCH", url: "/api/documents/demo-post/chapters/chapter-999", headers: { "x-user-id": "author" }, payload: { hidden: true } });
+    expect(missing.statusCode).toBe(404);
+  });
   it("拒绝 reader 写入和不安全正文", async () => {
     const forbidden = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "reader" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "reader-save", content: validContent() } });
     expect(forbidden.statusCode).toBe(403);

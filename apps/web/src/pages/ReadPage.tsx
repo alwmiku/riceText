@@ -15,6 +15,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAppContext } from "../app-context";
 import { Badge, Button, Dialog } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
@@ -22,7 +23,12 @@ import { ChapterSuggestionEditor } from "../features/proofread/ChapterSuggestion
 import { ProofreadWorkspace } from "../features/proofread/ProofreadWorkspace";
 import { ReaderSuggestion } from "../features/proofread/ReaderSuggestion";
 import { TocSidebar } from "../features/viewer/TocSidebar";
-import { getCommentThread, getDocument, listSuggestions } from "../lib/api";
+import {
+  getCommentThread,
+  getDocument,
+  listForumChapters,
+  listSuggestions,
+} from "../lib/api";
 import { chapterTextLines, splitDocumentByHeadings } from "../lib/chapters";
 import { defaultDocument } from "../lib/seed";
 import type { CommentReply } from "../lib/types";
@@ -31,15 +37,25 @@ import { formatTime } from "../lib/utils";
 /** 纯阅读页面：只挂载静态 RichTextViewer，不创建 ProseMirror Editor。 */
 export default function ReadPage() {
   const { identity } = useAppContext();
+  const [searchParams] = useSearchParams();
   const [threadId, setThreadId] = useState<string | null>(null);
-  const [proofreading, setProofreading] = useState(false);
+  const [proofreading, setProofreading] = useState(
+    () => searchParams.get("proofread") === "1",
+  );
   const [ownedAttachments, setOwnedAttachments] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const [pollVotes, setPollVotes] = useState<Record<string, readonly string[]>>(
     {},
   );
-  const [chapterIndex, setChapterIndex] = useState(1);
+  // 从「校订章节」入口跳转：chapter 指定章节，proofread 直接进入校订视图。
+  const initialChapter = Number.parseInt(
+    searchParams.get("chapter") ?? "",
+    10,
+  );
+  const [chapterIndex, setChapterIndex] = useState(() =>
+    Number.isFinite(initialChapter) && initialChapter >= 0 ? initialChapter : 1,
+  );
   const { data: document = defaultDocument } = useQuery({
     queryKey: ["document", "demo-post"],
     queryFn: ({ signal }) => getDocument("demo-post", signal),
@@ -49,10 +65,35 @@ export default function ReadPage() {
     () => splitDocumentByHeadings(document.content as JSONContent),
     [document.content],
   );
-  const activeIndex = Math.min(chapterIndex, Math.max(0, chapters.length - 1));
+  // 隐藏章节：读者过滤掉，作者（含版主）仍可预览与校订。
+  const { data: chapterDirectory = [] } = useQuery({
+    queryKey: ["forum", "chapters"],
+    queryFn: () => listForumChapters(),
+  });
+  const hiddenIds = useMemo(
+    () =>
+      new Set(
+        chapterDirectory
+          .filter((chapter) => chapter.hidden)
+          .map((chapter) => chapter.id),
+      ),
+    [chapterDirectory],
+  );
+  const isReader = identity.role === "reader";
+  const visibleChapters = useMemo(
+    () =>
+      isReader
+        ? chapters.filter((chapter) => !hiddenIds.has(chapter.id))
+        : chapters,
+    [chapters, hiddenIds, isReader],
+  );
+  const activeIndex = Math.min(
+    chapterIndex,
+    Math.max(0, visibleChapters.length - 1),
+  );
   const chapterDoc = useMemo<JSONContent>(
-    () => ({ type: "doc", content: chapters[activeIndex]?.blocks ?? [] }),
-    [chapters, activeIndex],
+    () => ({ type: "doc", content: visibleChapters[activeIndex]?.blocks ?? [] }),
+    [visibleChapters, activeIndex],
   );
   const { data: comments = [] } = useQuery<CommentReply[]>({
     queryKey: ["comments", document.id, threadId],
@@ -68,7 +109,7 @@ export default function ReadPage() {
     enabled: canProofread,
   });
   // 目录联动：只取当前章的校订，其他章节的校订不会显示在本章视图中。
-  const chapterId = chapters[activeIndex]?.id ?? "";
+  const chapterId = visibleChapters[activeIndex]?.id ?? "";
   const chapterSuggestions = useMemo(
     () =>
       suggestions.filter(
@@ -186,7 +227,7 @@ export default function ReadPage() {
                   documentId={document.id}
                   baseRevision={document.revision}
                   chapterId={chapterId}
-                  chapterTitle={chapters[activeIndex]?.title ?? "正文"}
+                  chapterTitle={visibleChapters[activeIndex]?.title ?? "正文"}
                   chapterIndex={activeIndex}
                   fullContent={document.content}
                   chapterContent={chapterDoc}
@@ -211,7 +252,7 @@ export default function ReadPage() {
               baseRevision={document.revision}
               documentTitle={document.title}
               chapterId={chapterId}
-              chapterTitle={chapters[activeIndex]?.title ?? "正文"}
+              chapterTitle={visibleChapters[activeIndex]?.title ?? "正文"}
               lines={lines}
               onExit={() => setProofreading(false)}
             />
@@ -220,7 +261,7 @@ export default function ReadPage() {
               key={`${document.id}:${chapterId}`}
               documentId={document.id}
               chapterId={chapterId}
-              chapterTitle={chapters[activeIndex]?.title ?? "正文"}
+              chapterTitle={visibleChapters[activeIndex]?.title ?? "正文"}
               lines={lines}
             >
               <RichTextViewer
@@ -238,7 +279,7 @@ export default function ReadPage() {
           )}
         </article>
         <TocSidebar
-          chapters={chapters}
+          chapters={visibleChapters}
           currentIndex={activeIndex}
           onSelect={setChapterIndex}
         />
@@ -252,7 +293,7 @@ export default function ReadPage() {
               <div>
                 <strong className="block text-sm">雾港来信</strong>
                 <small className="text-xs text-muted-foreground">
-                  {chapters[activeIndex]?.title ?? "连载中"} · 连载中
+                  {visibleChapters[activeIndex]?.title ?? "连载中"} · 连载中
                 </small>
               </div>
             </div>
@@ -265,7 +306,7 @@ export default function ReadPage() {
                 </p>
                 <p className="mt-1">
                   文章《{document.title}》· 第 {activeIndex + 1} 章
-                  {chapters[activeIndex]?.title ?? ""}
+                  {visibleChapters[activeIndex]?.title ?? ""}
                 </p>
                 <p>
                   {chapterSuggestions.length > 0

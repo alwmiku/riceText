@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   BookOpen,
@@ -26,6 +27,7 @@ import {
   deleteDocumentChapter,
   getCommentThread,
   listForumChapters,
+  setDocumentChapterHidden,
 } from "../lib/api";
 import { getRevision } from "../lib/api/revisions";
 import {
@@ -99,6 +101,7 @@ export default function ComposePage() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [comparingRevision, setComparingRevision] = useState<number | null>(null);
   const [comparison, setComparison] = useState<{
     revision: number;
@@ -193,6 +196,35 @@ export default function ComposePage() {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "版本回退失败");
     }
+  };
+
+  // 隐藏/恢复章节：隐藏后读者不可读，作者写完取消隐藏后恢复可读。
+  const toggleChapterHidden = async (index: number, hidden: boolean) => {
+    const row = chapterDirectory[index];
+    if (!row) {
+      setNotice("该章节尚未注册到服务器（保存后才会创建），暂时无法设置隐藏");
+      return;
+    }
+    try {
+      await setDocumentChapterHidden(compose.document.id, row.id, hidden);
+      void queryClient.invalidateQueries({ queryKey: ["forum", "chapters"] });
+      setNotice(
+        hidden
+          ? `已隐藏「${chapters[index]?.title ?? ""}」，读者在取消隐藏前不可见`
+          : `「${chapters[index]?.title ?? ""}」已恢复可读`,
+      );
+    } catch (cause) {
+      setNotice(
+        cause instanceof Error
+          ? `设置章节可见性失败：${cause.message}`
+          : "设置章节可见性失败",
+      );
+    }
+  };
+
+  // 校订章节：与阅读页「开始校订」一致（字级 diff 校订视图）。
+  const proofreadChapter = (index: number) => {
+    navigate(`/read?chapter=${index}&proofread=1`);
   };
 
   // 在文档末尾追加一个空章节并切换到它；保存时随整篇正文一起入库。
@@ -480,6 +512,9 @@ export default function ComposePage() {
           onCompareRevision={(revision) => void compareRevision(revision)}
           onAddChapter={addChapter}
           onDeleteChapter={deleteChapter}
+          hiddenChapters={chapterDirectory.map((chapter) => chapter.hidden)}
+          onToggleHidden={(index, hidden) => void toggleChapterHidden(index, hidden)}
+          onProofread={proofreadChapter}
           onSelectChapter={setChapterIndex}
           onSave={() => void publish()}
           onRestore={(revision) => void rollback(revision)}

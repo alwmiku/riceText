@@ -320,6 +320,11 @@ SET
   );
 `;
 
+/** 章节可见性：隐藏的章节读者不可读，作者写完取消隐藏后恢复可读。 */
+const migrationV10 = `
+ALTER TABLE chapters ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;
+`;
+
 const migrationV6 = `
 CREATE TABLE suggestion_batches (
   id TEXT PRIMARY KEY,
@@ -481,6 +486,7 @@ export function createDatabase(options: DatabaseOptions): DatabaseSync {
   runMigration(db, 7, migrationV7);
   runMigration(db, 8, migrationV8);
   runMigration(db, 9, migrationV9);
+  runMigration(db, 10, migrationV10);
   if (options.seed !== false) seed(db);
   return db;
 }

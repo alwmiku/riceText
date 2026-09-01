@@ -48,6 +48,17 @@ export async function deleteDocumentChapter(
   return api().deleteDocumentChapter(documentId, chapterId);
 }
 
+/**
+ * 隐藏/恢复章节：隐藏后读者不可读，作者写完取消隐藏后恢复可读。
+ */
+export async function setDocumentChapterHidden(
+  documentId: string,
+  chapterId: string,
+  hidden: boolean,
+): Promise<ForumChapterItem> {
+  return api().updateDocumentChapter(documentId, chapterId, { hidden });
+}
+
 export async function uploadLongTextChapter(
   novelId: string,
   chapterId: string,

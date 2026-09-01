@@ -106,6 +106,7 @@ describe("useComposeDocument hydration", () => {
       documentId: "demo-post",
       revision: 0,
       savedAt: "2026-09-01T20:00:00.000Z",
+      hidden: false,
     });
     mocks.listForumChapters.mockReset().mockResolvedValue([]);
     mocks.restoreRevision.mockReset();
@@ -197,6 +198,7 @@ describe("useComposeDocument hydration", () => {
         documentId: "demo-post",
         revision: 4,
         savedAt: "2026-08-20T08:00:00.000Z",
+        hidden: false,
       },
       {
         id: "chapter-2",
@@ -205,6 +207,7 @@ describe("useComposeDocument hydration", () => {
         documentId: "demo-post",
         revision: 7,
         savedAt: "2026-08-20T09:00:00.000Z",
+        hidden: false,
       },
     ]);
     const testWrapper = ({ children }: { children: ReactNode }) => (
@@ -262,6 +265,7 @@ describe("useComposeDocument hydration", () => {
         documentId: "demo-post",
         revision: 1,
         savedAt: "2026-08-20T07:00:00.000Z",
+        hidden: false,
       },
       {
         id: "chapter-1",
@@ -270,6 +274,7 @@ describe("useComposeDocument hydration", () => {
         documentId: "demo-post",
         revision: 1,
         savedAt: "2026-08-20T08:00:00.000Z",
+        hidden: false,
       },
     ]);
 

@@ -60,6 +60,8 @@ export interface RiceTextApiClient {
   createDocumentChapter(documentId: string, body: { title: string; order: number }, signal?: AbortSignal): Promise<z.infer<typeof ChapterSchema>>;
   /** 删除章节目录行（幂等）；历史修订不受影响。 */
   deleteDocumentChapter(documentId: string, chapterId: string, signal?: AbortSignal): Promise<z.infer<typeof DeleteDocumentChapterResponseSchema>>;
+  /** 隐藏/恢复章节目录行；隐藏的章节读者不可读。 */
+  updateDocumentChapter(documentId: string, chapterId: string, body: { hidden: boolean }, signal?: AbortSignal): Promise<z.infer<typeof ChapterSchema>>;
   /** 对比章节内容哈希，返回需要上传与已存在的章节 ID。 */
   syncNovelChapters(novelId: string, chapters: Array<{ id: string; title: string; order: number; hash: string }>, signal?: AbortSignal): Promise<{ toUpdate: string[]; existing: string[] }>;
   /** 保存单个章节内容并递增该章节版本号。 */
@@ -151,6 +153,7 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     updateDocumentSteps: (id, body, signal) => request(`/api/documents/${id}/steps`, { method: "PATCH", body: json(body), signal }),
     createDocumentChapter: (id, body, signal) => request(`/api/documents/${id}/chapters`, { method: "POST", body: json(body), signal }),
     deleteDocumentChapter: (id, chapterId, signal) => request(`/api/documents/${id}/chapters/${chapterId}`, { method: "DELETE", signal }),
+    updateDocumentChapter: (id, chapterId, body, signal) => request(`/api/documents/${id}/chapters/${chapterId}`, { method: "PATCH", body: json(body), signal }),
     syncNovelChapters: (novelId, chapters, signal) => request(`/api/forum/novels/${novelId}/chapters/sync`, { method: "POST", body: json({ chapters }), signal }),
     saveNovelChapter: (novelId, chapterId, input, signal) => request(`/api/forum/novels/${novelId}/chapters/${chapterId}`, { method: "PUT", body: json(input), signal }),
     listRevisions: (id, cursor, chapterId, signal) => request(`/api/documents/${id}/revisions${query({ cursor, chapterId })}`, { signal }),

@@ -3,6 +3,7 @@ import {
   CreateDocumentChapterRequestSchema,
   RevisionQuerySchema,
   RollbackDocumentRequestSchema,
+  UpdateDocumentChapterRequestSchema,
   UpdateDocumentRequestSchema,
   UpdateDocumentStepsRequestSchema,
 } from "@ricetext/contracts";
@@ -76,6 +77,27 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
         user.id,
       );
       return reply.status(result.created ? 201 : 200).send(result.envelope);
+    },
+  );
+
+  // 隐藏/恢复章节：隐藏后读者不可读，作者写完取消隐藏后恢复可读。
+  app.patch(
+    "/api/documents/:documentId/chapters/:chapterId",
+    { schema: getFastifySchema("updateDocumentChapter") },
+    async (request, reply) => {
+      requireEditor(dependencies, request);
+      const body = UpdateDocumentChapterRequestSchema.parse(request.body);
+      const documentId = params(request).documentId!;
+      dependencies.documents.get(documentId);
+      return reply
+        .status(200)
+        .send(
+          dependencies.forum.updateChapterHidden(
+            documentId,
+            params(request).chapterId!,
+            body.hidden,
+          ),
+        );
     },
   );
 

@@ -361,6 +361,8 @@ export const ChapterSchema = z
     revision: z.number().int().nonnegative(),
     /** 该章节最近一次由服务器确认的保存时间。 */
     savedAt: DateTimeSchema,
+    /** 隐藏章节：读者不可读，作者写完取消隐藏后恢复可读。 */
+    hidden: z.boolean(),
   })
   .strict();
 /** 章节差异同步清单中的单个本地章节。 */
@@ -407,6 +409,17 @@ export const CreateDocumentChapterRequestSchema = z
 /** 新增章节请求。 */
 export type CreateDocumentChapterRequest = z.infer<
   typeof CreateDocumentChapterRequestSchema
+>;
+
+/** 更新章节目录行（隐藏/恢复可读）的请求体。 */
+export const UpdateDocumentChapterRequestSchema = z
+  .object({
+    hidden: z.boolean(),
+  })
+  .strict();
+/** 更新章节目录行的请求。 */
+export type UpdateDocumentChapterRequest = z.infer<
+  typeof UpdateDocumentChapterRequestSchema
 >;
 
 /** 删除章节目录行后的响应（幂等：未命中时 deleted = false）。 */

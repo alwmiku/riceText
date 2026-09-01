@@ -56,12 +56,31 @@ export class ForumService {
     order: number;
     documentId: string;
     revision: number;
+    savedAt: string;
+    hidden: boolean;
   }> {
     return this.#chapters.chapters();
   }
 
   chapterHashes(documentId: string): Map<string, string | null> {
     return this.#chapters.chapterHashes(documentId);
+  }
+
+  /** 隐藏/恢复章节目录行；隐藏的章节读者不可读。 */
+  updateChapterHidden(
+    documentId: string,
+    chapterId: string,
+    hidden: boolean,
+  ): {
+    id: string;
+    title: string;
+    order: number;
+    documentId: string;
+    revision: number;
+    savedAt: string;
+    hidden: boolean;
+  } {
+    return this.#chapters.updateChapterHidden(documentId, chapterId, hidden);
   }
 
   /** 删除章节目录行（幂等）；历史修订不受影响。 */
