@@ -360,7 +360,7 @@ export const ChapterSchema = z
     /** 该章节独立的保存版本号。 */
     revision: z.number().int().nonnegative(),
     /** 该章节最近一次由服务器确认的保存时间。 */
-    savedAt: IsoDateSchema,
+    savedAt: DateTimeSchema,
   })
   .strict();
 /** 章节差异同步清单中的单个本地章节。 */
