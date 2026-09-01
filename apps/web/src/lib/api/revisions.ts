@@ -5,14 +5,24 @@ import { api, isServiceUnavailable, rethrowClientError } from "./client";
 
 export async function getRevisions(
   id: string,
+  chapterId?: string,
   signal?: AbortSignal,
 ): Promise<RevisionSummary[]> {
   try {
-    return (await api().listRevisions(id, undefined, signal)).items;
+    return (await api().listRevisions(id, undefined, chapterId, signal)).items;
   } catch (error) {
     if (!isServiceUnavailable(error)) rethrowClientError(error);
-    return seedRevisions;
+    return chapterId ? [] : seedRevisions;
   }
+}
+
+export async function getRevision(
+  id: string,
+  revision: number,
+  signal?: AbortSignal,
+): Promise<DocumentEnvelope> {
+  const envelope = await api().getRevision(id, revision, signal);
+  return { ...envelope, content: envelope.content as unknown as RichTextNode };
 }
 
 export async function restoreRevision(

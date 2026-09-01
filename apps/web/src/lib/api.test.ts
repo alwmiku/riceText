@@ -5,6 +5,7 @@ import {
   createDice,
   getCommentThread,
   getDocument,
+  getRevision,
   getRevisions,
   listForumChapters,
   listSuggestions,
@@ -51,6 +52,18 @@ describe('web api client', () => {
     expect(new Headers(init.headers).get('x-user-id')).toBe('reader');
     // GET 请求不携带 body，类型化客户端不设置 Content-Type
     expect(new Headers(init.headers).get('content-type')).toBeNull();
+  });
+
+  it('读取指定历史版本正文', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ ...defaultDocument, revision: 7 }),
+    );
+    const result = await getRevision('demo-post', 7);
+    expect(result.revision).toBe(7);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/documents/demo-post/revisions/7',
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
   });
 
   it('读取失败时优先返回本地副本，其次返回种子文档', async () => {

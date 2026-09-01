@@ -10,7 +10,7 @@ export {
   uploadLongTextChapter,
   type ChapterSyncItem,
 } from "./api/chapters";
-export { getRevisions, restoreRevision } from "./api/revisions";
+export { getRevision, getRevisions, restoreRevision } from "./api/revisions";
 export { getCommentThread, voteComment } from "./api/comments";
 export {
   listSuggestions,
