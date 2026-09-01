@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppContext } from '../app-context';
 import { defaultDocument, identities, seedComments, seedSuggestions } from '../lib/seed';
+import { formatTime } from '../lib/utils';
 import type { DocumentEnvelope, SeedIdentity } from '../lib/types';
 import ReadPage from './ReadPage';
 
@@ -57,10 +58,10 @@ const interactiveDocument: DocumentEnvelope = {
   },
 };
 
-function renderPage(identity: SeedIdentity) {
+function renderPage(identity: SeedIdentity, initialPath = '/read') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><AppContext.Provider value={{ identity, setIdentity: vi.fn() }}>{children}</AppContext.Provider></QueryClientProvider>;
-  return render(<MemoryRouter><ReadPage /></MemoryRouter>, { wrapper });
+  return render(<MemoryRouter initialEntries={[initialPath]}><ReadPage /></MemoryRouter>, { wrapper });
 }
 
 describe('ReadPage', () => {
@@ -164,6 +165,60 @@ describe('ReadPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '开始校订' }));
     expect(
       await screen.findByRole('region', { name: '校订对比视图' }),
+    ).toBeInTheDocument();
+  });
+
+  it('头部时间与版本号匹配当前章节的真实数据，标题由正文自带', async () => {
+    const chapterDoc: DocumentEnvelope = {
+      ...defaultDocument,
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'heading',
+            attrs: { level: 2, chapterStart: true },
+            content: [{ type: 'text', text: '第一章 潮汐表' }],
+          },
+          { type: 'paragraph', content: [{ type: 'text', text: '正文一' }] },
+          {
+            type: 'heading',
+            attrs: { level: 2, chapterStart: true },
+            content: [{ type: 'text', text: '第二章 陌生船票' }],
+          },
+          { type: 'paragraph', content: [{ type: 'text', text: '正文二' }] },
+        ],
+      },
+    };
+    mocks.getDocument.mockResolvedValueOnce(chapterDoc);
+    mocks.listForumChapters.mockResolvedValueOnce([
+      {
+        id: 'chapter-0',
+        title: '第一章 潮汐表',
+        order: 0,
+        documentId: 'demo-post',
+        revision: 6,
+        savedAt: '2026-09-02T01:08:00.000Z',
+        hidden: false,
+      },
+      {
+        id: 'chapter-1',
+        title: '第二章 陌生船票',
+        order: 1,
+        documentId: 'demo-post',
+        revision: 3,
+        savedAt: '2026-08-30T10:00:00.000Z',
+        hidden: false,
+      },
+    ]);
+    renderPage(identities[1]!, '/read?chapter=0');
+    // 章节标题由正文自带（H2），头部不再重复。
+    expect(
+      await screen.findByRole('heading', { name: '第一章 潮汐表', level: 2 }),
+    ).toBeInTheDocument();
+    // 时间与版本号 = 该章在服务器目录中的真实数据。
+    expect(screen.getByText('版本 6')).toBeInTheDocument();
+    expect(
+      screen.getByText(formatTime('2026-09-02T01:08:00.000Z')),
     ).toBeInTheDocument();
   });
 

@@ -91,6 +91,12 @@ export default function ReadPage() {
     chapterIndex,
     Math.max(0, visibleChapters.length - 1),
   );
+  // 头部元信息匹配当前章节：时间与版本号取该章在服务器目录中的独立保存时间
+  // 与版本号（无目录行时回退到文档级真实数据）。章节标题由正文自带的标题承担，
+  // 头部不重复展示。
+  const activeChapterStatus = chapterDirectory[activeIndex];
+  const headerSavedAt = activeChapterStatus?.savedAt ?? document.savedAt;
+  const headerRevision = activeChapterStatus?.revision ?? document.revision;
   const chapterDoc = useMemo<JSONContent>(
     () => ({ type: "doc", content: visibleChapters[activeIndex]?.blocks ?? [] }),
     [visibleChapters, activeIndex],
@@ -204,10 +210,7 @@ export default function ReadPage() {
       <div className="mx-auto grid max-w-[1320px] grid-cols-[200px_minmax(0,1fr)_280px] items-start gap-8 [&>nav]:order-1 [&>article]:order-2 [&>aside]:order-3 max-[1180px]:grid-cols-[minmax(0,1fr)_280px] max-[1180px]:[&>nav]:hidden max-[840px]:block max-[840px]:[&>nav]:hidden max-[840px]:[&>aside]:hidden">
         <article className="min-w-0 border border-border bg-white p-[clamp(28px,6vw,72px)] shadow-[0_8px_32px_rgb(25_36_45/0.05)] max-[840px]:p-[30px_22px] max-[430px]:border-x-0 max-[430px]:p-[28px_18px] max-[430px]:[&_.rt-viewer]:text-base max-[430px]:[&_.rt-viewer]:leading-[1.85] max-[430px]:[&_.rt-viewer_h1]:text-[25px]">
           <header className="mb-8 border-b border-border pb-4 font-sans">
-            {/* 移动端侧栏隐藏时也能看到文章标题与正文元信息。 */}
-            <h1 className="mb-3 text-[22px] leading-8 font-bold text-foreground">
-              {document.title}
-            </h1>
+            {/* 元信息匹配当前章节（时间/版本为目录真实数据）；章节标题由正文自带。 */}
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xs text-muted-foreground">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
                 <span className="flex items-center gap-1.5">
@@ -216,7 +219,7 @@ export default function ReadPage() {
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Clock3 size={13} />
-                  {formatTime(document.savedAt)}
+                  {formatTime(headerSavedAt)}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Eye size={13} />
@@ -225,7 +228,7 @@ export default function ReadPage() {
                 <Badge tone={document.storage === "local-cache" ? "amber" : "teal"}>
                   {document.storage === "local-cache"
                     ? "本地缓存副本"
-                    : `版本 ${document.revision}`}
+                    : `版本 ${headerRevision}`}
                 </Badge>
               </div>
               {identity.role === "reader" ? (
