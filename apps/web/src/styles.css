@@ -97,6 +97,16 @@
 .tiptap p {
   @apply mb-4;
 }
+.tiptap hr {
+  width: min(72%, 36rem);
+  height: 0;
+  margin: 1.6em auto;
+  border: 0;
+  border-top: 1px solid hsl(var(--border));
+}
+.tiptap hr.ProseMirror-selectednode {
+  border-top-color: hsl(var(--primary));
+}
 .tiptap h1 {
   @apply mb-[1.2em] text-[30px] font-[750] leading-[1.35];
 }

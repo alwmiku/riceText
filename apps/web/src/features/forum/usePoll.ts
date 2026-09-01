@@ -21,7 +21,8 @@ export function usePoll(pollId: string) {
     if (!pollQuery.data || voteMutation.isPending) return;
     setError("");
     try {
-      await voteMutation.mutateAsync(optionId);
+      const updated = await voteMutation.mutateAsync(optionId);
+      queryClient.setQueryData(forumQueryKeys.poll(pollId), updated);
       await queryClient.invalidateQueries({
         queryKey: forumQueryKeys.poll(pollId),
       });
@@ -45,6 +46,7 @@ export function usePoll(pollId: string) {
     isLoading: pollQuery.isLoading,
     error,
     detailItems,
+    isVoting: voteMutation.isPending,
     choose,
     loadDetail,
   };

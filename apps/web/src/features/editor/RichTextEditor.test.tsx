@@ -96,6 +96,7 @@ describe("RichTextEditor presets", () => {
       "无序列表",
       "有序列表",
       "引用",
+      "分割线",
       "左对齐",
       "居中",
       "右对齐",
@@ -116,6 +117,14 @@ describe("RichTextEditor presets", () => {
     fireEvent.click(screen.getByRole("button", { name: "知道了" }));
     await waitFor(() =>
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "分割线" }));
+    await waitFor(() =>
+      expect(
+        onChange.mock.calls.some(([document]) =>
+          JSON.stringify(document).includes('"type":"horizontalRule"'),
+        ),
+      ).toBe(true),
     );
     fireEvent.change(screen.getByLabelText("字号"), {
       target: { value: "20px" },
@@ -428,11 +437,12 @@ describe("RichTextEditor presets", () => {
 
   it("移动模式使用大尺寸底部工具栏并通过菜单展开工具", async () => {
     const onSubmit = vi.fn();
+    const onChange = vi.fn();
     render(
       <RichTextEditor
         content={defaultDocument.content}
         mode="mobile"
-        onChange={vi.fn()}
+        onChange={onChange}
         onSubmit={onSubmit}
       />,
     );
@@ -449,6 +459,19 @@ describe("RichTextEditor presets", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "发布" }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "插入内容" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    const insertMenu = await screen.findByRole("menu");
+    fireEvent.click(within(insertMenu).getByRole("menuitem", { name: "分割线" }));
+    await waitFor(() =>
+      expect(
+        onChange.mock.calls.some(([document]) =>
+          JSON.stringify(document).includes('"type":"horizontalRule"'),
+        ),
+      ).toBe(true),
+    );
     fireEvent.pointerDown(screen.getByRole("button", { name: "更多工具" }), {
       button: 0,
       ctrlKey: false,

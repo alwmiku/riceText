@@ -455,15 +455,19 @@ describe("ForumPanels", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "投票" }));
-    fireEvent.click(await screen.findByRole("button", { name: /钟楼.*28 票/ }));
+    const towerOption = await screen.findByRole("button", { name: /钟楼.*28 票/ });
+    expect(towerOption).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(towerOption);
     await waitFor(() =>
       expect(mocks.votePollMock).toHaveBeenCalledWith("poll-route", [
         "poll-option-tower",
       ]),
     );
-    expect(
-      await screen.findByRole("button", { name: /钟楼.*29 票/ }),
-    ).toBeInTheDocument();
+    const selectedOption = await screen.findByRole("button", {
+      name: /钟楼.*29 票.*已选/,
+    });
+    expect(selectedOption).toHaveAttribute("aria-pressed", "true");
+    expect(selectedOption).toHaveAttribute("data-state", "selected");
     fireEvent.click(screen.getByRole("button", { name: "查看实名投票明细" }));
     expect(await screen.findByText("晚风翻页 → 钟楼")).toBeInTheDocument();
   });

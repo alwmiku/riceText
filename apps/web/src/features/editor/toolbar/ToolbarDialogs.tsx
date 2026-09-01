@@ -208,6 +208,9 @@ export function ToolbarDialogs({
         case "excerpt":
           setExcerptOpen(true);
           break;
+        case "horizontalRule":
+          editor.chain().focus().setHorizontalRule().run();
+          break;
         case "link": {
           // 链接必须套在文字上：没有选区且光标不在已有链接上时，
           // 提示用户先选中文字（移动端与桌面共用这条通道）。

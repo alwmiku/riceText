@@ -6,6 +6,7 @@ import {
   ImagePlus,
   Link2,
   MessageCirclePlus,
+  SeparatorHorizontal,
   TextQuote,
   UnlockKeyhole,
   Vote,
@@ -25,6 +26,7 @@ export type InsertTool =
   | "comment"
   | "gate"
   | "ungate"
+  | "horizontalRule"
   | "link";
 
 export interface InsertToolDefinition {
@@ -103,6 +105,12 @@ export const INSERT_CONTENT_TOOLS: readonly InsertToolDefinition[] = [
     label: "小说摘录",
     icon: TextQuote,
     isActive: (editor) => isContainerNodeActive(editor, "novelExcerpt"),
+  },
+  {
+    tool: "horizontalRule",
+    label: "分割线",
+    icon: SeparatorHorizontal,
+    isDisabled: (editor) => !editor.can().setHorizontalRule(),
   },
 ];
 

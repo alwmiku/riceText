@@ -19,6 +19,7 @@ import {
   MessageCirclePlus,
   Quote,
   Redo2,
+  SeparatorHorizontal,
   TextQuote,
   Underline as UnderlineIcon,
   Undo2,
@@ -270,6 +271,15 @@ export function BusinessNodeGroup({
           <Link2 size={16} />
         </ToolbarButton>
       )}
+      <ToolbarButton
+        label="分割线"
+        disabled={
+          INSERT_TOOL_DEFINITIONS.horizontalRule.isDisabled?.(editor) ?? false
+        }
+        onClick={() => requestInsert?.("horizontalRule")}
+      >
+        <SeparatorHorizontal size={16} />
+      </ToolbarButton>
       <ToolbarButton
         label="图片"
         active={INSERT_TOOL_DEFINITIONS.image.isActive?.(editor) ?? false}

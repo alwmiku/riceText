@@ -1,12 +1,13 @@
-import { Users } from "lucide-react";
+import { Check, Users } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui";
+import { cn } from "../../lib/utils";
 import { usePoll } from "./usePoll";
 
 /** 投票资格、选择和实名明细，数据来自服务端。 */
 export function PollPanel({ pollId }: { pollId: string }) {
   const [detail, setDetail] = useState(false);
-  const { poll, isLoading, error, detailItems, choose, loadDetail } =
+  const { poll, isLoading, error, detailItems, isVoting, choose, loadDetail } =
     usePoll(pollId);
 
   const toggleDetail = async () => {
@@ -38,16 +39,42 @@ export function PollPanel({ pollId }: { pollId: string }) {
             <button
               type="button"
               key={option.id}
-              className="relative block h-10 w-full overflow-hidden rounded-md border border-border bg-white text-left"
+              aria-pressed={selected}
+              data-state={selected ? "selected" : "idle"}
+              disabled={isVoting}
+              className={cn(
+                "relative block h-11 w-full overflow-hidden rounded-md border bg-background text-left transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "disabled:cursor-wait disabled:opacity-70",
+                selected
+                  ? "border-primary bg-secondary ring-1 ring-primary/30"
+                  : "border-border hover:border-primary/50 hover:bg-muted/40",
+              )}
               onClick={() => void choose(option.id)}
             >
               <span
-                className="absolute inset-y-0 left-0 bg-[#e5f4f1]"
+                className={cn(
+                  "absolute inset-y-0 left-0 transition-colors",
+                  selected ? "bg-primary/15" : "bg-secondary",
+                )}
                 style={{ width }}
               />
-              <span className="relative flex items-center justify-between px-3 text-xs">
-                <span className="font-semibold">{option.label}</span>
-                <span>
+              <span className="relative flex h-full items-center justify-between gap-3 px-3 text-xs">
+                <span className="flex min-w-0 items-center gap-2 font-semibold">
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "inline-flex size-4 shrink-0 items-center justify-center rounded-full border",
+                      selected
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-muted-foreground/40 bg-background",
+                    )}
+                  >
+                    {selected ? <Check size={11} strokeWidth={3} /> : null}
+                  </span>
+                  <span className="truncate">{option.label}</span>
+                </span>
+                <span className={cn("shrink-0", selected && "font-semibold text-primary")}>
                   {option.votes} 票{selected ? " · 已选" : ""}
                 </span>
               </span>
