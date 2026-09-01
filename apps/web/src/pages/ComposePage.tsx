@@ -23,9 +23,11 @@ import { EditorErrorBoundary } from "../features/editor/errors/EditorErrorBounda
 import { RichTextEditor } from "../features/editor/RichTextEditor";
 import { getCommentThread, listForumChapters } from "../lib/api";
 import {
+  appendChapter,
   chapterTextLines,
-  splitDocumentByHeadings,
-} from "../lib/chapters";
+  removeChapter,
+  splitDocumentByChapters as splitDocumentByHeadings,
+} from "@ricetext/document-core";
 import type { CommentReply, EditorMode, RichTextNode } from "../lib/types";
 import { cn } from "../lib/utils";
 
@@ -152,52 +154,26 @@ export default function ComposePage() {
   // 在文档末尾追加一个空章节并切换到它；保存时随整篇正文一起入库。
   const addChapter = () => {
     const current = compose.contentRef.current;
-    // 迁移历史文档：把既有二级标题全部升级为章节起始标记。否则一旦出现
-    // 第一个标记，切分规则会从「二级标题兜底」切到「仅标记」，旧章节会
-    // 全部塌缩成 lead；迁移后边界集合不变。
-    const migrated = (current.content ?? []).map((node) =>
-      node.type === "heading" &&
-      node.attrs?.level === 2 &&
-      node.attrs?.chapterStart !== true
-        ? { ...node, attrs: { ...node.attrs, chapterStart: true } }
-        : node,
+    const number = splitDocumentByHeadings(current).chapters.length + 1;
+    const result = appendChapter(
+      current,
+      `第${toChineseNumber(number)}章 新章节`,
     );
-    const number =
-      splitDocumentByHeadings({ type: "doc", content: migrated }).chapters
-        .length + 1;
-    const next: RichTextNode = {
-      type: "doc",
-      content: [
-        ...migrated,
-        {
-          type: "heading",
-          attrs: { level: 2, chapterStart: true },
-          content: [
-            { type: "text", text: `第${toChineseNumber(number)}章 新章节` },
-          ],
-        },
-        { type: "paragraph", content: [] },
-      ],
-    };
-    compose.replaceContent(next);
-    setChapterIndex(number - 1);
+    compose.replaceContent(result.document as RichTextNode);
+    setChapterIndex(result.index);
     setNotice(`已新增第 ${number} 章，保存后目录与版本号会同步更新`);
   };
 
   // 删除章节：只改本地正文（自动保存只写浏览器草稿），点击「保存」才同步服务器。
   const deleteChapter = (index: number) => {
-    const current = compose.contentRef.current;
-    const { chapters } = splitDocumentByHeadings(current);
-    const chapter = chapters[index];
-    if (!chapter) return;
-    const content = [...(current.content ?? [])];
-    content.splice(chapter.start, chapter.end - chapter.start);
-    const next: RichTextNode = { type: "doc", content };
+    const result = removeChapter(compose.contentRef.current, index);
+    if (!result.removed) return;
+    const next = result.document as RichTextNode;
     compose.replaceContent(next);
     const remaining = splitDocumentByHeadings(next).chapters.length;
     setChapterIndex(Math.min(index, Math.max(0, remaining - 1)));
     setNotice(
-      `已删除章节「${chapter.title}」（仅本地草稿，点保存后生效）`,
+      `已删除章节「${result.removed.title}」（仅本地草稿，点保存后生效）`,
     );
   };
 
