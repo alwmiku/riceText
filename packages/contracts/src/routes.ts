@@ -25,6 +25,7 @@ import {
   ResolveReplyGateRequestSchema,
   ResolveReplyGateResponseSchema,
   RevisionPageSchema,
+  RevisionQuerySchema,
   ReviewSuggestionBatchRequestSchema,
   ReviewSuggestionRequestSchema,
   RollbackDocumentRequestSchema,
@@ -78,7 +79,11 @@ export interface ContractRoute {
 }
 
 const documentParams = z.object({ documentId: EntityIdSchema.describe("文档稳定 ID，例如 demo-post") }).strict();
-const revisionQuery = CursorQuerySchema;
+const revisionParams = z.object({
+  documentId: EntityIdSchema.describe("文档稳定 ID，例如 demo-post"),
+  revision: z.string().regex(/^\d+$/).describe("不可变 revision 编号"),
+}).strict();
+const revisionQuery = RevisionQuerySchema;
 const assetParams = z.object({ assetId: EntityIdSchema.describe("上传后返回的图片资产 ID") }).strict();
 const diceParams = z.object({ rollId: EntityIdSchema.describe("首次投掷或重投生成的稳定 rollId") }).strict();
 const threadParams = z.object({ documentId: EntityIdSchema, anchorId: EntityIdSchema }).strict();
@@ -129,6 +134,12 @@ export const contractRoutes: readonly ContractRoute[] = [
     summary: "分页读取版本历史", description: "按 revision 倒序返回；cursor 使用上一页最后一项的 revision。",
     params: documentParams, query: revisionQuery,
     responses: { 200: { description: "不可变版本摘要页。", schema: RevisionPageSchema }, 404: { description: "文档不存在。", schema: ApiErrorSchema } },
+  },
+  {
+    operationId: "getRevision", method: "GET", path: "/api/documents/:documentId/revisions/:revision", tags: ["文档"],
+    summary: "读取指定历史版本", description: "读取不可变 revision 的完整 Tiptap JSON，用于只读比较。",
+    params: revisionParams,
+    responses: { 200: { description: "指定历史 revision 的完整快照。", schema: DocumentEnvelopeSchema }, 404: { description: "文档或版本不存在。", schema: ApiErrorSchema } },
   },
   {
     operationId: "rollbackDocument", method: "POST", path: "/api/documents/:documentId/rollback", tags: ["文档"],

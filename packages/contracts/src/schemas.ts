@@ -161,6 +161,12 @@ export const CursorQuerySchema = z
     limit: z.coerce.number().int().min(1).max(100).default(20),
   })
   .strict();
+
+/** 版本历史查询；chapterId 存在时只返回该章实际变化的版本。 */
+export const RevisionQuerySchema = CursorQuerySchema.extend({
+  chapterId: EntityIdSchema.optional(),
+}).strict();
+
 /** 通用游标分页信息。 */
 export const PageInfoSchema = z
   .object({ nextCursor: z.string().nullable() })

@@ -60,7 +60,9 @@ export interface RiceTextApiClient {
   /** 保存单个章节内容并递增该章节版本号。 */
   saveNovelChapter(novelId: string, chapterId: string, input: { title: string; order: number; content: DocumentEnvelope["content"]; hash: string; baseRevision: number }, signal?: AbortSignal): Promise<{ id: string; title: string; order: number; revision: number }>;
   /** 游标分页读取不可变版本历史。 */
-  listRevisions(documentId: string, cursor?: string, signal?: AbortSignal): Promise<RevisionPage>;
+  listRevisions(documentId: string, cursor?: string, chapterId?: string, signal?: AbortSignal): Promise<RevisionPage>;
+  /** 读取指定不可变 revision 的完整文档快照。 */
+  getRevision(documentId: string, revision: number, signal?: AbortSignal): Promise<DocumentEnvelope>;
   /** 复制指定历史快照并创建新的回滚 revision。 */
   rollbackDocument(documentId: string, body: { baseRevision: number; targetRevision: number; clientMutationId: string }, signal?: AbortSignal): Promise<DocumentEnvelope>;
   /** 使用 multipart 上传图片二进制。 */
@@ -144,7 +146,8 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     updateDocumentSteps: (id, body, signal) => request(`/api/documents/${id}/steps`, { method: "PATCH", body: json(body), signal }),
     syncNovelChapters: (novelId, chapters, signal) => request(`/api/forum/novels/${novelId}/chapters/sync`, { method: "POST", body: json({ chapters }), signal }),
     saveNovelChapter: (novelId, chapterId, input, signal) => request(`/api/forum/novels/${novelId}/chapters/${chapterId}`, { method: "PUT", body: json(input), signal }),
-    listRevisions: (id, cursor, signal) => request(`/api/documents/${id}/revisions${query({ cursor })}`, { signal }),
+    listRevisions: (id, cursor, chapterId, signal) => request(`/api/documents/${id}/revisions${query({ cursor, chapterId })}`, { signal }),
+    getRevision: (id, revision, signal) => request(`/api/documents/${id}/revisions/${revision}`, { signal }),
     rollbackDocument: (id, body, signal) => request(`/api/documents/${id}/rollback`, { method: "POST", body: json(body), signal }),
     uploadAsset: (file, signal) => { const form = new FormData(); form.set("file", file); return request("/api/assets", { method: "POST", body: form, signal }); },
     createDice: (expression, rerollOf, signal) => request("/api/dice", { method: "POST", body: json({ expression, ...(rerollOf ? { rerollOf } : {}) }), signal }),

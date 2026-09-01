@@ -36,7 +36,7 @@ export { extractHeadings } from './viewer/prepare.js'
  * 使用只读的 Tiptap/ProseMirror 编辑器渲染净化后的 Tiptap JSON。
  * 自定义节点使用 React NodeView，以便查看器交互持续生效。
  */
-export function RichTextViewer({ content, className = '', interactions = {}, controller: externalController, enableLightbox = true, labels: labelOverrides = {}, onTocChange }: RichTextViewerProps) {
+export function RichTextViewer({ content, className = '', additionalExtensions, interactions = {}, controller: externalController, enableLightbox = true, labels: labelOverrides = {}, onTocChange }: RichTextViewerProps) {
   const document = useMemo(
     () => addMissingParagraphAnchors(projectReplyGates(sanitizeDocument(content), interactions)),
     [content, interactions],
@@ -84,8 +84,8 @@ export function RichTextViewer({ content, className = '', interactions = {}, con
     viewerContextRef.notify()
   }, [viewerContext, viewerContextRef])
   const extensions = useMemo(
-    () => createViewerExtensions(viewerContextRef),
-    [viewerContextRef],
+    () => [...createViewerExtensions(viewerContextRef), ...(additionalExtensions ?? [])],
+    [viewerContextRef, additionalExtensions],
   )
   // 只随投影文档重建编辑器：interactions/labels/enableLightbox 都经由
   // viewerContextRef 进入节点视图，不参与编辑器实例的生命周期；

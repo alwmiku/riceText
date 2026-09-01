@@ -36,6 +36,7 @@
     "@ricetext/editor-core": "workspace:^",
     "@tanstack/react-query": "^5.101.4",
     "@tiptap/core": "^3.30.2",
+    "@tiptap/pm": "^3.30.2",
     "@tiptap/extension-color": "^3.30.2",
     "@tiptap/extension-font-family": "^3.30.2",
     "@tiptap/extension-link": "^3.30.2",

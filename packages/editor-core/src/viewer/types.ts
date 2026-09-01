@@ -1,4 +1,4 @@
-import type { JSONContent } from "@tiptap/core";
+import type { Extensions, JSONContent } from "@tiptap/core";
 import type { NodeViewProps } from "@tiptap/react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 
@@ -124,6 +124,8 @@ export interface RichTextViewerProps {
   content: JSONContent;
   /** 应用到查看器根元素的额外 class。 */
   className?: string;
+  /** 仅补充行为的扩展，例如只读节点装饰；不得改变持久化 schema。 */
+  additionalExtensions?: Extensions;
   /** 应用回调与外部填充（hydrated）的功能状态。 */
   interactions?: RichTextViewerInteractions;
   /** 可选的外部持有查看器控制器。 */
