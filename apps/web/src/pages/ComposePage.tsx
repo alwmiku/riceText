@@ -19,9 +19,11 @@ import { StandardComposeWorkspace } from "../features/compose/StandardComposeWor
 import { useChapterUpload } from "../features/compose/useChapterUpload";
 import { useComposeDocument } from "../features/compose/useComposeDocument";
 import { useLongTextWorkspace } from "../features/compose/useLongTextWorkspace";
+import { RevisionComparison } from "../features/comparison/RevisionComparison";
 import { EditorErrorBoundary } from "../features/editor/errors/EditorErrorBoundary";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
 import { getCommentThread, listForumChapters } from "../lib/api";
+import { getRevision } from "../lib/api/revisions";
 import {
   appendChapter,
   chapterTextLines,
@@ -87,6 +89,13 @@ export default function ComposePage() {
   }, [chapterIndex, ACTIVE_CHAPTER_STORAGE_KEY]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [comparingRevision, setComparingRevision] = useState<number | null>(null);
+  const [comparison, setComparison] = useState<{
+    revision: number;
+    chapterTitle: string;
+    historicalContent: RichTextNode;
+    currentContent: RichTextNode;
+  } | null>(null);
   const editorRef = useRef<Editor | null>(null);
 
   const { data: chapterDirectory = [] } = useQuery({
@@ -141,6 +150,30 @@ export default function ComposePage() {
     queryFn: () => getCommentThread(compose.document.id, threadId!),
     enabled: Boolean(threadId),
   });
+
+  const compareRevision = async (revision: number) => {
+    setComparingRevision(revision);
+    try {
+      const snapshot = await getRevision(compose.document.id, revision);
+      const targetChapters = splitDocumentByHeadings(snapshot.content).chapters;
+      setComparison({
+        revision,
+        chapterTitle: chapters[activeIndex]?.title ?? compose.document.title,
+        historicalContent: {
+          type: "doc",
+          content: targetChapters[activeIndex]?.blocks ?? [],
+        },
+        currentContent: {
+          type: "doc",
+          content: chapters[activeIndex]?.blocks ?? [],
+        },
+      });
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "版本比较加载失败");
+    } finally {
+      setComparingRevision(null);
+    }
+  };
 
   const rollback = async (revision: number) => {
     try {
@@ -220,6 +253,16 @@ export default function ComposePage() {
       onCommentAnchorOpen={setThreadId}
     />
   );
+
+  const comparisonView = comparison ? (
+    <RevisionComparison
+      historicalRevision={comparison.revision}
+      chapterTitle={comparison.chapterTitle}
+      historicalContent={comparison.historicalContent}
+      currentContent={comparison.currentContent}
+      onExit={() => setComparison(null)}
+    />
+  ) : undefined;
 
   const saveStatus = (
     <SaveStatus
@@ -381,12 +424,16 @@ export default function ComposePage() {
             />
           }
           editor={editor}
+          comparison={comparisonView}
           identity={identity}
           documentId={compose.document.id}
           revision={compose.autosave.revision}
           saveDisabled={compose.isPlaceholderData}
           activeCharCount={activeCharCount}
           activeRevision={activeRevision}
+          activeContent={editorContent}
+          comparingRevision={comparingRevision}
+          onCompareRevision={(revision) => void compareRevision(revision)}
           onAddChapter={addChapter}
           onDeleteChapter={deleteChapter}
           onSelectChapter={setChapterIndex}

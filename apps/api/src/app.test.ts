@@ -3,7 +3,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { diffDocuments } from "@ricetext/document-core";
+import {
+  diffDocuments,
+  replaceChapter,
+  splitDocumentByChapters,
+  type JSONContent,
+} from "@ricetext/document-core";
 import { createApp } from "./app.js";
 
 const validContent = (text = "新的正文") => ({
@@ -52,6 +57,83 @@ describe("RiceText API", () => {
     expect(history.statusCode).toBe(200);
     expect(history.json().items.map((item: { revision: number }) => item.revision)).toEqual([3, 2]);
     expect(history.json().pageInfo.nextCursor).toBe("2");
+
+    const snapshot = await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post/revisions/2",
+    });
+    expect(snapshot.statusCode, snapshot.body).toBe(200);
+    expect(snapshot.json().revision).toBe(2);
+    expect(snapshot.json().content).toEqual(saved.json().content);
+    const missingSnapshot = await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post/revisions/999",
+    });
+    expect(missingSnapshot.statusCode).toBe(404);
+    expect(missingSnapshot.json().error.code).toBe("REVISION_NOT_FOUND");
+  });
+
+  it("版本历史只返回当前章节实际变化的 revision", async () => {
+    const initial = (await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post",
+    })).json();
+    const appendToChapter = (content: JSONContent, index: number, text: string) => {
+      const chapter = splitDocumentByChapters(content).chapters[index]!;
+      return replaceChapter(content, index, {
+        type: "doc",
+        content: [
+          ...chapter.blocks,
+          {
+            type: "paragraph",
+            content: [{ type: "text", text }],
+          },
+        ],
+      });
+    };
+    const revisionTwoContent = appendToChapter(initial.content, 0, "只修改楔子");
+    const revisionTwo = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "chapter-history-zero",
+        chapterId: "chapter-0",
+        content: revisionTwoContent,
+      },
+    });
+    expect(revisionTwo.statusCode, revisionTwo.body).toBe(201);
+    const revisionThreeContent = appendToChapter(
+      revisionTwo.json().content,
+      1,
+      "只修改第一章",
+    );
+    const revisionThree = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 2,
+        clientMutationId: "chapter-history-one",
+        chapterId: "chapter-1",
+        content: revisionThreeContent,
+      },
+    });
+    expect(revisionThree.statusCode, revisionThree.body).toBe(201);
+
+    const chapterZero = (await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post/revisions?chapterId=chapter-0",
+    })).json();
+    const chapterOne = (await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post/revisions?chapterId=chapter-1",
+    })).json();
+    expect(chapterZero.items.map((item: { revision: number }) => item.revision)).toEqual([2, 1]);
+    expect(chapterOne.items.map((item: { revision: number }) => item.revision)).toEqual([3, 1]);
   });
 
   it("保存时仅递增本次编辑章节的版本号", async () => {

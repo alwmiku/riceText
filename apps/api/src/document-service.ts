@@ -15,6 +15,7 @@ import {
   applyStepsToDocument,
   createDocumentSchema,
   describeStepsJson,
+  splitDocumentByChapters,
   validateDocument,
   type DocumentValidationIssue,
   type JSONContent,
@@ -127,6 +128,23 @@ export class DocumentService {
       .get(documentId) as unknown as DocumentRow | undefined;
     if (!document) throw new HttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
     return this.#envelope(document, document.current_revision);
+  }
+
+  /** 读取指定不可变历史修订。 */
+  revision(documentId: string, revision: number): DocumentEnvelope {
+    const document = this.#db
+      .prepare(
+        "SELECT id, title, schema_version, current_revision, updated_at FROM documents WHERE id = ?",
+      )
+      .get(documentId) as unknown as DocumentRow | undefined;
+    if (!document) throw new HttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
+    const exists = this.#db
+      .prepare(
+        "SELECT 1 AS found FROM document_revisions WHERE document_id = ? AND revision = ?",
+      )
+      .get(documentId, revision) as { found: number } | undefined;
+    if (!exists) throw new HttpError(404, "REVISION_NOT_FOUND", "目标版本不存在");
+    return this.#envelope(document, revision);
   }
 
   /** 保存文档；created=false 表示命中 clientMutationId 幂等结果。 */
@@ -325,6 +343,7 @@ export class DocumentService {
     documentId: string,
     cursor: string | undefined,
     limit: number,
+    chapterId?: string,
   ): RevisionPage {
     this.get(documentId);
     const before =
@@ -337,11 +356,54 @@ export class DocumentService {
       );
     const rows = this.#db
       .prepare(
-        "SELECT r.revision, r.schema_version, r.author_id, u.name AS author_name, r.operation, r.target_revision, r.steps_json, r.created_at FROM document_revisions r JOIN users u ON u.id = r.author_id WHERE r.document_id = ? AND r.revision < ? ORDER BY r.revision DESC LIMIT ?",
+        "SELECT r.revision, r.schema_version, r.content_json, r.author_id, u.name AS author_name, r.operation, r.target_revision, r.steps_json, r.created_at FROM document_revisions r JOIN users u ON u.id = r.author_id WHERE r.document_id = ? AND r.revision < ? ORDER BY r.revision DESC",
       )
-      .all(documentId, before, limit + 1) as unknown as RevisionRow[];
-    const hasMore = rows.length > limit;
-    const page = rows.slice(0, limit);
+      .all(documentId, before) as unknown as RevisionRow[];
+    let matchingRows = rows;
+    if (chapterId) {
+      const chapter = this.#db
+        .prepare(
+          "SELECT sort_order FROM chapters WHERE document_id = ? AND id = ?",
+        )
+        .get(documentId, chapterId) as { sort_order: number } | undefined;
+      if (!chapter)
+        throw new HttpError(404, "CHAPTER_NOT_FOUND", "章节不存在");
+      const snapshot = (contentJson: string | undefined) => {
+        if (!contentJson) return null;
+        const content = TiptapDocumentSchema.parse(JSON.parse(contentJson));
+        return JSON.stringify(
+          splitDocumentByChapters(content as JSONContent).chapters[
+            chapter.sort_order
+          ]?.blocks ?? null,
+        );
+      };
+      matchingRows = rows.filter((row) => {
+        const mutation = this.#db
+          .prepare(
+            "SELECT request_json FROM document_mutations WHERE document_id = ? AND revision = ? LIMIT 1",
+          )
+          .get(documentId, row.revision) as
+          | { request_json: string }
+          | undefined;
+        if (mutation) {
+          const request = JSON.parse(mutation.request_json) as {
+            chapterId?: unknown;
+          };
+          if (typeof request.chapterId === "string")
+            return request.chapterId === chapterId;
+        }
+        const previous = this.#db
+          .prepare(
+            "SELECT content_json FROM document_revisions WHERE document_id = ? AND revision = ?",
+          )
+          .get(documentId, row.revision - 1) as
+          | { content_json: string }
+          | undefined;
+        return snapshot(row.content_json) !== snapshot(previous?.content_json);
+      });
+    }
+    const hasMore = matchingRows.length > limit;
+    const page = matchingRows.slice(0, limit);
     return {
       items: page.map((row) => ({
         revision: row.revision,

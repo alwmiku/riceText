@@ -5,6 +5,7 @@ export const forumQueryKeys = {
   attachment: (attachmentId: string) =>
     ["forum", "attachment", attachmentId] as const,
   poll: (pollId: string) => ["forum", "poll", pollId] as const,
-  revisions: (documentId: string) => ["revisions", documentId] as const,
+  revisions: (documentId: string, chapterId?: string) =>
+    ["revisions", documentId, chapterId ?? "all"] as const,
   document: (documentId: string) => ["document", documentId] as const,
 };

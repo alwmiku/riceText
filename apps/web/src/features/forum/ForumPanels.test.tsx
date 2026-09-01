@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { identities, seedRevisions } from "../../lib/seed";
+import type { RichTextNode } from "../../lib/types";
 import { ChapterRail, ForumBusinessPanel, HistoryPanel } from "./ForumPanels";
 
 const mocks = vi.hoisted(() => ({
@@ -56,6 +57,21 @@ const chaptersFixture = [
   { id: "chapter-3", title: "第三章 · 没有寄件人的信" },
   { id: "chapter-4", title: "第四章 · 待发布" },
 ];
+
+const attachmentContent: RichTextNode = {
+  type: "doc",
+  content: [
+    {
+      type: "attachmentRef",
+      attrs: { attachmentId: "attachment-sample" },
+    },
+  ],
+};
+
+const pollContent: RichTextNode = {
+  type: "doc",
+  content: [{ type: "pollRef", attrs: { pollId: "poll-route" } }],
+};
 
 const pendingSuggestions = [
   {
@@ -402,6 +418,24 @@ describe("ForumPanels", () => {
     expect(await screen.findByText("已合并并建版")).toBeInTheDocument();
   });
 
+  it("当前章节没有引用节点时隐藏附件和投票入口", () => {
+    renderWithQuery(
+      <ForumBusinessPanel
+        identity={identities[0]!}
+        documentId="demo-post"
+        baseRevision={18}
+        chapterId="chapter-0"
+        chapterTitle="楔子 · 雨季之前"
+        activeContent={{ type: "doc", content: [{ type: "paragraph" }] }}
+        onRestore={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "附件" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "投票" })).not.toBeInTheDocument();
+    expect(mocks.getAttachmentMock).not.toHaveBeenCalled();
+    expect(mocks.getPollMock).not.toHaveBeenCalled();
+  });
+
   it("附件购买并展示 70% 作者分成", async () => {
     renderWithQuery(
       <ForumBusinessPanel
@@ -410,6 +444,7 @@ describe("ForumPanels", () => {
         baseRevision={18}
         chapterId="chapter-0"
         chapterTitle="楔子 · 雨季之前"
+        activeContent={attachmentContent}
         onRestore={vi.fn()}
       />,
     );
@@ -434,6 +469,7 @@ describe("ForumPanels", () => {
         baseRevision={18}
         chapterId="chapter-0"
         chapterTitle="楔子 · 雨季之前"
+        activeContent={attachmentContent}
         onRestore={vi.fn()}
       />,
     );
@@ -451,6 +487,7 @@ describe("ForumPanels", () => {
         baseRevision={18}
         chapterId="chapter-0"
         chapterTitle="楔子 · 雨季之前"
+        activeContent={pollContent}
         onRestore={vi.fn()}
       />,
     );
@@ -489,9 +526,13 @@ describe("ForumPanels", () => {
     expect(await screen.findByText("版本 18")).toBeInTheDocument();
     expect(mocks.getRevisionsMock).toHaveBeenCalledWith(
       "post_7",
+      "chapter-0",
       expect.any(AbortSignal),
     );
     fireEvent.click(screen.getAllByRole("button", { name: "回退" })[1]!);
+    expect(screen.getByRole("alertdialog", { name: "确认回退版本" })).toBeInTheDocument();
+    expect(onRestore).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "确认回退" }));
     expect(onRestore).toHaveBeenCalledWith(17);
   });
 
@@ -511,6 +552,7 @@ describe("ForumPanels", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "回退" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认回退" }));
     expect(onRestore).toHaveBeenCalledWith(18);
   });
 });

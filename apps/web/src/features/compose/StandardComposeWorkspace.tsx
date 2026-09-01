@@ -1,7 +1,7 @@
 import { Maximize2, PanelLeftOpen, Save, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "../../components/ui";
-import type { EditorMode, SeedIdentity } from "../../lib/types";
+import type { EditorMode, RichTextNode, SeedIdentity } from "../../lib/types";
 import { ChapterRail, ForumBusinessPanel } from "../forum/ForumPanels";
 
 /** 普通创作展示层：统一完整、极简和移动布局，并封装移动目录抽屉。 */
@@ -12,12 +12,16 @@ export function StandardComposeWorkspace({
   title,
   saveStatus,
   editor,
+  comparison,
   identity,
   documentId,
   revision,
   saveDisabled,
   activeCharCount,
   activeRevision,
+  activeContent,
+  comparingRevision,
+  onCompareRevision,
   onAddChapter,
   onDeleteChapter,
   onSelectChapter,
@@ -31,6 +35,8 @@ export function StandardComposeWorkspace({
   title: string;
   saveStatus: ReactNode;
   editor: ReactNode;
+  /** 桌面替换编辑区、窄屏占满正文区的只读比较视图。 */
+  comparison?: ReactNode;
   identity: SeedIdentity;
   documentId: string;
   revision: number;
@@ -39,6 +45,10 @@ export function StandardComposeWorkspace({
   activeCharCount?: number;
   /** 当前章节的真实修订号，展示在目录「章节总结」中。 */
   activeRevision?: number;
+  /** 当前章节正文，用于右侧业务面板匹配附件和投票引用。 */
+  activeContent: RichTextNode;
+  comparingRevision?: number | null;
+  onCompareRevision?: (revision: number) => void;
   /** 目录底部「新增章节」入口。 */
   onAddChapter?: () => void;
   /** 章节行内「删除章节」入口（带确认，仅改本地草稿）。 */
@@ -78,7 +88,7 @@ export function StandardComposeWorkspace({
               保存
             </Button>
           </div>
-          {editor}
+          {comparison ?? editor}
         </section>
         <ForumBusinessPanel
           identity={identity}
@@ -86,6 +96,9 @@ export function StandardComposeWorkspace({
           baseRevision={revision}
           chapterId={chapters[activeIndex]?.id ?? ""}
           chapterTitle={chapters[activeIndex]?.title ?? title}
+          activeContent={activeContent}
+          {...(comparingRevision !== undefined ? { comparingRevision } : {})}
+          {...(onCompareRevision ? { onCompare: onCompareRevision } : {})}
           onRestore={onRestore}
         />
       </div>
@@ -158,7 +171,7 @@ export function StandardComposeWorkspace({
           </Button>
         ) : null}
       </div>
-      {editor}
+      {comparison ?? editor}
     </section>
   );
 }

@@ -3,9 +3,7 @@ import { useState } from "react";
 import { getAttachment, purchaseAttachment } from "../../lib/api/attachments";
 import { forumQueryKeys } from "./query-keys";
 
-const attachmentId = "attachment-sample";
-
-export function useAttachment() {
+export function useAttachment(attachmentId: string) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const attachmentQuery = useQuery({

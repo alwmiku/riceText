@@ -1,11 +1,25 @@
 import { History, MessageSquareText, Paperclip, Vote } from "lucide-react";
-import { useState } from "react";
-import type { SeedIdentity } from "../../lib/types";
+import { useEffect, useMemo, useState } from "react";
+import type { RichTextNode, SeedIdentity } from "../../lib/types";
 import { AttachmentPanel } from "./AttachmentPanel";
 import { HistoryPanel } from "./HistoryPanel";
 import { PollPanel } from "./PollPanel";
 import { SuggestionPanel } from "./SuggestionPanel";
 import { useRevisions } from "./useRevisions";
+
+function collectBusinessReferences(content: RichTextNode | undefined) {
+  const attachments = new Set<string>();
+  const polls = new Set<string>();
+  const visit = (node: RichTextNode) => {
+    if (node.type === "attachmentRef" && typeof node.attrs?.attachmentId === "string")
+      attachments.add(node.attrs.attachmentId);
+    if (node.type === "pollRef" && typeof node.attrs?.pollId === "string")
+      polls.add(node.attrs.pollId);
+    node.content?.forEach(visit);
+  };
+  if (content) visit(content);
+  return { attachmentIds: [...attachments], pollIds: [...polls] };
+}
 
 /** 汇总校订、附件、投票和版本历史等论坛创作能力。 */
 export function ForumBusinessPanel({
@@ -14,6 +28,9 @@ export function ForumBusinessPanel({
   baseRevision,
   chapterId,
   chapterTitle,
+  activeContent,
+  comparingRevision,
+  onCompare,
   onRestore,
 }: {
   identity: SeedIdentity;
@@ -23,18 +40,37 @@ export function ForumBusinessPanel({
   /** 当前编辑章节；校订列表只显示该章节的数据。 */
   chapterId: string;
   chapterTitle: string;
+  /** 当前章节正文；附件与投票 Tab 只跟随其中的引用节点。 */
+  activeContent?: RichTextNode;
+  comparingRevision?: number | null;
+  onCompare?: (revision: number) => void;
   onRestore: (revision: number) => void;
 }) {
   const [tab, setTab] = useState<
     "suggestions" | "attachment" | "poll" | "history"
   >("suggestions");
-  const { revisions } = useRevisions(documentId);
+  const { revisions } = useRevisions(documentId, chapterId);
+  const { attachmentIds, pollIds } = useMemo(
+    () => collectBusinessReferences(activeContent),
+    [activeContent],
+  );
   const tabs = [
     { id: "suggestions" as const, label: "校订", icon: MessageSquareText },
-    { id: "attachment" as const, label: "附件", icon: Paperclip },
-    { id: "poll" as const, label: "投票", icon: Vote },
+    ...(attachmentIds.length > 0
+      ? [{ id: "attachment" as const, label: "附件", icon: Paperclip }]
+      : []),
+    ...(pollIds.length > 0
+      ? [{ id: "poll" as const, label: "投票", icon: Vote }]
+      : []),
     { id: "history" as const, label: "历史", icon: History },
   ];
+  useEffect(() => {
+    if (
+      (tab === "attachment" && attachmentIds.length === 0) ||
+      (tab === "poll" && pollIds.length === 0)
+    )
+      setTab("suggestions");
+  }, [attachmentIds.length, pollIds.length, tab]);
   return (
     <aside
       className="sticky top-[76px] max-h-[calc(100vh-92px)] overflow-auto rounded-lg border border-border bg-white shadow-panel"
@@ -46,7 +82,7 @@ export function ForumBusinessPanel({
           实时数据
         </span>
       </div>
-      <div className="grid grid-cols-4 border-b border-border">
+      <div className="grid grid-flow-col auto-cols-fr border-b border-border">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             type="button"
@@ -69,10 +105,23 @@ export function ForumBusinessPanel({
             chapterTitle={chapterTitle}
           />
         )}
-        {tab === "attachment" && <AttachmentPanel identity={identity} />}
-        {tab === "poll" && <PollPanel pollId="poll-route" />}
+        {tab === "attachment" && (
+          <AttachmentPanel identity={identity} attachmentIds={attachmentIds} />
+        )}
+        {tab === "poll" && (
+          <div className="flex flex-col gap-3">
+            {pollIds.map((pollId) => (
+              <PollPanel key={pollId} pollId={pollId} />
+            ))}
+          </div>
+        )}
         {tab === "history" && (
-          <HistoryPanel revisions={revisions} onRestore={onRestore} />
+          <HistoryPanel
+            revisions={revisions}
+            {...(comparingRevision !== undefined ? { comparingRevision } : {})}
+            {...(onCompare ? { onCompare } : {})}
+            onRestore={onRestore}
+          />
         )}
       </div>
     </aside>

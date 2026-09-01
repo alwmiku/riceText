@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
-  CursorQuerySchema,
+  RevisionQuerySchema,
   RollbackDocumentRequestSchema,
   UpdateDocumentRequestSchema,
   UpdateDocumentStepsRequestSchema,
@@ -43,13 +43,24 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
     "/api/documents/:documentId/revisions",
     { schema: getFastifySchema("listRevisions") },
     async (request) => {
-      const input = CursorQuerySchema.parse(query(request));
+      const input = RevisionQuerySchema.parse(query(request));
       return dependencies.documents.revisions(
         params(request).documentId!,
         input.cursor,
         input.limit,
+        input.chapterId,
       );
     },
+  );
+
+  app.get(
+    "/api/documents/:documentId/revisions/:revision",
+    { schema: getFastifySchema("getRevision") },
+    async (request) =>
+      dependencies.documents.revision(
+        params(request).documentId!,
+        Number(params(request).revision),
+      ),
   );
 
   app.post(

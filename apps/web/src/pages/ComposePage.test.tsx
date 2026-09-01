@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
   restoreRevision: vi.fn(),
+  getRevision: vi.fn(),
 }));
 
 vi.mock('../features/editor/hooks/useAutosave', () => ({ useAutosave: mocks.autosave }));
@@ -20,6 +21,9 @@ vi.mock('../lib/api', () => ({
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
   restoreRevision: mocks.restoreRevision,
+}));
+vi.mock('../lib/api/revisions', () => ({
+  getRevision: mocks.getRevision,
 }));
 vi.mock('../features/editor/RichTextEditor', () => ({
   RichTextEditor: (props: {
@@ -46,7 +50,7 @@ vi.mock('../features/forum/ForumPanels', () => ({
       <button type="button" onClick={() => props.onDelete?.(0)}>模拟删除章节</button>
     </aside>
   ),
-  ForumBusinessPanel: (props: { onRestore: (revision: number) => void }) => <aside><span>模拟创作工具</span><button type="button" onClick={() => props.onRestore(17)}>模拟回退</button></aside>,
+  ForumBusinessPanel: (props: { onRestore: (revision: number) => void; onCompare?: (revision: number) => void }) => <aside><span>模拟创作工具</span><button type="button" onClick={() => props.onCompare?.(17)}>模拟比较</button><button type="button" onClick={() => props.onRestore(17)}>模拟回退</button></aside>,
 }));
 vi.mock('../features/comments/CommentThread', () => ({
   CommentThread: (props: { initial: readonly unknown[] }) => <div>模拟回复树 {props.initial.length}</div>,
@@ -96,6 +100,18 @@ describe('ComposePage', () => {
     mocks.getDocument.mockReset().mockResolvedValue(defaultDocument);
     mocks.getCommentThread.mockReset().mockResolvedValue([]);
     mocks.restoreRevision.mockReset().mockResolvedValue({ ...defaultDocument, revision: 19, savedAt: '2026-08-20T12:00:00.000Z' });
+    mocks.getRevision.mockReset().mockResolvedValue({
+      ...twoChapterDoc,
+      revision: 17,
+      content: {
+        ...twoChapterDoc.content,
+        content: twoChapterDoc.content.content?.map((node, index) =>
+          index === 2
+            ? { type: 'paragraph', content: [{ type: 'text', text: '旧潮声沿着城墙。' }] }
+            : node,
+        ),
+      },
+    });
   });
 
   afterEach(() => {
@@ -233,6 +249,25 @@ describe('ComposePage', () => {
     expect(screen.getByText('回复已进入发布队列')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '关闭提示' }));
     expect(screen.queryByText('回复已进入发布队列')).not.toBeInTheDocument();
+  });
+
+  it('在编辑区内比较历史版本并可退出恢复编辑器', async () => {
+    mocks.getDocument.mockResolvedValueOnce(twoChapterDoc);
+    const { container } = renderPage();
+    await waitFor(() => expect(screen.getByTestId('editor')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '模拟比较' }));
+    await waitFor(() => expect(mocks.getRevision).toHaveBeenCalledWith('demo-post', 17));
+    expect(await screen.findByRole('region', { name: '版本格式比较视图' })).toBeInTheDocument();
+    expect(screen.getAllByText('历史版本内容').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('当前版本内容').length).toBeGreaterThan(0);
+    await waitFor(() => expect(container.querySelectorAll('.ProseMirror')).toHaveLength(1));
+    expect(screen.queryByTestId('editor')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '移动' }));
+    expect(screen.getByRole('region', { name: '版本格式比较视图' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '退出比较' }));
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-mode', 'mobile');
   });
 
   it('打开间贴回复树并执行指定版本回退', async () => {
