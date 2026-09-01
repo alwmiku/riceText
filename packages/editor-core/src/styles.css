@@ -938,6 +938,7 @@
 
 .rt-spoiler {
   color: transparent;
+  caret-color: #ffffff;
   background: #171a19;
   border-radius: 3px;
   box-decoration-break: clone;
