@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { appendChapter } from "@ricetext/document-core";
 import { useEffect, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultDocument } from "../../lib/seed";
@@ -17,13 +18,19 @@ import type {
 import { useComposeDocument } from "./useComposeDocument";
 
 const mocks = vi.hoisted(() => ({
+  createDocumentChapter: vi.fn(),
+  deleteDocumentChapter: vi.fn(),
   getDocument: vi.fn(),
+  listForumChapters: vi.fn(),
   restoreRevision: vi.fn(),
   autosave: vi.fn(),
 }));
 
 vi.mock("../../lib/api", () => ({
+  createDocumentChapter: mocks.createDocumentChapter,
+  deleteDocumentChapter: mocks.deleteDocumentChapter,
   getDocument: mocks.getDocument,
+  listForumChapters: mocks.listForumChapters,
   restoreRevision: mocks.restoreRevision,
 }));
 vi.mock("../editor/hooks/useAutosave", () => ({ useAutosave: mocks.autosave }));
@@ -36,10 +43,15 @@ const serverDocument: DocumentEnvelope = {
     content: [
       {
         type: "heading",
-        attrs: { level: 2 },
+        attrs: { level: 2, chapterStart: true },
         content: [{ type: "text", text: "第一章 潮汐表" }],
       },
       { type: "paragraph", content: [{ type: "text", text: "服务器正文" }] },
+      {
+        type: "heading",
+        attrs: { level: 2, chapterStart: true },
+        content: [{ type: "text", text: "第二章 陌生船票" }],
+      },
     ],
   },
 };
@@ -83,6 +95,19 @@ describe("useComposeDocument hydration", () => {
   beforeEach(() => {
     localStorage.clear();
     mocks.getDocument.mockReset().mockResolvedValue(serverDocument);
+    mocks.deleteDocumentChapter.mockReset().mockResolvedValue({
+      id: "chapter-0",
+      deleted: true,
+    });
+    mocks.createDocumentChapter.mockReset().mockResolvedValue({
+      id: "chapter-2",
+      title: "第三章 新章节",
+      order: 2,
+      documentId: "demo-post",
+      revision: 0,
+      savedAt: "2026-09-01T20:00:00.000Z",
+    });
+    mocks.listForumChapters.mockReset().mockResolvedValue([]);
     mocks.restoreRevision.mockReset();
     mocks.autosave.mockReset().mockReturnValue({
       state: "saved",
@@ -185,10 +210,11 @@ describe("useComposeDocument hydration", () => {
     const testWrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
-    renderHook(() => useComposeDocument("demo-post", "chapter-1"), {
+    const { result } = renderHook(() => useComposeDocument("demo-post", 1), {
       wrapper: testWrapper,
     });
-    await waitFor(() => expect(mocks.autosave).toHaveBeenCalled());
+    // 章节 id 需从水合后的正文派生；先等水合完成再取最后一次 autosave 快照。
+    await waitFor(() => expect(result.current.content).toBe(serverDocument.content));
     const options = mocks.autosave.mock.calls.at(-1)?.[0] as {
       onSaved: (next: DocumentEnvelope) => void;
     };
@@ -213,6 +239,76 @@ describe("useComposeDocument hydration", () => {
       revision: 7,
       savedAt: "2026-08-20T09:00:00.000Z",
     });
+  });
+
+  it("保存前注册新增章节并把服务器 id 同步回本地目录，再用它保存", async () => {
+    const appended = appendChapter(serverDocument.content, "第三章 新章节");
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const testWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    mocks.getDocument.mockResolvedValueOnce({
+      ...serverDocument,
+      content: appended.document as RichTextNode,
+    });
+    // 服务器目录已有前两章，仅第三章（order 2）缺失。
+    mocks.listForumChapters.mockResolvedValue([
+      {
+        id: "chapter-0",
+        title: "楔子",
+        order: 0,
+        documentId: "demo-post",
+        revision: 1,
+        savedAt: "2026-08-20T07:00:00.000Z",
+      },
+      {
+        id: "chapter-1",
+        title: "第一章 潮汐表",
+        order: 1,
+        documentId: "demo-post",
+        revision: 1,
+        savedAt: "2026-08-20T08:00:00.000Z",
+      },
+    ]);
+
+    const { result } = renderHook(() => useComposeDocument("demo-post", 2), {
+      wrapper: testWrapper,
+    });
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
+
+    await act(async () => {
+      await result.current.publishChapter(2);
+    });
+
+    // 1. 只有缺失的第三章调用新增章节接口。
+    expect(mocks.createDocumentChapter).toHaveBeenCalledTimes(1);
+    expect(mocks.createDocumentChapter).toHaveBeenCalledWith("demo-post", {
+      title: "第三章 新章节",
+      order: 2,
+    });
+    // 2. 服务器 id 已同步回本地目录缓存。
+    const chapters = client.getQueryData<ForumChapterItem[]>([
+      "forum",
+      "chapters",
+    ])!;
+    expect(chapters).toContainEqual(
+      expect.objectContaining({ id: "chapter-2", order: 2, revision: 0 }),
+    );
+    // 3. 文档保存使用服务器分配的章节 id。
+    const autosaveValue = mocks.autosave.mock.results.at(-1)?.value as {
+      flush: (
+        content: RichTextNode,
+        generation: number,
+        chapterId?: string,
+      ) => Promise<boolean>;
+    };
+    expect(autosaveValue.flush).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "chapter-2",
+    );
   });
 
   it("does not replace local edits when the query resolves later", async () => {

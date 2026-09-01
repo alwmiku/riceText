@@ -9,17 +9,23 @@ import ComposePage from './ComposePage';
 
 const mocks = vi.hoisted(() => ({
   autosave: vi.fn(),
+  createDocumentChapter: vi.fn(),
+  deleteDocumentChapter: vi.fn(),
   flush: vi.fn(),
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
+  listForumChapters: vi.fn(),
   restoreRevision: vi.fn(),
   getRevision: vi.fn(),
 }));
 
 vi.mock('../features/editor/hooks/useAutosave', () => ({ useAutosave: mocks.autosave }));
 vi.mock('../lib/api', () => ({
+  createDocumentChapter: mocks.createDocumentChapter,
+  deleteDocumentChapter: mocks.deleteDocumentChapter,
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
+  listForumChapters: mocks.listForumChapters,
   restoreRevision: mocks.restoreRevision,
 }));
 vi.mock('../lib/api/revisions', () => ({
@@ -96,6 +102,16 @@ describe('ComposePage', () => {
     });
     window.localStorage.clear();
     mocks.autosave.mockReset().mockReturnValue(autosaveValue());
+    mocks.createDocumentChapter.mockReset().mockImplementation(async (_documentId: string, input: { title: string; order: number }) => ({
+      id: 'chapter-' + String(input.order),
+      title: input.title,
+      order: input.order,
+      documentId: 'demo-post',
+      revision: 0,
+      savedAt: '2026-09-01T20:00:00.000Z',
+    }));
+    mocks.deleteDocumentChapter.mockReset().mockResolvedValue({ id: 'chapter-0', deleted: true });
+    mocks.listForumChapters.mockReset().mockResolvedValue([]);
     mocks.flush.mockReset().mockResolvedValue(true);
     mocks.getDocument.mockReset().mockResolvedValue(defaultDocument);
     mocks.getCommentThread.mockReset().mockResolvedValue([]);
@@ -207,6 +223,11 @@ describe('ComposePage', () => {
     expect(
       screen.getByText(/已删除章节「第一章 潮汐表」/),
     ).toBeInTheDocument();
+    // 目录行通过删除章节接口清理（幂等）。
+    expect(mocks.deleteDocumentChapter).toHaveBeenCalledWith(
+      'demo-post',
+      'chapter-0',
+    );
   });
 
   it('记住上次编辑的章节：刷新后仍停留在原章节（移动端）', async () => {
@@ -246,9 +267,10 @@ describe('ComposePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '模拟发布' }));
 
     await waitFor(() => expect(mocks.flush).toHaveBeenCalledTimes(1));
-    expect(screen.getByText('回复已进入发布队列')).toBeInTheDocument();
+    // 无内容差异（mock 保存未推进修订）：明确提示未创建新版本。
+    expect(screen.getByText(/内容没有变化，未创建新版本/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '关闭提示' }));
-    expect(screen.queryByText('回复已进入发布队列')).not.toBeInTheDocument();
+    expect(screen.queryByText(/内容没有变化，未创建新版本/)).not.toBeInTheDocument();
   });
 
   it('在编辑区内比较历史版本并可退出恢复编辑器', async () => {

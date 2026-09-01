@@ -5,6 +5,8 @@ export {
   saveDocumentSteps,
 } from "./api/documents";
 export {
+  createDocumentChapter,
+  deleteDocumentChapter,
   listForumChapters,
   syncLongTextChapters,
   uploadLongTextChapter,

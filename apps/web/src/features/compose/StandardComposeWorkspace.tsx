@@ -15,6 +15,7 @@ export function StandardComposeWorkspace({
   comparison,
   identity,
   documentId,
+  chapterId,
   revision,
   saveDisabled,
   activeCharCount,
@@ -39,6 +40,8 @@ export function StandardComposeWorkspace({
   comparison?: ReactNode;
   identity: SeedIdentity;
   documentId: string;
+  /** 当前章节的服务器目录 id；新建章节未注册时为空。 */
+  chapterId?: string | undefined;
   revision: number;
   saveDisabled: boolean;
   /** 当前章节的真实字数，展示在目录「章节总结」中。 */
@@ -94,7 +97,7 @@ export function StandardComposeWorkspace({
           identity={identity}
           documentId={documentId}
           baseRevision={revision}
-          chapterId={chapters[activeIndex]?.id ?? ""}
+          chapterId={chapterId}
           chapterTitle={chapters[activeIndex]?.title ?? title}
           activeContent={activeContent}
           {...(comparingRevision !== undefined ? { comparingRevision } : {})}

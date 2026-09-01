@@ -26,6 +26,28 @@ export async function syncLongTextChapters(
   return api().syncNovelChapters(novelId, [...chapters]);
 }
 
+/**
+ * 注册正文中已出现但目录缺失的新章节：服务端分配并返回章节 id，
+ * 调用方应把它同步回本地章节目录（保存与历史都使用该服务器 id）。
+ */
+export async function createDocumentChapter(
+  documentId: string,
+  input: { title: string; order: number },
+): Promise<ForumChapterItem> {
+  return api().createDocumentChapter(documentId, input);
+}
+
+/**
+ * 删除章节目录行（幂等）：编辑器「删除章节」把章节移出正文后调用，
+ * 历史修订与章节版本号不受影响。
+ */
+export async function deleteDocumentChapter(
+  documentId: string,
+  chapterId: string,
+): Promise<{ id: string; deleted: boolean }> {
+  return api().deleteDocumentChapter(documentId, chapterId);
+}
+
 export async function uploadLongTextChapter(
   novelId: string,
   chapterId: string,

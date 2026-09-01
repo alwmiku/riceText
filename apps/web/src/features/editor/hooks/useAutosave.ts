@@ -22,8 +22,16 @@ export interface AutosaveResult {
   savedAt: string;
   /** 冲突或普通保存错误的用户可读信息。 */
   conflictMessage: string;
-  /** 仅由显式保存按钮调用：上传服务器最小 transaction steps。 */
-  flush: (content?: RichTextNode, generation?: number) => Promise<boolean>;
+  /**
+   * 仅由显式保存按钮调用：上传服务器最小 transaction steps。
+   * chapterIdOverride 允许宿主在保存前完成新章节注册后，把服务器分配的章节 id
+   * 传入本次保存（历史与独立版本号按该 id 归集）；缺省沿用自动保存的章节 id。
+   */
+  flush: (
+    content?: RichTextNode,
+    generation?: number,
+    chapterIdOverride?: string,
+  ) => Promise<boolean>;
   /** 用户确认采用服务器 revision 后解除冲突阻塞。 */
   acceptLatest: (latestRevision: number) => void;
 }
@@ -151,6 +159,7 @@ export function useAutosave({
     async (override?: {
       content: RichTextNode;
       generation: number;
+      chapterId?: string;
     }): Promise<boolean> => {
       const snapshot = override ?? latestRef.current;
       if (!enabled) return true;
@@ -171,14 +180,14 @@ export function useAutosave({
             setState("saved");
             return;
           }
+          // 显式保存的章节 id 优先（新章节注册后服务器分配），否则用当前编辑章节。
+          const chapterId = override?.chapterId ?? chapterIdRef.current;
           const result = await saveDocumentSteps(document.id, {
             schemaVersion: document.schemaVersion,
             baseRevision: revisionRef.current,
             clientMutationId: createId("save"),
             steps,
-            ...(chapterIdRef.current
-              ? { chapterId: chapterIdRef.current }
-              : {}),
+            ...(chapterId ? { chapterId } : {}),
           });
           // API 离线降级只代表本机已有副本，不能推进服务器 revision 或触发 onSaved。
           if (result.storage !== "server") {
@@ -248,10 +257,16 @@ export function useAutosave({
     revision,
     savedAt,
     conflictMessage,
-    flush: (contentOverride, generationOverride) =>
+    flush: (contentOverride, generationOverride, chapterIdOverride) =>
       publish(
         contentOverride && generationOverride !== undefined
-          ? { content: contentOverride, generation: generationOverride }
+          ? {
+              content: contentOverride,
+              generation: generationOverride,
+              ...(chapterIdOverride !== undefined
+                ? { chapterId: chapterIdOverride }
+                : {}),
+            }
           : undefined,
       ),
     acceptLatest(latestRevision) {

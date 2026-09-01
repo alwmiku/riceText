@@ -31,6 +31,11 @@ export function HistoryPanel({
   return (
     <>
       <div className="flex flex-col gap-2">
+        {revisions.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-[11px] text-muted-foreground">
+            暂无历史记录，保存当前章节后会自动生成
+          </p>
+        ) : null}
         {revisions.map((item) => (
           <article key={item.revision} className="rounded-md border border-border p-2.5">
             <div className="flex items-center justify-between">

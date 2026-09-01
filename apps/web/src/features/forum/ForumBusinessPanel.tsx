@@ -37,8 +37,8 @@ export function ForumBusinessPanel({
   documentId: string;
   /** 当前文档 revision，作为审核建议合并的基线。 */
   baseRevision: number;
-  /** 当前编辑章节；校订列表只显示该章节的数据。 */
-  chapterId: string;
+  /** 当前编辑章节的服务器目录 id；新建章节未注册时为空（历史面板显示暂无）。 */
+  chapterId?: string | undefined;
   chapterTitle: string;
   /** 当前章节正文；附件与投票 Tab 只跟随其中的引用节点。 */
   activeContent?: RichTextNode;
@@ -101,7 +101,7 @@ export function ForumBusinessPanel({
           <SuggestionPanel
             documentId={documentId}
             baseRevision={baseRevision}
-            chapterId={chapterId}
+            chapterId={chapterId ?? ""}
             chapterTitle={chapterTitle}
           />
         )}

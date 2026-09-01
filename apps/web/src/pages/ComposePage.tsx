@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   BookOpen,
@@ -22,7 +22,11 @@ import { useLongTextWorkspace } from "../features/compose/useLongTextWorkspace";
 import { RevisionComparison } from "../features/comparison/RevisionComparison";
 import { EditorErrorBoundary } from "../features/editor/errors/EditorErrorBoundary";
 import { RichTextEditor } from "../features/editor/RichTextEditor";
-import { getCommentThread, listForumChapters } from "../lib/api";
+import {
+  deleteDocumentChapter,
+  getCommentThread,
+  listForumChapters,
+} from "../lib/api";
 import { getRevision } from "../lib/api/revisions";
 import {
   appendChapter,
@@ -30,7 +34,12 @@ import {
   removeChapter,
   splitDocumentByChapters as splitDocumentByHeadings,
 } from "@ricetext/document-core";
-import type { CommentReply, EditorMode, RichTextNode } from "../lib/types";
+import type {
+  CommentReply,
+  DocumentEnvelope,
+  EditorMode,
+  RichTextNode,
+} from "../lib/types";
 import { cn } from "../lib/utils";
 
 const CHINESE_NUMERALS = [
@@ -89,6 +98,7 @@ export default function ComposePage() {
   }, [chapterIndex, ACTIVE_CHAPTER_STORAGE_KEY]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const queryClient = useQueryClient();
   const [comparingRevision, setComparingRevision] = useState<number | null>(null);
   const [comparison, setComparison] = useState<{
     revision: number;
@@ -103,10 +113,7 @@ export default function ComposePage() {
     queryFn: () => listForumChapters(),
   });
   // 三个控制器通过完整文档快照衔接；页面只负责跨领域编排和提示展示。
-  const compose = useComposeDocument(
-    "demo-post",
-    chapterDirectory[chapterIndex]?.id,
-  );
+  const compose = useComposeDocument("demo-post", chapterIndex);
   const longText = useLongTextWorkspace({
     content: compose.content,
     contentRef: compose.contentRef,
@@ -201,8 +208,9 @@ export default function ComposePage() {
     setNotice(`已新增第 ${number} 章，保存后目录与版本号会同步更新`);
   };
 
-  // 删除章节：只改本地正文（自动保存只写浏览器草稿），点击「保存」才同步服务器。
-  const deleteChapter = (index: number) => {
+  // 删除章节：正文先移除（自动保存只写浏览器草稿，点保存生效），
+  // 同时调用删除章节接口清理服务器目录行（幂等；离线时留给保存对账清理）。
+  const deleteChapter = async (index: number) => {
     const result = removeChapter(compose.contentRef.current, index);
     if (!result.removed) return;
     const next = result.document as RichTextNode;
@@ -212,6 +220,19 @@ export default function ComposePage() {
     setNotice(
       `已删除章节「${result.removed.title}」（仅本地草稿，点保存后生效）`,
     );
+    try {
+      const outcome = await deleteDocumentChapter(
+        compose.document.id,
+        result.removed.id,
+      );
+      if (outcome.deleted) {
+        void queryClient.invalidateQueries({
+          queryKey: ["forum", "chapters"],
+        });
+      }
+    } catch {
+      // 目录行清理失败（如离线）：保存时 prepareChapterForSave 会对账重试。
+    }
   };
 
   const publish = async (latestContent?: RichTextNode) => {
@@ -222,13 +243,34 @@ export default function ComposePage() {
     const snapshot =
       latestContent ??
       (editorRef.current?.getJSON() as RichTextNode | undefined);
-    const saved = await compose.publishChapter(activeIndex, snapshot);
-    if (!saved) return;
-    setNotice(
-      mode === "compact"
-        ? "回复已进入发布队列"
-        : "正文已保存，可切换到阅读视图检查",
-    );
+    // 用文档缓存修订号判断本次保存是否真的产生了新修订：无内容差异时服务器
+    // 不会建版（章节版本号与历史也在首次实际保存时才生成），不能提示“已保存”。
+    const latestBefore = queryClient.getQueryData<DocumentEnvelope>([
+      "document",
+      compose.document.id,
+    ])?.revision ?? compose.autosave.revision;
+    try {
+      const saved = await compose.publishChapter(activeIndex, snapshot);
+      if (!saved) return;
+      const latestAfter = queryClient.getQueryData<DocumentEnvelope>([
+        "document",
+        compose.document.id,
+      ])?.revision;
+      setNotice(
+        latestAfter === undefined || latestAfter === latestBefore
+          ? "内容没有变化，未创建新版本；该章的版本号与历史在首次实际保存时生成"
+          : mode === "compact"
+            ? "回复已进入发布队列"
+            : "正文已保存，可切换到阅读视图检查",
+      );
+    } catch (cause) {
+      // 新增章节注册失败时中止保存并提示，避免产生没有归属的修订。
+      setNotice(
+        cause instanceof Error
+          ? `新增章节注册失败：${cause.message}`
+          : "新增章节注册失败，请稍后重试",
+      );
+    }
   };
 
   const editor = (
@@ -431,6 +473,7 @@ export default function ComposePage() {
           revision={compose.autosave.revision}
           saveDisabled={compose.isPlaceholderData}
           activeCharCount={activeCharCount}
+          chapterId={chapterDirectory[activeIndex]?.id}
           activeRevision={activeRevision}
           activeContent={editorContent}
           comparingRevision={comparingRevision}
