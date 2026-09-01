@@ -231,7 +231,13 @@ export function useAutosave({
     setState("dirty");
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     const snapshot = { content, generation };
-    timerRef.current = window.setTimeout(() => persistLocal(snapshot), 1200);
+    timerRef.current = window.setTimeout(() => {
+      // 该代次已成功提交服务器（例如点「保存」时 merge 产生的新代次在
+      // 本地定时器触发前就完成了上传）：不要再写本地草稿，也不要把
+      // 「已保存到服务器」状态改写成「已自动保存到本地」。
+      if (snapshot.generation <= serverGenerationRef.current) return;
+      persistLocal(snapshot);
+    }, 1200);
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };

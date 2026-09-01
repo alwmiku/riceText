@@ -133,6 +133,47 @@ describe("useAutosave", () => {
     expect(saveDocumentStepsMock).not.toHaveBeenCalled();
   });
 
+  it("已提交服务器的代次不会被迟到的本地防抖改写状态", async () => {
+    // 模拟 publishChapter 的时序：点「保存」时 merge 产生新代次并立即发布，
+    // 发布请求在途时编辑器重渲染又调度了同代次的本地防抖定时器；
+    // 服务器确认成功后该定时器不得把「已保存到服务器」改写成「已自动保存到本地」。
+    const deferred: { resolve: (value: unknown) => void } = {
+      resolve: () => undefined,
+    };
+    saveDocumentStepsMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        deferred.resolve = resolve;
+      }),
+    );
+    const { result, rerender } = renderHook(
+      ({ content, generation }) =>
+        useAutosave({ document: defaultDocument, content, generation }),
+      { initialProps: { content: initialContent, generation: 0 } },
+    );
+
+    rerender({ content: changedContent, generation: 1 });
+    let published!: Promise<boolean>;
+    act(() => {
+      published = result.current.flush(newestContent, 2);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // 请求在途时同代次的新渲染触发本地防抖定时器
+    rerender({ content: newestContent, generation: 2 });
+    await act(async () => {
+      deferred.resolve(savedDocument(19, newestContent));
+      await published;
+    });
+    expect(result.current.state).toBe("saved");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(result.current.state).toBe("saved");
+    expect(localStorage.getItem("ricetext:draft:demo-post")).toBeNull();
+  });
+
   it("多个显式保存请求串行执行，并让后一请求使用新的 revision", async () => {
     const first = deferred<DocumentEnvelope>();
     saveDocumentStepsMock

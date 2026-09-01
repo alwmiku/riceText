@@ -228,7 +228,9 @@ describe('document sanitization', () => {
       ],
     })
 
-    expect(result.document.content?.[0]?.attrs).toEqual({ level: 6, textAlign: 'justify', chapterStart: false })
+    // heading 属性键序与 schema 注册顺序（textAlign/chapterStart/level）一致，
+    // 保证重建文档与编辑器 PM 序列化结果 JSON 完全相等。
+    expect(result.document.content?.[0]?.attrs).toEqual({ textAlign: 'justify', chapterStart: false, level: 6 })
     expect(result.document.content?.[1]?.attrs).toEqual({ start: 1 })
     expect(result.document.content?.[2]?.attrs).toEqual({ language: null })
     expect(result.document.content?.[2]?.content?.[0]?.marks).toBeUndefined()

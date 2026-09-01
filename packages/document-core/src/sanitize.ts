@@ -228,12 +228,13 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
     case 'listItem': {
       const textAlign = raw.textAlign === 'center' || raw.textAlign === 'right' || raw.textAlign === 'justify' ? raw.textAlign : 'left'
       if (type !== 'heading') return { textAlign }
-      // 与 PM 归一化一致：章节起始标记始终显式保留（false 也写入），
-      // 避免清洗重建与 steps 应用结果在比较时因缺键/默认值不一致。
+      // 属性键序必须与 schema 注册顺序（TextAlign/chapterStart/level）一致：
+      // 重建文档会被编辑器往返（PM toJSON）与 JSON.stringify 比较（publishChapter
+      // 的 merge 差异判断、批量校订）使用，键序不一致会产生无意义的差异代次。
       return {
-        level: finiteInteger(raw.level, 2, 1, 6),
         textAlign,
         chapterStart: raw.chapterStart === true,
+        level: finiteInteger(raw.level, 2, 1, 6),
       }
     }
     case 'orderedList': return { start: finiteInteger(raw.start, 1, 1, 1_000_000) }
@@ -373,8 +374,11 @@ function sanitizeNode(value: unknown, path: string, depth: number, context: Sani
     if (parentType === 'codeBlock' && Array.isArray(value.marks) && value.marks.length > 0) {
       addIssue(context, { code: 'invalid-structure', path: `${path}.marks`, message: 'Marks are not valid inside a code block and were removed.' })
     }
-    const node: JSONContent = { type: 'text', text: value.text.slice(0, 1_000_000) }
+    // 键序与 PM TextNode.toJSON 一致（type → marks → text），保证重建文档
+    // 与编辑器序列化结果 JSON 完全相等（publishChapter 依赖 stringify 比较）。
+    const node: JSONContent = { type: 'text' }
     if (marks) node.marks = marks
+    node.text = value.text.slice(0, 1_000_000)
     return node
   }
 
