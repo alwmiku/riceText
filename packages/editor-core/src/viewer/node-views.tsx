@@ -6,18 +6,15 @@ import {
 } from "@tiptap/react";
 import { useEffect, useReducer } from "react";
 
-import {
-  AttachmentRef,
-  DiceRoll,
-  InlineCommentAnchor,
-  Mention,
-  NovelExcerpt,
-  PollRef,
-  ReplyGate,
-  RichImage,
-  Spoiler,
-  editorExtensions,
-} from "../extensions.js";
+import { AttachmentRef } from "../extensions/attachment-ref.js";
+import { DiceRoll } from "../extensions/dice-roll.js";
+import { InlineCommentAnchorSchema } from "../extensions/inline-comment-anchor-schema.js";
+import { Mention } from "../extensions/mention.js";
+import { NovelExcerpt } from "../extensions/novel-excerpt.js";
+import { PollRefSchema } from "../extensions/poll-ref-schema.js";
+import { ReplyGate } from "../extensions/reply-gate.js";
+import { RichImageSchema } from "../extensions/rich-image-schema.js";
+import { Spoiler } from "../extensions/spoiler.js";
 import { PollResultChart } from "../poll-result-chart.js";
 import type {
   AttachmentReferenceAttributes,
@@ -321,14 +318,15 @@ function NovelExcerptNodeView({ node, viewerRef }: ViewerNodeProps) {
   );
 }
 
-/** 构建一组附加了查看器 NodeView 的只读 Tiptap 扩展。 */
-export function createViewerExtensions(
+/** Adds read-only React NodeViews and spoiler rendering to a schema composition. */
+export function addViewerNodeViews(
+  extensions: Extensions,
   viewerRef: ViewerContextRef,
 ): Extensions {
-  return editorExtensions().map((extension) => {
+  return extensions.map((extension) => {
     switch (extension.name) {
       case "richImage":
-        return RichImage.extend({
+        return RichImageSchema.extend({
           addNodeView: () =>
             ReactNodeViewRenderer(
               ({ node, getPos, editor }) => (
@@ -350,7 +348,7 @@ export function createViewerExtensions(
             )),
         });
       case "inlineCommentAnchor":
-        return InlineCommentAnchor.extend({
+        return InlineCommentAnchorSchema.extend({
           addNodeView: () =>
             ReactNodeViewRenderer(({ node }) => (
               <InlineCommentAnchorNodeView node={node} viewerRef={viewerRef} />
@@ -371,7 +369,7 @@ export function createViewerExtensions(
             )),
         });
       case "pollRef":
-        return PollRef.extend({
+        return PollRefSchema.extend({
           addNodeView: () =>
             ReactNodeViewRenderer(({ node }) => (
               <PollNodeView node={node} viewerRef={viewerRef} />

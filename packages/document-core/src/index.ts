@@ -1,6 +1,7 @@
 /** 共享文档引擎：schema、净化、steps、diff 与 apply。 */
 export type { JSONContent } from "@tiptap/core";
 export { ApplyStepsError } from "./errors.js";
+export * from "./chapters/index.js";
 export { parseInteger, parseJsonArray } from "./helpers.js";
 export * from "./nodes.js";
 export {

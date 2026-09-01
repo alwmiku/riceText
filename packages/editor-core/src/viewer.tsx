@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { sanitizeDocument, sanitizeUrl } from './sanitize.js'
 import { useRichTextViewerController } from './viewer/controller.js'
 import { ImageLightbox } from './viewer/lightbox.js'
-import { createViewerExtensions } from './viewer/node-views.js'
+import { createViewerExtensions } from './extensions/viewer.js'
 import {
   addMissingParagraphAnchors,
   collectGallery,
@@ -28,6 +28,7 @@ export type {
   ViewerLightboxState,
   ViewerTocItem,
 } from './viewer/types.js'
+export { createViewerExtensions } from './extensions/viewer.js'
 export { useRichTextViewerController } from './viewer/controller.js'
 export { extractHeadings } from './viewer/prepare.js'
 

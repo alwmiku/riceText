@@ -5,6 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./schema": "./src/extensions/schema.ts",
+    "./editor": "./src/extensions/editor.ts",
+    "./viewer": "./src/extensions/viewer.ts",
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
