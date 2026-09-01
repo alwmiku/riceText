@@ -86,9 +86,14 @@ export function ChapterSuggestionEditor({
 
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        aria-label="整章修订"
+        onClick={() => setDialogOpen(true)}
+      >
         <FilePenLine size={14} />
-        整章修订
+        <span className="max-[430px]:hidden">整章修订</span>
       </Button>
       <Dialog
         open={open}

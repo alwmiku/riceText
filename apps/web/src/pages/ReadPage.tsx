@@ -203,49 +203,62 @@ export default function ReadPage() {
     <main className="mx-auto max-w-[1600px] px-5 pt-[18px] pb-[42px] max-[840px]:px-2.5 max-[840px]:pt-3 max-[840px]:pb-7 max-[430px]:px-0 max-[430px]:pt-2 max-[430px]:pb-5">
       <div className="mx-auto grid max-w-[1320px] grid-cols-[200px_minmax(0,1fr)_280px] items-start gap-8 [&>nav]:order-1 [&>article]:order-2 [&>aside]:order-3 max-[1180px]:grid-cols-[minmax(0,1fr)_280px] max-[1180px]:[&>nav]:hidden max-[840px]:block max-[840px]:[&>nav]:hidden max-[840px]:[&>aside]:hidden">
         <article className="min-w-0 border border-border bg-white p-[clamp(28px,6vw,72px)] shadow-[0_8px_32px_rgb(25_36_45/0.05)] max-[840px]:p-[30px_22px] max-[430px]:border-x-0 max-[430px]:p-[28px_18px] max-[430px]:[&_.rt-viewer]:text-base max-[430px]:[&_.rt-viewer]:leading-[1.85] max-[430px]:[&_.rt-viewer_h1]:text-[25px]">
-          <div className="mb-8 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-4 font-sans text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <UserRound size={13} />
-              林稻
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Clock3 size={13} />
-              {formatTime(document.savedAt)}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Eye size={13} />
-              1,284
-            </span>
-            <Badge tone={document.storage === "local-cache" ? "amber" : "teal"}>
-              {document.storage === "local-cache"
-                ? "本地缓存副本"
-                : `版本 ${document.revision}`}
-            </Badge>
-            {identity.role === "reader" ? (
-              <span className="ml-auto">
-                <ChapterSuggestionEditor
-                  documentId={document.id}
-                  baseRevision={document.revision}
-                  chapterId={chapterId}
-                  chapterTitle={visibleChapters[activeIndex]?.title ?? "正文"}
-                  chapterIndex={activeIndex}
-                  fullContent={document.content}
-                  chapterContent={chapterDoc}
-                />
-              </span>
-            ) : null}
-            {canProofread && (
-              <Button
-                size="sm"
-                variant={proofreading ? "outline" : "default"}
-                className="ml-auto h-7 px-2.5"
-                onClick={() => setProofreading((value) => !value)}
-              >
-                <GitCompareArrows size={13} />
-                {proofreading ? "退出校订" : "开始校订"}
-              </Button>
-            )}
-          </div>
+          <header className="mb-8 border-b border-border pb-4 font-sans">
+            {/* 移动端侧栏隐藏时也能看到文章标题与正文元信息。 */}
+            <h1 className="mb-3 text-[22px] leading-8 font-bold text-foreground">
+              {document.title}
+            </h1>
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xs text-muted-foreground">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+                <span className="flex items-center gap-1.5">
+                  <UserRound size={13} />
+                  林稻
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Clock3 size={13} />
+                  {formatTime(document.savedAt)}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Eye size={13} />
+                  1,284
+                </span>
+                <Badge tone={document.storage === "local-cache" ? "amber" : "teal"}>
+                  {document.storage === "local-cache"
+                    ? "本地缓存副本"
+                    : `版本 ${document.revision}`}
+                </Badge>
+              </div>
+              {identity.role === "reader" ? (
+                <div className="ml-auto shrink-0">
+                  <ChapterSuggestionEditor
+                    documentId={document.id}
+                    baseRevision={document.revision}
+                    chapterId={chapterId}
+                    chapterTitle={visibleChapters[activeIndex]?.title ?? "正文"}
+                    chapterIndex={activeIndex}
+                    fullContent={document.content}
+                    chapterContent={chapterDoc}
+                  />
+                </div>
+              ) : null}
+              {canProofread ? (
+                <div className="ml-auto shrink-0">
+                  <Button
+                    size="sm"
+                    variant={proofreading ? "outline" : "default"}
+                    className="h-7 px-2.5"
+                    aria-label={proofreading ? "退出校订" : "开始校订"}
+                    onClick={() => setProofreading((value) => !value)}
+                  >
+                    <GitCompareArrows size={13} />
+                    <span className="max-[430px]:hidden">
+                      {proofreading ? "退出校订" : "开始校订"}
+                    </span>
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          </header>
           {proofreading && canProofread ? (
             <ProofreadWorkspace
               documentId={document.id}
