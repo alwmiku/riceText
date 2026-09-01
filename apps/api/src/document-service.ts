@@ -168,8 +168,8 @@ export class DocumentService {
     // 每章独立版本：保存真正生效时，只递增本次编辑章节的 revision。
     if (result.created && request.chapterId) {
       this.#db
-        .prepare("UPDATE chapters SET revision = revision + 1 WHERE id = ?")
-        .run(request.chapterId);
+        .prepare("UPDATE chapters SET revision = revision + 1, updated_at = ? WHERE id = ?")
+        .run(result.envelope.savedAt, request.chapterId);
     }
     return result;
   }
@@ -240,8 +240,8 @@ export class DocumentService {
     // 与整篇保存一致：真正生效时只递增本次编辑章节的 revision。
     if (result.created && request.chapterId) {
       this.#db
-        .prepare("UPDATE chapters SET revision = revision + 1 WHERE id = ?")
-        .run(request.chapterId);
+        .prepare("UPDATE chapters SET revision = revision + 1, updated_at = ? WHERE id = ?")
+        .run(result.envelope.savedAt, request.chapterId);
     }
     return result;
   }
@@ -322,7 +322,7 @@ export class DocumentService {
       documentId,
       baseRevision,
       `suggestion-batch-${batchId}`,
-      JSON.stringify({ baseRevision, batchId, steps }),
+      JSON.stringify({ baseRevision, batchId, chapterId, steps }),
       current.schemaVersion,
       content,
       authorId,
@@ -332,8 +332,8 @@ export class DocumentService {
     );
     if (result.created && chapterId) {
       this.#db
-        .prepare("UPDATE chapters SET revision = revision + 1 WHERE id = ?")
-        .run(chapterId);
+        .prepare("UPDATE chapters SET revision = revision + 1, updated_at = ? WHERE id = ?")
+        .run(result.envelope.savedAt, chapterId);
     }
     return result.envelope;
   }

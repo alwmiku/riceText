@@ -18,15 +18,26 @@ describe("database seed", () => {
   it("持久化库第二次启动（重跑 seed）不会因校订-章节外键失败", () => {
     const path = join(directory, "seed.sqlite");
     const first = createDatabase({ path });
+    first
+      .prepare(
+        "UPDATE chapters SET revision = 9, updated_at = '2026-09-01T18:56:00.000Z' WHERE id = 'chapter-1'",
+      )
+      .run();
     first.close();
 
-    // 第二次打开会重跑 seed：上次留下的 suggestions 仍通过 chapter_id
-    // 引用旧章节，目录重置必须先释放引用，否则外键约束拦截重建。
+    // 第二次打开会重跑 seed，但只能更新目录元数据，不能清空章节版本和时间。
     const second = createDatabase({ path });
     const chapters = second
       .prepare("SELECT COUNT(*) AS n FROM chapters WHERE document_id = 'demo-post'")
       .get() as { n: number };
     expect(chapters.n).toBe(5);
+    const preserved = second
+      .prepare("SELECT revision, updated_at FROM chapters WHERE id = 'chapter-1'")
+      .get() as { revision: number; updated_at: string };
+    expect(preserved).toEqual({
+      revision: 9,
+      updated_at: "2026-09-01T18:56:00.000Z",
+    });
     const suggestions = second
       .prepare("SELECT COUNT(*) AS n FROM suggestions WHERE document_id = 'demo-post'")
       .get() as { n: number };

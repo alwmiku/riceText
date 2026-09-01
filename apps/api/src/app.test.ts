@@ -137,7 +137,7 @@ describe("RiceText API", () => {
   });
 
   it("保存时仅递增本次编辑章节的版本号", async () => {
-    const directoryBefore = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number }>;
+    const directoryBefore = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number; savedAt: string }>;
     const chapterOneBefore = directoryBefore.find((item) => item.id === "chapter-1")!;
     const chapterTwoBefore = directoryBefore.find((item) => item.id === "chapter-2")!;
     expect(chapterOneBefore.revision).toBe(1);
@@ -151,9 +151,13 @@ describe("RiceText API", () => {
     });
     expect(saved.statusCode).toBe(201);
 
-    const directoryAfter = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number }>;
-    expect(directoryAfter.find((item) => item.id === "chapter-1")!.revision).toBe(2);
-    expect(directoryAfter.find((item) => item.id === "chapter-2")!.revision).toBe(1);
+    const directoryAfter = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number; savedAt: string }>;
+    const chapterOneAfter = directoryAfter.find((item) => item.id === "chapter-1")!;
+    const chapterTwoAfter = directoryAfter.find((item) => item.id === "chapter-2")!;
+    expect(chapterOneAfter.revision).toBe(2);
+    expect(chapterOneAfter.savedAt).toBe(saved.json().savedAt);
+    expect(chapterTwoAfter.revision).toBe(1);
+    expect(chapterTwoAfter.savedAt).toBe(chapterTwoBefore.savedAt);
   });
 
   it("拒绝 reader 写入和不安全正文", async () => {

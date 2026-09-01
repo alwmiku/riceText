@@ -9,7 +9,11 @@ import {
 import { useEffect, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultDocument } from "../../lib/seed";
-import type { DocumentEnvelope, RichTextNode } from "../../lib/types";
+import type {
+  DocumentEnvelope,
+  ForumChapterItem,
+  RichTextNode,
+} from "../../lib/types";
 import { useComposeDocument } from "./useComposeDocument";
 
 const mocks = vi.hoisted(() => ({
@@ -154,6 +158,61 @@ describe("useComposeDocument hydration", () => {
 
     await waitFor(() => expect(result.current.content).toBe(serverDocument.content));
     expect(localStorage.getItem("ricetext:draft:demo-post")).toBeNull();
+  });
+
+  it("服务器保存后立即同步当前章节版本和保存时间缓存", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    client.setQueryData<ForumChapterItem[]>(["forum", "chapters"], [
+      {
+        id: "chapter-1",
+        title: "第一章 潮汐表",
+        order: 1,
+        documentId: "demo-post",
+        revision: 4,
+        savedAt: "2026-08-20T08:00:00.000Z",
+      },
+      {
+        id: "chapter-2",
+        title: "第二章",
+        order: 2,
+        documentId: "demo-post",
+        revision: 7,
+        savedAt: "2026-08-20T09:00:00.000Z",
+      },
+    ]);
+    const testWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    renderHook(() => useComposeDocument("demo-post", "chapter-1"), {
+      wrapper: testWrapper,
+    });
+    await waitFor(() => expect(mocks.autosave).toHaveBeenCalled());
+    const options = mocks.autosave.mock.calls.at(-1)?.[0] as {
+      onSaved: (next: DocumentEnvelope) => void;
+    };
+    const savedAt = "2026-09-01T18:56:00.000Z";
+    act(() =>
+      options.onSaved({
+        ...serverDocument,
+        revision: 12,
+        savedAt,
+        storage: "server",
+      }),
+    );
+    const chapters = client.getQueryData<ForumChapterItem[]>([
+      "forum",
+      "chapters",
+    ])!;
+    expect(chapters.find((chapter) => chapter.id === "chapter-1")).toMatchObject({
+      revision: 5,
+      savedAt,
+    });
+    expect(chapters.find((chapter) => chapter.id === "chapter-2")).toMatchObject({
+      revision: 7,
+      savedAt: "2026-08-20T09:00:00.000Z",
+    });
   });
 
   it("does not replace local edits when the query resolves later", async () => {

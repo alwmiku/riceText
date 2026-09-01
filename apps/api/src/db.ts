@@ -270,6 +270,56 @@ DROP TABLE document_revisions;
 ALTER TABLE document_revisions_v5 RENAME TO document_revisions;
 `;
 
+/** 每章独立记录最近一次服务器确认保存时间。 */
+const migrationV7 = `
+ALTER TABLE chapters ADD COLUMN updated_at TEXT;
+UPDATE chapters
+SET updated_at = COALESCE(
+  (SELECT updated_at FROM documents WHERE documents.id = chapters.document_id),
+  CURRENT_TIMESTAMP
+)
+WHERE updated_at IS NULL OR updated_at = '';
+`;
+
+/** 修复已执行 V7 但遗留空章节时间的数据库。 */
+const migrationV8 = `
+UPDATE chapters
+SET updated_at = COALESCE(
+  NULLIF((SELECT updated_at FROM documents WHERE documents.id = chapters.document_id), ''),
+  CURRENT_TIMESTAMP
+)
+WHERE updated_at IS NULL OR updated_at = '';
+`;
+
+/** 从不可变文档写入记录恢复曾被旧种子逻辑清零的章节版本与时间。 */
+const migrationV9 = `
+UPDATE chapters
+SET
+  revision = MAX(
+    revision,
+    1 + (
+      SELECT COUNT(*)
+      FROM document_mutations mutation
+      WHERE mutation.document_id = chapters.document_id
+        AND json_valid(mutation.request_json)
+        AND json_extract(mutation.request_json, '$.chapterId') = chapters.id
+    )
+  ),
+  updated_at = COALESCE(
+    (
+      SELECT MAX(revision.created_at)
+      FROM document_mutations mutation
+      JOIN document_revisions revision
+        ON revision.document_id = mutation.document_id
+       AND revision.revision = mutation.revision
+      WHERE mutation.document_id = chapters.document_id
+        AND json_valid(mutation.request_json)
+        AND json_extract(mutation.request_json, '$.chapterId') = chapters.id
+    ),
+    updated_at
+  );
+`;
+
 const migrationV6 = `
 CREATE TABLE suggestion_batches (
   id TEXT PRIMARY KEY,
@@ -310,17 +360,21 @@ function seed(db: DatabaseSync): void {
     db.prepare("INSERT OR IGNORE INTO comment_replies(id, document_id, anchor_id, parent_id, author_id, body, created_at) VALUES ('comment-child', 'demo-post', 'anchor-opening', 'comment-root', 'author', '会在第三章解释钟楼的来历。', ?)").run(now);
     db.prepare("INSERT OR IGNORE INTO comment_votes(reply_id, user_id, value, created_at) VALUES ('comment-root', 'author', 1, ?)").run(now);
 
-    // 章节目录为实时数据，每次启动重置为与正文一致的五章大纲。
-    // 校订建议通过 chapter_id 外键引用章节：持久化库第二次启动时旧建议
-    // 仍指向旧章节，必须先释放引用，否则目录重建会被外键约束拦截。
-    db.prepare("DELETE FROM suggestions WHERE chapter_id IS NOT NULL").run();
-    db.prepare("DELETE FROM chapters WHERE document_id = 'demo-post'").run();
-    const insertChapter = db.prepare("INSERT INTO chapters(id, title, sort_order, document_id, revision) VALUES (?, ?, ?, 'demo-post', 1)");
-    insertChapter.run("chapter-0", "楔子 · 雨季之前", 0);
-    insertChapter.run("chapter-1", "第一章 · 潮汐表", 1);
-    insertChapter.run("chapter-2", "第二章 · 陌生船票", 2);
-    insertChapter.run("chapter-3", "第三章 · 没有寄件人的信", 3);
-    insertChapter.run("chapter-4", "第四章 · 待发布", 4);
+    // 章节目录只幂等同步标题与排序，绝不能在重启时清空独立版本和保存时间。
+    const insertChapter = db.prepare(`
+      INSERT INTO chapters(id, title, sort_order, document_id, revision, updated_at)
+      VALUES (?, ?, ?, 'demo-post', 1, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        sort_order = excluded.sort_order,
+        document_id = excluded.document_id,
+        updated_at = COALESCE(NULLIF(chapters.updated_at, ''), excluded.updated_at)
+    `);
+    insertChapter.run("chapter-0", "楔子 · 雨季之前", 0, now);
+    insertChapter.run("chapter-1", "第一章 · 潮汐表", 1, now);
+    insertChapter.run("chapter-2", "第二章 · 陌生船票", 2, now);
+    insertChapter.run("chapter-3", "第三章 · 没有寄件人的信", 3, now);
+    insertChapter.run("chapter-4", "第四章 · 待发布", 4, now);
     db.prepare("INSERT OR IGNORE INTO reply_gates(id, document_id, content_json) VALUES ('gate-bonus', 'demo-post', ?)").run(JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "番外：邮差其实在第一封信到来前就见过旅人。" }] }] }));
 
     db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('author', 100)").run();
@@ -424,6 +478,9 @@ export function createDatabase(options: DatabaseOptions): DatabaseSync {
   runMigration(db, 5, migrationV5);
   db.exec("PRAGMA foreign_keys = ON");
   runMigration(db, 6, migrationV6);
+  runMigration(db, 7, migrationV7);
+  runMigration(db, 8, migrationV8);
+  runMigration(db, 9, migrationV9);
   if (options.seed !== false) seed(db);
   return db;
 }

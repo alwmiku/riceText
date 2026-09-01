@@ -139,8 +139,12 @@ export default function ComposePage() {
       .join("")
       .replace(/\s+/gu, "").length;
   }, [activeIndex, chapters]);
-  const activeRevision =
-    chapterDirectory[activeIndex]?.revision ?? compose.autosave.revision;
+  const activeChapterStatus = chapterDirectory[activeIndex];
+  const activeRevision = activeChapterStatus?.revision ?? 0;
+  const activeSavedAt =
+    compose.autosave.state === "saved"
+      ? (activeChapterStatus?.savedAt ?? compose.document.savedAt)
+      : compose.autosave.savedAt;
   const editorContent = useMemo<RichTextNode>(
     () => ({ type: "doc", content: chapters[activeIndex]?.blocks ?? [] }),
     [activeIndex, chapters],
@@ -416,11 +420,8 @@ export default function ComposePage() {
               state={
                 compose.isPlaceholderData ? "loading" : compose.autosave.state
               }
-              revision={
-                chapterDirectory[activeIndex]?.revision ??
-                compose.autosave.revision
-              }
-              savedAt={compose.autosave.savedAt}
+              revision={activeRevision}
+              savedAt={activeSavedAt}
             />
           }
           editor={editor}

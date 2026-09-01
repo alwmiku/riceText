@@ -13,7 +13,11 @@ import {
 } from "../../lib/local-document-draft-storage";
 import { mergeChapter } from "../../lib/chapters";
 import { defaultDocument } from "../../lib/seed";
-import type { DocumentEnvelope, RichTextNode } from "../../lib/types";
+import type {
+  DocumentEnvelope,
+  ForumChapterItem,
+  RichTextNode,
+} from "../../lib/types";
 import { useAutosave } from "../editor/hooks/useAutosave";
 
 export interface ComposeDocumentController {
@@ -96,6 +100,21 @@ export function useComposeDocument(
         storage: next.storage ?? current.storage ?? "server",
       }));
       queryClient.setQueryData<DocumentEnvelope>(["document", next.id], next);
+      if (chapterId) {
+        queryClient.setQueryData<ForumChapterItem[]>(
+          ["forum", "chapters"],
+          (current = []) =>
+            current.map((chapter) =>
+              chapter.id === chapterId
+                ? {
+                    ...chapter,
+                    revision: chapter.revision + 1,
+                    savedAt: next.savedAt,
+                  }
+                : chapter,
+            ),
+        );
+      }
       void queryClient.invalidateQueries({ queryKey: ["revisions", next.id] });
       void queryClient.invalidateQueries({ queryKey: ["forum", "chapters"] });
     },

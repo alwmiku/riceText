@@ -16,10 +16,11 @@ export class ChapterService {
     order: number;
     documentId: string;
     revision: number;
+    savedAt: string;
   }> {
     const rows = this.#db
       .prepare(
-        "SELECT id, title, sort_order, document_id, revision FROM chapters ORDER BY sort_order",
+        "SELECT id, title, sort_order, document_id, revision, updated_at FROM chapters ORDER BY sort_order",
       )
       .all() as Array<{
       id: string;
@@ -27,6 +28,7 @@ export class ChapterService {
       sort_order: number;
       document_id: string;
       revision: number;
+      updated_at: string;
     }>;
     return rows.map((row) => ({
       id: row.id,
@@ -34,6 +36,7 @@ export class ChapterService {
       order: row.sort_order,
       documentId: row.document_id,
       revision: row.revision,
+      savedAt: row.updated_at,
     }));
   }
 
@@ -76,14 +79,15 @@ export class ChapterService {
     const revision = (existing?.revision ?? 0) + 1;
     this.#db
       .prepare(
-        `INSERT INTO chapters(id, title, sort_order, document_id, revision, content_json, content_hash)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO chapters(id, title, sort_order, document_id, revision, content_json, content_hash, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            title = excluded.title,
            sort_order = excluded.sort_order,
            revision = excluded.revision,
            content_json = excluded.content_json,
-           content_hash = excluded.content_hash`,
+           content_hash = excluded.content_hash,
+           updated_at = excluded.updated_at`,
       )
       .run(
         chapterId,
@@ -93,6 +97,7 @@ export class ChapterService {
         revision,
         JSON.stringify(input.content),
         input.hash,
+        new Date().toISOString(),
       );
     return { id: chapterId, title: input.title, order: input.order, revision };
   }
