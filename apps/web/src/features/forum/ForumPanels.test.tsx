@@ -18,14 +18,23 @@ const mocks = vi.hoisted(() => ({
   getPollVotesMock: vi.fn(),
 }));
 
-vi.mock("../../lib/api", () => ({
+vi.mock("../../lib/api/revisions", () => ({
   getRevisions: mocks.getRevisionsMock,
+}));
+
+vi.mock("../../lib/api/suggestions", () => ({
   listSuggestionBatches: mocks.listSuggestionBatchesMock,
   listSuggestions: mocks.listSuggestionsMock,
   reviewSuggestionBatch: mocks.reviewSuggestionBatchMock,
   reviewSuggestion: mocks.reviewSuggestionMock,
+}));
+
+vi.mock("../../lib/api/attachments", () => ({
   getAttachment: mocks.getAttachmentMock,
   purchaseAttachment: mocks.purchaseAttachmentMock,
+}));
+
+vi.mock("../../lib/api/polls", () => ({
   getPoll: mocks.getPollMock,
   votePoll: mocks.votePollMock,
   getPollVotes: mocks.getPollVotesMock,
