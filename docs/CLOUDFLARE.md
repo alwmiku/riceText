@@ -61,7 +61,7 @@ Preflight rejects placeholder IDs/domains, missing bindings, route/origin disagr
 ## Local Worker
 
 ```bash
-pnpm --filter @ricetext/worker d1:migrate:local
+pnpm --filter @ricetext/worker run d1:migrate:local
 pnpm --filter @ricetext/worker dev
 ```
 
@@ -99,9 +99,9 @@ The export fails if an asset file is missing, a local attachment URL cannot be m
 4. Apply schema migrations:
 
 ```bash
-pnpm --filter @ricetext/worker d1:migrate:preview
+pnpm --filter @ricetext/worker run d1:migrate:preview
 # or
-pnpm --filter @ricetext/worker d1:migrate:production
+pnpm --filter @ricetext/worker run d1:migrate:production
 ```
 
 5. Upload and verify every R2 object:
@@ -137,8 +137,8 @@ Manual equivalents are:
 
 ```bash
 pnpm cf:preflight -- preview
-pnpm --filter @ricetext/worker d1:migrate:preview
-pnpm --filter @ricetext/worker deploy:preview
+pnpm --filter @ricetext/worker run d1:migrate:preview
+pnpm --filter @ricetext/worker run deploy:preview
 pnpm --filter @ricetext/web build
 pnpm --dir apps/worker exec wrangler pages deploy ../web/dist --project-name <preview-pages-project> --branch preview
 pnpm cf:smoke -- https://preview.example.com

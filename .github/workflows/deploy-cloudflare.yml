@@ -59,14 +59,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm cf:preflight -- preview
-      - run: pnpm --filter @ricetext/worker d1:migrate:preview
+      - run: pnpm --filter @ricetext/worker run d1:migrate:preview
       - name: Configure Worker secrets
         shell: bash
         run: |
           printf '%s' "$OIDC_ISSUER" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_ISSUER --env preview
           printf '%s' "$OIDC_CLIENT_ID" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_ID --env preview
           printf '%s' "$OIDC_CLIENT_SECRET" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_SECRET --env preview
-      - run: pnpm --filter @ricetext/worker deploy:preview
+      - run: pnpm --filter @ricetext/worker run deploy:preview
       - run: pnpm --filter @ricetext/web build
       - run: pnpm --dir apps/worker exec wrangler pages deploy ../web/dist --project-name "$CF_PAGES_PROJECT" --branch preview
       - run: pnpm cf:smoke -- "$CF_APP_ORIGIN"
@@ -93,14 +93,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm cf:preflight -- production
-      - run: pnpm --filter @ricetext/worker d1:migrate:production
+      - run: pnpm --filter @ricetext/worker run d1:migrate:production
       - name: Configure Worker secrets
         shell: bash
         run: |
           printf '%s' "$OIDC_ISSUER" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_ISSUER --env production
           printf '%s' "$OIDC_CLIENT_ID" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_ID --env production
           printf '%s' "$OIDC_CLIENT_SECRET" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_SECRET --env production
-      - run: pnpm --filter @ricetext/worker deploy
+      - run: pnpm --filter @ricetext/worker run deploy
       - run: pnpm --filter @ricetext/web build
       - run: pnpm --dir apps/worker exec wrangler pages deploy ../web/dist --project-name "$CF_PAGES_PROJECT" --branch main
       - run: pnpm cf:smoke -- "$CF_APP_ORIGIN"
