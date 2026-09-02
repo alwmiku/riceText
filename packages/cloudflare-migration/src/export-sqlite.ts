@@ -18,7 +18,7 @@ export interface ExportOptions {
   databasePath: string;
   uploadsDirectory: string;
   outputDirectory: string;
-  identityMappings: readonly IdentityMapping[];
+  identityMappings?: readonly IdentityMapping[];
   exportedAt?: string;
 }
 
@@ -165,9 +165,10 @@ export async function exportSqliteToCloudflare(options: ExportOptions): Promise<
       .all() as Array<{ user_id: string }>) {
       privilegedUserIds.add(row.user_id);
     }
+    const identityMappings = options.identityMappings ?? [];
     const mappedUsers = new Set<string>();
     const identities = new Set<string>();
-    for (const mapping of options.identityMappings) {
+    for (const mapping of identityMappings) {
       if (!knownUserIds.has(mapping.userId)) {
         throw new Error("Identity mapping references unknown user: " + mapping.userId);
       }
@@ -183,10 +184,10 @@ export async function exportSqliteToCloudflare(options: ExportOptions): Promise<
       }));
     }
     const unmapped = [...privilegedUserIds].filter((userId) => !mappedUsers.has(userId));
-    if (unmapped.length > 0) {
+    if (identityMappings.length > 0 && unmapped.length > 0) {
       throw new Error("Privileged users require OIDC identity mappings: " + unmapped.join(", "));
     }
-    counts.auth_identities = options.identityMappings.length;
+    counts.auth_identities = identityMappings.length;
 
     for (const item of directTables.slice(0, 3)) {
       const rows = tableRows(db, item.table).map((row) => selected(row, item.columns));
@@ -324,10 +325,9 @@ function argument(name: string, fallback: string): string {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const identityMapPath = argument("--identity-map", "");
-  if (!identityMapPath) throw new Error("Missing required argument --identity-map");
-  const identityMappings = JSON.parse(
-    await readFile(resolve(identityMapPath), "utf8"),
-  ) as IdentityMapping[];
+  const identityMappings = identityMapPath
+    ? (JSON.parse(await readFile(resolve(identityMapPath), "utf8")) as IdentityMapping[])
+    : [];
   const result = await exportSqliteToCloudflare({
     databasePath: argument("--db", ".data/ricetext.sqlite"),
     uploadsDirectory: argument("--uploads", ".data/uploads"),

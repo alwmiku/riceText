@@ -7149,6 +7149,39 @@ paths:
                   code: EXAMPLE_ERROR
                   message: 投票不存在。
       x-implementation-status: implemented
+  /api/auth/password/login:
+    post:
+      operationId: passwordLogin
+      tags:
+        - 认证
+      summary: 使用本地账号密码登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 64
+                  pattern: ^[A-Za-z0-9._-]+$
+                password:
+                  type: string
+                  minLength: 10
+                  maxLength: 128
+              required:
+                - username
+                - password
+              additionalProperties: false
+      responses:
+        "204":
+          description: 登录成功并写入安全 session cookie。
+        "401":
+          description: 账号或密码错误。
+        "429":
+          description: 连续失败次数过多，账号暂时锁定。
   /api/auth/login:
     get:
       operationId: beginOidcLogin

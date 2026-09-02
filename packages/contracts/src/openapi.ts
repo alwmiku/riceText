@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { contractRoutes } from "./routes.js";
-import { ApiErrorSchema } from "./schemas.js";
+import { ApiErrorSchema, PasswordLoginRequestSchema } from "./schemas.js";
 
 /** OpenAPI 3.1 文档的松散结构类型。 */
 export type OpenApiDocument = Record<string, unknown>;
@@ -177,6 +177,22 @@ export function buildOpenApiDocument(): OpenApiDocument {
     };
     paths[openapiPath] = pathItem;
   }
+  paths["/api/auth/password/login"] = {
+    post: {
+      operationId: "passwordLogin",
+      tags: ["认证"],
+      summary: "使用本地账号密码登录",
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: portableSchema(PasswordLoginRequestSchema) } },
+      },
+      responses: {
+        "204": { description: "登录成功并写入安全 session cookie。" },
+        "401": { description: "账号或密码错误。" },
+        "429": { description: "连续失败次数过多，账号暂时锁定。" },
+      },
+    },
+  };
   paths["/api/auth/login"] = {
     get: {
       operationId: "beginOidcLogin",

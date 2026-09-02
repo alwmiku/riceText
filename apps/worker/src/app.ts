@@ -1,6 +1,7 @@
 import {
   CommentSortSchema,
   CreateCommentReplyRequestSchema,
+  PasswordLoginRequestSchema,
   CreateDiceRollRequestSchema,
   CreateDocumentChapterRequestSchema,
   CreateSuggestionBatchRequestSchema,
@@ -36,6 +37,7 @@ import {
 import type { WorkerEnv, WorkerVariables } from "./env";
 import { WorkerHttpError } from "./http-error";
 import { beginOidcLogin, finishOidcLogin, logout } from "./oidc";
+import { passwordLogin } from "./password-auth";
 import { D1AssetRepository } from "./repositories/asset-repository";
 import { D1AttachmentRepository } from "./repositories/attachment-repository";
 import { D1ChapterRepository } from "./repositories/chapter-repository";
@@ -163,6 +165,10 @@ export function createWorkerApp(): Hono<AppBindings> {
     }
   });
 
+  app.post("/api/auth/password/login", async (context) => {
+    const request = PasswordLoginRequestSchema.parse(await context.req.json());
+    return passwordLogin(request, context.env);
+  });
   app.get("/api/auth/login", (context) => beginOidcLogin(context.req.raw, context.env));
   app.get("/api/auth/callback", (context) => finishOidcLogin(context.req.raw, context.env));
   app.post("/api/auth/logout", (context) => logout(context.req.raw, context.env));

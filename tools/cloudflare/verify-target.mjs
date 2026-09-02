@@ -20,7 +20,7 @@ const invariantSql = [
   "SELECT 'foreign_keys' AS check_name, COUNT(*) AS failures FROM pragma_foreign_key_check",
   "UNION ALL SELECT 'current_revisions', COUNT(*) FROM documents d LEFT JOIN document_revisions r ON r.document_id=d.id AND r.revision=d.current_revision WHERE r.revision IS NULL",
   "UNION ALL SELECT 'owner_acl', COUNT(*) FROM documents d LEFT JOIN document_acl a ON a.document_id=d.id AND a.user_id=d.created_by AND a.permission='admin' WHERE a.user_id IS NULL",
-  "UNION ALL SELECT 'privileged_identity', COUNT(*) FROM (SELECT id AS user_id FROM users WHERE role IN ('author','moderator') UNION SELECT created_by FROM documents UNION SELECT user_id FROM document_acl WHERE permission IN ('edit','admin')) privileged LEFT JOIN auth_identities i ON i.user_id=privileged.user_id WHERE i.user_id IS NULL",
+  "UNION ALL SELECT 'privileged_auth', COUNT(*) FROM (SELECT id AS user_id FROM users WHERE role IN ('author','moderator') UNION SELECT created_by FROM documents UNION SELECT user_id FROM document_acl WHERE permission IN ('edit','admin')) privileged LEFT JOIN auth_identities i ON i.user_id=privileged.user_id LEFT JOIN password_credentials p ON p.user_id=privileged.user_id WHERE i.user_id IS NULL AND p.user_id IS NULL",
   "UNION ALL SELECT 'required_triggers', 2-COUNT(*) FROM sqlite_schema WHERE type='trigger' AND name IN ('attachment_purchase_checks_balance','attachment_purchase_moves_balance')",
 ].join(" ");
 

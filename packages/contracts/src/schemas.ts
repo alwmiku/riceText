@@ -367,6 +367,15 @@ export const ForumSessionSchema = z
   .strict();
 export type ForumSession = z.infer<typeof ForumSessionSchema>;
 
+/** 本地账号密码登录；生产只通过 HTTPS 发送，服务端不保存明文密码。 */
+export const PasswordLoginRequestSchema = z
+  .object({
+    username: z.string().trim().min(3).max(64).regex(/^[A-Za-z0-9._-]+$/),
+    password: z.string().min(10).max(128),
+  })
+  .strict();
+export type PasswordLoginRequest = z.infer<typeof PasswordLoginRequestSchema>;
+
 /** 章节目录项。 */
 export const ChapterSchema = z
   .object({

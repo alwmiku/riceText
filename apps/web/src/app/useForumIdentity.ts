@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppContextValue } from "../app-context";
 import { isApiClientError } from "../lib/api/client";
 import {
-  beginForumLogin,
   getForumSession,
+  loginForumSession,
   logoutForumSession,
 } from "../lib/api/session";
 import { identities } from "../lib/seed";
@@ -86,8 +86,10 @@ export function useForumIdentity(): AppContextValue {
         setIdentityState(next);
         localStorage.setItem(identityStorageKey, next.id);
       },
-      login() {
-        if (!demo) beginForumLogin();
+      async login(username: string, password: string) {
+        if (demo) return;
+        await loginForumSession(username, password);
+        await refreshIdentity();
       },
       logout,
       refreshIdentity,

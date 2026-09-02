@@ -9,7 +9,7 @@ export interface AppContextValue {
   setIdentity: (identity: SeedIdentity) => void;
   authMode: "demo" | "session";
   authStatus: "loading" | "authenticated" | "unauthenticated" | "error";
-  login: () => void;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshIdentity: () => Promise<void>;
 }

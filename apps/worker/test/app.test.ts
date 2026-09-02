@@ -12,6 +12,7 @@ import {
 import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../src/index";
 import { createWorkerApp } from "../src/app";
+import { derivePasswordHash } from "../src/password-auth";
 import type { WorkerEnv } from "../src/env";
 import { network } from "./network";
 
@@ -1527,6 +1528,47 @@ describe("RiceText Worker", () => {
     await expect(invalid.json()).resolves.toMatchObject({
       error: { code: "INVALID_DICE_EXPRESSION" },
     });
+  });
+
+  it("logs in with a D1 password credential and locks repeated failures", async () => {
+    const salt = new TextEncoder().encode("1234567890abcdef");
+    const encodedSalt = btoa(String.fromCharCode(...salt)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+    const hash = await derivePasswordHash("correct-password", salt, 100_000);
+    await env.DB.prepare(
+      "INSERT INTO password_credentials(user_id, username, salt, password_hash, iterations, failed_attempts, locked_until, updated_at) " +
+        "VALUES (?, ?, ?, ?, ?, 0, NULL, ?)",
+    ).bind("author", "writer", encodedSalt, hash, 100_000, now).run();
+
+    const login = await exports.default.fetch(
+      new Request("http://example.com/api/auth/password/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: "writer", password: "correct-password" }),
+      }),
+    );
+    expect(login.status).toBe(204);
+    expect(login.headers.get("set-cookie")).toContain("ricetext_session=");
+    expect(login.headers.get("set-cookie")).toContain("HttpOnly");
+    expect(login.headers.get("set-cookie")).toContain("SameSite=Strict");
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const failed = await exports.default.fetch(
+        new Request("http://example.com/api/auth/password/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ username: "writer", password: "wrong-password" }),
+        }),
+      );
+      expect(failed.status).toBe(401);
+    }
+    const locked = await exports.default.fetch(
+      new Request("http://example.com/api/auth/password/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: "writer", password: "correct-password" }),
+      }),
+    );
+    expect(locked.status).toBe(429);
   });
 
   it("enforces production Origin checks and ignores demo identity headers", async () => {

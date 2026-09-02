@@ -69,7 +69,7 @@ describe("buildOpenApiDocument", () => {
     ]);
     expect(
       Object.values(document.paths).flatMap((path) => Object.keys(path)),
-    ).toHaveLength(contractRoutes.length + 4);
+    ).toHaveLength(contractRoutes.length + 5);
 
     const getDocument = document.paths["/api/documents/{documentId}"]!.get!;
     expect(getDocument.operationId).toBe("getDocument");
@@ -155,6 +155,7 @@ describe("buildOpenApiDocument", () => {
       format: "binary",
     });
 
+    expect(document.paths["/api/auth/password/login"]?.post?.operationId).toBe("passwordLogin");
     expect(document.paths["/api/auth/login"]?.get?.operationId).toBe("beginOidcLogin");
     expect(document.components.securitySchemes.cookieSession).toMatchObject({
       in: "cookie",

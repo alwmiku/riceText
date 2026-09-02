@@ -6,7 +6,7 @@ import { useForumIdentity } from "./useForumIdentity";
 
 const mocks = vi.hoisted(() => ({
   getForumSession: vi.fn(),
-  beginForumLogin: vi.fn(),
+  loginForumSession: vi.fn(),
   logoutForumSession: vi.fn(),
 }));
 
@@ -17,7 +17,7 @@ describe("useForumIdentity production session", () => {
     vi.stubEnv("DEV", false);
     vi.stubEnv("VITE_DEMO_AUTH", "false");
     mocks.getForumSession.mockReset();
-    mocks.beginForumLogin.mockReset();
+    mocks.loginForumSession.mockReset().mockResolvedValue(undefined);
     mocks.logoutForumSession.mockReset().mockResolvedValue(undefined);
   });
 
@@ -52,8 +52,8 @@ describe("useForumIdentity production session", () => {
       replied: true,
     });
 
-    act(() => result.current.login());
-    expect(mocks.beginForumLogin).toHaveBeenCalledOnce();
+    await act(() => result.current.login("writer", "correct-password"));
+    expect(mocks.loginForumSession).toHaveBeenCalledWith("writer", "correct-password");
     await act(() => result.current.logout());
     expect(mocks.logoutForumSession).toHaveBeenCalledOnce();
     expect(result.current.authStatus).toBe("unauthenticated");

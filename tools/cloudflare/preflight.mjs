@@ -10,9 +10,6 @@ for (const name of [
   "CLOUDFLARE_API_TOKEN",
   "CF_PAGES_PROJECT",
   "CF_APP_ORIGIN",
-  "OIDC_ISSUER",
-  "OIDC_CLIENT_ID",
-  "OIDC_CLIENT_SECRET",
 ]) {
   if (!process.env[name]) throw new Error("Missing deployment variable: " + name);
 }
@@ -35,6 +32,12 @@ if (!routes.some((route) => route.pattern === host + "/api/*")) {
 if (!selected.r2_buckets?.some((item) => item.binding === "UPLOADS")) {
   throw new Error("Missing UPLOADS R2 binding for " + target);
 }
-const issuer = new URL(process.env.OIDC_ISSUER);
-if (issuer.protocol !== "https:") throw new Error("OIDC_ISSUER must use HTTPS");
+const oidc = [process.env.OIDC_ISSUER, process.env.OIDC_CLIENT_ID, process.env.OIDC_CLIENT_SECRET];
+if (oidc.some(Boolean) && !oidc.every(Boolean)) {
+  throw new Error("OIDC variables must be configured together or omitted together");
+}
+if (process.env.OIDC_ISSUER) {
+  const issuer = new URL(process.env.OIDC_ISSUER);
+  if (issuer.protocol !== "https:") throw new Error("OIDC_ISSUER must use HTTPS");
+}
 console.log(JSON.stringify({ target, origin, database: database.database_name, ready: true }, null, 2));

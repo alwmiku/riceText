@@ -63,9 +63,11 @@ jobs:
       - name: Configure Worker secrets
         shell: bash
         run: |
-          printf '%s' "$OIDC_ISSUER" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_ISSUER --env preview
-          printf '%s' "$OIDC_CLIENT_ID" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_ID --env preview
-          printf '%s' "$OIDC_CLIENT_SECRET" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_SECRET --env preview
+          if [ -n "$OIDC_ISSUER" ] && [ -n "$OIDC_CLIENT_ID" ] && [ -n "$OIDC_CLIENT_SECRET" ]; then
+            printf '%s' "$OIDC_ISSUER" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_ISSUER --env preview
+            printf '%s' "$OIDC_CLIENT_ID" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_ID --env preview
+            printf '%s' "$OIDC_CLIENT_SECRET" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_SECRET --env preview
+          fi
       - run: pnpm --filter @ricetext/worker run deploy:preview
       - run: pnpm --filter @ricetext/web build
       - run: pnpm --dir apps/worker exec wrangler pages deploy ../web/dist --project-name "$CF_PAGES_PROJECT" --branch preview
@@ -97,9 +99,11 @@ jobs:
       - name: Configure Worker secrets
         shell: bash
         run: |
-          printf '%s' "$OIDC_ISSUER" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_ISSUER --env production
-          printf '%s' "$OIDC_CLIENT_ID" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_ID --env production
-          printf '%s' "$OIDC_CLIENT_SECRET" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_SECRET --env production
+          if [ -n "$OIDC_ISSUER" ] && [ -n "$OIDC_CLIENT_ID" ] && [ -n "$OIDC_CLIENT_SECRET" ]; then
+            printf '%s' "$OIDC_ISSUER" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_ISSUER --env production
+            printf '%s' "$OIDC_CLIENT_ID" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_ID --env production
+            printf '%s' "$OIDC_CLIENT_SECRET" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_SECRET --env production
+          fi
       - run: pnpm --filter @ricetext/worker run deploy
       - run: pnpm --filter @ricetext/web build
       - run: pnpm --dir apps/worker exec wrangler pages deploy ../web/dist --project-name "$CF_PAGES_PROJECT" --branch main

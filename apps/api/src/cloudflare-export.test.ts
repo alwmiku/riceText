@@ -147,7 +147,12 @@ describe("Cloudflare data export", () => {
       exportedAt: "2026-09-02T00:00:00.000Z",
     };
     await expect(
-      exportSqliteToCloudflare({ ...base, identityMappings: [] }),
+      exportSqliteToCloudflare({
+        ...base,
+        identityMappings: [
+          { issuer: "https://id.example.com", subject: "author", userId: "author" },
+        ],
+      }),
     ).rejects.toThrow("Privileged users require OIDC identity mappings");
     await expect(
       exportSqliteToCloudflare({

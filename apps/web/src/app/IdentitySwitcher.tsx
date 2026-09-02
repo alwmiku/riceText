@@ -1,8 +1,14 @@
 import { Check, ChevronDown, LoaderCircle, LogIn, LogOut } from "lucide-react";
-import { forwardRef, type ComponentPropsWithoutRef } from "react";
+import {
+  forwardRef,
+  useState,
+  type ComponentPropsWithoutRef,
+  type FormEvent,
+} from "react";
 import { useAppContext } from "../app-context";
 import {
   Button,
+  Dialog,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -46,6 +52,26 @@ const IdentityButton = forwardRef<
 /** Development identity switcher and production account/session control. */
 export function IdentitySwitcher() {
   const value = useAppContext();
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoginError(null);
+    setSubmitting(true);
+    try {
+      await value.login(username, password);
+      setPassword("");
+      setLoginOpen(false);
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "登录失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (value.authMode === "session" && value.authStatus === "loading") {
     return (
@@ -58,10 +84,57 @@ export function IdentitySwitcher() {
 
   if (value.authMode === "session" && value.authStatus !== "authenticated") {
     return (
-      <Button variant="outline" size="sm" onClick={value.login}>
-        <LogIn size={14} />
-        登录
-      </Button>
+      <>
+        <Button variant="outline" size="sm" onClick={() => setLoginOpen(true)}>
+          <LogIn size={14} />
+          登录
+        </Button>
+        <Dialog
+          open={loginOpen}
+          onOpenChange={(open) => {
+            setLoginOpen(open);
+            if (!open) setLoginError(null);
+          }}
+          title="登录 RiceText"
+          description="使用管理员在 D1 中创建的账号登录。"
+        >
+          <form className="space-y-4" onSubmit={(event) => void submitLogin(event)}>
+            <label className="block space-y-1.5 text-sm font-medium">
+              <span>账号</span>
+              <input
+                autoComplete="username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-white px-3 outline-none focus:ring-2 focus:ring-ring"
+                minLength={3}
+                maxLength={64}
+                pattern="[A-Za-z0-9._-]+"
+                required
+              />
+            </label>
+            <label className="block space-y-1.5 text-sm font-medium">
+              <span>密码</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-white px-3 outline-none focus:ring-2 focus:ring-ring"
+                minLength={10}
+                maxLength={128}
+                required
+              />
+            </label>
+            {loginError ? (
+              <p role="alert" className="text-sm text-destructive">{loginError}</p>
+            ) : null}
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
+              {submitting ? "登录中" : "登录"}
+            </Button>
+          </form>
+        </Dialog>
+      </>
     );
   }
 
