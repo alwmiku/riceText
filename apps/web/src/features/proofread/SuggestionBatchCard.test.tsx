@@ -38,6 +38,8 @@ describe("SuggestionBatchCard", () => {
     const onReview = vi.fn();
     render(<SuggestionBatchCard batch={batch} busy={false} onReview={onReview} />);
     expect(screen.getByText("2 处行级变化 · 2 个步骤")).toBeInTheDocument();
+    expect(screen.getByText("读者 · 整章修订")).toBeInTheDocument();
+    expect(screen.queryByText(/reader/)).not.toBeInTheDocument();
     expect(screen.getByText("（删除整行）")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "接受全部修改" }));
     fireEvent.click(screen.getByRole("button", { name: "拒绝整批" }));

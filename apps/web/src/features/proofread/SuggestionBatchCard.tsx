@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Button, Badge } from "../../components/ui";
 import { chapterTextLines } from "../../lib/chapters";
 import type { ForumSuggestionBatch } from "../../lib/types";
+import { formatSuggestionAuthor } from "./suggestion-labels";
 
 /** 作者审核整章批次时使用的多行差异卡片。 */
 export function SuggestionBatchCard({
@@ -34,7 +35,9 @@ export function SuggestionBatchCard({
     <article className="rounded-md border border-border bg-white p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Layers3 size={14} className="text-[#176e66]" />
-        <strong className="text-xs">{batch.authorId} · 整章修订</strong>
+        <strong className="text-xs">
+          {formatSuggestionAuthor(batch.authorId)} · 整章修订
+        </strong>
         <Badge
           tone={
             batch.status === "approved"

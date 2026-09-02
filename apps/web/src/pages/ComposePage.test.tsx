@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -160,7 +160,15 @@ describe('ComposePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '移动' }));
     expect(screen.getByRole('button', { name: '打开章节目录' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '打开章节目录' }));
-    expect(screen.getByRole('dialog', { name: '章节目录' })).toBeInTheDocument();
+    const mobileSidebar = screen.getByRole('dialog', { name: '章节目录' });
+    expect(mobileSidebar).toBeInTheDocument();
+    expect(within(mobileSidebar).getByText('模拟创作工具')).toBeInTheDocument();
+
+    const chapterRail = within(mobileSidebar).getByText('模拟章节目录');
+    const creativeTools = within(mobileSidebar).getByText('模拟创作工具');
+    expect(
+      chapterRail.compareDocumentPosition(creativeTools) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '模拟章节 1' }));
     expect(screen.queryByRole('dialog', { name: '章节目录' })).not.toBeInTheDocument();

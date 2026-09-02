@@ -1,6 +1,7 @@
 import { History, MessageSquareText, Paperclip, Vote } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { RichTextNode, SeedIdentity } from "../../lib/types";
+import { cn } from "../../lib/utils";
 import { AttachmentPanel } from "./AttachmentPanel";
 import { HistoryPanel } from "./HistoryPanel";
 import { PollPanel } from "./PollPanel";
@@ -32,6 +33,7 @@ export function ForumBusinessPanel({
   comparingRevision,
   onCompare,
   onRestore,
+  className,
 }: {
   identity: SeedIdentity;
   documentId: string;
@@ -45,6 +47,7 @@ export function ForumBusinessPanel({
   comparingRevision?: number | null;
   onCompare?: (revision: number) => void;
   onRestore: (revision: number) => void;
+  className?: string;
 }) {
   const [tab, setTab] = useState<
     "suggestions" | "attachment" | "poll" | "history"
@@ -73,7 +76,10 @@ export function ForumBusinessPanel({
   }, [attachmentIds.length, pollIds.length, tab]);
   return (
     <aside
-      className="sticky top-[76px] max-h-[calc(100vh-92px)] overflow-auto rounded-lg border border-border bg-white shadow-panel"
+      className={cn(
+        "sticky top-[76px] max-h-[calc(100vh-92px)] overflow-auto rounded-lg border border-border bg-white shadow-panel",
+        className,
+      )}
       aria-label="创作业务面板"
     >
       <div className="flex items-center justify-between border-b border-border px-3 py-2">

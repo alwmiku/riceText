@@ -143,7 +143,7 @@ export function StandardComposeWorkspace({
                 onClick={() => setMobileChapterRailOpen(false)}
               />
               <div
-                className="absolute inset-y-0 left-0 w-[min(84vw,340px)] border-r border-border bg-white p-2 pt-[calc(12px+env(safe-area-inset-top))] shadow-2xl"
+                className="absolute inset-y-0 left-0 w-[min(84vw,340px)] overflow-y-auto border-r border-border bg-white p-2 pt-[calc(12px+env(safe-area-inset-top))] shadow-2xl"
                 role="dialog"
                 aria-label="章节目录"
                 aria-modal="true"
@@ -173,7 +173,19 @@ export function StandardComposeWorkspace({
                   {...(onProofread ? { onProofread } : {})}
                   {...(activeCharCount !== undefined ? { activeCharCount } : {})}
                   {...(activeRevision !== undefined ? { activeRevision } : {})}
-                  className="static max-h-[calc(100vh-78px)] rounded-md shadow-none"
+                  className="static max-h-none rounded-md shadow-none"
+                />
+                <ForumBusinessPanel
+                  identity={identity}
+                  documentId={documentId}
+                  baseRevision={revision}
+                  chapterId={chapterId}
+                  chapterTitle={chapters[activeIndex]?.title ?? title}
+                  activeContent={activeContent}
+                  {...(comparingRevision !== undefined ? { comparingRevision } : {})}
+                  {...(onCompareRevision ? { onCompare: onCompareRevision } : {})}
+                  onRestore={onRestore}
+                  className="static mt-2 max-h-none rounded-md shadow-none"
                 />
               </div>
             </div>

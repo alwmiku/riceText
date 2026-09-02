@@ -65,6 +65,9 @@ test('作者编辑先自动保存本地，点击保存后才上传最小 revisio
 
 test('移动端向下阅读时收起页头，向上滚动时恢复', async ({ page, isMobile }) => {
   test.skip(!isMobile, '仅验证移动端页头滚动行为');
+  await page.addInitScript(() => {
+    localStorage.setItem('ricetext:active-chapter:demo-post', '3');
+  });
   await page.goto('/compose');
   const header = page.getByRole('banner');
   const directory = page.getByRole('button', { name: '打开章节目录' });
@@ -77,7 +80,37 @@ test('移动端向下阅读时收起页头，向上滚动时恢复', async ({ pa
   await expect(header).toHaveAttribute('data-hidden', 'true');
   await expect(directory).toBeVisible();
   await directory.click();
-  await expect(page.getByRole('dialog', { name: '章节目录' })).toBeVisible();
+  const mobileSidebar = page.getByRole('dialog', { name: '章节目录' });
+  await expect(mobileSidebar).toBeVisible();
+  const chapterRail = mobileSidebar.getByRole('complementary', { name: '章节目录' });
+  const creativeTools = mobileSidebar.getByRole('complementary', { name: '创作业务面板' });
+  await expect(chapterRail).toBeVisible();
+  await expect(creativeTools.getByText('创作工具')).toBeVisible();
+  await expect(creativeTools.getByRole('button', { name: '校订' })).toBeVisible();
+  await expect(creativeTools.getByText('读者', { exact: true })).toBeVisible();
+  await expect(creativeTools.getByText('reader', { exact: true })).toHaveCount(0);
+  const location = creativeTools.getByLabel('校订位置');
+  await location.scrollIntoViewIfNeeded();
+  const locationRows = location.locator('dd');
+  await expect(locationRows).toHaveCount(3);
+  const rowTops = await locationRows.evaluateAll((rows) =>
+    rows.map((row) => row.getBoundingClientRect().top),
+  );
+  expect(rowTops[1]).toBeGreaterThan(rowTops[0]!);
+  expect(rowTops[2]).toBeGreaterThan(rowTops[1]!);
+  await expect
+    .poll(() =>
+      mobileSidebar.evaluate((sidebar) => {
+        const rail = sidebar.querySelector('[aria-label="章节目录"]');
+        const tools = sidebar.querySelector('[aria-label="创作业务面板"]');
+        return Boolean(
+          rail &&
+            tools &&
+            rail.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+      }),
+    )
+    .toBe(true);
   await page.getByRole('button', { name: '关闭章节目录' }).last().click();
   await expect
     .poll(() => header.evaluate((element) => element.getBoundingClientRect().bottom))

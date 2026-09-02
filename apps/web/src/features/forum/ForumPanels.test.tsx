@@ -393,6 +393,11 @@ describe("ForumPanels", () => {
     );
     expect(await screen.findByText("楔子 · 雨季之前")).toBeInTheDocument();
     expect(screen.getByText("第 2 行")).toBeInTheDocument();
+    expect(screen.getByText("读者")).toBeInTheDocument();
+    expect(screen.queryByText("reader")).not.toBeInTheDocument();
+    const location = screen.getByLabelText("校订位置");
+    expect(location.querySelector("dl")).toHaveClass("flex-col");
+    expect(location).toHaveTextContent(pendingSuggestions[0]!.lineText);
     expect(screen.queryByText("第一章 · 潮汐表")).not.toBeInTheDocument();
     expect(screen.queryByText("第 3 行")).not.toBeInTheDocument();
   });

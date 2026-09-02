@@ -2,6 +2,7 @@ import { Check, MapPin, X } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button } from "../../components/ui";
 import { SuggestionBatchCard } from "../proofread/SuggestionBatchCard";
+import { formatSuggestionAuthor } from "../proofread/suggestion-labels";
 import { cn } from "../../lib/utils";
 import { useSuggestions } from "./useSuggestions";
 
@@ -113,7 +114,9 @@ export function SuggestionPanel({
       {chapterItems.map((item) => (
         <article key={item.id} className="rounded-md border border-border p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-bold">{item.authorId}</span>
+            <span className="text-xs font-bold">
+              {formatSuggestionAuthor(item.authorId)}
+            </span>
             {item.status === "pending" ? (
               <Badge tone="amber">待审核</Badge>
             ) : (
@@ -123,20 +126,34 @@ export function SuggestionPanel({
             )}
           </div>
           {item.chapterTitle || item.lineNo > 0 ? (
-            <p className="mb-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-              <MapPin size={11} className="shrink-0 text-[#176e66]" />
-              {item.chapterTitle ? (
-                <span className="font-semibold text-[#176e66]">
-                  {item.chapterTitle}
-                </span>
-              ) : null}
-              {item.lineNo > 0 ? (
-                <span>第 {item.lineNo} 行</span>
-              ) : null}
-              {item.lineText ? (
-                <span className="min-w-0 truncate">「{item.lineText}」</span>
-              ) : null}
-            </p>
+            <div
+              className="mb-2 flex items-start gap-2 text-[11px] leading-4 text-muted-foreground"
+              aria-label="校订位置"
+            >
+              <MapPin size={11} className="mt-0.5 shrink-0 text-[#176e66]" />
+              <dl className="flex min-w-0 flex-1 flex-col gap-0.5">
+                {item.chapterTitle ? (
+                  <div>
+                    <dt className="sr-only">章节</dt>
+                    <dd className="font-semibold break-words text-[#176e66]">
+                      {item.chapterTitle}
+                    </dd>
+                  </div>
+                ) : null}
+                {item.lineNo > 0 ? (
+                  <div>
+                    <dt className="sr-only">行号</dt>
+                    <dd>第 {item.lineNo} 行</dd>
+                  </div>
+                ) : null}
+                {item.lineText ? (
+                  <div>
+                    <dt className="sr-only">原文</dt>
+                    <dd className="break-words">「{item.lineText}」</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
           ) : null}
           <div className="space-y-1 rounded bg-muted p-2 font-mono text-[11px]">
             <p className="text-[#aa3f3f] line-through">{item.fromText}</p>
