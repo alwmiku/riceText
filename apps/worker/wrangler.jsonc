@@ -60,12 +60,12 @@
     "production": {
       "name": "ricetext-api-production",
       "routes": [
-        { "pattern": "app.bianbai.org/api/*", "zone_name": "bianbai.org" }
+        { "pattern": "editor.bianbai.org/api/*", "zone_name": "bianbai.org" }
       ],
       "vars": {
         "ENVIRONMENT": "production",
         "ALLOW_DEMO_AUTH": "false",
-        "ALLOWED_ORIGINS": "https://app.bianbai.org"
+        "ALLOWED_ORIGINS": "https://editor.bianbai.org"
       },
       "d1_databases": [
         {
