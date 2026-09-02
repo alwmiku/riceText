@@ -1,36 +1,18 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { DocumentEnvelope, TiptapDocument } from "@ricetext/contracts";
+import { diffDocuments, type JSONContent } from "@ricetext/document-core";
 import {
-  applyStepsToDocument,
-  diffDocuments,
-  getChapterRange,
-  replaceChapter,
-  sharedSchema,
-  type JSONContent,
-} from "@ricetext/document-core";
+  DomainError,
+  mergeSuggestionBatch,
+  repairDocumentForRead,
+  replaceFirstText,
+  validateSuggestionBatch,
+} from "@ricetext/server-core";
 import type { RequestIdentity } from "../auth.js";
-import { replaceFirstText, type DocumentService } from "../document-service.js";
+import type { DocumentService } from "../document-service.js";
 import { HttpError } from "../errors.js";
 
-/** 深度按键名排序：文档比较只关心内容，不关心属性键的书写顺序。 */
-function sortObjectKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortObjectKeys);
-  if (value !== null && typeof value === "object") {
-    const sorted: Record<string, unknown> = {};
-    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-      sorted[key] = sortObjectKeys(
-        (value as Record<string, unknown>)[key] as unknown,
-      );
-    }
-    return sorted;
-  }
-  return value;
-}
-
-function canonicalJson(value: unknown): string {
-  return JSON.stringify(sortObjectKeys(value));
-}
 interface SuggestionRow {
   id: string;
   document_id: string;
@@ -86,8 +68,8 @@ export function mapSuggestionBatch(row: SuggestionBatchRow) {
     chapterId: row.chapter_id,
     chapterTitle: row.chapter_title,
     baseRevision: row.base_revision,
-    beforeContent: JSON.parse(row.before_content_json) as TiptapDocument,
-    afterContent: JSON.parse(row.after_content_json) as TiptapDocument,
+    beforeContent: repairDocumentForRead(JSON.parse(row.before_content_json)),
+    afterContent: repairDocumentForRead(JSON.parse(row.after_content_json)),
     steps: JSON.parse(row.steps_json) as Array<Record<string, unknown>>,
     reason: row.reason,
     status: row.status,
@@ -95,28 +77,6 @@ export function mapSuggestionBatch(row: SuggestionBatchRow) {
     reviewerId: row.reviewer_id,
     createdAt: row.created_at,
   };
-}
-
-function expectedBatchDocument(
-  current: TiptapDocument,
-  chapterId: string,
-  before: TiptapDocument,
-  after: TiptapDocument,
-): TiptapDocument | null {
-  const match = /^chapter-(\d+)$/.exec(chapterId);
-  if (!match) return null;
-  const range = getChapterRange(current as JSONContent, Number(match[1]));
-  if (!range) return null;
-  const existing = {
-    type: "doc" as const,
-    content: current.content.slice(range.start, range.end),
-  };
-  if (canonicalJson(existing) !== canonicalJson(before)) return null;
-  return replaceChapter(
-    current as JSONContent,
-    Number(match[1]),
-    after as JSONContent,
-  ) as TiptapDocument;
 }
 
 export class SuggestionService {
@@ -131,7 +91,7 @@ export class SuggestionService {
   /** 按身份过滤纠错建议。 */
   suggestions(documentId: string, identity: RequestIdentity) {
     this.#documents.get(documentId);
-    const rows = (identity.role === "reader"
+    const rows = (!this.#canEdit(documentId, identity)
       ? this.#db
           .prepare(
             "SELECT * FROM suggestions WHERE document_id = ? AND author_id = ? ORDER BY created_at DESC",
@@ -148,7 +108,7 @@ export class SuggestionService {
   /** 按身份读取整章批量校订。 */
   suggestionBatches(documentId: string, identity: RequestIdentity) {
     this.#documents.get(documentId);
-    const rows = (identity.role === "reader"
+    const rows = (!this.#canEdit(documentId, identity)
       ? this.#db
           .prepare(
             "SELECT * FROM suggestion_batches WHERE document_id = ? AND author_id = ? ORDER BY created_at DESC",
@@ -177,38 +137,23 @@ export class SuggestionService {
     identity: RequestIdentity,
   ) {
     const current = this.#documents.get(documentId);
+    const chapter = this.#db
+      .prepare("SELECT 1 FROM chapters WHERE id = ? AND document_id = ?")
+      .get(input.chapterId, documentId);
+    if (!chapter) throw new HttpError(404, "CHAPTER_NOT_FOUND", "章节不存在或不属于当前文档");
     if (current.revision !== input.baseRevision)
       throw new HttpError(409, "REVISION_CONFLICT", "正文已变化，请重新编辑后提交", {
         currentRevision: current.revision,
         baseRevision: input.baseRevision,
       });
-    const applied = this.#documents.validateSuggestionSteps(
-      documentId,
-      input.baseRevision,
-      input.steps,
-    );
-    const expected = expectedBatchDocument(
-      current.content,
-      input.chapterId,
-      input.beforeContent,
-      input.afterContent,
-    );
-    const normalizedExpected = expected
-      ? applyStepsToDocument(
-          sharedSchema(),
-          expected as unknown as JSONContent,
-          [],
-        )
-      : null;
-    if (
-      !normalizedExpected ||
-      canonicalJson(applied) !== canonicalJson(normalizedExpected)
-    )
-      throw new HttpError(
-        422,
-        "BATCH_SCOPE_MISMATCH",
-        "批量校订 steps 与当前章节修改不一致",
-      );
+    try {
+      validateSuggestionBatch(current.content, input);
+    } catch (error) {
+      if (error instanceof DomainError) {
+        throw new HttpError(error.status, error.code, error.message, error.details);
+      }
+      throw error;
+    }
     const row: SuggestionBatchRow = {
       id: randomUUID(),
       document_id: documentId,
@@ -258,12 +203,13 @@ export class SuggestionService {
       .get(batchId) as unknown as SuggestionBatchRow | undefined;
     if (!row)
       throw new HttpError(404, "SUGGESTION_BATCH_NOT_FOUND", "批量校订不存在");
+    this.#requireEditor(row.document_id, identity);
     if (row.status !== "pending")
       throw new HttpError(409, "SUGGESTION_BATCH_REVIEWED", "批量校订已审核");
     let document: DocumentEnvelope | null = null;
     if (decision === "approve") {
       const current = this.#documents.get(row.document_id);
-      const merged = expectedBatchDocument(
+      const merged = mergeSuggestionBatch(
         current.content,
         row.chapter_id,
         JSON.parse(row.before_content_json) as TiptapDocument,
@@ -287,15 +233,31 @@ export class SuggestionService {
         rebasedSteps,
         row.chapter_id,
         identity.id,
+        (createdAt) => {
+          const review = this.#db
+            .prepare(
+              "UPDATE suggestion_batches SET status = 'approved', reviewer_id = ?, reviewed_at = ? " +
+                "WHERE id = ? AND status = 'pending'",
+            )
+            .run(identity.id, createdAt, row.id);
+          if (review.changes !== 1) {
+            throw new HttpError(409, "SUGGESTION_BATCH_REVIEWED", "批量校订已审核");
+          }
+        },
       );
+    } else {
+      const review = this.#db
+        .prepare(
+          "UPDATE suggestion_batches SET status = 'rejected', reviewer_id = ?, reviewed_at = ? " +
+            "WHERE id = ? AND status = 'pending'",
+        )
+        .run(identity.id, new Date().toISOString(), row.id);
+      if (review.changes !== 1) {
+        throw new HttpError(409, "SUGGESTION_BATCH_REVIEWED", "批量校订已审核");
+      }
     }
     row.status = decision === "approve" ? "approved" : "rejected";
     row.reviewer_id = identity.id;
-    this.#db
-      .prepare(
-        "UPDATE suggestion_batches SET status = ?, reviewer_id = ?, reviewed_at = ? WHERE id = ?",
-      )
-      .run(row.status, identity.id, new Date().toISOString(), row.id);
     return { batch: mapSuggestionBatch(row), document };
   }
 
@@ -314,6 +276,14 @@ export class SuggestionService {
     },
   ) {
     this.#documents.get(documentId);
+    if (location.chapterId) {
+      const chapter = this.#db
+        .prepare("SELECT 1 FROM chapters WHERE id = ? AND document_id = ?")
+        .get(location.chapterId, documentId);
+      if (!chapter) {
+        throw new HttpError(404, "CHAPTER_NOT_FOUND", "章节不存在或不属于当前文档");
+      }
+    }
     const row: SuggestionRow = {
       id: randomUUID(),
       document_id: documentId,
@@ -366,6 +336,7 @@ export class SuggestionService {
       .get(suggestionId) as unknown as SuggestionRow | undefined;
     if (!row)
       throw new HttpError(404, "SUGGESTION_NOT_FOUND", "纠错建议不存在");
+    this.#requireEditor(row.document_id, identity);
     if (row.status !== "pending")
       throw new HttpError(409, "SUGGESTION_REVIEWED", "纠错建议已审核");
     let document: DocumentEnvelope | null = null;
@@ -395,15 +366,53 @@ export class SuggestionService {
         suggestionId,
         replaced,
         identity.id,
+        {
+          ...(row.chapter_id ? { chapterId: row.chapter_id } : {}),
+          beforeCommit: (createdAt) => {
+            const review = this.#db
+              .prepare(
+                "UPDATE suggestions SET status = 'approved', reviewer_id = ?, reviewed_at = ? " +
+                  "WHERE id = ? AND status = 'pending'",
+              )
+              .run(identity.id, createdAt, row.id);
+            if (review.changes !== 1) {
+              throw new HttpError(409, "SUGGESTION_REVIEWED", "纠错建议已审核");
+            }
+          },
+        },
       );
+    } else {
+      const review = this.#db
+        .prepare(
+          "UPDATE suggestions SET status = 'rejected', reviewer_id = ?, reviewed_at = ? " +
+            "WHERE id = ? AND status = 'pending'",
+        )
+        .run(identity.id, new Date().toISOString(), row.id);
+      if (review.changes !== 1) {
+        throw new HttpError(409, "SUGGESTION_REVIEWED", "纠错建议已审核");
+      }
     }
     row.status = decision === "approve" ? "approved" : "rejected";
     row.reviewer_id = identity.id;
-    this.#db
-      .prepare(
-        "UPDATE suggestions SET status = ?, reviewer_id = ?, reviewed_at = ? WHERE id = ?",
-      )
-      .run(row.status, identity.id, new Date().toISOString(), row.id);
     return { suggestion: mapSuggestion(row), document };
+  }
+
+  #canEdit(documentId: string, identity: RequestIdentity): boolean {
+    if (identity.role === "moderator") return true;
+    return Boolean(
+      this.#db
+        .prepare(
+          "SELECT 1 FROM documents document " +
+            "LEFT JOIN document_acl acl ON acl.document_id = document.id AND acl.user_id = ? " +
+            "WHERE document.id = ? AND (document.created_by = ? OR acl.permission IN ('edit', 'admin'))",
+        )
+        .get(identity.id, documentId, identity.id),
+    );
+  }
+
+  #requireEditor(documentId: string, identity: RequestIdentity): void {
+    if (!this.#canEdit(documentId, identity)) {
+      throw new HttpError(403, "FORBIDDEN", "当前身份无权审核此文档");
+    }
   }
 }

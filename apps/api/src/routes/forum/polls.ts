@@ -38,6 +38,7 @@ export const forumPollRoutes: FastifyPluginAsync<RouteDependencies> = async (
     "/api/forum/polls/:pollId/votes",
     { schema: getFastifySchema("listPollVotes") },
     async (request) => {
+      identity(dependencies, request);
       const input = CursorQuerySchema.parse(query(request));
       return dependencies.forum.pollVotes(
         params(request).pollId!,

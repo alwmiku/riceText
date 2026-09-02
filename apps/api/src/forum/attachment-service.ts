@@ -51,36 +51,45 @@ export class AttachmentService {
       .get(attachmentId) as unknown as AttachmentRow | undefined;
     if (!attachment)
       throw new HttpError(404, "ATTACHMENT_NOT_FOUND", "附件不存在");
-    const existing = this.#db
-      .prepare(
-        "SELECT author_income FROM attachment_purchases WHERE attachment_id = ? AND buyer_id = ?",
-      )
-      .get(attachmentId, identity.id) as { author_income: number } | undefined;
-    if (
-      existing ||
-      identity.id === attachment.author_id ||
-      identity.role === "moderator"
-    ) {
-      const balance = this.#wallet(identity.id);
+    if (identity.id === attachment.author_id || identity.role === "moderator") {
       return {
         attachment: this.attachment(attachmentId, identity),
-        buyerBalance: balance,
-        authorIncome: existing?.author_income ?? 0,
+        buyerBalance: this.#wallet(identity.id),
+        authorIncome: 0,
         alreadyPurchased: true,
       };
     }
-    const balance = this.#wallet(identity.id);
-    if (balance < attachment.price)
-      throw new HttpError(402, "INSUFFICIENT_COINS", "金币不足", {
-        balance,
-        price: attachment.price,
-      });
+
     const income = Math.floor(attachment.price * 0.7);
     this.#db.exec("BEGIN IMMEDIATE");
     try {
-      this.#db
-        .prepare("UPDATE wallets SET balance = balance - ? WHERE user_id = ?")
-        .run(attachment.price, identity.id);
+      const existing = this.#db
+        .prepare(
+          "SELECT author_income FROM attachment_purchases WHERE attachment_id = ? AND buyer_id = ?",
+        )
+        .get(attachmentId, identity.id) as { author_income: number } | undefined;
+      if (existing) {
+        const balance = this.#wallet(identity.id);
+        this.#db.exec("COMMIT");
+        return {
+          attachment: this.attachment(attachmentId, identity),
+          buyerBalance: balance,
+          authorIncome: existing.author_income,
+          alreadyPurchased: true,
+        };
+      }
+      const balance = this.#wallet(identity.id);
+      const debit = this.#db
+        .prepare(
+          "UPDATE wallets SET balance = balance - ? WHERE user_id = ? AND balance >= ?",
+        )
+        .run(attachment.price, identity.id, attachment.price);
+      if (debit.changes !== 1) {
+        throw new HttpError(402, "INSUFFICIENT_COINS", "金币不足", {
+          balance,
+          price: attachment.price,
+        });
+      }
       this.#db
         .prepare("UPDATE wallets SET balance = balance + ? WHERE user_id = ?")
         .run(income, attachment.author_id);
@@ -88,24 +97,18 @@ export class AttachmentService {
         .prepare(
           "INSERT INTO attachment_purchases(attachment_id, buyer_id, price, author_income, created_at) VALUES (?, ?, ?, ?, ?)",
         )
-        .run(
-          attachment.id,
-          identity.id,
-          attachment.price,
-          income,
-          new Date().toISOString(),
-        );
+        .run(attachment.id, identity.id, attachment.price, income, new Date().toISOString());
       this.#db.exec("COMMIT");
+      return {
+        attachment: this.attachment(attachmentId, identity),
+        buyerBalance: balance - attachment.price,
+        authorIncome: income,
+        alreadyPurchased: false,
+      };
     } catch (error) {
       this.#db.exec("ROLLBACK");
       throw error;
     }
-    return {
-      attachment: this.attachment(attachmentId, identity),
-      buyerBalance: balance - attachment.price,
-      authorIncome: income,
-      alreadyPurchased: false,
-    };
   }
 
   #wallet(userId: string): number {

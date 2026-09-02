@@ -1,10 +1,12 @@
 import { Edit3, Eye } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
+import { useAppContext } from "../app-context";
 import { IdentitySwitcher } from "./IdentitySwitcher";
 
 /** 顶部品牌、路由导航与身份入口；移动端向下阅读时自动收起。 */
 export function AppHeader() {
+  const { authMode } = useAppContext();
   const [hidden, setHidden] = useState(false);
   const lastScrollY = useRef(0);
 
@@ -65,7 +67,11 @@ export function AppHeader() {
         </nav>
 
         <span className="flex-1" />
-        <span className="inline-flex h-5 items-center rounded border border-[#d3a859] bg-[#fff9ed] px-1.5 text-[10px] font-bold whitespace-nowrap text-[#80530a] max-[840px]:hidden">本地环境</span>
+        {authMode === "demo" ? (
+          <span className="inline-flex h-5 items-center rounded border border-[#d3a859] bg-[#fff9ed] px-1.5 text-[10px] font-bold whitespace-nowrap text-[#80530a] max-[840px]:hidden">
+            本地环境
+          </span>
+        ) : null}
         <IdentitySwitcher />
       </div>
     </header>

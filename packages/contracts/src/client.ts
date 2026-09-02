@@ -5,7 +5,9 @@ import type {
   DeleteDocumentChapterResponseSchema,
   CommentReply,
   CommentThread,
+  ForumSession,
   ForumUser,
+
   DiceRollResult,
   DocumentEnvelope,
   RevisionPage,
@@ -87,7 +89,7 @@ export interface RiceTextApiClient {
   /** 设置赞、踩或 0 撤销，并返回权威计数。 */
   voteComment(replyId: string, value: -1 | 0 | 1, signal?: AbortSignal): Promise<{ score: number; viewerVote: -1 | 0 | 1; upvotes: number; downvotes: number; myVote: -1 | 0 | 1 }>;
   /** 读取当前和可切换的论坛身份。 */
-  getForumSession(signal?: AbortSignal): Promise<{ current: ForumUser; available: ForumUser[] }>;
+  getForumSession(signal?: AbortSignal): Promise<ForumSession>;
   /** 读取章节目录（按 order 排序，含每章独立版本号）。 */
   listChapters(signal?: AbortSignal): Promise<{ items: Array<z.infer<typeof ChapterSchema>> }>;
   /** 按名称或 ID 搜索好友/用户。 */
@@ -132,7 +134,12 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     if (userId) headers.set("x-user-id", userId);
     if (init.body && !(init.body instanceof FormData)) headers.set("content-type", "application/json");
     const { signal, ...requestInit } = init;
-    const response = await fetcher(`${baseUrl}${path}`, { ...requestInit, headers, ...(signal ? { signal } : {}) });
+    const response = await fetcher(`${baseUrl}${path}`, {
+      credentials: "include",
+      ...requestInit,
+      headers,
+      ...(signal ? { signal } : {}),
+    });
     if (!response.ok) {
       const payload = await response.json().catch(() => null) as { error?: { code?: string; message?: string; details?: Record<string, unknown> } } | null;
       throw new ApiClientError(response.status, payload?.error?.code ?? "HTTP_ERROR", payload?.error?.message ?? response.statusText, payload?.error?.details);

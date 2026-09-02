@@ -1,13 +1,19 @@
 import { createId } from "../utils";
 import type { UploadedAsset } from "../types";
-import { ApiError, api, isApiClientError, rethrowClientError } from "./client";
+import {
+  ApiError,
+  api,
+  isApiClientError,
+  resolveApiUrl,
+  rethrowClientError,
+} from "./client";
 
 export async function uploadAsset(file: File): Promise<UploadedAsset> {
   try {
     const asset = await api().uploadAsset(file);
     return {
       assetId: asset.assetId,
-      url: asset.url,
+      url: resolveApiUrl(asset.url) ?? asset.url,
       name: asset.name,
       mimeType: asset.mimeType,
       size: asset.size,

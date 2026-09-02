@@ -49,6 +49,7 @@ describe("buildOpenApiDocument", () => {
       info: { title: string; description: string };
       servers: Array<{ url: string }>;
       tags: Array<{ name: string }>;
+      components: { securitySchemes: Record<string, Record<string, unknown>> };
       paths: Record<string, Record<string, Record<string, unknown>>>;
     };
 
@@ -59,6 +60,7 @@ describe("buildOpenApiDocument", () => {
       { url: "http://localhost:8787", description: "本地开发 API" },
     ]);
     expect(document.tags.map((tag) => tag.name)).toEqual([
+      "认证",
       "文档",
       "图片",
       "骰子",
@@ -67,11 +69,11 @@ describe("buildOpenApiDocument", () => {
     ]);
     expect(
       Object.values(document.paths).flatMap((path) => Object.keys(path)),
-    ).toHaveLength(contractRoutes.length);
+    ).toHaveLength(contractRoutes.length + 4);
 
     const getDocument = document.paths["/api/documents/{documentId}"]!.get!;
     expect(getDocument.operationId).toBe("getDocument");
-    expect(getDocument.description).toContain("权限与失败状态均列于 responses");
+    expect(getDocument.description).toContain("HttpOnly session cookie");
     expect(getDocument.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -151,6 +153,12 @@ describe("buildOpenApiDocument", () => {
     expect(readAsset.responses["200"]?.content["image/*"]?.schema).toEqual({
       type: "string",
       format: "binary",
+    });
+
+    expect(document.paths["/api/auth/login"]?.get?.operationId).toBe("beginOidcLogin");
+    expect(document.components.securitySchemes.cookieSession).toMatchObject({
+      in: "cookie",
+      name: "ricetext_session",
     });
 
     const forumPoll = document.paths["/api/forum/polls/{pollId}"]!.get!;

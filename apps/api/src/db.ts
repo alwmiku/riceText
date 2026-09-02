@@ -325,6 +325,31 @@ const migrationV10 = `
 ALTER TABLE chapters ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;
 `;
 
+/** 与生产 Worker 对齐的文档 ACL、回复凭证和数据约束。 */
+const migrationV11 = `
+CREATE TABLE document_acl (
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  permission TEXT NOT NULL CHECK (permission IN ('read', 'edit', 'admin')),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (document_id, user_id)
+);
+CREATE INDEX document_acl_user_idx ON document_acl(user_id, permission);
+CREATE UNIQUE INDEX chapters_document_order_idx ON chapters(document_id, sort_order);
+CREATE TRIGGER comment_reply_creates_receipt
+AFTER INSERT ON comment_replies
+BEGIN
+  INSERT OR IGNORE INTO reply_receipts(document_id, user_id, created_at)
+  VALUES (NEW.document_id, NEW.author_id, NEW.created_at);
+END;
+INSERT OR IGNORE INTO reply_receipts(document_id, user_id, created_at)
+SELECT document_id, author_id, MIN(created_at)
+FROM comment_replies
+GROUP BY document_id, author_id;
+INSERT OR IGNORE INTO document_acl(document_id, user_id, permission, created_at)
+SELECT id, created_by, 'admin', created_at FROM documents;
+`;
+
 const migrationV6 = `
 CREATE TABLE suggestion_batches (
   id TEXT PRIMARY KEY,
@@ -358,6 +383,7 @@ function seed(db: DatabaseSync): void {
     insertUser.run("wanderer", "远舟", "reader", 0, "可由服务端解析的非好友用户。");
 
     db.prepare("INSERT OR IGNORE INTO documents(id, title, schema_version, current_revision, created_by, created_at, updated_at) VALUES (?, ?, 1, 1, 'author', ?, ?)").run("demo-post", "雾港来信 · 第一章", now, now);
+    db.prepare("INSERT OR IGNORE INTO document_acl(document_id, user_id, permission, created_at) VALUES ('demo-post', 'author', 'admin', ?)").run(now);
     db.prepare("INSERT OR IGNORE INTO document_revisions(document_id, revision, schema_version, content_json, author_id, operation, target_revision, created_at) VALUES (?, 1, 1, ?, 'author', 'seed', NULL, ?)").run("demo-post", JSON.stringify(seedDocument), now);
 
     db.prepare("INSERT OR IGNORE INTO comment_threads(document_id, anchor_id, archived, created_at) VALUES ('demo-post', 'anchor-opening', 0, ?)").run(now);
@@ -372,8 +398,8 @@ function seed(db: DatabaseSync): void {
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         sort_order = excluded.sort_order,
-        document_id = excluded.document_id,
         updated_at = COALESCE(NULLIF(chapters.updated_at, ''), excluded.updated_at)
+        WHERE chapters.document_id = excluded.document_id
     `);
     insertChapter.run("chapter-0", "楔子 · 雨季之前", 0, now);
     insertChapter.run("chapter-1", "第一章 · 潮汐表", 1, now);
@@ -386,7 +412,7 @@ function seed(db: DatabaseSync): void {
     db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('reader', 50)").run();
     db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('moderator', 100)").run();
     db.prepare("INSERT OR IGNORE INTO wallets(user_id, balance) VALUES ('wanderer', 20)").run();
-    db.prepare("INSERT OR IGNORE INTO attachments(id, name, mime_type, price, author_id, download_url) VALUES ('attachment-sample', '雾港设定集.txt', 'text/plain', 10, 'author', '/forum-downloads/mist-harbor.txt')").run();
+    db.prepare("INSERT OR IGNORE INTO attachments(id, name, mime_type, price, author_id, download_url) VALUES ('attachment-sample', '雾港设定集.txt', 'text/plain', 10, 'author', 'https://example.com/mist-harbor.txt')").run();
 
     // 待审核校订建议：文本与正文逐字一致，并记录文章/章节/行定位，
     // 供阅读页按章过滤与行级字对比。五章各一条演示数据，每次启动重置为固定状态。
@@ -487,6 +513,7 @@ export function createDatabase(options: DatabaseOptions): DatabaseSync {
   runMigration(db, 8, migrationV8);
   runMigration(db, 9, migrationV9);
   runMigration(db, 10, migrationV10);
+  runMigration(db, 11, migrationV11);
   if (options.seed !== false) seed(db);
   return db;
 }

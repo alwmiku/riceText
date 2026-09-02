@@ -67,7 +67,7 @@ vi.mock('../features/comments/CommentThread', () => ({
 
 function renderPage(identity = identities[0]!) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><AppContext.Provider value={{ identity, setIdentity: vi.fn() }}>{children}</AppContext.Provider></QueryClientProvider>;
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><AppContext.Provider value={{ identity, setIdentity: vi.fn(), authMode: "demo", authStatus: "authenticated", login: vi.fn(), logout: vi.fn(async () => undefined), refreshIdentity: vi.fn(async () => undefined) }}>{children}</AppContext.Provider></QueryClientProvider>;
   return render(<MemoryRouter><ComposePage /></MemoryRouter>, { wrapper });
 }
 

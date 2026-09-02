@@ -11,6 +11,12 @@ export function registerErrorHandlers(app: FastifyInstance): void {
       message?: string;
     };
     if (error instanceof HttpError) return sendHttpError(reply, error);
+    if (candidate.code === "FST_ERR_CTP_INVALID_JSON_BODY") {
+      return sendHttpError(
+        reply,
+        new HttpError(422, "VALIDATION_ERROR", "请求体不是有效的 JSON"),
+      );
+    }
     if (candidate.code === "FST_REQ_FILE_TOO_LARGE") {
       return sendHttpError(
         reply,

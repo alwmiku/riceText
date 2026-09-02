@@ -6,7 +6,16 @@ info:
 servers:
   - url: http://localhost:8787
     description: 本地开发 API
+components:
+  securitySchemes:
+    cookieSession:
+      type: apiKey
+      in: cookie
+      name: ricetext_session
+      description: OIDC 登录后由 Worker 设置的 HttpOnly session cookie。
 tags:
+  - name: 认证
+    description: OIDC 登录、会话和 Worker 健康状态。
   - name: 文档
     description: 文档当前态、不可变修订和乐观并发。
   - name: 图片
@@ -27,7 +36,7 @@ paths:
       description: |-
         读取最新不可变修订的 Tiptap JSON。任何论坛身份均可访问。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: documentId
           in: path
@@ -43,7 +52,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -52,6 +61,9 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - {}
+        - cookieSession: []
       responses:
         "200":
           description: 当前文档，例如 revision 为 1 的 demo-post。
@@ -150,7 +162,7 @@ paths:
       description: |-
         需要 author 或 moderator。baseRevision 过期返回 409；相同 clientMutationId 重试返回首次结果且不重复建版。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: documentId
           in: path
@@ -166,7 +178,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -175,6 +187,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -334,6 +348,37 @@ paths:
                   - savedAt
                   - content
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "403":
           description: 当前身份无编辑权限。
           content:
@@ -439,16 +484,419 @@ paths:
                 error:
                   code: EXAMPLE_ERROR
                   message: 正文包含非法节点、属性或 URL。
-  /api/documents/{documentId}/steps:
+  /api/documents/{documentId}/chapters/{chapterId}:
     patch:
-      operationId: updateDocumentSteps
+      operationId: updateDocumentChapter
       tags:
         - 文档
-      summary: 使用 ProseMirror 增量步骤更新文档
+      summary: 更新章节目录行（隐藏/恢复）
       description: |-
-        需要 author 或 moderator。客户端提交 transaction steps，服务端基于当前 revision 应用 steps 并创建新修订。首版仅定义契约，后续实现服务端应用。
+        需要 author 或 moderator。隐藏的章节读者不可读；作者写完取消隐藏后恢复可读。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 路径参数 documentId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+          example: demo-post
+        - name: chapterId
+          in: path
+          required: true
+          description: 路径参数 chapterId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hidden:
+                  type: boolean
+              required:
+                - hidden
+              additionalProperties: false
+      responses:
+        "200":
+          description: 更新后的章节目录行。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  title:
+                    type: string
+                  order:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  documentId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  revision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  savedAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  hidden:
+                    type: boolean
+                required:
+                  - id
+                  - title
+                  - order
+                  - documentId
+                  - revision
+                  - savedAt
+                  - hidden
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        "403":
+          description: 当前身份无编辑权限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份无编辑权限。
+        "404":
+          description: 文档或章节不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档或章节不存在。
+        "422":
+          description: 请求字段非法。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 请求字段非法。
+      x-implementation-status: implemented
+    delete:
+      operationId: deleteDocumentChapter
+      tags:
+        - 文档
+      summary: 删除章节目录中的章节
+      description: |-
+        需要 author 或 moderator。编辑器「删除章节」移除正文后再调用本接口删除对应目录行（幂等：不存在时返回 deleted = false）；历史修订与章节独立版本号不受影响，关联校订建议解除章节归属但不删除。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 路径参数 documentId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+          example: demo-post
+        - name: chapterId
+          in: path
+          required: true
+          description: 路径参数 chapterId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: 删除结果；deleted = false 表示目录中本就没有该章。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  deleted:
+                    type: boolean
+                required:
+                  - id
+                  - deleted
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        "403":
+          description: 当前身份无编辑权限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份无编辑权限。
+        "404":
+          description: 文档不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档不存在。
+      x-implementation-status: implemented
+  /api/documents/{documentId}/chapters:
+    post:
+      operationId: createDocumentChapter
+      tags:
+        - 文档
+      summary: 注册正文中出现的新章节
+      description: >-
+        需要 author 或 moderator。编辑器的「新增章节」只修改正文；保存前客户端必须把正文中服务器目录缺失的新章节注册进来。服务端按位置分配章节
+        id（chapter-<order>，同位置重复注册幂等返回同一行），客户端用返回的 id 同步本地目录并执行文档保存——新章节历史与独立版本号才能按该 id 归集。
+
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: documentId
           in: path
@@ -464,7 +912,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -473,6 +921,286 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                order:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+              required:
+                - title
+                - order
+              additionalProperties: false
+      responses:
+        "200":
+          description: 重复注册命中的已有章节行。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  title:
+                    type: string
+                  order:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  documentId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  revision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  savedAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  hidden:
+                    type: boolean
+                required:
+                  - id
+                  - title
+                  - order
+                  - documentId
+                  - revision
+                  - savedAt
+                  - hidden
+                additionalProperties: false
+        "201":
+          description: 新建的章节行，客户端应把该 id 同步回本地目录。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  title:
+                    type: string
+                  order:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  documentId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  revision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  savedAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  hidden:
+                    type: boolean
+                required:
+                  - id
+                  - title
+                  - order
+                  - documentId
+                  - revision
+                  - savedAt
+                  - hidden
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        "403":
+          description: 当前身份无编辑权限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份无编辑权限。
+        "404":
+          description: 文档不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档不存在。
+        "422":
+          description: 标题或顺序非法。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 标题或顺序非法。
+      x-implementation-status: implemented
+  /api/documents/{documentId}/steps:
+    patch:
+      operationId: updateDocumentSteps
+      tags:
+        - 文档
+      summary: 使用 ProseMirror 增量步骤更新文档
+      description: |-
+        需要 author 或 moderator。客户端提交 transaction steps，服务端基于当前 revision 应用 steps 并创建新修订。首版仅定义契约，后续实现服务端应用。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -626,6 +1354,37 @@ paths:
                   - savedAt
                   - content
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "403":
           description: 当前身份无编辑权限。
           content:
@@ -738,9 +1497,9 @@ paths:
         - 论坛业务
       summary: 对比章节内容哈希
       description: |-
-        客户端提交本地章节清单（含 SHA-256 哈希），服务端对比已存哈希，返回需要上传的章节与已存在（无需上传）的章节 ID。
+        需要文档 owner、ACL editor 或 moderator。客户端提交本地章节清单（含 SHA-256 哈希），服务端对比已存哈希，返回需要上传的章节与已存在（无需上传）的章节 ID。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: novelId
           in: path
@@ -755,7 +1514,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -764,6 +1523,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -831,6 +1592,37 @@ paths:
                   - toUpdate
                   - existing
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
       x-implementation-status: implemented
   /api/forum/novels/{novelId}/chapters/{chapterId}:
     put:
@@ -841,7 +1633,7 @@ paths:
       description: |-
         需要 author 或 moderator。正文经过与文档相同的白名单校验；该章节 baseRevision 过期返回 409。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: novelId
           in: path
@@ -864,7 +1656,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -873,6 +1665,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -952,6 +1746,37 @@ paths:
                   - title
                   - order
                   - revision
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
                 additionalProperties: false
         "403":
           description: 当前身份无编辑权限。
@@ -1068,7 +1893,7 @@ paths:
       description: |-
         按 revision 倒序返回；cursor 使用上一页最后一项的 revision。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: documentId
           in: path
@@ -1087,8 +1912,7 @@ paths:
           description: 查询参数 cursor
           schema:
             type: string
-            minLength: 1
-            maxLength: 256
+            pattern: ^[1-9]\d*$
         - name: limit
           in: query
           required: false
@@ -1099,10 +1923,19 @@ paths:
             minimum: 1
             maximum: 100
           example: 20
+        - name: chapterId
+          in: query
+          required: false
+          description: 查询参数 chapterId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -1111,6 +1944,9 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - {}
+        - cookieSession: []
       responses:
         "200":
           description: 不可变版本摘要页。
@@ -1223,6 +2059,141 @@ paths:
                 error:
                   code: EXAMPLE_ERROR
                   message: 文档不存在。
+  /api/documents/{documentId}/revisions/{revision}:
+    get:
+      operationId: getRevision
+      tags:
+        - 文档
+      summary: 读取指定历史版本
+      description: |-
+        读取不可变 revision 的完整 Tiptap JSON，用于只读比较。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: revision
+          in: path
+          required: true
+          description: 不可变 revision 编号
+          schema:
+            type: string
+            pattern: ^\d+$
+            description: 不可变 revision 编号
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - {}
+        - cookieSession: []
+      responses:
+        "200":
+          description: 指定历史 revision 的完整快照。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  title:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                  schemaVersion:
+                    type: integer
+                    exclusiveMinimum: 0
+                    maximum: 9007199254740991
+                  revision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  savedAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  content:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        const: doc
+                      content:
+                        default: []
+                        maxItems: 20000
+                        type: array
+                        items:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - type
+                      - content
+                    additionalProperties: false
+                required:
+                  - id
+                  - title
+                  - schemaVersion
+                  - revision
+                  - savedAt
+                  - content
+                additionalProperties: false
+        "404":
+          description: 文档或版本不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档或版本不存在。
   /api/documents/{documentId}/rollback:
     post:
       operationId: rollbackDocument
@@ -1232,7 +2203,7 @@ paths:
       description: |-
         需要 author 或 moderator。回退会复制目标内容并创建新 revision，不删除任何历史。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: documentId
           in: path
@@ -1248,7 +2219,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -1257,6 +2228,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -1392,6 +2365,37 @@ paths:
                   - savedAt
                   - content
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "403":
           description: 当前身份无回滚权限。
           content:
@@ -1506,12 +2510,12 @@ paths:
       description: |-
         multipart/form-data 的 file 字段；允许 PNG/JPEG/GIF/WebP，最多 8 MiB。所有已登录论坛身份可上传。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -1520,6 +2524,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: file 为待上传图片二进制。
@@ -1592,6 +2598,37 @@ paths:
                   - size
                   - url
                   - createdAt
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
                 additionalProperties: false
         "413":
           description: 图片超过大小限制。
@@ -1703,11 +2740,11 @@ paths:
       operationId: readAsset
       tags:
         - 图片
-      summary: 读取图片二进制
+      summary: 读取资产二进制
       description: |-
-        按资产 ID 返回原始图片，并设置 immutable 缓存头；不代理外链。
+        按资产 ID 返回图片或附件。Worker 支持 ETag、Range；付费附件仅作者、版主或已购买用户可读。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: assetId
           in: path
@@ -1722,7 +2759,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -1731,14 +2768,99 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - {}
+        - cookieSession: []
       responses:
         "200":
-          description: 图片二进制；实际 Content-Type 来自保存的白名单 MIME。
+          description: 完整二进制；Content-Type 来自保存的白名单 MIME。
           content:
             image/*:
               schema:
                 type: string
                 format: binary
+        "206":
+          description: 满足 Range 请求的部分二进制。
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: ETag 未变化，无响应体。
+          content:
+            application/json:
+              schema: {}
+        "401":
+          description: 受保护附件要求登录。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 受保护附件要求登录。
+        "403":
+          description: 当前身份未购买该附件。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份未购买该附件。
         "404":
           description: 资产不存在。
           content:
@@ -1774,6 +2896,41 @@ paths:
                 error:
                   code: EXAMPLE_ERROR
                   message: 资产不存在。
+        "416":
+          description: Range 超出资产范围。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: Range 超出资产范围。
   /api/dice:
     post:
       operationId: createDiceRoll
@@ -1783,12 +2940,12 @@ paths:
       description: |-
         表达式由 RPG Dice Roller 解析，例如 3d5。服务端只投掷一次并持久化。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -1797,6 +2954,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -1866,6 +3025,37 @@ paths:
                   - total
                   - createdAt
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "422":
           description: 骰子表达式不可解析。
           content:
@@ -1910,7 +3100,7 @@ paths:
       description: |-
         重复读取同一 rollId 绝不会重新投掷。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: rollId
           in: path
@@ -1925,7 +3115,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -1934,6 +3124,9 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - {}
+        - cookieSession: []
       responses:
         "200":
           description: 已持久化的原始结果。
@@ -2025,7 +3218,7 @@ paths:
       description: |-
         创建新 rollId，并通过 previousRollId/rootRollId 保留重投链。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: rollId
           in: path
@@ -2040,7 +3233,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -2049,6 +3242,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       responses:
         "201":
           description: 新投掷结果。
@@ -2096,6 +3291,37 @@ paths:
                   - total
                   - createdAt
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "404":
           description: 原骰子结果不存在。
           content:
@@ -2140,7 +3366,7 @@ paths:
       description: |-
         只对根回复做游标分页，返回根节点的完整后代；sort=score 或 newest。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: documentId
           in: path
@@ -2192,7 +3418,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -2201,6 +3427,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       responses:
         "200":
           description: 锚点的树状回复及当前身份投票。
@@ -2249,6 +3477,37 @@ paths:
                   - items
                   - pageInfo
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "404":
           description: 文档不存在。
           content:
@@ -2293,7 +3552,7 @@ paths:
       description: |-
         所有论坛身份可回复。parentId 为 null 创建根回复，否则创建楼中楼。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: documentId
           in: path
@@ -2317,7 +3576,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -2326,6 +3585,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -2455,6 +3716,37 @@ paths:
                   - createdAt
                   - children
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "404":
           description: 文档或父回复不存在。
           content:
@@ -2534,7 +3826,7 @@ paths:
       description: |-
         value=1 点赞、-1 点踩、0 撤销；每个身份对每条回复只有一票。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: replyId
           in: path
@@ -2548,7 +3840,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -2557,6 +3849,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -2619,6 +3913,37 @@ paths:
                   - downvotes
                   - myVote
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "404":
           description: 回复不存在。
           content:
@@ -2661,14 +3986,14 @@ paths:
         - 论坛业务
       summary: 读取当前论坛身份
       description: |-
-        由 x-user-id 请求头选择 author、reader 或 moderator；默认 reader。
+        生产环境从 HttpOnly session cookie 读取当前身份；本地 demo 模式可使用 x-user-id 切换种子身份。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -2677,6 +4002,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       responses:
         "200":
           description: 当前身份和可切换身份。
@@ -2706,12 +4033,25 @@ paths:
                         type: boolean
                       bio:
                         type: string
+                      avatar:
+                        type: string
+                        minLength: 1
+                        maxLength: 8
+                      coins:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      replied:
+                        type: boolean
                     required:
                       - id
                       - name
                       - role
                       - isFriend
                       - bio
+                      - avatar
+                      - coins
+                      - replied
                     additionalProperties: false
                   available:
                     type: array
@@ -2736,16 +4076,60 @@ paths:
                           type: boolean
                         bio:
                           type: string
+                        avatar:
+                          type: string
+                          minLength: 1
+                          maxLength: 8
+                        coins:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        replied:
+                          type: boolean
                       required:
                         - id
                         - name
                         - role
                         - isFriend
                         - bio
+                        - avatar
+                        - coins
+                        - replied
                       additionalProperties: false
                 required:
                   - current
                   - available
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
                 additionalProperties: false
       x-implementation-status: implemented
   /api/forum/chapters:
@@ -2757,12 +4141,12 @@ paths:
       description: |-
         返回当前文档按 order 排序的持久化章节目录。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -2771,6 +4155,9 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - {}
+        - cookieSession: []
       responses:
         "200":
           description: 按 order 升序的章节。
@@ -2804,12 +4191,20 @@ paths:
                           type: integer
                           minimum: 0
                           maximum: 9007199254740991
+                        savedAt:
+                          type: string
+                          format: date-time
+                          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                        hidden:
+                          type: boolean
                       required:
                         - id
                         - title
                         - order
                         - documentId
                         - revision
+                        - savedAt
+                        - hidden
                       additionalProperties: false
                 required:
                   - items
@@ -2824,7 +4219,7 @@ paths:
       description: |-
         作者与版主可看到全部状态；读者仅看到自己提交的建议。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: documentId
           in: path
@@ -2840,7 +4235,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -2849,6 +4244,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       responses:
         "200":
           description: 纠错建议列表。
@@ -2928,6 +4325,37 @@ paths:
                 required:
                   - items
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "404":
           description: 文档不存在。
           content:
@@ -2972,7 +4400,7 @@ paths:
       description: |-
         读者提交待审核文字替换；未审核内容不会写入正文。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: documentId
           in: path
@@ -2988,7 +4416,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -2997,6 +4425,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -3108,6 +4538,37 @@ paths:
                   - reviewerId
                   - createdAt
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "404":
           description: 文档不存在。
           content:
@@ -3153,7 +4614,7 @@ paths:
       description: |-
         仅 author/moderator。approve 会替换当前正文第一次匹配文字并创建 operation=suggestion 的真实修订；reject 只更新建议状态。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: suggestionId
           in: path
@@ -3167,7 +4628,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -3176,6 +4637,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -3327,6 +4790,37 @@ paths:
                   - suggestion
                   - document
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "403":
           description: 当前身份不可审核。
           content:
@@ -3442,7 +4936,7 @@ paths:
       description: |-
         作者与版主可查看全部批次；读者仅看到自己提交的批次。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: documentId
           in: path
@@ -3458,7 +4952,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -3467,6 +4961,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       responses:
         "200":
           description: 批量校订列表。
@@ -3588,6 +5084,37 @@ paths:
                 required:
                   - items
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "404":
           description: 文档不存在。
           content:
@@ -3632,7 +5159,7 @@ paths:
       description: |-
         把整章编辑产生的多个 ProseMirror steps 合并为一个待审核批次。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: documentId
           in: path
@@ -3648,7 +5175,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -3657,6 +5184,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -3849,6 +5378,37 @@ paths:
                   - reviewerId
                   - createdAt
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "409":
           description: 提交基线已过期。
           content:
@@ -3929,7 +5489,7 @@ paths:
       description: |-
         接受时基于最新正文安全重放当前章节的全部修改并只创建一个 revision；其他章节变化不会阻塞，当前章节变化返回冲突；拒绝不修改正文。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: batchId
           in: path
@@ -3943,7 +5503,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -3952,6 +5512,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -4145,6 +5707,37 @@ paths:
                   - batch
                   - document
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "403":
           description: 当前身份不可审核。
           content:
@@ -4260,7 +5853,7 @@ paths:
       description: |-
         q 同时匹配名称和 ID；friendsOnly=true 仅返回当前身份好友。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: q
           in: query
@@ -4280,7 +5873,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -4289,6 +5882,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       responses:
         "200":
           description: 最多 20 个候选用户。
@@ -4330,6 +5925,37 @@ paths:
                 required:
                   - items
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
       x-implementation-status: implemented
   /api/forum/mentions/resolve:
     post:
@@ -4340,12 +5966,12 @@ paths:
       description: |-
         发送时按可选 ID 或精确名称解析非好友；失败时客户端应渲染普通文本。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -4354,6 +5980,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -4421,6 +6049,37 @@ paths:
                   - displayText
                   - user
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
       x-implementation-status: implemented
   /api/forum/reply-gates/resolve:
     post:
@@ -4431,12 +6090,12 @@ paths:
       description: |-
         按服务端记录的回复关系返回内容；作者和版主始终可见。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -4445,6 +6104,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -4504,6 +6165,37 @@ paths:
                   - content
                   - message
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "404":
           description: gateId 不存在。
           content:
@@ -4549,7 +6241,7 @@ paths:
       description: |-
         未购买时隐藏 downloadUrl；作者和版主直接具备权限。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: attachmentId
           in: path
@@ -4563,7 +6255,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -4572,6 +6264,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       responses:
         "200":
           description: 附件价格和当前身份权益。
@@ -4606,6 +6300,37 @@ paths:
                   - price
                   - purchased
                   - downloadUrl
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
                 additionalProperties: false
         "404":
           description: 附件不存在。
@@ -4652,7 +6377,7 @@ paths:
       description: |-
         金币账务；重复购买幂等，首次购买扣款并按售价 70% 向作者入账。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: attachmentId
           in: path
@@ -4666,7 +6391,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -4675,6 +6400,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       responses:
         "200":
           description: 已购买或重复购买结果。
@@ -4728,6 +6455,37 @@ paths:
                   - buyerBalance
                   - authorIncome
                   - alreadyPurchased
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
                 additionalProperties: false
         "402":
           description: 金币不足。
@@ -4809,7 +6567,7 @@ paths:
       description: |-
         返回当前身份资格、已选选项和实时计数。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: pollId
           in: path
@@ -4823,7 +6581,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -4832,6 +6590,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       responses:
         "200":
           description: 投票详情。
@@ -4887,6 +6647,37 @@ paths:
                   - options
                   - viewerOptionIds
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "404":
           description: 投票不存在。
           content:
@@ -4932,7 +6723,7 @@ paths:
       description: |-
         满足资格的用户可投；单选投票只能提交一个 optionId，重复提交会更新选择。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: pollId
           in: path
@@ -4946,7 +6737,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -4955,6 +6746,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       requestBody:
         required: true
         description: 请求字段由共享 Zod 契约校验。
@@ -5029,6 +6822,37 @@ paths:
                   - eligible
                   - options
                   - viewerOptionIds
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
                 additionalProperties: false
         "403":
           description: 当前身份不满足投票要求。
@@ -5144,7 +6968,7 @@ paths:
       description: |-
         按投票时间倒序，cursor 为上一页最后一条记录 ID。
 
-        权限与失败状态均列于 responses；请求示例可使用 x-user-id: reader。
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
         - name: pollId
           in: path
@@ -5176,7 +7000,7 @@ paths:
         - name: x-user-id
           in: header
           required: false
-          description: 论坛身份 ID：author、reader 或 moderator；省略时默认 reader。生产接入时替换 AuthProvider。
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
           schema:
             type: string
             enum:
@@ -5185,6 +7009,8 @@ paths:
               - moderator
             default: reader
           example: reader
+      security:
+        - cookieSession: []
       responses:
         "200":
           description: 实名用户与所选 optionId。
@@ -5256,6 +7082,37 @@ paths:
                   - items
                   - pageInfo
                 additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
         "404":
           description: 投票不存在。
           content:
@@ -5292,3 +7149,51 @@ paths:
                   code: EXAMPLE_ERROR
                   message: 投票不存在。
       x-implementation-status: implemented
+  /api/auth/login:
+    get:
+      operationId: beginOidcLogin
+      tags:
+        - 认证
+      summary: 开始 OIDC 登录
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: 跳转到 OIDC provider。
+        "503":
+          description: OIDC 尚未配置。
+  /api/auth/callback:
+    get:
+      operationId: finishOidcLogin
+      tags:
+        - 认证
+      summary: 完成 OIDC 登录
+      responses:
+        "302":
+          description: 写入安全 session cookie 后返回应用。
+        "401":
+          description: state、nonce、授权码或 ID token 无效。
+  /api/auth/logout:
+    post:
+      operationId: logout
+      tags:
+        - 认证
+      summary: 注销当前会话
+      security:
+        - cookieSession: []
+      responses:
+        "204":
+          description: 会话已删除并清除 cookie。
+  /api/health:
+    get:
+      operationId: workerHealth
+      tags:
+        - 认证
+      summary: Worker 健康检查
+      responses:
+        "200":
+          description: Worker 正常响应。

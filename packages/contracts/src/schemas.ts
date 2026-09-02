@@ -164,6 +164,7 @@ export const CursorQuerySchema = z
 
 /** 版本历史查询；chapterId 存在时只返回该章实际变化的版本。 */
 export const RevisionQuerySchema = CursorQuerySchema.extend({
+  cursor: z.string().regex(/^[1-9]\d*$/, "版本 cursor 必须是正整数 revision").optional(),
   chapterId: EntityIdSchema.optional(),
 }).strict();
 
@@ -349,6 +350,22 @@ export const ForumUserSchema = z
   .strict();
 /** 论坛身份。 */
 export type ForumUser = z.infer<typeof ForumUserSchema>;
+
+/** 登录会话中的论坛身份，包含当前余额和回复解锁状态。 */
+export const ForumSessionUserSchema = ForumUserSchema.extend({
+  avatar: z.string().min(1).max(8),
+  coins: z.number().int().nonnegative(),
+  replied: z.boolean(),
+}).strict();
+export type ForumSessionUser = z.infer<typeof ForumSessionUserSchema>;
+
+export const ForumSessionSchema = z
+  .object({
+    current: ForumSessionUserSchema,
+    available: z.array(ForumSessionUserSchema),
+  })
+  .strict();
+export type ForumSession = z.infer<typeof ForumSessionSchema>;
 
 /** 章节目录项。 */
 export const ChapterSchema = z

@@ -5,8 +5,13 @@ import type { SeedIdentity } from './lib/types';
 export interface AppContextValue {
   /** 当前用于权限、金币和投票的身份。 */
   identity: SeedIdentity;
-  /** 切换身份并由 App 持久化选择。 */
+  /** 切换身份并由 App 持久化选择；仅开发演示模式可用。 */
   setIdentity: (identity: SeedIdentity) => void;
+  authMode: "demo" | "session";
+  authStatus: "loading" | "authenticated" | "unauthenticated" | "error";
+  login: () => void;
+  logout: () => Promise<void>;
+  refreshIdentity: () => Promise<void>;
 }
 
 /** 页面级身份上下文；默认 null 用来检测遗漏 Provider 的集成错误。 */

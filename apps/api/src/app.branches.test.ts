@@ -179,7 +179,7 @@ describe("RiceText API 补充分支", () => {
       url: "/api/documents/demo-post/revisions?cursor=not-a-revision",
     });
     expect(invalidCursor.statusCode).toBe(422);
-    expect(invalidCursor.json().error.code).toBe("INVALID_CURSOR");
+    expect(invalidCursor.json().error.code).toBe("VALIDATION_ERROR");
   });
 
   it("拒绝缺失、MIME 不符和过大的上传，并带缓存头读取已上传图片", async () => {
@@ -620,7 +620,7 @@ describe("RiceText API 补充分支", () => {
     });
     expect(authorView.json()).toMatchObject({
       purchased: true,
-      downloadUrl: "/forum-downloads/mist-harbor.txt",
+      downloadUrl: "https://example.com/mist-harbor.txt",
     });
 
     const first = await app.inject({

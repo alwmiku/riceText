@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type {
   DocumentEnvelope,
+  ForumSessionUser,
   ForumUser,
   TiptapDocument,
 } from "@ricetext/contracts";
@@ -35,8 +36,12 @@ export class ForumService {
     this.#suggestions = new SuggestionService(db, documents);
   }
 
-  users(): ForumUser[] {
+  users(): ForumSessionUser[] {
     return this.#session.users();
+  }
+
+  sessionUser(identity: ForumUser): ForumSessionUser {
+    return this.#session.sessionUser(identity);
   }
 
   searchUsers(query: string, friendsOnly: boolean): ForumUser[] {
@@ -102,6 +107,8 @@ export class ForumService {
     documentId: string;
     revision: number;
     savedAt: string;
+    hidden: boolean;
+    created: boolean;
   } {
     return this.#chapters.createChapter(documentId, input);
   }

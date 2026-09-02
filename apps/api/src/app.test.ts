@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { contractRoutes } from "@ricetext/contracts";
 import {
   appendChapter,
   diffDocuments,
@@ -29,6 +30,17 @@ describe("RiceText API", () => {
   afterEach(async () => {
     if (app) await app.close();
     await rm(directory, { recursive: true, force: true });
+  });
+
+  it("注册共享契约中的全部路由", () => {
+    for (const route of contractRoutes) {
+      expect(
+        app.hasRoute({
+          method: route.method as "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+          url: route.path,
+        }),
+      ).toBe(true);
+    }
   });
 
   it("读取种子文档并执行幂等保存、冲突和非破坏回滚", async () => {
@@ -172,7 +184,7 @@ describe("RiceText API", () => {
     const chapterId = created.json().id as string;
 
     const repeated = await app.inject({ method: "POST", url: "/api/documents/demo-post/chapters", headers: { "x-user-id": "author" }, payload: { title: "第五章 新章节", order: 5 } });
-    expect(repeated.statusCode).toBe(201);
+    expect(repeated.statusCode).toBe(200);
     expect(repeated.json().id).toBe(chapterId);
 
     // 2. 用服务器返回的 id 保存文档：历史与目录版本号按该 id 归集。
@@ -255,8 +267,15 @@ describe("RiceText API", () => {
     expect(hidden.statusCode, hidden.body).toBe(200);
     expect(hidden.json()).toMatchObject({ id: "chapter-1", hidden: true });
 
-    const after = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; hidden: boolean }>;
-    expect(after.find((item) => item.id === "chapter-1")?.hidden).toBe(true);
+    const readerDirectory = (await app.inject({ method: "GET", url: "/api/forum/chapters", headers: { "x-user-id": "reader" } })).json().items as Array<{ id: string; hidden: boolean }>;
+    expect(readerDirectory.some((item) => item.id === "chapter-1")).toBe(false);
+    const readerDocument = (await app.inject({ method: "GET", url: "/api/documents/demo-post", headers: { "x-user-id": "reader" } })).json();
+    expect(JSON.stringify(readerDocument.content)).not.toContain("第一章 潮汐表");
+
+    const authorDirectory = (await app.inject({ method: "GET", url: "/api/forum/chapters", headers: { "x-user-id": "author" } })).json().items as Array<{ id: string; hidden: boolean }>;
+    expect(authorDirectory.find((item) => item.id === "chapter-1")?.hidden).toBe(true);
+    const authorDocument = (await app.inject({ method: "GET", url: "/api/documents/demo-post", headers: { "x-user-id": "author" } })).json();
+    expect(JSON.stringify(authorDocument.content)).toContain("第一章 潮汐表");
 
     const restored = await app.inject({ method: "PATCH", url: "/api/documents/demo-post/chapters/chapter-1", headers: { "x-user-id": "author" }, payload: { hidden: false } });
     expect(restored.statusCode).toBe(200);

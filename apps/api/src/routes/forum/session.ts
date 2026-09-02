@@ -15,7 +15,7 @@ export const forumSessionRoutes: FastifyPluginAsync<RouteDependencies> = async (
     "/api/forum/session",
     { schema: getFastifySchema("getForumSession") },
     async (request) => ({
-      current: identity(dependencies, request),
+      current: dependencies.forum.sessionUser(identity(dependencies, request)),
       available: dependencies.forum.users(),
     }),
   );
@@ -24,6 +24,7 @@ export const forumSessionRoutes: FastifyPluginAsync<RouteDependencies> = async (
     "/api/forum/users/search",
     { schema: getFastifySchema("searchMentionUsers") },
     async (request) => {
+      identity(dependencies, request);
       const input = query(request);
       return {
         items: dependencies.forum.searchUsers(
@@ -38,6 +39,7 @@ export const forumSessionRoutes: FastifyPluginAsync<RouteDependencies> = async (
     "/api/forum/mentions/resolve",
     { schema: getFastifySchema("resolveMention") },
     async (request) => {
+      identity(dependencies, request);
       const body = ResolveMentionRequestSchema.parse(request.body);
       return dependencies.forum.resolveMention(body.name, body.userId);
     },

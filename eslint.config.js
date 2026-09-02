@@ -5,6 +5,8 @@ export default tseslint.config(
   {
     ignores: [
       "**/dist/**",
+      "**/dist-*/**",
+      "**/.wrangler/**",
       "**/coverage/**",
       "**/node_modules/**",
       "playwright-report/**",
@@ -14,6 +16,17 @@ export default tseslint.config(
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    files: ["tools/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        fetch: "readonly",
+        process: "readonly",
+        URL: "readonly",
+      },
+    },
+  },
   {
     files: ["**/*.cjs"],
     languageOptions: {

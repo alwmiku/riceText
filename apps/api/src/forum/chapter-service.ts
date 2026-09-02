@@ -69,19 +69,27 @@ export class ChapterService {
     revision: number;
     savedAt: string;
     hidden: boolean;
+    created: boolean;
   } {
     const id = `chapter-${input.order}`;
     const now = new Date().toISOString();
-    this.#db
+    const existing = this.#db
+      .prepare("SELECT document_id FROM chapters WHERE id = ?")
+      .get(id) as { document_id: string } | undefined;
+    if (existing && existing.document_id !== documentId) {
+      throw new HttpError(409, "CHAPTER_ID_CONFLICT", "章节 ID 已属于另一篇文档");
+    }
+    const result = this.#db
       .prepare(
-        `INSERT INTO chapters(id, title, sort_order, document_id, revision, updated_at)
-         VALUES (?, ?, ?, ?, 0, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           title = excluded.title,
-           sort_order = excluded.sort_order,
-           document_id = excluded.document_id`,
+        `INSERT OR IGNORE INTO chapters(id, title, sort_order, document_id, revision, updated_at)
+         VALUES (?, ?, ?, ?, 0, ?)`,
       )
       .run(id, input.title, input.order, documentId, now);
+    this.#db
+      .prepare(
+        "UPDATE chapters SET title = ?, sort_order = ? WHERE id = ? AND document_id = ?",
+      )
+      .run(input.title, input.order, id, documentId);
     const row = this.#db
       .prepare(
         "SELECT id, title, sort_order, document_id, revision, updated_at, hidden FROM chapters WHERE id = ? AND document_id = ?",
@@ -103,6 +111,7 @@ export class ChapterService {
       revision: row.revision,
       savedAt: row.updated_at,
       hidden: row.hidden === 1,
+      created: result.changes === 1,
     };
   }
 

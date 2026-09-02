@@ -1,0 +1,16 @@
+{
+  "name": "@ricetext/server-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ricetext/contracts": "workspace:^",
+    "@ricetext/document-core": "workspace:^"
+  }
+}

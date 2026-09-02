@@ -9,9 +9,16 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run && pnpm --filter @ricetext/worker test",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:e2e:cloudflare": "playwright test --config playwright.cloudflare.config.ts",
+    "cf:e2e:prepare": "tsx tools/cloudflare/prepare-e2e.ts",
+    "cf:export": "tsx packages/cloudflare-migration/src/export-sqlite.ts",
+    "cf:r2-upload": "tsx packages/cloudflare-migration/src/upload-r2.ts",
+    "cf:preflight": "node tools/cloudflare/preflight.mjs",
+    "cf:smoke": "node tools/cloudflare/smoke.mjs",
+    "cf:verify": "node tools/cloudflare/verify-target.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
   "devDependencies": {

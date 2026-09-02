@@ -15,6 +15,10 @@
     "@fastify/multipart": "^10.1.1",
     "@ricetext/contracts": "workspace:^",
     "@ricetext/document-core": "workspace:^",
+    "@ricetext/server-core": "workspace:^",
     "fastify": "^5.12.1"
+  },
+  "devDependencies": {
+    "@ricetext/cloudflare-migration": "workspace:^"
   }
 }

@@ -6,14 +6,37 @@ import {
   UpdateDocumentChapterRequestSchema,
   UpdateDocumentRequestSchema,
   UpdateDocumentStepsRequestSchema,
+  type DocumentEnvelope,
 } from "@ricetext/contracts";
+import { projectDocumentForReader } from "@ricetext/server-core";
+import type { RequestIdentity } from "../auth.js";
 import type { RouteDependencies } from "./dependencies.js";
 import {
+  canEditDocument,
   getFastifySchema,
+  identity,
   params,
   query,
   requireEditor,
 } from "./route-utils.js";
+
+function visibleEnvelope(
+  dependencies: RouteDependencies,
+  user: RequestIdentity,
+  envelope: DocumentEnvelope,
+): DocumentEnvelope {
+  if (canEditDocument(dependencies, user, envelope.id)) return envelope;
+  const rows = dependencies.db
+    .prepare("SELECT sort_order FROM chapters WHERE document_id = ? AND hidden = 1")
+    .all(envelope.id) as Array<{ sort_order: number }>;
+  return {
+    ...envelope,
+    content: projectDocumentForReader(
+      envelope.content,
+      new Set(rows.map((row) => row.sort_order)),
+    ),
+  };
+}
 
 /** 文档正文、版本历史和非破坏回滚路由。 */
 export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
@@ -23,14 +46,21 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
   app.get(
     "/api/documents/:documentId",
     { schema: getFastifySchema("getDocument") },
-    async (request) => dependencies.documents.get(params(request).documentId!),
+    async (request) => {
+      const user = identity(dependencies, request);
+      return visibleEnvelope(
+        dependencies,
+        user,
+        dependencies.documents.get(params(request).documentId!),
+      );
+    },
   );
 
   app.put(
     "/api/documents/:documentId",
     { schema: getFastifySchema("updateDocument") },
     async (request, reply) => {
-      const user = requireEditor(dependencies, request);
+      const user = requireEditor(dependencies, request, params(request).documentId!);
       const body = UpdateDocumentRequestSchema.parse(request.body);
       const result = dependencies.documents.save(
         params(request).documentId!,
@@ -58,18 +88,24 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
   app.get(
     "/api/documents/:documentId/revisions/:revision",
     { schema: getFastifySchema("getRevision") },
-    async (request) =>
-      dependencies.documents.revision(
-        params(request).documentId!,
-        Number(params(request).revision),
-      ),
+    async (request) => {
+      const user = identity(dependencies, request);
+      return visibleEnvelope(
+        dependencies,
+        user,
+        dependencies.documents.revision(
+          params(request).documentId!,
+          Number(params(request).revision),
+        ),
+      );
+    },
   );
 
   app.post(
     "/api/documents/:documentId/rollback",
     { schema: getFastifySchema("rollbackDocument") },
     async (request, reply) => {
-      const user = requireEditor(dependencies, request);
+      const user = requireEditor(dependencies, request, params(request).documentId!);
       const body = RollbackDocumentRequestSchema.parse(request.body);
       const result = dependencies.documents.rollback(
         params(request).documentId!,
@@ -85,7 +121,7 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
     "/api/documents/:documentId/chapters/:chapterId",
     { schema: getFastifySchema("updateDocumentChapter") },
     async (request, reply) => {
-      requireEditor(dependencies, request);
+      requireEditor(dependencies, request, params(request).documentId!);
       const body = UpdateDocumentChapterRequestSchema.parse(request.body);
       const documentId = params(request).documentId!;
       dependencies.documents.get(documentId);
@@ -107,7 +143,7 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
     "/api/documents/:documentId/chapters/:chapterId",
     { schema: getFastifySchema("deleteDocumentChapter") },
     async (request) => {
-      requireEditor(dependencies, request);
+      requireEditor(dependencies, request, params(request).documentId!);
       const documentId = params(request).documentId!;
       dependencies.documents.get(documentId);
       return dependencies.forum.deleteChapter(
@@ -123,12 +159,12 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
     "/api/documents/:documentId/chapters",
     { schema: getFastifySchema("createDocumentChapter") },
     async (request, reply) => {
-      requireEditor(dependencies, request);
+      requireEditor(dependencies, request, params(request).documentId!);
       const body = CreateDocumentChapterRequestSchema.parse(request.body);
       const documentId = params(request).documentId!;
       dependencies.documents.get(documentId);
-      const chapter = dependencies.forum.createChapter(documentId, body);
-      return reply.status(201).send(chapter);
+      const { created, ...chapter } = dependencies.forum.createChapter(documentId, body);
+      return reply.status(created ? 201 : 200).send(chapter);
     },
   );
 
@@ -137,7 +173,7 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
     "/api/documents/:documentId/steps",
     { schema: getFastifySchema("updateDocumentSteps") },
     async (request, reply) => {
-      const user = requireEditor(dependencies, request);
+      const user = requireEditor(dependencies, request, params(request).documentId!);
       const body = UpdateDocumentStepsRequestSchema.parse(request.body);
       const result = dependencies.documents.applySteps(
         params(request).documentId!,

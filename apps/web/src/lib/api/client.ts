@@ -1,7 +1,9 @@
 import { ApiClientError, createApiClient } from "@ricetext/contracts";
 
 // Contract paths already include /api; this root is only for a separately hosted API.
-const API_ROOT = import.meta.env.VITE_API_ROOT ?? "";
+const API_ROOT = (import.meta.env.VITE_API_ROOT ?? "").replace(/\/$/, "");
+const DEMO_AUTH_ENABLED =
+  import.meta.env.DEV || import.meta.env.VITE_DEMO_AUTH === "true";
 
 /** Map the displayed frontend identity to the forum identity accepted by AuthProvider. */
 function getForumUserHeader(): "author" | "reader" | "moderator" {
@@ -10,6 +12,12 @@ function getForumUserHeader(): "author" | "reader" | "moderator" {
   if (identity === "user_moderator" || identity === "moderator")
     return "moderator";
   return "author";
+}
+
+/** Resolve API-owned relative resources when Pages and Worker use different preview origins. */
+export function resolveApiUrl(url: string | null): string | null {
+  if (!url || !API_ROOT || /^[a-z][a-z0-9+.-]*:/i.test(url)) return url;
+  return new URL(url, API_ROOT + "/").toString();
 }
 
 /** Preserve HTTP status and the original body so callers can distinguish conflicts. */
@@ -26,7 +34,10 @@ export class ApiError extends Error {
 
 /** Resolve identity for every request so one client factory covers identity changes. */
 export const api = () =>
-  createApiClient({ baseUrl: API_ROOT, userId: getForumUserHeader });
+  createApiClient({
+    baseUrl: API_ROOT,
+    ...(DEMO_AUTH_ENABLED ? { userId: getForumUserHeader } : {}),
+  });
 
 export function isApiClientError(error: unknown): error is ApiClientError {
   return error instanceof ApiClientError;

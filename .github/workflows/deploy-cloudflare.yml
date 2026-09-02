@@ -1,0 +1,106 @@
+name: Deploy Cloudflare
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment environment
+        required: true
+        type: choice
+        options: [production, preview]
+        default: preview
+
+concurrency:
+  group: cloudflare-${{ github.event_name == 'push' && 'preview' || inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  # 部署工作流独立执行完整门禁，不能假设另一个 CI workflow 已成功。
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:coverage
+      - run: pnpm --filter @ricetext/worker test
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e:cloudflare
+
+  # 数据库迁移先于 Worker 和 Pages；最终 smoke 从同源公网入口检查路由。
+  preview:
+    if: github.event_name == 'push' || inputs.target == 'preview'
+    needs: quality
+    runs-on: ubuntu-latest
+    environment: preview
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_PAGES_PROJECT: ${{ vars.CF_PAGES_PROJECT }}
+      CF_APP_ORIGIN: ${{ vars.CF_APP_ORIGIN }}
+      OIDC_ISSUER: ${{ secrets.OIDC_ISSUER }}
+      OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
+      OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm cf:preflight -- preview
+      - run: pnpm --filter @ricetext/worker d1:migrate:preview
+      - name: Configure Worker secrets
+        shell: bash
+        run: |
+          printf '%s' "$OIDC_ISSUER" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_ISSUER --env preview
+          printf '%s' "$OIDC_CLIENT_ID" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_ID --env preview
+          printf '%s' "$OIDC_CLIENT_SECRET" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_SECRET --env preview
+      - run: pnpm --filter @ricetext/worker deploy:preview
+      - run: pnpm --filter @ricetext/web build
+      - run: pnpm --dir apps/worker exec wrangler pages deploy ../web/dist --project-name "$CF_PAGES_PROJECT" --branch preview
+      - run: pnpm cf:smoke -- "$CF_APP_ORIGIN"
+
+  production:
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production'
+    needs: quality
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_PAGES_PROJECT: ${{ vars.CF_PAGES_PROJECT }}
+      CF_APP_ORIGIN: ${{ vars.CF_APP_ORIGIN }}
+      OIDC_ISSUER: ${{ secrets.OIDC_ISSUER }}
+      OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
+      OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm cf:preflight -- production
+      - run: pnpm --filter @ricetext/worker d1:migrate:production
+      - name: Configure Worker secrets
+        shell: bash
+        run: |
+          printf '%s' "$OIDC_ISSUER" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_ISSUER --env production
+          printf '%s' "$OIDC_CLIENT_ID" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_ID --env production
+          printf '%s' "$OIDC_CLIENT_SECRET" | pnpm --filter @ricetext/worker exec wrangler secret put OIDC_CLIENT_SECRET --env production
+      - run: pnpm --filter @ricetext/worker deploy
+      - run: pnpm --filter @ricetext/web build
+      - run: pnpm --dir apps/worker exec wrangler pages deploy ../web/dist --project-name "$CF_PAGES_PROJECT" --branch main
+      - run: pnpm cf:smoke -- "$CF_APP_ORIGIN"

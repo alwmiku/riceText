@@ -34,14 +34,33 @@ export function identity(
   return dependencies.auth.resolve(request);
 }
 
-/** 文档和章节写入只允许作者或版主。 */
+/** Determine whether the identity owns or can edit one document. */
+export function canEditDocument(
+  dependencies: RouteDependencies,
+  user: RequestIdentity,
+  documentId: string,
+): boolean {
+  if (user.role === "moderator") return true;
+  return Boolean(
+    dependencies.db
+      .prepare(
+        "SELECT 1 FROM documents document " +
+          "LEFT JOIN document_acl acl ON acl.document_id = document.id AND acl.user_id = ? " +
+          "WHERE document.id = ? AND (document.created_by = ? OR acl.permission IN ('edit', 'admin'))",
+      )
+      .get(user.id, documentId, user.id),
+  );
+}
+
+/** 文档和章节写入只允许 owner、ACL editor 或版主。 */
 export function requireEditor(
   dependencies: RouteDependencies,
   request: FastifyRequest,
+  documentId: string,
 ): RequestIdentity {
   const user = identity(dependencies, request);
-  if (user.role === "reader") {
-    throw new HttpError(403, "FORBIDDEN", "只有作者或版主可以修改文档");
+  if (!canEditDocument(dependencies, user, documentId)) {
+    throw new HttpError(403, "FORBIDDEN", "当前身份无权修改此文档");
   }
   return user;
 }

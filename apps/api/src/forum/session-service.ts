@@ -1,6 +1,17 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { ForumUser } from "@ricetext/contracts";
+import type { ForumSessionUser, ForumUser } from "@ricetext/contracts";
 import { mapUser, type UserRow } from "./shared.js";
+
+type SessionRow = UserRow & { coins: number; replied: number };
+
+function mapSessionUser(row: SessionRow): ForumSessionUser {
+  return {
+    ...mapUser(row),
+    avatar: Array.from(row.name)[0] ?? "用",
+    coins: Number(row.coins),
+    replied: row.replied === 1,
+  };
+}
 
 export class SessionService {
   readonly #db: DatabaseSync;
@@ -10,13 +21,29 @@ export class SessionService {
   }
 
   /** 可用于开发身份切换器的用户列表。 */
-  users(): ForumUser[] {
+  users(): ForumSessionUser[] {
     const rows = this.#db
       .prepare(
-        "SELECT id, name, role, is_friend, bio FROM users ORDER BY CASE role WHEN 'author' THEN 1 WHEN 'reader' THEN 2 ELSE 3 END, id",
+        "SELECT user.id, user.name, user.role, user.is_friend, user.bio, " +
+          "COALESCE(wallet.balance, 0) AS coins, " +
+          "EXISTS(SELECT 1 FROM reply_receipts receipt WHERE receipt.user_id = user.id) AS replied " +
+          "FROM users user LEFT JOIN wallets wallet ON wallet.user_id = user.id " +
+          "ORDER BY CASE user.role WHEN 'author' THEN 1 WHEN 'reader' THEN 2 ELSE 3 END, user.id",
       )
-      .all() as unknown as UserRow[];
-    return rows.map(mapUser);
+      .all() as unknown as SessionRow[];
+    return rows.map(mapSessionUser);
+  }
+
+  sessionUser(identity: ForumUser): ForumSessionUser {
+    const row = this.#db
+      .prepare(
+        "SELECT user.id, user.name, user.role, user.is_friend, user.bio, " +
+          "COALESCE(wallet.balance, 0) AS coins, " +
+          "EXISTS(SELECT 1 FROM reply_receipts receipt WHERE receipt.user_id = user.id) AS replied " +
+          "FROM users user LEFT JOIN wallets wallet ON wallet.user_id = user.id WHERE user.id = ?",
+      )
+      .get(identity.id) as unknown as SessionRow;
+    return mapSessionUser(row);
   }
 
   /** 搜索名称或 ID，可限制为好友。 */

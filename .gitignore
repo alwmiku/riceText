@@ -27,3 +27,9 @@ Thumbs.db
 手机端测试.md
 .agents
 skills-lock.json
+
+**/.wrangler/
+**/dist-*/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example

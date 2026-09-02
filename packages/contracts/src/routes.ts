@@ -14,7 +14,7 @@ import {
   CreateSuggestionRequestSchema,
   CursorQuerySchema,
   DeleteDocumentChapterResponseSchema,
-  ForumUserSchema,
+  ForumSessionSchema,
   DiceRollSchema,
   DocumentEnvelopeSchema,
   EntityIdSchema,
@@ -141,7 +141,7 @@ export const contractRoutes: readonly ContractRoute[] = [
   },
   {
     operationId: "syncNovelChapters", method: "POST", path: "/api/forum/novels/:novelId/chapters/sync", tags: ["论坛业务"], implementationStatus: "implemented",
-    summary: "对比章节内容哈希", description: "客户端提交本地章节清单（含 SHA-256 哈希），服务端对比已存哈希，返回需要上传的章节与已存在（无需上传）的章节 ID。",
+    summary: "对比章节内容哈希", description: "需要文档 owner、ACL editor 或 moderator。客户端提交本地章节清单（含 SHA-256 哈希），服务端对比已存哈希，返回需要上传的章节与已存在（无需上传）的章节 ID。",
     params: novelParams, body: SyncNovelChaptersRequestSchema,
     responses: { 200: { description: "需要更新与已存在的章节 ID。", schema: SyncNovelChaptersResponseSchema } },
   },
@@ -176,9 +176,17 @@ export const contractRoutes: readonly ContractRoute[] = [
   },
   {
     operationId: "readAsset", method: "GET", path: "/api/assets/:assetId", tags: ["图片"],
-    summary: "读取图片二进制", description: "按资产 ID 返回原始图片，并设置 immutable 缓存头；不代理外链。",
+    summary: "读取资产二进制", description: "按资产 ID 返回图片或附件。Worker 支持 ETag、Range；付费附件仅作者、版主或已购买用户可读。",
     params: assetParams,
-    responses: { 200: { description: "图片二进制；实际 Content-Type 来自保存的白名单 MIME。", schema: z.any() }, 404: { description: "资产不存在。", schema: ApiErrorSchema } },
+    responses: {
+      200: { description: "完整二进制；Content-Type 来自保存的白名单 MIME。", schema: z.any() },
+      206: { description: "满足 Range 请求的部分二进制。", schema: z.any() },
+      304: { description: "ETag 未变化，无响应体。", schema: z.any() },
+      401: { description: "受保护附件要求登录。", schema: ApiErrorSchema },
+      403: { description: "当前身份未购买该附件。", schema: ApiErrorSchema },
+      404: { description: "资产不存在。", schema: ApiErrorSchema },
+      416: { description: "Range 超出资产范围。", schema: ApiErrorSchema },
+    },
   },
   {
     operationId: "createDiceRoll", method: "POST", path: "/api/dice", tags: ["骰子"],
@@ -216,8 +224,8 @@ export const contractRoutes: readonly ContractRoute[] = [
   },
   {
     operationId: "getForumSession", method: "GET", path: "/api/forum/session", tags: ["论坛业务"], implementationStatus: "implemented",
-    summary: "读取当前论坛身份", description: "由 x-user-id 请求头选择 author、reader 或 moderator；默认 reader。",
-    responses: { 200: { description: "当前身份和可切换身份。", schema: z.object({ current: ForumUserSchema, available: z.array(ForumUserSchema) }).strict() } },
+    summary: "读取当前论坛身份", description: "生产环境从 HttpOnly session cookie 读取当前身份；本地 demo 模式可使用 x-user-id 切换种子身份。",
+    responses: { 200: { description: "当前身份和可切换身份。", schema: ForumSessionSchema } },
   },
   {
     operationId: "listChapters", method: "GET", path: "/api/forum/chapters", tags: ["论坛业务"], implementationStatus: "implemented",

@@ -49,9 +49,9 @@ export class PollService {
     const current = this.poll(pollId, identity);
     if (!current.eligible)
       throw new HttpError(403, "POLL_INELIGIBLE", "当前身份不满足投票要求");
-    if (!current.multiple && optionIds.length !== 1)
-      throw new HttpError(422, "POLL_SINGLE_CHOICE", "该投票只能选择一个选项");
     const unique = [...new Set(optionIds)];
+    if (!current.multiple && unique.length !== 1)
+      throw new HttpError(422, "POLL_SINGLE_CHOICE", "该投票只能选择一个选项");
     if (
       unique.some((id) => !current.options.some((option) => option.id === id))
     )
@@ -60,12 +60,12 @@ export class PollService {
         "POLL_OPTION_NOT_FOUND",
         "提交了不属于该投票的选项",
       );
-    const existing = this.#db
-      .prepare("SELECT id FROM poll_votes WHERE poll_id = ? AND user_id = ?")
-      .get(pollId, identity.id) as { id: string } | undefined;
-    const voteId = existing?.id ?? randomUUID();
     this.#db.exec("BEGIN IMMEDIATE");
     try {
+      const existing = this.#db
+        .prepare("SELECT id FROM poll_votes WHERE poll_id = ? AND user_id = ?")
+        .get(pollId, identity.id) as { id: string } | undefined;
+      const voteId = existing?.id ?? randomUUID();
       if (existing) {
         this.#db
           .prepare("DELETE FROM poll_vote_options WHERE vote_id = ?")

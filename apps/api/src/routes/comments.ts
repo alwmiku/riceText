@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  CommentSortSchema,
   CreateCommentReplyRequestSchema,
   CursorQuerySchema,
   VoteCommentRequestSchema,
@@ -21,11 +22,12 @@ export const commentRoutes: FastifyPluginAsync<RouteDependencies> = async (
         ...(typeof input.cursor === "string" ? { cursor: input.cursor } : {}),
         ...(input.limit !== undefined ? { limit: input.limit } : {}),
       });
+      const sort = CommentSortSchema.parse(input.sort ?? "score");
       return dependencies.comments.getThread(
         params(request).documentId!,
         params(request).anchorId!,
         identity(dependencies, request).id,
-        input.sort === "newest" ? "newest" : "score",
+        sort,
         page.cursor,
         page.limit,
       );

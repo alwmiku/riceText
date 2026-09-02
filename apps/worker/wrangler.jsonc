@@ -1,0 +1,86 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ricetext-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ENVIRONMENT": "development",
+    "ALLOW_DEMO_AUTH": "true",
+    "ALLOWED_ORIGINS": "http://127.0.0.1:5173"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ricetext-development",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "UPLOADS",
+      "bucket_name": "ricetext-development-uploads"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": ["17 * * * *"]
+  },
+  "env": {
+    // preview 与 production 绑定完全隔离的 D1/R2，禁止共享真实业务数据。
+    "preview": {
+      "name": "ricetext-api-preview",
+      "routes": [
+        { "pattern": "preview.example.com/api/*", "zone_name": "example.com" }
+      ],
+      "vars": {
+        "ENVIRONMENT": "preview",
+        "ALLOW_DEMO_AUTH": "false",
+        "ALLOWED_ORIGINS": "https://preview.example.com"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ricetext-preview",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "UPLOADS",
+          "bucket_name": "ricetext-preview-uploads"
+        }
+      ]
+    },
+    // 生产关闭 demo 身份头，并通过同源 /api/* route 使用安全 Cookie 会话。
+    "production": {
+      "name": "ricetext-api-production",
+      "routes": [
+        { "pattern": "app.example.com/api/*", "zone_name": "example.com" }
+      ],
+      "vars": {
+        "ENVIRONMENT": "production",
+        "ALLOW_DEMO_AUTH": "false",
+        "ALLOWED_ORIGINS": "https://app.example.com"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ricetext-production",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "UPLOADS",
+          "bucket_name": "ricetext-production-uploads"
+        }
+      ]
+    }
+  }
+}

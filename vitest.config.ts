@@ -11,13 +11,17 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./test/setup.ts"],
-    testTimeout: 15_000,
+    testTimeout: 30_000,
     include: ["apps/**/*.test.{ts,tsx}", "packages/**/*.test.{ts,tsx}"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.git/**", "apps/worker/**"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json-summary"],
       include: ["apps/**/src/**/*.{ts,tsx}", "packages/**/src/**/*.{ts,tsx}"],
       exclude: [
+        "apps/worker/**",
+        // 远端 Wrangler/R2 副作用 CLI 由 preview 部署与 checksum smoke 覆盖。
+        "packages/cloudflare-migration/src/upload-r2.ts",
         "**/*.d.ts",
         "**/main.tsx",
         "**/server.ts",

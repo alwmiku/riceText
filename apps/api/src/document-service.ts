@@ -6,7 +6,6 @@ import {
   type RevisionPage,
   type RollbackDocumentRequest,
   type TiptapDocument,
-  type TiptapNode,
   type UpdateDocumentRequest,
   type UpdateDocumentStepsRequest,
 } from "@ricetext/contracts";
@@ -16,11 +15,14 @@ import {
   createDocumentSchema,
   describeStepsJson,
   splitDocumentByChapters,
-  validateDocument,
-  type DocumentValidationIssue,
   type JSONContent,
   type StepJson,
 } from "@ricetext/document-core";
+import {
+  DomainError,
+  repairDocumentForRead,
+  sanitizeDocumentForWrite,
+} from "@ricetext/server-core";
 import { HttpError } from "./errors.js";
 
 interface DocumentRow {
@@ -43,71 +45,21 @@ interface RevisionRow {
   created_at: string;
 }
 
-/**
- * document-core 清洗问题分类到稳定 HTTP 错误码的映射。
- * 结构与白名单规则单一来源于 document-core / contracts，服务端不再维护第二套 validator。
- */
-const VALIDATION_ERROR_CODES: Record<DocumentValidationIssue["code"], string> = {
-  "invalid-document": "INVALID_DOCUMENT",
-  "invalid-structure": "INVALID_DOCUMENT",
-  "unknown-node": "UNSUPPORTED_NODE",
-  "unknown-mark": "UNSUPPORTED_MARK",
-  "unknown-attribute": "UNSAFE_ATTRIBUTE",
-  "invalid-attribute": "INVALID_ATTRIBUTE",
-  "unsafe-url": "UNSAFE_URL",
-  "limit-exceeded": "DOCUMENT_TOO_LARGE",
-};
-
-/** 对正文执行结构、节点、属性、协议、字体与颜色白名单校验。 */
+/** 对正文执行与 Worker 相同的严格白名单校验，并保留 Fastify HttpError 契约。 */
 export function sanitizeDocument(input: unknown): TiptapDocument {
-  const parsed = TiptapDocumentSchema.safeParse(input);
-  if (!parsed.success)
-    throw new HttpError(422, "INVALID_DOCUMENT", "正文不是有效的 Tiptap JSON", {
-      issue: parsed.error.issues[0]?.message ?? "未知结构错误",
-    });
-  // 拒绝语义：任何清洗问题都视为非法文档，而不是静默改写后保存。
-  const result = validateDocument(parsed.data);
-  if (!result.valid) {
-    const issue = result.issues[0]!;
-    throw new HttpError(
-      422,
-      VALIDATION_ERROR_CODES[issue.code],
-      issue.message,
-      { path: issue.path },
-    );
-  }
-  // 持久化/返回的一律是清洗后的重建文档：链接 href 等白名单值原样保留，
-  // 多余属性（如旧版 link 的 class/title）与不安全值被剔除、URL 归一化。
-  return result.document as unknown as TiptapDocument;
-}
-
-/**
- * 读取时的宽容清洗：不拒绝整篇文档，而是返回剔除不安全内容后的重建文档，
- * 保证读者端永远拿到白名单内的内容（写入入口仍严格失败关闭）。
- * 即使数据库被绕过写入校验污染（如手工插入 javascript: 链接），
- * 读取端也会在交付前把危险内容剥离，防止 XSS。
- */
-function repairDocument(input: unknown): TiptapDocument {
-  return validateDocument(input).document as unknown as TiptapDocument;
-}
-
-/** 在 Tiptap text 节点中仅替换第一次匹配，供审核建议合并。 */
-export function replaceFirstText(
-  content: TiptapDocument,
-  fromText: string,
-  toText: string,
-): TiptapDocument | null {
-  const cloned = structuredClone(content);
-  let replaced = false;
-  const visit = (node: TiptapNode): void => {
-    if (!replaced && node.type === "text" && node.text?.includes(fromText)) {
-      node.text = node.text.replace(fromText, toText);
-      replaced = true;
+  try {
+    return sanitizeDocumentForWrite(input);
+  } catch (error) {
+    if (error instanceof DomainError) {
+      throw new HttpError(error.status, error.code, error.message, error.details);
     }
-    for (const child of node.content ?? []) visit(child);
-  };
-  for (const node of cloned.content) visit(node);
-  return replaced ? cloned : null;
+    throw error;
+  }
+}
+
+/** 读取时宽容修复持久化数据，保证交付内容始终处于白名单内。 */
+function repairDocument(input: unknown): TiptapDocument {
+  return repairDocumentForRead(input);
 }
 
 /** 文档当前态、不可变修订、幂等写入与回滚服务。 */
@@ -154,7 +106,7 @@ export class DocumentService {
     authorId: string,
   ): { envelope: DocumentEnvelope; created: boolean } {
     const content = sanitizeDocument(request.content);
-    const result = this.#write(
+    return this.#write(
       documentId,
       request.baseRevision,
       request.clientMutationId,
@@ -164,14 +116,9 @@ export class DocumentService {
       authorId,
       "update",
       null,
+      null,
+      { ...(request.chapterId ? { chapterId: request.chapterId } : {}) },
     );
-    // 每章独立版本：保存真正生效时，只递增本次编辑章节的 revision。
-    if (result.created && request.chapterId) {
-      this.#db
-        .prepare("UPDATE chapters SET revision = revision + 1, updated_at = ? WHERE id = ?")
-        .run(result.envelope.savedAt, request.chapterId);
-    }
-    return result;
   }
 
   /** 回滚到指定历史版本并创建新修订。 */
@@ -225,7 +172,7 @@ export class DocumentService {
         throw new HttpError(422, "INVALID_STEPS", error.message);
       throw error;
     }
-    const result = this.#write(
+    return this.#write(
       documentId,
       request.baseRevision,
       request.clientMutationId,
@@ -236,14 +183,8 @@ export class DocumentService {
       "steps",
       null,
       JSON.stringify(request.steps),
+      { ...(request.chapterId ? { chapterId: request.chapterId } : {}) },
     );
-    // 与整篇保存一致：真正生效时只递增本次编辑章节的 revision。
-    if (result.created && request.chapterId) {
-      this.#db
-        .prepare("UPDATE chapters SET revision = revision + 1, updated_at = ? WHERE id = ?")
-        .run(result.envelope.savedAt, request.chapterId);
-    }
-    return result;
   }
 
   /** 审核通过建议时创建真实修订。 */
@@ -253,6 +194,7 @@ export class DocumentService {
     suggestionId: string,
     content: TiptapDocument,
     authorId: string,
+    options: { chapterId?: string; beforeCommit?: (createdAt: string) => void } = {},
   ): DocumentEnvelope {
     return this.#write(
       documentId,
@@ -264,6 +206,8 @@ export class DocumentService {
       authorId,
       "suggestion",
       null,
+      null,
+      options,
     ).envelope;
   }
 
@@ -302,6 +246,7 @@ export class DocumentService {
     steps: Array<Record<string, unknown>>,
     chapterId: string,
     authorId: string,
+    beforeCommit?: (createdAt: string) => void,
   ): DocumentEnvelope {
     const current = this.get(documentId);
     let content: TiptapDocument;
@@ -318,7 +263,7 @@ export class DocumentService {
         throw new HttpError(422, "INVALID_STEPS", error.message);
       throw error;
     }
-    const result = this.#write(
+    return this.#write(
       documentId,
       baseRevision,
       `suggestion-batch-${batchId}`,
@@ -329,13 +274,8 @@ export class DocumentService {
       "suggestion",
       null,
       JSON.stringify(steps),
-    );
-    if (result.created && chapterId) {
-      this.#db
-        .prepare("UPDATE chapters SET revision = revision + 1, updated_at = ? WHERE id = ?")
-        .run(result.envelope.savedAt, chapterId);
-    }
-    return result.envelope;
+      { chapterId, ...(beforeCommit ? { beforeCommit } : {}) },
+    ).envelope;
   }
 
   /** 按 revision 倒序分页历史。 */
@@ -440,6 +380,7 @@ export class DocumentService {
     operation: RevisionRow["operation"],
     targetRevision: number | null,
     stepsJson: string | null = null,
+    options: { chapterId?: string; beforeCommit?: (createdAt: string) => void } = {},
   ): { envelope: DocumentEnvelope; created: boolean } {
     // revision 检查、历史写入、幂等记录和当前指针更新必须处于同一写事务。
     this.#db.exec("BEGIN IMMEDIATE");
@@ -502,6 +443,18 @@ export class DocumentService {
         )
         .run(schemaVersion, revision, now, documentId);
       this.#syncAnchors(documentId, content, now);
+      if (options.chapterId) {
+        const chapter = this.#db
+          .prepare(
+            "UPDATE chapters SET revision = revision + 1, updated_at = ? " +
+              "WHERE id = ? AND document_id = ?",
+          )
+          .run(now, options.chapterId, documentId);
+        if (chapter.changes !== 1) {
+          throw new HttpError(404, "CHAPTER_NOT_FOUND", "章节不存在或不属于当前文档");
+        }
+      }
+      options.beforeCommit?.(now);
       document.schema_version = schemaVersion;
       document.current_revision = revision;
       document.updated_at = now;
