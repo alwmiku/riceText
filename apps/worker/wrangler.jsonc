@@ -60,18 +60,18 @@
     "production": {
       "name": "ricetext-api-production",
       "routes": [
-        { "pattern": "app.example.com/api/*", "zone_name": "example.com" }
+        { "pattern": "app.bianbai.org/api/*", "zone_name": "bianbai.org" }
       ],
       "vars": {
         "ENVIRONMENT": "production",
         "ALLOW_DEMO_AUTH": "false",
-        "ALLOWED_ORIGINS": "https://app.example.com"
+        "ALLOWED_ORIGINS": "https://app.bianbai.org"
       },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "ricetext-production",
-          "database_id": "00000000-0000-0000-0000-000000000000",
+          "database_id": "6b065e56-0bd6-4d9a-af4b-bf836ca7591a",
           "migrations_dir": "migrations"
         }
       ],
