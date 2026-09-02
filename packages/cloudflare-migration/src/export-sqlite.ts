@@ -278,7 +278,7 @@ export async function exportSqliteToCloudflare(options: ExportOptions): Promise<
     }
 
     sql.push(
-      "CREATE TRIGGER attachment_purchase_checks_balance BEFORE INSERT ON attachment_purchases BEGIN SELECT CASE WHEN COALESCE((SELECT balance FROM wallets WHERE user_id = NEW.buyer_id), 0) < NEW.price THEN RAISE(ABORT, 'INSUFFICIENT_COINS') END; END;",
+      "CREATE TRIGGER attachment_purchase_checks_balance BEFORE INSERT ON attachment_purchases BEGIN SELECT RAISE(ABORT, 'INSUFFICIENT_COINS') WHERE COALESCE((SELECT balance FROM wallets WHERE user_id = NEW.buyer_id), 0) < NEW.price; END;",
       "CREATE TRIGGER attachment_purchase_moves_balance AFTER INSERT ON attachment_purchases BEGIN UPDATE wallets SET balance = balance - NEW.price WHERE user_id = NEW.buyer_id; INSERT INTO wallets(user_id, balance) SELECT author_id, NEW.author_income FROM attachments WHERE id = NEW.attachment_id ON CONFLICT(user_id) DO UPDATE SET balance = balance + NEW.author_income; END;",
     );
 

@@ -97,6 +97,8 @@ describe("Cloudflare data export", () => {
     const importSql = await readFile(result.sqlPath, "utf8");
     expect(importSql).not.toContain("BEGIN TRANSACTION");
     expect(importSql).not.toContain("COMMIT;");
+    // 远端 D1 会误拆 trigger 内部的 CASE ... END，导入 SQL 也必须使用 WHERE 形式。
+    expect(importSql).not.toContain("SELECT CASE");
     target.exec(importSql);
 
     const identity = target.prepare(

@@ -2,10 +2,9 @@
 CREATE TRIGGER attachment_purchase_checks_balance
 BEFORE INSERT ON attachment_purchases
 BEGIN
-  SELECT CASE
-    WHEN COALESCE((SELECT balance FROM wallets WHERE user_id = NEW.buyer_id), 0) < NEW.price
-    THEN RAISE(ABORT, 'INSUFFICIENT_COINS')
-  END;
+  -- 远端 D1 分句器会误判嵌套 CASE ... END；WHERE 写法语义相同且可稳定迁移。
+  SELECT RAISE(ABORT, 'INSUFFICIENT_COINS')
+  WHERE COALESCE((SELECT balance FROM wallets WHERE user_id = NEW.buyer_id), 0) < NEW.price;
 END;
 
 CREATE TRIGGER attachment_purchase_moves_balance
