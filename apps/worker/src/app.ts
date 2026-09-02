@@ -167,7 +167,12 @@ export function createWorkerApp(): Hono<AppBindings> {
 
   app.post("/api/auth/password/login", async (context) => {
     const request = PasswordLoginRequestSchema.parse(await context.req.json());
-    return passwordLogin(request, context.env);
+    const sourceAddress =
+      context.req.header("cf-connecting-ip") ??
+      (context.env.ENVIRONMENT === "development"
+        ? context.req.header("x-forwarded-for") ?? "local"
+        : "unknown");
+    return passwordLogin(request, context.env, sourceAddress);
   });
   app.get("/api/auth/login", (context) => beginOidcLogin(context.req.raw, context.env));
   app.get("/api/auth/callback", (context) => finishOidcLogin(context.req.raw, context.env));

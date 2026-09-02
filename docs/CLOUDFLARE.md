@@ -59,8 +59,11 @@ https://editor.bianbai.org/api/health
 
 先确保最新 D1 migration 已部署，然后在已登录 Wrangler 的本地终端执行。命令会隐藏密码输入，D1 只保存密码哈希。
 
+```bash
+pnpm auth:create-user -- --env production --username writer --user-id author --name "作者" --role author
+```
 
-重复执行同一个 `user-id` 可重设密码。密码至少 10 位；连续输错 5 次会锁定 15 分钟。
+重复执行同一个 `user-id` 可重设密码并撤销该用户的旧会话。密码至少 10 位；同一来源 15 分钟内最多尝试登录 10 次。
 
 OIDC 是可选功能，不使用时无需配置 `OIDC_ISSUER`、`OIDC_CLIENT_ID` 和 `OIDC_CLIENT_SECRET`。
 

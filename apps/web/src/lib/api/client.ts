@@ -2,8 +2,10 @@ import { ApiClientError, createApiClient } from "@ricetext/contracts";
 
 // Contract paths already include /api; this root is only for a separately hosted API.
 const API_ROOT = (import.meta.env.VITE_API_ROOT ?? "").replace(/\/$/, "");
-const DEMO_AUTH_ENABLED =
-  import.meta.env.DEV || import.meta.env.VITE_DEMO_AUTH === "true";
+export function isDemoAuthHeaderEnabled(): boolean {
+  const configured = import.meta.env.VITE_DEMO_AUTH;
+  return configured === undefined ? import.meta.env.DEV : configured === "true";
+}
 
 /** Map the displayed frontend identity to the forum identity accepted by AuthProvider. */
 function getForumUserHeader(): "author" | "reader" | "moderator" {
@@ -36,7 +38,7 @@ export class ApiError extends Error {
 export const api = () =>
   createApiClient({
     baseUrl: API_ROOT,
-    ...(DEMO_AUTH_ENABLED ? { userId: getForumUserHeader } : {}),
+    ...(isDemoAuthHeaderEnabled() ? { userId: getForumUserHeader } : {}),
   });
 
 export function isApiClientError(error: unknown): error is ApiClientError {

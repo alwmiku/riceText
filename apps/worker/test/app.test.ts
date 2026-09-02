@@ -130,6 +130,9 @@ describe("RiceText Worker", () => {
   });
 
   it("allows demo identity headers only when explicitly enabled", async () => {
+    const anonymous = await exports.default.fetch("http://example.com/api/forum/session");
+    expect(anonymous.status).toBe(401);
+
     const response = await exports.default.fetch(
       new Request("http://example.com/api/forum/session", {
         headers: { "x-user-id": "author" },
@@ -1530,7 +1533,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("logs in with a D1 password credential and locks repeated failures", async () => {
+  it("logs in with a D1 password credential and rate-limits repeated failures", async () => {
     const salt = new TextEncoder().encode("1234567890abcdef");
     const encodedSalt = btoa(String.fromCharCode(...salt)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
     const hash = await derivePasswordHash("correct-password", salt, 100_000);
@@ -1552,7 +1555,7 @@ describe("RiceText Worker", () => {
     expect(login.headers.get("set-cookie")).toContain("SameSite=Strict");
     expect(login.headers.get("set-cookie")).not.toContain("Secure");
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
       const failed = await exports.default.fetch(
         new Request("http://example.com/api/auth/password/login", {
           method: "POST",
@@ -1562,14 +1565,17 @@ describe("RiceText Worker", () => {
       );
       expect(failed.status).toBe(401);
     }
-    const locked = await exports.default.fetch(
+    const rateLimited = await exports.default.fetch(
       new Request("http://example.com/api/auth/password/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ username: "writer", password: "correct-password" }),
       }),
     );
-    expect(locked.status).toBe(429);
+    expect(rateLimited.status).toBe(429);
+    await expect(rateLimited.json()).resolves.toMatchObject({
+      error: { code: "AUTH_RATE_LIMITED" },
+    });
   });
 
   it("enforces production Origin checks and ignores demo identity headers", async () => {

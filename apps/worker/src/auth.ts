@@ -65,8 +65,9 @@ export async function optionalPrincipal(context: AppContext): Promise<ForumUser 
 
   if (context.env.ALLOW_DEMO_AUTH !== "true") return null;
   const requested = context.req.header("x-user-id");
+  if (!requested) return null;
   const userId = requested === "author" || requested === "moderator" ? requested : "reader";
-  return (await findUser(context.env.DB, userId)) ?? findUser(context.env.DB, "reader");
+  return findUser(context.env.DB, userId);
 }
 
 export async function requirePrincipal(context: AppContext): Promise<ForumUser> {

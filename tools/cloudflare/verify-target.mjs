@@ -3,8 +3,9 @@ import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
-const target = process.argv[2];
-const directory = resolve(process.argv[3] ?? ".data/cloudflare-export");
+const arguments_ = process.argv.slice(2).filter((value) => value !== "--");
+const target = arguments_[0];
+const directory = resolve(arguments_[1] ?? ".data/cloudflare-export");
 if (target !== "preview" && target !== "production") {
   throw new Error("Usage: node tools/cloudflare/verify-target.mjs <preview|production> [export-dir]");
 }

@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
 
+const apiProxyTarget = process.env.VITE_PROXY_TARGET ?? 'http://127.0.0.1:8787';
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -19,8 +21,8 @@ export default defineConfig({
       ignored: [/.tmp$/u, /.tmpdir/u],
     },
     proxy: {
-      '/api': 'http://127.0.0.1:8787',
-      '/uploads': 'http://127.0.0.1:8787',
+      '/api': apiProxyTarget,
+      '/uploads': apiProxyTarget,
     },
   },
   build: {

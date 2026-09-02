@@ -77,6 +77,8 @@ const statements = [
     [sql(userId), sql(name), sql(role), "0", "''", sql(now), sql(now)].join(", ") +
     ") ON CONFLICT(id) DO UPDATE SET name=excluded.name, role=excluded.role, updated_at=excluded.updated_at;",
   "INSERT OR IGNORE INTO wallets(user_id, balance) VALUES (" + sql(userId) + ", 0);",
+  // 重设密码时撤销全部旧会话，避免已泄露 Cookie 在新密码生效后继续使用。
+  "DELETE FROM auth_sessions WHERE user_id = " + sql(userId) + ";",
   "INSERT INTO password_credentials(user_id, username, salt, password_hash, iterations, failed_attempts, locked_until, updated_at) VALUES (" +
     [sql(userId), sql(username), sql(saltValue), sql(hashValue), String(iterations), "0", "NULL", sql(now)].join(", ") +
     ") ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, salt=excluded.salt, password_hash=excluded.password_hash, iterations=excluded.iterations, failed_attempts=0, locked_until=NULL, updated_at=excluded.updated_at;",

@@ -1,5 +1,5 @@
 // 发布后从公网入口验证 Pages/Worker 分流，重点防止 /api 404 被 SPA HTML 吞掉。
-const origin = (process.argv[2] ?? "").replace(/\/$/, "");
+const origin = (process.argv.slice(2).find((value) => value !== "--") ?? "").replace(/\/$/, "");
 if (!origin) throw new Error("Usage: node tools/cloudflare/smoke.mjs <origin>");
 
 async function expectResponse(path, expectedStatus, assertion) {

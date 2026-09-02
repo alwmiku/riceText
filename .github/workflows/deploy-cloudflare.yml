@@ -1,8 +1,6 @@
 name: Deploy Cloudflare
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       target:
@@ -13,7 +11,7 @@ on:
         default: preview
 
 concurrency:
-  group: cloudflare-${{ github.event_name == 'push' && 'preview' || inputs.target }}
+  group: cloudflare-${{ inputs.target }}
   cancel-in-progress: false
 
 jobs:
@@ -35,10 +33,11 @@ jobs:
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e:cloudflare
+      - run: pnpm test:e2e:password
 
   # 数据库迁移先于 Worker 和 Pages；最终 smoke 从同源公网入口检查路由。
   preview:
-    if: github.event_name == 'push' || inputs.target == 'preview'
+    if: inputs.target == 'preview'
     needs: quality
     runs-on: ubuntu-latest
     environment: preview

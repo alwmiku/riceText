@@ -336,6 +336,9 @@ export async function cleanupExpiredAuth(
   const results = await db.batch([
     db.prepare("DELETE FROM auth_login_states WHERE expires_at <= ?").bind(now),
     db.prepare("DELETE FROM auth_sessions WHERE expires_at <= ? OR revoked_at IS NOT NULL").bind(now),
+    db.prepare("DELETE FROM login_rate_limits WHERE window_started_at < ?").bind(
+      new Date(new Date(now).getTime() - 24 * 60 * 60 * 1000).toISOString(),
+    ),
   ]);
   return results.reduce((total, result) => total + result.meta.changes, 0);
 }

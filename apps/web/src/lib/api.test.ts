@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isDemoAuthHeaderEnabled } from './api/client';
 import { defaultDocument, seedComments, seedRevisions, seedSuggestions } from './seed';
 import {
   ApiError,
@@ -37,6 +38,13 @@ describe('web api client', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('显式关闭 demo 模式时不启用身份请求头', () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_DEMO_AUTH', 'false');
+    expect(isDemoAuthHeaderEnabled()).toBe(false);
   });
 
   it('读取服务器文档并携带当前论坛身份与中止信号', async () => {

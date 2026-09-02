@@ -189,7 +189,7 @@ export function buildOpenApiDocument(): OpenApiDocument {
       responses: {
         "204": { description: "登录成功并写入安全 session cookie。" },
         "401": { description: "账号或密码错误。" },
-        "429": { description: "连续失败次数过多，账号暂时锁定。" },
+        "429": { description: "同一来源的登录尝试过于频繁。" },
       },
     },
   };

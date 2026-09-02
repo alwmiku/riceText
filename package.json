@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:cloudflare": "playwright test --config playwright.cloudflare.config.ts",
+    "test:e2e:password": "playwright test --config playwright.password.config.ts",
     "cf:e2e:prepare": "tsx tools/cloudflare/prepare-e2e.ts",
     "cf:export": "tsx packages/cloudflare-migration/src/export-sqlite.ts",
     "cf:r2-upload": "tsx packages/cloudflare-migration/src/upload-r2.ts",

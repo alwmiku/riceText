@@ -7,7 +7,6 @@ type CredentialRow = {
   salt: string;
   password_hash: string;
   iterations: number;
-  locked_until: string | null;
 };
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -65,50 +64,59 @@ function sessionToken(): string {
   return bytesToBase64Url(bytes);
 }
 
-/** 校验本地凭据并建立与 OIDC 共用的服务端会话；失败计数使用原子 UPDATE 防止并发绕过。 */
+/** 校验本地凭据并建立共用服务端会话；来源限流先于慢哈希，降低暴力尝试成本。 */
 export async function passwordLogin(
   request: PasswordLoginRequest,
   env: WorkerEnv,
+  sourceAddress: string,
 ): Promise<Response> {
   const now = new Date();
+  const rateKey = await tokenHash("login:" + sourceAddress);
+  const windowStart = new Date(now.getTime() - 15 * 60 * 1000).toISOString();
+  await env.DB.prepare(
+    "INSERT INTO login_rate_limits(key_hash, window_started_at, attempts) VALUES (?, ?, 1) " +
+      "ON CONFLICT(key_hash) DO UPDATE SET " +
+      "attempts = CASE WHEN window_started_at < ? THEN 1 ELSE attempts + 1 END, " +
+      "window_started_at = CASE WHEN window_started_at < ? THEN excluded.window_started_at ELSE window_started_at END",
+  )
+    .bind(rateKey, now.toISOString(), windowStart, windowStart)
+    .run();
+  const rate = await env.DB.prepare(
+    "SELECT attempts FROM login_rate_limits WHERE key_hash = ?",
+  )
+    .bind(rateKey)
+    .first<{ attempts: number }>();
+  if ((rate?.attempts ?? 0) > 10) {
+    throw new WorkerHttpError(429, "AUTH_RATE_LIMITED", "登录尝试过于频繁，请稍后再试");
+  }
   const row = await env.DB.prepare(
-    "SELECT user_id, salt, password_hash, iterations, locked_until " +
+    "SELECT user_id, salt, password_hash, iterations " +
       "FROM password_credentials WHERE username = ? COLLATE NOCASE",
   )
     .bind(request.username)
     .first<CredentialRow>();
-  if (row?.locked_until && row.locked_until > now.toISOString()) {
-    throw new WorkerHttpError(429, "AUTH_LOCKED", "登录失败次数过多，请稍后再试");
-  }
-
-  // 未知账号也执行同等成本的派生，避免通过响应时间枚举有效用户名。
+  // 已知和未知账号都使用当前建号基线成本，避免通过响应时间枚举用户名。
   const candidateHash = await derivePasswordHash(
     request.password,
     row ? base64UrlToBytes(row.salt) : new Uint8Array(16),
-    row?.iterations ?? 100_000,
+    row?.iterations ?? 120_000,
   );
   const valid = equalHash(
     candidateHash,
     row?.password_hash ?? "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
   );
   if (!row || !valid) {
-    if (row) {
-      const lockedUntil = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
-      await env.DB.prepare(
-        "UPDATE password_credentials SET " +
-          "failed_attempts = failed_attempts + 1, " +
-          "locked_until = CASE WHEN failed_attempts + 1 >= 5 THEN ? ELSE NULL END, " +
-          "updated_at = ? WHERE user_id = ?",
-      )
-        .bind(lockedUntil, now.toISOString(), row.user_id)
-        .run();
-    }
     throw new WorkerHttpError(401, "AUTH_INVALID_CREDENTIALS", "账号或密码错误");
   }
 
   const token = sessionToken();
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM login_rate_limits WHERE key_hash = ?").bind(rateKey),
+    env.DB.prepare(
+      "DELETE FROM auth_sessions WHERE user_id = ? AND token_hash NOT IN (" +
+        "SELECT token_hash FROM auth_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 4)",
+    ).bind(row.user_id, row.user_id),
     env.DB.prepare(
       "UPDATE password_credentials SET failed_attempts = 0, locked_until = NULL, updated_at = ? " +
         "WHERE user_id = ?",

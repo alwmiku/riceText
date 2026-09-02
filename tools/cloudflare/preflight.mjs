@@ -1,7 +1,7 @@
 // 部署前硬门禁：占位资源、跨域路由或缺失认证变量都必须在上传前失败。
 import { readFile } from "node:fs/promises";
 
-const target = process.argv[2];
+const [target] = process.argv.slice(2).filter((value) => value !== "--");
 if (target !== "preview" && target !== "production") {
   throw new Error("Usage: node tools/cloudflare/preflight.mjs <preview|production>");
 }
@@ -13,12 +13,17 @@ for (const name of [
 ]) {
   if (!process.env[name]) throw new Error("Missing deployment variable: " + name);
 }
-const config = JSON.parse(await readFile("apps/worker/wrangler.jsonc", "utf8"));
+const configText = await readFile("apps/worker/wrangler.jsonc", "utf8");
+// 当前配置中的注释均独占一行；移除后再交给标准 JSON 解析器，避免误伤 https:// 字符串。
+const config = JSON.parse(configText.replace(/^\s*\/\/.*$/gm, ""));
 const selected = config.env?.[target];
 if (!selected) throw new Error("Missing Wrangler environment: " + target);
 const database = selected.d1_databases?.find((item) => item.binding === "DB");
 if (!database?.database_id || /^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(database.database_id)) {
   throw new Error("Wrangler " + target + " D1 database_id is still a placeholder");
+}
+if (selected.vars?.ALLOW_DEMO_AUTH !== "false") {
+  throw new Error("ALLOW_DEMO_AUTH must be false outside local development");
 }
 const origin = selected.vars?.ALLOWED_ORIGINS;
 if (!origin || origin.includes("example.com") || origin !== process.env.CF_APP_ORIGIN) {
