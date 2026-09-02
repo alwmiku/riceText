@@ -43,6 +43,42 @@ describe("RiceText API", () => {
     }
   });
 
+  it("作者首次保存可创建空白文章，读者不能创建", async () => {
+    const payload = {
+      title: "未命名文章",
+      schemaVersion: 1,
+      baseRevision: 0,
+      clientMutationId: "create-empty-post",
+      content: { type: "doc", content: [{ type: "paragraph" }] },
+    };
+    const created = await app.inject({
+      method: "PUT",
+      url: "/api/documents/empty-post",
+      headers: { "x-user-id": "author" },
+      payload,
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json()).toMatchObject({
+      id: "empty-post",
+      title: "未命名文章",
+      revision: 1,
+    });
+    const replayed = await app.inject({
+      method: "PUT",
+      url: "/api/documents/empty-post",
+      headers: { "x-user-id": "author" },
+      payload,
+    });
+    expect(replayed.statusCode).toBe(200);
+    const reader = await app.inject({
+      method: "PUT",
+      url: "/api/documents/reader-post",
+      headers: { "x-user-id": "reader" },
+      payload: { ...payload, clientMutationId: "reader-create" },
+    });
+    expect(reader.statusCode).toBe(403);
+  });
+
   it("读取种子文档并执行幂等保存、冲突和非破坏回滚", async () => {
     const initial = await app.inject({ method: "GET", url: "/api/documents/demo-post" });
     expect(initial.statusCode).toBe(200);

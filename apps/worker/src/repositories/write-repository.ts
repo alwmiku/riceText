@@ -10,10 +10,11 @@ import {
   ApplyStepsError,
   applyStepsToDocument,
   createDocumentSchema,
+  splitDocumentByChapters,
   type JSONContent,
   type StepJson,
 } from "@ricetext/document-core";
-import { sanitizeDocumentForWrite } from "@ricetext/server-core";
+import { chapterStorageId, sanitizeDocumentForWrite } from "@ricetext/server-core";
 import { WorkerHttpError } from "../http-error";
 import { D1ReadRepository } from "./read-repository";
 
@@ -67,19 +68,108 @@ export class D1WriteRepository {
     request: UpdateDocumentRequest,
     authorId: string,
   ): Promise<DocumentWriteResult> {
+    const content = sanitizeDocumentForWrite(request.content);
+    const exists = await this.db
+      .prepare("SELECT 1 AS found FROM documents WHERE id = ?")
+      .bind(documentId)
+      .first<{ found: number }>();
+    if (!exists && request.baseRevision === 0) {
+      return this.create(documentId, request, content, authorId);
+    }
     return this.write({
       documentId,
       baseRevision: request.baseRevision,
       mutationId: request.clientMutationId,
       requestJson: JSON.stringify(request),
       schemaVersion: request.schemaVersion,
-      content: sanitizeDocumentForWrite(request.content),
+      content,
       authorId,
       operation: "update",
       targetRevision: null,
       stepsJson: null,
       ...(request.chapterId ? { chapterId: request.chapterId } : {}),
     });
+  }
+
+  /** 空库首次保存：文档、owner ACL、首版和章节目录必须在一个 D1 batch 中落库。 */
+  private async create(
+    documentId: string,
+    request: UpdateDocumentRequest,
+    content: TiptapDocument,
+    authorId: string,
+  ): Promise<DocumentWriteResult> {
+    const requestJson = JSON.stringify(request);
+    const writeInput: WriteInput = {
+      documentId,
+      baseRevision: 0,
+      mutationId: request.clientMutationId,
+      requestJson,
+      schemaVersion: request.schemaVersion,
+      content,
+      authorId,
+      operation: "update",
+      targetRevision: null,
+      stepsJson: null,
+    };
+    const existingMutation = await this.mutation(documentId, request.clientMutationId);
+    if (existingMutation) return this.idempotentResult(writeInput, existingMutation);
+
+    const createdAt = new Date().toISOString();
+    const chapters = splitDocumentByChapters(content as unknown as JSONContent).chapters;
+    const chapterRows = chapters.length > 0 ? chapters : [{ id: "chapter-0", title: "正文" }];
+    const statements: D1PreparedStatement[] = [
+      this.db.prepare(
+        "INSERT INTO documents(id, title, schema_version, current_revision, created_by, created_at, updated_at) " +
+          "VALUES (?, ?, ?, 1, ?, ?, ?)",
+      ).bind(
+        documentId,
+        request.title ?? "未命名文章",
+        request.schemaVersion,
+        authorId,
+        createdAt,
+        createdAt,
+      ),
+      this.db.prepare(
+        "INSERT INTO document_revisions(document_id, revision, schema_version, content_json, steps_json, author_id, operation, target_revision, created_at) " +
+          "VALUES (?, 1, ?, ?, NULL, ?, 'update', NULL, ?)",
+      ).bind(documentId, request.schemaVersion, JSON.stringify(content), authorId, createdAt),
+      this.db.prepare(
+        "INSERT INTO document_mutations(document_id, client_mutation_id, request_json, revision) VALUES (?, ?, ?, 1)",
+      ).bind(documentId, request.clientMutationId, requestJson),
+      this.db.prepare(
+        "INSERT INTO document_acl(document_id, user_id, permission, created_at) VALUES (?, ?, 'admin', ?)",
+      ).bind(documentId, authorId, createdAt),
+      ...chapterRows.map((chapter, order) =>
+        this.db.prepare(
+          "INSERT INTO chapters(id, title, sort_order, document_id, revision, updated_at, hidden) " +
+            "VALUES (?, ?, ?, ?, 1, ?, 0)",
+        ).bind(
+          chapterStorageId(documentId, order),
+          chapter.title,
+          order,
+          documentId,
+          createdAt,
+        ),
+      ),
+    ];
+    try {
+      await this.db.batch(statements);
+      return { envelope: await this.reads.revision(documentId, 1), created: true };
+    } catch (error) {
+      const concurrentMutation = await this.mutation(documentId, request.clientMutationId);
+      if (concurrentMutation) return this.idempotentResult(writeInput, concurrentMutation);
+      const current = await this.db
+        .prepare("SELECT current_revision FROM documents WHERE id = ?")
+        .bind(documentId)
+        .first<DocumentPointerRow>();
+      if (current) {
+        throw new WorkerHttpError(409, "REVISION_CONFLICT", "文档已由另一请求创建", {
+          currentRevision: current.current_revision,
+          baseRevision: 0,
+        });
+      }
+      throw error;
+    }
   }
 
   async rollback(

@@ -12,14 +12,16 @@ import {
   deleteDocumentChapter,
   getDocument,
   listForumChapters,
+  missingDocument,
   restoreRevision,
+  saveDocument,
 } from "../../lib/api";
 import {
   clearLocalDocumentDraft,
   loadLocalDocumentDraft,
 } from "../../lib/local-document-draft-storage";
 import { mergeChapter, splitDocumentByHeadings } from "../../lib/chapters";
-import { defaultDocument } from "../../lib/seed";
+import { createId } from "../../lib/utils";
 import type {
   DocumentEnvelope,
   ForumChapterItem,
@@ -33,9 +35,12 @@ export interface ComposeDocumentController {
   contentRef: MutableRefObject<RichTextNode>;
   generation: number;
   isPlaceholderData: boolean;
+  /** 服务器已有文章或用户已在本地点击创建。 */
+  articleStarted: boolean;
   autosave: ReturnType<typeof useAutosave>;
   setAutosaveEnabled: (enabled: boolean) => void;
   replaceContent: (next: RichTextNode) => void;
+  createLocalArticle: () => void;
   updateChapter: (chapterIndex: number, chapter: RichTextNode) => void;
   publishChapter: (
     chapterIndex: number,
@@ -50,17 +55,18 @@ export function useComposeDocument(
   chapterIndex?: number,
 ): ComposeDocumentController {
   const queryClient = useQueryClient();
-  const { data = defaultDocument, isPlaceholderData: queryIsPlaceholderData } =
-    useQuery({
-      queryKey: ["document", documentId],
-      queryFn: ({ signal }) => getDocument(documentId, signal),
-      placeholderData: defaultDocument,
-    });
+  const placeholder = useMemo(() => missingDocument(documentId), [documentId]);
+  const { data = placeholder, isPlaceholderData: queryIsPlaceholderData } = useQuery({
+    queryKey: ["document", documentId],
+    queryFn: ({ signal }) => getDocument(documentId, signal),
+    placeholderData: placeholder,
+  });
   // state 驱动渲染，ref 让 autosave、发布和长文本桥接始终读取最新正文与代次。
   const [document, setDocument] = useState<DocumentEnvelope>(data);
   const [content, setContent] = useState<RichTextNode>(data.content);
   const [generation, setGeneration] = useState(0);
   const [autosaveEnabled, setAutosaveEnabled] = useState(true);
+  const [articleStarted, setArticleStarted] = useState(data.storage !== "missing");
   const contentRef = useRef<RichTextNode>(data.content);
   const generationRef = useRef(0);
   // 保存前注册新增章节后同步到的服务器章节 id；保存成功回调用它更新目录缓存。
@@ -87,8 +93,9 @@ export function useComposeDocument(
     const draft = loadLocalDocumentDraft(documentId);
     const restoreDraft = draft?.baseRevision === data.revision;
     if (draft && !restoreDraft) clearLocalDocumentDraft(documentId);
-    const nextContent = restoreDraft ? draft.content : data.content;
+    const nextContent = draft && restoreDraft ? draft.content : data.content;
     const nextGeneration = restoreDraft ? 1 : 0;
+    setArticleStarted(data.storage !== "missing" || Boolean(restoreDraft));
     contentRef.current = nextContent;
     generationRef.current = nextGeneration;
     setContent(nextContent);
@@ -102,12 +109,20 @@ export function useComposeDocument(
     setGeneration(generationRef.current);
   }, []);
 
+  const createLocalArticle = useCallback(() => {
+    if (articleStarted) return;
+    // 空段落只存在浏览器草稿中，用户点击「保存」后才创建 D1 文档和首个版本。
+    const blank: RichTextNode = { type: "doc", content: [{ type: "paragraph" }] };
+    setArticleStarted(true);
+    replaceContent(blank);
+  }, [articleStarted, replaceContent]);
+
   const autosave = useAutosave({
     document,
     content,
     generation,
     ...(chapterId ? { chapterId } : {}),
-    enabled: autosaveEnabled && !isDocumentLoading,
+    enabled: autosaveEnabled && !isDocumentLoading && articleStarted,
     onSaved: (next) => {
       // 保存结果更新文档基线，并刷新版本历史和独立章节版本号。
       setDocument((current) => ({
@@ -274,6 +289,23 @@ export function useComposeDocument(
           replaceContent(next);
         }
       }
+      if (!articleStarted) return false;
+      if (document.storage === "missing") {
+        const saved = await saveDocument(documentId, {
+          title: document.title,
+          schemaVersion: document.schemaVersion,
+          baseRevision: 0,
+          clientMutationId: createId("create"),
+          content: contentRef.current,
+        });
+        if (saved.storage !== "server") return false;
+        // 服务器会执行正文规范化；用确认后的快照同时更新编辑器与 autosave 基线。
+        contentRef.current = saved.content;
+        setContent(saved.content);
+        autosave.acceptSaved(saved, saved.content, generationRef.current);
+        void queryClient.invalidateQueries({ queryKey: ["forum", "chapters"] });
+        return true;
+      }
       // 1. 注册新增章节并拿到服务器 id（离线时保存路径会自行降级为本地草稿）。
       const serverChapterId = await prepareChapterForSave(
         contentRef.current,
@@ -287,7 +319,16 @@ export function useComposeDocument(
         serverChapterId,
       );
     },
-    [autosave, isDocumentLoading, prepareChapterForSave, replaceContent],
+    [
+      articleStarted,
+      autosave,
+      document,
+      documentId,
+      isDocumentLoading,
+      prepareChapterForSave,
+      queryClient,
+      replaceContent,
+    ],
   );
 
   const rollback = useCallback(
@@ -315,9 +356,11 @@ export function useComposeDocument(
     contentRef,
     generation,
     isPlaceholderData: isDocumentLoading,
+    articleStarted,
     autosave,
     setAutosaveEnabled,
     replaceContent,
+    createLocalArticle,
     updateChapter,
     publishChapter,
     rollback,

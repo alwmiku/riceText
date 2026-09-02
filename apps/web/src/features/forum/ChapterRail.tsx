@@ -3,12 +3,13 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  FilePlus2,
   GitCompareArrows,
   Plus,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
-import { Badge } from "../../components/ui";
+import { Badge, Button } from "../../components/ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +34,7 @@ export function ChapterRail({
   currentIndex,
   onSelect,
   onAddChapter,
+  createArticle,
   onDelete,
   hiddenChapters,
   onToggleHidden,
@@ -46,6 +48,8 @@ export function ChapterRail({
   onSelect: (index: number) => void;
   /** 目录底部「新增章节」入口；不提供时隐藏。 */
   onAddChapter?: () => void;
+  /** 空库尚无本地文章时，将同一入口强调为红色「创建文章」。 */
+  createArticle?: boolean;
   /** 章节操作弹窗中的删除入口；不提供时隐藏。删除只改本地草稿，保存后才同步服务器。 */
   onDelete?: (index: number) => void;
   /** 各章节的服务器隐藏状态（按目录顺序对齐）；未提供时视为全部可读。 */
@@ -170,14 +174,20 @@ export function ChapterRail({
           })}
         </nav>
         {onAddChapter ? (
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant={createArticle ? "destructive" : "outline"}
             onClick={onAddChapter}
-            className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1 rounded-[5px] border border-dashed border-[#b7c9c3] px-2.5 py-2 text-xs font-semibold text-[#176e66] hover:bg-[#edf7f5]"
+            className="mt-2 w-full border-dashed"
           >
-            <Plus size={13} />
-            新增章节
-          </button>
+            {createArticle ? (
+              <FilePlus2 data-icon="inline-start" />
+            ) : (
+              <Plus data-icon="inline-start" />
+            )}
+            {createArticle ? "创建文章" : "新增章节"}
+          </Button>
         ) : null}
       </div>
       <div className="border-b border-border p-3.5 last:border-b-0">

@@ -19,6 +19,7 @@ import {
   type StepJson,
 } from "@ricetext/document-core";
 import {
+  chapterStorageId,
   DomainError,
   repairDocumentForRead,
   sanitizeDocumentForWrite,
@@ -106,6 +107,12 @@ export class DocumentService {
     authorId: string,
   ): { envelope: DocumentEnvelope; created: boolean } {
     const content = sanitizeDocument(request.content);
+    const exists = this.#db
+      .prepare("SELECT 1 AS found FROM documents WHERE id = ?")
+      .get(documentId);
+    if (!exists && request.baseRevision === 0) {
+      return this.#create(documentId, request, content, authorId);
+    }
     return this.#write(
       documentId,
       request.baseRevision,
@@ -119,6 +126,86 @@ export class DocumentService {
       null,
       { ...(request.chapterId ? { chapterId: request.chapterId } : {}) },
     );
+  }
+
+  /** 首次显式保存才创建服务器文章，确保本地空白草稿不会提前占用文档 ID。 */
+  #create(
+    documentId: string,
+    request: UpdateDocumentRequest,
+    content: TiptapDocument,
+    authorId: string,
+  ): { envelope: DocumentEnvelope; created: boolean } {
+    const now = new Date().toISOString();
+    const requestJson = JSON.stringify(request);
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = this.#db
+        .prepare(
+          "SELECT request_json, revision FROM document_mutations WHERE document_id = ? AND client_mutation_id = ?",
+        )
+        .get(documentId, request.clientMutationId) as
+        | { request_json: string; revision: number }
+        | undefined;
+      if (existing) {
+        if (existing.request_json !== requestJson) {
+          throw new HttpError(409, "MUTATION_ID_REUSED", "clientMutationId 已被另一请求使用");
+        }
+        const envelope = this.revision(documentId, existing.revision);
+        this.#db.exec("COMMIT");
+        return { envelope, created: false };
+      }
+      const occupied = this.#db
+        .prepare("SELECT current_revision FROM documents WHERE id = ?")
+        .get(documentId) as { current_revision: number } | undefined;
+      if (occupied) {
+        throw new HttpError(409, "REVISION_CONFLICT", "文档已由另一请求创建", {
+          currentRevision: occupied.current_revision,
+          baseRevision: 0,
+        });
+      }
+      this.#db.prepare(
+        "INSERT INTO documents(id, title, schema_version, current_revision, created_by, created_at, updated_at) " +
+          "VALUES (?, ?, ?, 1, ?, ?, ?)",
+      ).run(
+        documentId,
+        request.title ?? "未命名文章",
+        request.schemaVersion,
+        authorId,
+        now,
+        now,
+      );
+      this.#db.prepare(
+        "INSERT INTO document_revisions(document_id, revision, schema_version, content_json, steps_json, author_id, operation, target_revision, created_at) " +
+          "VALUES (?, 1, ?, ?, NULL, ?, 'update', NULL, ?)",
+      ).run(documentId, request.schemaVersion, JSON.stringify(content), authorId, now);
+      this.#db.prepare(
+        "INSERT INTO document_mutations(document_id, client_mutation_id, request_json, revision) VALUES (?, ?, ?, 1)",
+      ).run(documentId, request.clientMutationId, requestJson);
+      this.#db.prepare(
+        "INSERT INTO document_acl(document_id, user_id, permission, created_at) VALUES (?, ?, 'admin', ?)",
+      ).run(documentId, authorId, now);
+      const chapters = splitDocumentByChapters(content as unknown as JSONContent).chapters;
+      const chapterRows = chapters.length > 0 ? chapters : [{ id: "chapter-0", title: "正文" }];
+      const insertChapter = this.#db.prepare(
+        "INSERT INTO chapters(id, title, sort_order, document_id, revision, updated_at, hidden) " +
+          "VALUES (?, ?, ?, ?, 1, ?, 0)",
+      );
+      chapterRows.forEach((chapter, order) => {
+        insertChapter.run(
+          chapterStorageId(documentId, order),
+          chapter.title,
+          order,
+          documentId,
+          now,
+        );
+      });
+      const envelope = this.get(documentId);
+      this.#db.exec("COMMIT");
+      return { envelope, created: true };
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   /** 回滚到指定历史版本并创建新修订。 */

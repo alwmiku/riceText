@@ -38,7 +38,7 @@ export interface DocumentEnvelope {
   /** 唯一权威正文格式。 */
   content: RichTextNode;
   /** 当前副本的落点；local-cache 表示 API 不可达时的本机缓存副本。 */
-  storage?: "server" | "local-cache";
+  storage?: "server" | "local-cache" | "missing";
 }
 
 /** 单条不可变历史版本摘要（展示字段；完整契约见 @ricetext/contracts）。 */

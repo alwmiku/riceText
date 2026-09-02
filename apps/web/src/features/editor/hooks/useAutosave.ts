@@ -32,6 +32,12 @@ export interface AutosaveResult {
     generation?: number,
     chapterIdOverride?: string,
   ) => Promise<boolean>;
+  /** 首次整篇创建由宿主完成后，同步服务器基线并取消待执行的本地草稿定时器。 */
+  acceptSaved: (
+    next: DocumentEnvelope,
+    content: RichTextNode,
+    generation: number,
+  ) => void;
   /** 用户确认采用服务器 revision 后解除冲突阻塞。 */
   acceptLatest: (latestRevision: number) => void;
 }
@@ -269,6 +275,19 @@ export function useAutosave({
             }
           : undefined,
       ),
+    acceptSaved(next, savedContent, savedGeneration) {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      revisionRef.current = next.revision;
+      baselineRef.current = savedContent;
+      serverGenerationRef.current = savedGeneration;
+      localGenerationRef.current = savedGeneration;
+      clearLocalDocumentDraft(document.id);
+      setRevision(next.revision);
+      setSavedAt(next.savedAt);
+      setConflictMessage("");
+      setState("saved");
+      onSavedRef.current?.(next);
+    },
     acceptLatest(latestRevision) {
       // 只更新并发基线，不在这里改正文；正文取舍由冲突 UI 的用户操作负责。
       revisionRef.current = latestRevision;

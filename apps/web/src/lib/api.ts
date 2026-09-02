@@ -1,6 +1,7 @@
 export { ApiError } from "./api/client";
 export {
   getDocument,
+  missingDocument,
   saveDocument,
   saveDocumentSteps,
 } from "./api/documents";

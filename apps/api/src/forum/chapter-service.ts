@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { TiptapDocument } from "@ricetext/contracts";
+import { chapterStorageId } from "@ricetext/server-core";
 import { HttpError } from "../errors.js";
 
 export class ChapterService {
@@ -71,7 +72,7 @@ export class ChapterService {
     hidden: boolean;
     created: boolean;
   } {
-    const id = `chapter-${input.order}`;
+    const id = chapterStorageId(documentId, input.order);
     const now = new Date().toISOString();
     const existing = this.#db
       .prepare("SELECT document_id FROM chapters WHERE id = ?")

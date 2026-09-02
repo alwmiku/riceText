@@ -1,5 +1,5 @@
 import { ChapterSchema, type Chapter, type TiptapDocument } from "@ricetext/contracts";
-import { sanitizeDocumentForWrite } from "@ricetext/server-core";
+import { chapterStorageId, sanitizeDocumentForWrite } from "@ricetext/server-core";
 import { WorkerHttpError } from "../http-error";
 
 type ChapterRow = {
@@ -55,7 +55,7 @@ export class D1ChapterRepository {
     input: { title: string; order: number },
   ): Promise<{ value: Chapter; created: boolean }> {
     await this.requireDocument(documentId);
-    const chapterId = "chapter-" + String(input.order);
+    const chapterId = chapterStorageId(documentId, input.order);
     const now = new Date().toISOString();
     try {
       const results = await this.db.batch([

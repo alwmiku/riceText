@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   getDocument: vi.fn(),
   listForumChapters: vi.fn(),
   restoreRevision: vi.fn(),
+  saveDocument: vi.fn(),
   autosave: vi.fn(),
 }));
 
@@ -30,8 +31,18 @@ vi.mock("../../lib/api", () => ({
   createDocumentChapter: mocks.createDocumentChapter,
   deleteDocumentChapter: mocks.deleteDocumentChapter,
   getDocument: mocks.getDocument,
+  missingDocument: (id: string) => ({
+    id,
+    title: "未命名文章",
+    schemaVersion: 1,
+    revision: 0,
+    savedAt: new Date(0).toISOString(),
+    content: { type: "doc", content: [] },
+    storage: "missing",
+  }),
   listForumChapters: mocks.listForumChapters,
   restoreRevision: mocks.restoreRevision,
+  saveDocument: mocks.saveDocument,
 }));
 vi.mock("../editor/hooks/useAutosave", () => ({ useAutosave: mocks.autosave }));
 
@@ -110,14 +121,62 @@ describe("useComposeDocument hydration", () => {
     });
     mocks.listForumChapters.mockReset().mockResolvedValue([]);
     mocks.restoreRevision.mockReset();
-    mocks.autosave.mockReset().mockReturnValue({
-      state: "saved",
-      revision: defaultDocument.revision,
-      savedAt: defaultDocument.savedAt,
-      conflictMessage: "",
-      flush: vi.fn().mockResolvedValue(true),
-      acceptLatest: vi.fn(),
+    mocks.saveDocument.mockReset().mockResolvedValue({
+      id: "demo-post",
+      title: "未命名文章",
+      schemaVersion: 1,
+      revision: 1,
+      savedAt: "2026-09-03T00:00:00.000Z",
+      content: { type: "doc", content: [{ type: "paragraph" }] },
+      storage: "server",
     });
+    mocks.autosave.mockReset().mockImplementation(
+      (options: { onSaved?: (next: DocumentEnvelope) => void }) => ({
+        state: "saved",
+        revision: defaultDocument.revision,
+        savedAt: defaultDocument.savedAt,
+        conflictMessage: "",
+        flush: vi.fn().mockResolvedValue(true),
+        acceptSaved: (next: DocumentEnvelope) => options.onSaved?.(next),
+        acceptLatest: vi.fn(),
+      }),
+    );
+  });
+
+  it("404 后保持空白，点击创建只写本地，首次保存才上传服务器", async () => {
+    mocks.getDocument.mockResolvedValue({
+      id: "demo-post",
+      title: "未命名文章",
+      schemaVersion: 1,
+      revision: 0,
+      savedAt: new Date(0).toISOString(),
+      content: { type: "doc", content: [] },
+      storage: "missing",
+    });
+    const { result } = renderHook(() => useComposeDocument("demo-post", 0), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
+    expect(result.current.articleStarted).toBe(false);
+    expect(result.current.content).toEqual({ type: "doc", content: [] });
+
+    act(() => result.current.createLocalArticle());
+    expect(result.current.articleStarted).toBe(true);
+    expect(result.current.content).toEqual({
+      type: "doc",
+      content: [{ type: "paragraph" }],
+    });
+    expect(mocks.saveDocument).not.toHaveBeenCalled();
+
+    await act(() => result.current.publishChapter(0));
+    expect(mocks.saveDocument).toHaveBeenCalledWith("demo-post", {
+      title: "未命名文章",
+      schemaVersion: 1,
+      baseRevision: 0,
+      clientMutationId: expect.stringMatching(/^create_/),
+      content: { type: "doc", content: [{ type: "paragraph" }] },
+    });
+    await waitFor(() => expect(result.current.document.storage).toBe("server"));
   });
 
   it("hydrates server content even when placeholder metadata has a higher revision", async () => {
@@ -125,7 +184,7 @@ describe("useComposeDocument hydration", () => {
       wrapper,
     });
 
-    expect(result.current.content).toBe(defaultDocument.content);
+    expect(result.current.content).toEqual({ type: "doc", content: [] });
     await waitFor(() =>
       expect(result.current.content).toBe(serverDocument.content),
     );

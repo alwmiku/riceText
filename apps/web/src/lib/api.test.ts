@@ -74,16 +74,36 @@ describe('web api client', () => {
     );
   });
 
-  it('读取失败时优先返回本地副本，其次返回种子文档', async () => {
+  it('读取失败时优先返回本地副本，否则返回空白缺失状态', async () => {
     const cached = { ...defaultDocument, revision: 33, storage: 'local-cache' as const };
     localStorage.setItem('ricetext:document:cached', JSON.stringify(cached));
     fetchMock.mockRejectedValue(new TypeError('offline'));
 
     await expect(getDocument('cached')).resolves.toEqual(cached);
-    await expect(getDocument('missing')).resolves.toBe(defaultDocument);
+    await expect(getDocument('missing')).resolves.toMatchObject({
+      id: 'missing',
+      storage: 'missing',
+      content: { type: 'doc', content: [] },
+    });
   });
 
-  it('Pages 将不存在的 API 路径回退为 HTML 时使用种子文档', async () => {
+  it('服务器明确返回 404 时返回空白缺失状态而不是演示文章', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        { error: { code: 'DOCUMENT_NOT_FOUND', message: '文档不存在' } },
+        { status: 404 },
+      ),
+    );
+    await expect(getDocument('empty-post')).resolves.toMatchObject({
+      id: 'empty-post',
+      title: '未命名文章',
+      revision: 0,
+      storage: 'missing',
+      content: { type: 'doc', content: [] },
+    });
+  });
+
+  it('Pages 将 API 路径误回退为 HTML 时不展示演示文章', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response('<!doctype html><html><body><div id="root"></div></body></html>', {
         status: 200,
@@ -91,7 +111,11 @@ describe('web api client', () => {
       }),
     );
 
-    await expect(getDocument('demo-post')).resolves.toBe(defaultDocument);
+    await expect(getDocument('demo-post')).resolves.toMatchObject({
+      id: 'demo-post',
+      storage: 'missing',
+      content: { type: 'doc', content: [] },
+    });
   });
 
   it('不会把 AbortError 降级成本地文档', async () => {
@@ -168,7 +192,11 @@ describe('web api client', () => {
       saveDocumentSteps('demo-post', { schemaVersion: 1, baseRevision: 18, clientMutationId: 'steps_2', steps }),
     ).rejects.toMatchObject({ status: 409 });
 
-    // 离线：本地应用 steps 后整篇缓存
+    // 离线：已有本地基线时应用 steps 后整篇缓存；无缓存不再偷偷使用演示正文。
+    localStorage.setItem(
+      'ricetext:document:demo-post',
+      JSON.stringify({ ...defaultDocument, storage: 'local-cache' }),
+    );
     fetchMock.mockRejectedValue(new TypeError('offline'));
     const offline = await saveDocumentSteps('demo-post', {
       schemaVersion: 1,

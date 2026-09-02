@@ -263,6 +263,23 @@ describe("ForumPanels", () => {
     expect(onAddChapter).toHaveBeenCalledTimes(1);
   });
 
+  it("空库时同一入口显示红色创建文章按钮", () => {
+    const onCreate = vi.fn();
+    renderWithQuery(
+      <ChapterRail
+        chapters={[]}
+        currentIndex={0}
+        onSelect={vi.fn()}
+        onAddChapter={onCreate}
+        createArticle
+      />,
+    );
+    const button = screen.getByRole("button", { name: "创建文章" });
+    expect(button).toHaveClass("bg-destructive");
+    fireEvent.click(button);
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
   it("未提供 onAddChapter 时隐藏新增章节入口", () => {
     renderWithQuery(
       <ChapterRail

@@ -210,6 +210,58 @@ describe("RiceText Worker", () => {
     });
   });
 
+  it("creates the first missing document only when an author explicitly saves", async () => {
+    const request = {
+      title: "未命名文章",
+      schemaVersion: 1,
+      baseRevision: 0,
+      clientMutationId: "create-empty-post",
+      content: { type: "doc", content: [{ type: "paragraph" }] },
+    };
+    const save = () =>
+      exports.default.fetch(
+        new Request("http://example.com/api/documents/empty-post", {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-user-id": "author" },
+          body: JSON.stringify(request),
+        }),
+      );
+    const created = await save();
+    expect(created.status).toBe(201);
+    await expect(created.json()).resolves.toMatchObject({
+      id: "empty-post",
+      title: "未命名文章",
+      revision: 1,
+      content: { type: "doc", content: [{ type: "paragraph" }] },
+    });
+    const stored = await env.DB.prepare(
+      "SELECT d.created_by, a.permission, c.title, c.revision " +
+        "FROM documents d JOIN document_acl a ON a.document_id = d.id " +
+        "JOIN chapters c ON c.document_id = d.id WHERE d.id = ?",
+    ).bind("empty-post").first<{
+      created_by: string;
+      permission: string;
+      title: string;
+      revision: number;
+    }>();
+    expect(stored).toEqual({
+      created_by: "author",
+      permission: "admin",
+      title: "正文",
+      revision: 1,
+    });
+    expect((await save()).status).toBe(200);
+
+    const reader = await exports.default.fetch(
+      new Request("http://example.com/api/documents/reader-post", {
+        method: "PUT",
+        headers: { "content-type": "application/json", "x-user-id": "reader" },
+        body: JSON.stringify({ ...request, clientMutationId: "reader-create" }),
+      }),
+    );
+    expect(reader.status, await reader.clone().text()).toBe(403);
+  });
+
   it("allows exactly one concurrent writer for the same base revision", async () => {
     const save = (mutationId: string, text: string) =>
       exports.default.fetch(

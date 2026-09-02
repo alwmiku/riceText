@@ -139,6 +139,7 @@ export default function ComposePage() {
     () => splitDocumentByHeadings(compose.content),
     [compose.content],
   );
+  const displayedChapters = compose.articleStarted ? chapters : [];
   const activeIndex = Math.min(chapterIndex, Math.max(0, chapters.length - 1));
   // 目录「章节总结」的真实数据：字数按当前章节正文的非空白字符统计，
   // 修订号取该章节在服务端目录中的独立版本号。
@@ -227,6 +228,13 @@ export default function ComposePage() {
     navigate(`/read?chapter=${index}&proofread=1`);
   };
 
+  // 空库先建立纯本地空白文章；只有之后点击保存才会创建服务器首版。
+  const createArticle = () => {
+    compose.createLocalArticle();
+    setChapterIndex(0);
+    setNotice("已在本地创建空白文章，点击保存后上传服务器");
+  };
+
   // 在文档末尾追加一个空章节并切换到它；保存时随整篇正文一起入库。
   const addChapter = () => {
     const current = compose.contentRef.current;
@@ -312,7 +320,7 @@ export default function ComposePage() {
       }
       content={longText.enabled ? longText.editorContent : editorContent}
       mode={mode}
-      editable={!compose.isPlaceholderData}
+      editable={!compose.isPlaceholderData && compose.articleStarted}
       longTextMode={longText.enabled}
       onChange={(next) => {
         if (compose.isPlaceholderData) return;
@@ -367,6 +375,7 @@ export default function ComposePage() {
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             size="sm"
+            disabled={!compose.articleStarted}
             variant={longText.enabled ? "secondary" : "outline"}
             aria-pressed={longText.enabled}
             onClick={() => {
@@ -486,9 +495,13 @@ export default function ComposePage() {
       ) : (
         <StandardComposeWorkspace
           mode={mode}
-          chapters={chapters}
+          chapters={displayedChapters}
           activeIndex={activeIndex}
-          title={chapters[activeIndex]?.title ?? compose.document.title}
+          title={
+            compose.articleStarted
+              ? chapters[activeIndex]?.title ?? compose.document.title
+              : "尚未创建文章"
+          }
           saveStatus={
             <SaveStatus
               state={
@@ -503,14 +516,15 @@ export default function ComposePage() {
           identity={identity}
           documentId={compose.document.id}
           revision={compose.autosave.revision}
-          saveDisabled={compose.isPlaceholderData}
+          saveDisabled={compose.isPlaceholderData || !compose.articleStarted}
           activeCharCount={activeCharCount}
           chapterId={chapterDirectory[activeIndex]?.id}
           activeRevision={activeRevision}
           activeContent={editorContent}
           comparingRevision={comparingRevision}
           onCompareRevision={(revision) => void compareRevision(revision)}
-          onAddChapter={addChapter}
+          onAddChapter={compose.articleStarted ? addChapter : createArticle}
+          createArticle={!compose.articleStarted}
           onDeleteChapter={deleteChapter}
           hiddenChapters={chapterDirectory.map((chapter) => chapter.hidden)}
           onToggleHidden={(index, hidden) => void toggleChapterHidden(index, hidden)}

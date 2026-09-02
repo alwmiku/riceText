@@ -249,8 +249,16 @@ export function createWorkerApp(): Hono<AppBindings> {
 
   app.put("/api/documents/:documentId", async (context) => {
     const input = params("updateDocument", context.req.param()) as { documentId: string };
-    const principal = await requireDocumentEditor(context, input.documentId);
     const request = UpdateDocumentRequestSchema.parse(await body("updateDocument", context));
+    const existing = await context.env.DB.prepare("SELECT 1 AS found FROM documents WHERE id = ?")
+      .bind(input.documentId)
+      .first<{ found: number }>();
+    const principal = existing
+      ? await requireDocumentEditor(context, input.documentId)
+      : await requirePrincipal(context);
+    if (!existing && principal.role === "reader") {
+      throw new WorkerHttpError(403, "FORBIDDEN", "只有作者或版主可以创建文章");
+    }
     const repository = new D1WriteRepository(context.env.DB);
     const result = await repository.save(input.documentId, request, principal.id);
     const status = result.created ? 201 : 200;

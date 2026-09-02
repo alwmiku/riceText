@@ -10,6 +10,7 @@ import {
 } from "@ricetext/contracts";
 import { projectDocumentForReader } from "@ricetext/server-core";
 import type { RequestIdentity } from "../auth.js";
+import { HttpError } from "../errors.js";
 import type { RouteDependencies } from "./dependencies.js";
 import {
   canEditDocument,
@@ -60,10 +61,19 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
     "/api/documents/:documentId",
     { schema: getFastifySchema("updateDocument") },
     async (request, reply) => {
-      const user = requireEditor(dependencies, request, params(request).documentId!);
+      const documentId = params(request).documentId!;
       const body = UpdateDocumentRequestSchema.parse(request.body);
+      const existing = dependencies.db
+        .prepare("SELECT 1 AS found FROM documents WHERE id = ?")
+        .get(documentId);
+      const user = existing
+        ? requireEditor(dependencies, request, documentId)
+        : identity(dependencies, request);
+      if (!existing && user.role === "reader") {
+        throw new HttpError(403, "FORBIDDEN", "只有作者或版主可以创建文章");
+      }
       const result = dependencies.documents.save(
-        params(request).documentId!,
+        documentId,
         body,
         user.id,
       );

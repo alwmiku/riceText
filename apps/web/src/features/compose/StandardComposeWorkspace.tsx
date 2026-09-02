@@ -24,6 +24,7 @@ export function StandardComposeWorkspace({
   comparingRevision,
   onCompareRevision,
   onAddChapter,
+  createArticle,
   onDeleteChapter,
   hiddenChapters,
   onToggleHidden,
@@ -63,6 +64,8 @@ export function StandardComposeWorkspace({
   onCompareRevision?: (revision: number) => void;
   /** 目录底部「新增章节」入口。 */
   onAddChapter?: () => void;
+  /** 空库入口显示为红色「创建文章」。 */
+  createArticle?: boolean;
   /** 章节行内「删除章节」入口（带确认，仅改本地草稿）。 */
   onDeleteChapter?: (index: number) => void;
   onSelectChapter: (index: number) => void;
@@ -85,6 +88,7 @@ export function StandardComposeWorkspace({
           currentIndex={activeIndex}
           onSelect={onSelectChapter}
           {...(onAddChapter ? { onAddChapter } : {})}
+          {...(createArticle !== undefined ? { createArticle } : {})}
           {...(onDeleteChapter ? { onDelete: onDeleteChapter } : {})}
           {...(hiddenChapters ? { hiddenChapters } : {})}
           {...(onToggleHidden ? { onToggleHidden } : {})}
@@ -167,6 +171,7 @@ export function StandardComposeWorkspace({
                     setMobileChapterRailOpen(false);
                   }}
                   {...(onAddChapter ? { onAddChapter } : {})}
+                  {...(createArticle !== undefined ? { createArticle } : {})}
                   {...(onDeleteChapter ? { onDelete: onDeleteChapter } : {})}
                   {...(hiddenChapters ? { hiddenChapters } : {})}
                   {...(onToggleHidden ? { onToggleHidden } : {})}

@@ -5,7 +5,12 @@ import {
   type JSONContent,
   type StepJson,
 } from "@ricetext/document-core";
-import { readCachedDocument, writeCachedDocument } from "../offline/document-cache";
+import {
+  missingDocument,
+  readCachedDocument,
+  writeCachedDocument,
+} from "../offline/document-cache";
+export { missingDocument } from "../offline/document-cache";
 import type { DocumentEnvelope, RichTextNode } from "../types";
 import {
   api,
@@ -14,7 +19,7 @@ import {
   rethrowClientError,
 } from "./client";
 
-/** Read the server document, then fall back to local cache and the built-in seed. */
+/** Read the server document, then fall back to local cache only for transport failures. */
 export async function getDocument(
   id: string,
   signal?: AbortSignal,
@@ -27,6 +32,7 @@ export async function getDocument(
       storage: "server",
     };
   } catch (error) {
+    if (isApiClientError(error) && error.status === 404) return missingDocument(id);
     if (!isServiceUnavailable(error)) rethrowClientError(error);
     return readCachedDocument(id);
   }
@@ -38,6 +44,7 @@ export async function saveDocument(
     schemaVersion: number;
     baseRevision: number;
     clientMutationId: string;
+    title?: string;
     content: RichTextNode;
     chapterId?: string;
   },

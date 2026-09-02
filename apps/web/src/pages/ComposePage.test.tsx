@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
   listForumChapters: vi.fn(),
+  saveDocument: vi.fn(),
   restoreRevision: vi.fn(),
   getRevision: vi.fn(),
   setDocumentChapterHidden: vi.fn(),
@@ -27,8 +28,18 @@ vi.mock('../lib/api', () => ({
   deleteDocumentChapter: mocks.deleteDocumentChapter,
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
+  missingDocument: (id: string) => ({
+    id,
+    title: '未命名文章',
+    schemaVersion: 1,
+    revision: 0,
+    savedAt: new Date(0).toISOString(),
+    content: { type: 'doc', content: [] },
+    storage: 'missing',
+  }),
   listForumChapters: mocks.listForumChapters,
   restoreRevision: mocks.restoreRevision,
+  saveDocument: mocks.saveDocument,
   setDocumentChapterHidden: mocks.setDocumentChapterHidden,
 }));
 vi.mock('../lib/api/revisions', () => ({
@@ -51,11 +62,11 @@ vi.mock('../features/editor/RichTextEditor', () => ({
   </section>,
 }));
 vi.mock('../features/forum/ForumPanels', () => ({
-  ChapterRail: (props: { chapters?: readonly unknown[]; currentIndex?: number; onSelect: (index: number) => void; onAddChapter?: () => void; onDelete?: (index: number) => void; className?: string }) => (
+  ChapterRail: (props: { chapters?: readonly unknown[]; currentIndex?: number; onSelect: (index: number) => void; onAddChapter?: () => void; createArticle?: boolean; onDelete?: (index: number) => void; className?: string }) => (
     <aside className={props.className} aria-label="章节目录" data-chapters={String(props.chapters?.length ?? 0)} data-active-index={String(props.currentIndex ?? 0)}>
       <span>模拟章节目录</span>
       <button type="button" onClick={() => props.onSelect(0)}>模拟章节 1</button>
-      <button type="button" onClick={() => props.onAddChapter?.()}>模拟新增章节</button>
+      <button type="button" onClick={() => props.onAddChapter?.()}>{props.createArticle ? '创建文章' : '模拟新增章节'}</button>
       <button type="button" onClick={() => props.onDelete?.(0)}>模拟删除章节</button>
     </aside>
   ),
@@ -115,6 +126,7 @@ describe('ComposePage', () => {
     }));
     mocks.deleteDocumentChapter.mockReset().mockResolvedValue({ id: 'chapter-0', deleted: true });
     mocks.listForumChapters.mockReset().mockResolvedValue([]);
+    mocks.saveDocument.mockReset();
     mocks.flush.mockReset().mockResolvedValue(true);
     mocks.getDocument.mockReset().mockResolvedValue(defaultDocument);
     mocks.getCommentThread.mockReset().mockResolvedValue([]);
@@ -135,6 +147,25 @@ describe('ComposePage', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('空库显示创建文章，点击后只创建可编辑的本地空白正文', async () => {
+    mocks.getDocument.mockResolvedValue({
+      id: 'demo-post',
+      title: '未命名文章',
+      schemaVersion: 1,
+      revision: 0,
+      savedAt: new Date(0).toISOString(),
+      content: { type: 'doc', content: [] },
+      storage: 'missing',
+    });
+    renderPage();
+    const create = await screen.findByRole('button', { name: '创建文章' });
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'false');
+    fireEvent.click(create);
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true');
+    expect(screen.getByRole('button', { name: '模拟新增章节' })).toBeInTheDocument();
+    expect(screen.getByText('已在本地创建空白文章，点击保存后上传服务器')).toBeInTheDocument();
   });
 
   it('切换完整、极简和移动布局，并从极简入口展开', () => {
@@ -333,6 +364,9 @@ describe('ComposePage', () => {
     renderPage();
 
     expect(screen.getByText('服务器版本已更新')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'),
+    );
     fireEvent.click(screen.getByRole('button', { name: '复制本地副本' }));
     expect(writeText).toHaveBeenCalledWith(JSON.stringify(defaultDocument.content, null, 2));
   });
