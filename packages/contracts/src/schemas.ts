@@ -367,6 +367,9 @@ export const ForumSessionSchema = z
   .strict();
 export type ForumSession = z.infer<typeof ForumSessionSchema>;
 
+/** Cloudflare Workers 生产运行时允许的 PBKDF2 最大迭代次数。 */
+export const PASSWORD_HASH_ITERATIONS = 100_000;
+
 /** 本地账号密码登录；生产只通过 HTTPS 发送，服务端不保存明文密码。 */
 export const PasswordLoginRequestSchema = z
   .object({

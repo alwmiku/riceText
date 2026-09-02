@@ -3,6 +3,7 @@ import { webcrypto } from "node:crypto";
 import { appendFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { PASSWORD_HASH_ITERATIONS } from "../../packages/contracts/src/schemas.js";
 import { createDatabase } from "../../apps/api/src/db.js";
 import { exportSqliteToCloudflare } from "../../packages/cloudflare-migration/src/export-sqlite.js";
 
@@ -37,7 +38,7 @@ const key = await webcrypto.subtle.importKey(
   ["deriveBits"],
 );
 const hash = await webcrypto.subtle.deriveBits(
-  { name: "PBKDF2", hash: "SHA-256", salt, iterations: 120_000 },
+  { name: "PBKDF2", hash: "SHA-256", salt, iterations: PASSWORD_HASH_ITERATIONS },
   key,
   256,
 );
@@ -45,7 +46,7 @@ await appendFile(
   exported.sqlPath,
   "INSERT INTO password_credentials(user_id, username, salt, password_hash, iterations, failed_attempts, locked_until, updated_at) VALUES (" +
     "'author', 'writer', '" + Buffer.from(salt).toString("base64url") + "', '" +
-    Buffer.from(hash).toString("base64url") + "', 120000, 0, NULL, '2026-09-02T00:00:00.000Z');\n",
+    Buffer.from(hash).toString("base64url") + "', " + PASSWORD_HASH_ITERATIONS + ", 0, NULL, '2026-09-02T00:00:00.000Z');\n",
   "utf8",
 );
 const pnpmCli = process.env.npm_execpath;

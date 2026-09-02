@@ -2,6 +2,7 @@ import { randomBytes, randomUUID, webcrypto } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { PASSWORD_HASH_ITERATIONS } from "../../packages/contracts/src/schemas.js";
 
 function argument(name: string): string {
   const index = process.argv.indexOf(name);
@@ -61,7 +62,7 @@ if (role !== "author" && role !== "reader" && role !== "moderator") {
 const password = await hiddenPassword();
 if (password.length < 10 || password.length > 128) throw new Error("密码长度必须为 10 到 128 位");
 
-const iterations = 120_000;
+const iterations = PASSWORD_HASH_ITERATIONS;
 const salt = randomBytes(16);
 const key = await webcrypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
 const bits = await webcrypto.subtle.deriveBits(

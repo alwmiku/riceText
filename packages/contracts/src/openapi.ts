@@ -190,6 +190,7 @@ export function buildOpenApiDocument(): OpenApiDocument {
         "204": { description: "登录成功并写入安全 session cookie。" },
         "401": { description: "账号或密码错误。" },
         "429": { description: "同一来源的登录尝试过于频繁。" },
+        "503": { description: "旧凭据参数不受生产 Worker 支持，需要管理员重设密码。" },
       },
     },
   };

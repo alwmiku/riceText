@@ -1,4 +1,7 @@
-import type { PasswordLoginRequest } from "@ricetext/contracts";
+import {
+  PASSWORD_HASH_ITERATIONS,
+  type PasswordLoginRequest,
+} from "@ricetext/contracts";
 import type { WorkerEnv } from "./env";
 import { WorkerHttpError } from "./http-error";
 
@@ -95,11 +98,18 @@ export async function passwordLogin(
   )
     .bind(request.username)
     .first<CredentialRow>();
+  if (row && row.iterations > PASSWORD_HASH_ITERATIONS) {
+    throw new WorkerHttpError(
+      503,
+      "AUTH_CREDENTIAL_REHASH_REQUIRED",
+      "登录凭据需要由管理员重设密码",
+    );
+  }
   // 已知和未知账号都使用当前建号基线成本，避免通过响应时间枚举用户名。
   const candidateHash = await derivePasswordHash(
     request.password,
     row ? base64UrlToBytes(row.salt) : new Uint8Array(16),
-    row?.iterations ?? 120_000,
+    row?.iterations ?? PASSWORD_HASH_ITERATIONS,
   );
   const valid = equalHash(
     candidateHash,

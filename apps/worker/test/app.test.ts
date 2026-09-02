@@ -44,6 +44,7 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM document_acl"),
     env.DB.prepare("DELETE FROM documents"),
     env.DB.prepare("DELETE FROM auth_login_states"),
+    env.DB.prepare("DELETE FROM login_rate_limits"),
     env.DB.prepare("DELETE FROM auth_sessions"),
     env.DB.prepare("DELETE FROM auth_identities"),
     env.DB.prepare("DELETE FROM dice_rolls"),
@@ -1575,6 +1576,31 @@ describe("RiceText Worker", () => {
     expect(rateLimited.status).toBe(429);
     await expect(rateLimited.json()).resolves.toMatchObject({
       error: { code: "AUTH_RATE_LIMITED" },
+    });
+  });
+
+  it("reports an actionable error for credentials above the production PBKDF2 limit", async () => {
+    await env.DB.prepare(
+      "INSERT INTO password_credentials(user_id, username, salt, password_hash, iterations, failed_attempts, locked_until, updated_at) " +
+        "VALUES (?, ?, ?, ?, ?, 0, NULL, ?)",
+    ).bind(
+      "author",
+      "legacy-writer",
+      "MTIzNDU2Nzg5MGFiY2RlZg",
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      120_000,
+      now,
+    ).run();
+    const response = await exports.default.fetch(
+      new Request("http://example.com/api/auth/password/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: "legacy-writer", password: "correct-password" }),
+      }),
+    );
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "AUTH_CREDENTIAL_REHASH_REQUIRED" },
     });
   });
 
