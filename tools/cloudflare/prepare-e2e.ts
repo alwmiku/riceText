@@ -16,7 +16,25 @@ const persistTo = process.env.CF_E2E_PERSIST_TO
   : join(root, "apps", "worker", ".wrangler", "state");
 await rm(data, { recursive: true, force: true });
 await rm(persistTo, { recursive: true, force: true });
-createDatabase({ path: databasePath }).close();
+const sourceDatabase = createDatabase({ path: databasePath });
+if (process.env.CF_E2E_EMPTY_DOCUMENTS === "true") {
+  // 在导出前清空文章域，生成的 D1 SQL 从一开始就满足外键约束。
+  sourceDatabase.exec(`
+    DELETE FROM comment_votes;
+    DELETE FROM comment_replies;
+    DELETE FROM comment_threads;
+    DELETE FROM suggestion_batches;
+    DELETE FROM suggestions;
+    DELETE FROM reply_receipts;
+    DELETE FROM reply_gates;
+    DELETE FROM chapters;
+    DELETE FROM document_mutations;
+    DELETE FROM document_revisions;
+    DELETE FROM document_acl;
+    DELETE FROM documents;
+  `);
+}
+sourceDatabase.close();
 const exported = await exportSqliteToCloudflare({
   databasePath,
   uploadsDirectory: join(data, "uploads"),

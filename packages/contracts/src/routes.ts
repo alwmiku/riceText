@@ -111,7 +111,7 @@ export const contractRoutes: readonly ContractRoute[] = [
   },
   {
     operationId: "updateDocument", method: "PUT", path: "/api/documents/:documentId", tags: ["文档"],
-    summary: "保存文档并创建修订", description: "需要 author 或 moderator。baseRevision 过期返回 409；相同 clientMutationId 重试返回首次结果且不重复建版。",
+    summary: "保存或首次创建文档", description: "需要 author 或 moderator。文档不存在且 baseRevision=0 时创建文档、owner ACL、章节和首个修订；其他保存使用乐观并发，相同 clientMutationId 重试不会重复建版。",
     params: documentParams, body: UpdateDocumentRequestSchema,
     responses: { 200: { description: "幂等重试命中的既有修订。", schema: DocumentEnvelopeSchema }, 201: { description: "新建的不可变修订。", schema: DocumentEnvelopeSchema }, 403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema }, 409: { description: "当前 revision 与 baseRevision 冲突，details.currentRevision 可用于刷新。", schema: ApiErrorSchema }, 422: { description: "正文包含非法节点、属性或 URL。", schema: ApiErrorSchema } },
   },

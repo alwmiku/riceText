@@ -158,9 +158,9 @@ paths:
       operationId: updateDocument
       tags:
         - 文档
-      summary: 保存文档并创建修订
+      summary: 保存或首次创建文档
       description: |-
-        需要 author 或 moderator。baseRevision 过期返回 409；相同 clientMutationId 重试返回首次结果且不重复建版。
+        需要 author 或 moderator。文档不存在且 baseRevision=0 时创建文档、owner ACL、章节和首个修订；其他保存使用乐观并发，相同 clientMutationId 重试不会重复建版。
 
         生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
@@ -210,6 +210,10 @@ paths:
                   minLength: 1
                   maxLength: 128
                   pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
                 content:
                   type: object
                   properties:

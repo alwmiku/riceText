@@ -18,7 +18,10 @@ export default defineConfig({
       url: "http://127.0.0.1:8788/api/health",
       reuseExistingServer: false,
       timeout: 120_000,
-      env: { CF_E2E_PERSIST_TO: ".data/password-e2e-state" },
+      env: {
+        CF_E2E_PERSIST_TO: ".data/password-e2e-state",
+        CF_E2E_EMPTY_DOCUMENTS: "true",
+      },
     },
     {
       command: "pnpm --filter @ricetext/web exec vite --host 127.0.0.1 --mode session --port 5174",

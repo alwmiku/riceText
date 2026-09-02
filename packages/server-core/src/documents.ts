@@ -41,6 +41,19 @@ export function repairDocumentForRead(input: unknown): TiptapDocument {
   return validateDocument(input).document as unknown as TiptapDocument;
 }
 
+/**
+ * 章节表的 id 是全局主键，因此新文章必须包含文档指纹；demo-post 保留旧 ID 兼容已有数据。
+ */
+export function chapterStorageId(documentId: string, order: number): string {
+  if (documentId === "demo-post") return "chapter-" + String(order);
+  let hash = 2166136261;
+  for (const character of documentId) {
+    hash = Math.imul(hash ^ character.codePointAt(0)!, 16777619);
+  }
+  const suffix = "-chapter-" + String(order) + "-" + (hash >>> 0).toString(16);
+  return documentId.slice(0, Math.max(1, 128 - suffix.length)) + suffix;
+}
+
 /** 返回给读者前按服务端目录移除隐藏章节，不能只依赖前端目录过滤。 */
 export function projectDocumentForReader(
   input: unknown,

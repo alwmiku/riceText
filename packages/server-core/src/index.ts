@@ -2,6 +2,7 @@
 export { detectImageMime, extensionForImage, sanitizeOriginalName, sha256Hex, type ImageMime } from "./assets";
 export { DomainError } from "./errors";
 export {
+  chapterStorageId,
   projectDocumentForReader,
   repairDocumentForRead,
   sanitizeDocumentForWrite,

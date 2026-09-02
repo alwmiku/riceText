@@ -107,6 +107,8 @@ export const UpdateDocumentRequestSchema = z
     schemaVersion: z.number().int().positive(),
     baseRevision: z.number().int().nonnegative(),
     clientMutationId: EntityIdSchema,
+    /** baseRevision=0 且文档不存在时作为首次创建标题。 */
+    title: z.string().trim().min(1).max(200).optional(),
     content: TiptapDocumentSchema,
     /** 可选：本次编辑的章节 id，保存成功后该章节 revision 递增。 */
     chapterId: EntityIdSchema.optional(),
