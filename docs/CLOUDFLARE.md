@@ -16,11 +16,19 @@ pnpm cf:e2e:prepare
 pnpm --filter @ricetext/worker dev
 ```
 
-另开终端：
+创建本地测试账号：
 
 ```bash
-VITE_API_ROOT=http://127.0.0.1:8787 pnpm --filter @ricetext/web dev
+pnpm auth:create-user -- --local --username writer --user-id author --name "作者" --role author
 ```
+
+另开终端，以账号登录模式启动前端：
+
+```powershell
+pnpm --filter @ricetext/web dev:session
+```
+
+本地请求通过 Vite 的同源 `/api` 代理访问 Worker，不需要设置 `VITE_API_ROOT`.
 
 ## Cloudflare 资源
 

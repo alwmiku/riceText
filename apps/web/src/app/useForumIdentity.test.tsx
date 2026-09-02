@@ -2,7 +2,7 @@
 import { ApiClientError } from "@ricetext/contracts";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useForumIdentity } from "./useForumIdentity";
+import { isDemoAuthEnabled, useForumIdentity } from "./useForumIdentity";
 
 const mocks = vi.hoisted(() => ({
   getForumSession: vi.fn(),
@@ -23,6 +23,12 @@ describe("useForumIdentity production session", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("allows VITE_DEMO_AUTH=false to enable local session testing", () => {
+    vi.stubEnv("DEV", true);
+    vi.stubEnv("VITE_DEMO_AUTH", "false");
+    expect(isDemoAuthEnabled()).toBe(false);
   });
 
   it("loads the server session and exposes login/logout actions", async () => {

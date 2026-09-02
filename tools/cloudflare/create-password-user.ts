@@ -47,7 +47,8 @@ async function hiddenPassword(): Promise<string> {
   });
 }
 
-const environment = argument("--env");
+const local = process.argv.includes("--local");
+const environment = local ? "local" : argument("--env");
 const username = argument("--username");
 const userId = argument("--user-id");
 const name = argument("--name");
@@ -88,7 +89,19 @@ await writeFile(file, statements + "\n", { encoding: "utf8", mode: 0o600 });
 try {
   const pnpmCli = process.env.npm_execpath;
   const command = pnpmCli ? process.execPath : process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-  const args = ["--dir", "apps/worker", "exec", "wrangler", "d1", "execute", "DB", "--remote", "--env", environment, "--file", file];
+  const targetArgs = local ? ["--local"] : ["--remote", "--env", environment];
+  const args = [
+    "--dir",
+    "apps/worker",
+    "exec",
+    "wrangler",
+    "d1",
+    "execute",
+    "DB",
+    ...targetArgs,
+    "--file",
+    file,
+  ];
   const result = spawnSync(command, pnpmCli ? [pnpmCli, ...args] : args, {
     stdio: "inherit",
     shell: !pnpmCli && process.platform === "win32",

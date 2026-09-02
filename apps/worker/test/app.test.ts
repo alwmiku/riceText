@@ -1550,6 +1550,7 @@ describe("RiceText Worker", () => {
     expect(login.headers.get("set-cookie")).toContain("ricetext_session=");
     expect(login.headers.get("set-cookie")).toContain("HttpOnly");
     expect(login.headers.get("set-cookie")).toContain("SameSite=Strict");
+    expect(login.headers.get("set-cookie")).not.toContain("Secure");
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const failed = await exports.default.fetch(

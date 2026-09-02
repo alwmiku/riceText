@@ -21,7 +21,8 @@ const anonymousIdentity: SeedIdentity = {
 };
 
 export function isDemoAuthEnabled(): boolean {
-  return import.meta.env.DEV || import.meta.env.VITE_DEMO_AUTH === "true";
+  const configured = import.meta.env.VITE_DEMO_AUTH;
+  return configured === undefined ? import.meta.env.DEV : configured === "true";
 }
 
 function getStoredIdentity(): SeedIdentity {

@@ -319,7 +319,9 @@ export async function logout(request: Request, env: WorkerEnv): Promise<Response
       "set-cookie": setCookie(
         "ricetext_session",
         "",
-        "HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0",
+        "HttpOnly;" +
+        (env.ENVIRONMENT === "development" ? "" : " Secure;") +
+        " SameSite=Lax; Path=/; Max-Age=0",
       ),
       "cache-control": "no-store",
     },

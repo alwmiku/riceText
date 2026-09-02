@@ -124,12 +124,13 @@ export async function passwordLogin(
       now.toISOString(),
     ),
   ]);
+  const secure = env.ENVIRONMENT === "development" ? "" : " Secure;";
   return new Response(null, {
     status: 204,
     headers: {
       "set-cookie":
         "ricetext_session=" + encodeURIComponent(token) +
-        "; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=604800",
+        "; HttpOnly;" + secure + " SameSite=Strict; Path=/; Max-Age=604800",
       "cache-control": "no-store",
     },
   });

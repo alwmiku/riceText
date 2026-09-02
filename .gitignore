@@ -17,6 +17,7 @@ apps/web/public/uploads/
 *.sqlite-wal
 .env.*
 !.env.example
+!**/.env.session
 *.log
 npm-debug.log*
 pnpm-debug.log*
