@@ -51,7 +51,7 @@ export function ArticleSelector({
         {articles.length === 0 ? <option value="">暂无服务器文章</option> : null}
         {articles.map((article) => (
           <option key={article.id} value={article.id}>
-            {article.title} · {article.id}{article.canEdit ? " · 可编辑" : " · 只读"}
+            {article.title}
           </option>
         ))}
       </select>
