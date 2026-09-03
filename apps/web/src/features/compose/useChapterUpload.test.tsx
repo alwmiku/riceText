@@ -862,4 +862,61 @@ describe("useChapterUpload", () => {
   });
 
 
+  it("临时顺序高于计划所有目标顺序：占位行腾位不撞后续批次", async () => {
+    const three = () => ({
+      type: "doc",
+      content: [
+        chapter("a", "第一章", "aaa"),
+        chapter("b", "第二章", "bbb"),
+        chapter("c", "第三章", "ccc"),
+      ],
+    });
+    // 服务器目录：一个「正文」占位行位于 order 1（本地第二顺位）。
+    mocks.list.mockResolvedValue([
+      { id: "article-0-chapter-1-placeholder", order: 1, revision: 1 },
+    ]);
+    mocks.sync.mockResolvedValue({
+      toUpdate: ["a", "b", "c"],
+      existing: ["article-0-chapter-1-placeholder"],
+    });
+    const notice = vi.fn();
+    const { result } = renderHook(
+      () =>
+        useChapterUpload({
+          novelId: "demo-post",
+          getDocument: three,
+          getCoverage: () => [],
+          onNotice: notice,
+        }),
+      { wrapper },
+    );
+
+    await act(async () => result.current.prepare());
+    await act(async () => result.current.confirm());
+
+    // 占位行被挪到高于计划顺序（0-2）的位置，而不是 maxServerOrder+1=2。
+    const stagePayload = mocks.stage.mock.calls[0]?.[1] as Array<
+      Record<string, unknown>
+    >;
+    expect(stagePayload).toEqual([
+      {
+        id: "article-0-chapter-1-placeholder",
+        temporaryOrder: 3,
+        baseRevision: 1,
+      },
+    ]);
+    // 三个本地章节按最终顺序写入，不再与占位行的临时位冲突。
+    const batchIds = mocks.batchUpload.mock.calls.flatMap(
+      (call) =>
+        (call[1] as Array<Record<string, unknown>>).map((item) => item.id),
+    );
+    expect(batchIds).toEqual(["a", "b", "c"]);
+    expect(result.current.diff?.rows.map((row) => row.status)).toEqual([
+      "已上传",
+      "已上传",
+      "已上传",
+    ]);
+  });
+
+
 });

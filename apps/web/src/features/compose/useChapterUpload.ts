@@ -808,11 +808,21 @@ export function useChapterUpload({
         }
       }
       if (stagePlan.size > 0 && checkpoint.reorderPhase === "staging") {
+        // 临时顺序必须高于「服务器最大顺序」与「本计划所有目标顺序」的更高者，
+        // 否则暂存的占位行会占据后续批次的最终目标顺序（几千章时服务器通常
+        // 只有少量章节，maxServerOrder + i 必然与计划内的顺序撞车）。
+        const orderCeiling = Math.max(
+          maxServerOrder,
+          ...active.map((chapter) => chapter.order),
+          0,
+        );
+        const tempBase = orderCeiling + 1;
         let next = 0;
         for (const rowId of stagePlan.keys()) {
-          if (!(rowId in checkpoint.temporaryOrders)) {
-            checkpoint.temporaryOrders[rowId] = maxServerOrder + next + 1;
-          }
+          const existing = checkpoint.temporaryOrders[rowId];
+          // 已持久化的安全临时位继续复用，避免跨恢复漂移；不安全的重新分配。
+          if (existing !== undefined && existing > orderCeiling) continue;
+          checkpoint.temporaryOrders[rowId] = tempBase + next;
           next += 1;
         }
         const stagedItems = [...stagePlan.keys()].map(
