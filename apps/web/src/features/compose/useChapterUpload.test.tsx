@@ -521,7 +521,9 @@ describe("useChapterUpload", () => {
     expect(mocks.batchUpload).not.toHaveBeenCalled();
     expect(result.current.diff?.stale).toBe(true);
     expect(result.current.hasCheckpoint).toBe(true);
-    expect(notice).toHaveBeenCalledWith("准备上传后正文已有修改，请重新检查差异");
+    expect(notice).toHaveBeenCalledWith(
+      "准备上传后“新章”（第 1 章）正文已有修改，请重新检查差异",
+    );
   });
 
   it("stages reordered chapters outside occupied server positions before the content batch", async () => {
@@ -789,4 +791,48 @@ describe("useChapterUpload", () => {
       "其余章节存在版本、结构或大小冲突，需要重新检查差异",
     );
   });
+  it("容忍编辑器回写的良性属性漂移：逐章一致时继续上传", async () => {
+    let document = documentFixture();
+    const notice = vi.fn();
+    const { result } = renderHook(
+      () =>
+        useChapterUpload({
+          novelId: "demo-post",
+          getDocument: () => document,
+          getCoverage: () => [],
+          onNotice: notice,
+        }),
+      { wrapper },
+    );
+
+    await act(async () => result.current.prepare());
+    // 模拟编辑器把当前章节节点按 schema 重排属性（键顺序变化、补齐默认值），
+    // 但 title/text 与顺序完全不变：整篇 JSON 不同，逐章转换结果一致。
+    document = {
+      ...document,
+      content: document.content!.map((node, index) => ({
+        type: "longTextBlock" as const,
+        attrs: {
+          order: index,
+          chapterId: String(node.attrs?.chapterId),
+          text: String(node.attrs?.text),
+          title: String(node.attrs?.title),
+          start: null,
+          end: null,
+        },
+      })),
+    };
+    await act(async () => result.current.confirm());
+
+    expect(notice).not.toHaveBeenCalledWith(
+      expect.stringContaining("请重新检查差异"),
+    );
+    expect(mocks.batchUpload).toHaveBeenCalledTimes(1);
+    expect(result.current.diff?.rows.map((row) => row.status)).toEqual([
+      "已上传",
+      "已上传",
+      "未变化",
+    ]);
+  });
+
 });

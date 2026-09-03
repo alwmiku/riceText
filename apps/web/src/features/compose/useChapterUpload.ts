@@ -657,13 +657,10 @@ export function useChapterUpload({
       const draft = getDocumentRef.current();
       const currentSourceHash = await sha256Hex(JSON.stringify(draft));
       if (operation !== operationRef.current) return;
-      if (currentSourceHash !== checkpoint.sourceHash) {
-        checkpoint.stale = true;
-        await persistCheckpoint({ ...checkpoint });
-        setHasCheckpoint(true);
-        onNoticeRef.current("准备上传后正文已有修改，请重新检查差异");
-        return;
-      }
+      // 整篇 sourceHash 对编辑器回写（节点属性按 schema 重排/补齐默认值）
+      // 很敏感，而逐章转换后的正文可能完全没变；因此只把整篇哈希当作良性
+      // 漂移记录，真正的 stale 判定交给下面的逐章校验。
+      const benignSourceDrift = currentSourceHash !== checkpoint.sourceHash;
       const directory = await listForumChapters(capturedNovelId, {
         strict: true,
       });
@@ -698,7 +695,9 @@ export function useChapterUpload({
           checkpoint.stale = true;
           await persistCheckpoint({ ...checkpoint });
           setHasCheckpoint(true);
-          onNoticeRef.current("准备上传后章节已被删除，请重新检查差异");
+          onNoticeRef.current(
+            `准备上传后“${state.title}”已不在正文中，请重新检查差异`,
+          );
           return;
         }
         const content = convertLongTextBlocksToChapters({
@@ -712,7 +711,9 @@ export function useChapterUpload({
           checkpoint.stale = true;
           await persistCheckpoint({ ...checkpoint });
           setHasCheckpoint(true);
-          onNoticeRef.current("准备上传后章节正文已有修改，请重新检查差异");
+          onNoticeRef.current(
+            `准备上传后“${state.title}”（第 ${state.order + 1} 章）正文已有修改，请重新检查差异`,
+          );
           return;
         }
         contentByChapter.set(state.id, {
@@ -724,6 +725,24 @@ export function useChapterUpload({
         verified += 1;
         if (verified % 64 === 0) await yieldToUI();
       }
+      // 计划外的新增章节（草稿里多出来的节点）同样阻止上传。
+      const plannedIds = new Set(
+        checkpoint.chapters.map((chapter) => chapter.id),
+      );
+      for (const id of draftByChapter.keys()) {
+        if (plannedIds.has(id)) continue;
+        const extra = draftByChapter.get(id)!;
+        const title = String(extra.node.attrs?.title ?? "未命名章节");
+        checkpoint.stale = true;
+        await persistCheckpoint({ ...checkpoint });
+        setHasCheckpoint(true);
+        onNoticeRef.current(
+          `准备上传后新增了章节“${title}”，请重新检查差异`,
+        );
+        return;
+      }
+      // 章节全部一致时，良性漂移（编辑器回写）只刷新记录的哈希，不打断上传。
+      if (benignSourceDrift) checkpoint.sourceHash = currentSourceHash;
       const [freshDirectory, sync] = await Promise.all([
         listForumChapters(capturedNovelId, { strict: true }),
         syncLongTextChapters(
@@ -890,11 +909,12 @@ async function migrateV1Checkpoint(
   getDocument: () => RichTextNode,
 ): Promise<UploadCheckpointV2 | null> {
   const chapters = stored.chapters as Array<Record<string, unknown>> | undefined;
-  const sourceHash = stored.sourceHash;
-  if (!Array.isArray(chapters) || typeof sourceHash !== "string") return null;
+  if (!Array.isArray(chapters) || typeof stored.sourceHash !== "string")
+    return null;
   const draft = getDocument();
+  // 整篇 sourceHash 对编辑器回写的属性重排敏感；迁移以逐章哈希校验为准，
+  // 通过后把 sourceHash 刷新为当前值（良性漂移不阻断恢复）。
   const currentSourceHash = await sha256Hex(JSON.stringify(draft));
-  if (currentSourceHash !== sourceHash) return null;
   let directory: Array<{ id: string; revision: number; order: number }>;
   try {
     directory = await listForumChapters(novelId, { strict: true });
@@ -947,7 +967,7 @@ async function migrateV1Checkpoint(
     version: 2,
     novelId,
     gaps: typeof stored.gaps === "number" ? stored.gaps : 0,
-    sourceHash,
+    sourceHash: currentSourceHash,
     stale: false,
     // v1 计划可能处于换序中途；恢复时以幂等暂存重新对齐，再进入正文批次。
     reorderPhase: "staging",

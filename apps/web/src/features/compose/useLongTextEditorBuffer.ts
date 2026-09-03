@@ -71,14 +71,19 @@ export function useLongTextEditorBuffer({
       const first = next.content?.[0];
       if (!first) return;
       if ((next.content?.length ?? 0) > 1) {
-        console.warn("[长文本] 编辑器包含多个章节，仅写回首章");
+        console.warn("[长文本] 编辑器包含多个节点，仅写回首章");
       }
+      // 空转守卫：编辑器对当前章节点的序列化与原节点 JSON 一致（例如外部
+      // content 同步、属性顺序重排或清理事务触发的 onChange）时直接忽略，
+      // 避免「flush → 编辑器回写 → 再 flush」的无意义自旋改变正文引用。
+      const current = contentRef.current.content?.[activeIndexRef.current];
+      if (current && JSON.stringify(first) === JSON.stringify(current)) return;
       pendingEditorRef.current = { type: "doc", content: [first] };
       if (editorTimerRef.current !== null)
         window.clearTimeout(editorTimerRef.current);
       editorTimerRef.current = window.setTimeout(commitEditor, 300);
     },
-    [commitEditor],
+    [activeIndexRef, commitEditor, contentRef],
   );
 
   const editChapter = useCallback(
