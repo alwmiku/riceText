@@ -72,6 +72,32 @@ export class DocumentService {
     this.#db = db;
   }
 
+  /** 当前没有发布状态，登录身份可读全部文章，编辑权单独标记。 */
+  list(user: { id: string; role: "author" | "reader" | "moderator" }): Array<{
+    id: string;
+    title: string;
+    revision: number;
+    savedAt: string;
+    canEdit: boolean;
+  }> {
+    const rows = this.#db.prepare(
+      "SELECT document.id, document.title, document.current_revision, document.updated_at, " +
+        "CASE WHEN ? = 'moderator' OR document.created_by = ? OR EXISTS (" +
+        "SELECT 1 FROM document_acl acl WHERE acl.document_id = document.id " +
+        "AND acl.user_id = ? AND acl.permission IN ('edit', 'admin')) THEN 1 ELSE 0 END AS can_edit " +
+        "FROM documents document ORDER BY document.updated_at DESC, document.id",
+    ).all(user.role, user.id, user.id) as Array<{
+      id: string; title: string; current_revision: number; updated_at: string; can_edit: number;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      revision: row.current_revision,
+      savedAt: row.updated_at,
+      canEdit: row.can_edit === 1,
+    }));
+  }
+
   /** 读取当前修订。 */
   get(documentId: string): DocumentEnvelope {
     const document = this.#db

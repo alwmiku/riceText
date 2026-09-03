@@ -181,12 +181,13 @@ export class D1ReadRepository {
     });
   }
 
-  async chapters(): Promise<Chapter[]> {
+  async chapters(documentId: string): Promise<Chapter[]> {
     const result = await this.db
       .prepare(
         "SELECT id, title, sort_order, document_id, revision, updated_at, hidden " +
-          "FROM chapters ORDER BY document_id, sort_order",
+          "FROM chapters WHERE document_id = ? ORDER BY sort_order",
       )
+      .bind(documentId)
       .all<ChapterRow>();
     return result.results.map((row) =>
       ChapterSchema.parse({

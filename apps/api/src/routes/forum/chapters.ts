@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  EntityIdSchema,
   SaveNovelChapterRequestSchema,
   SyncNovelChaptersRequestSchema,
 } from "@ricetext/contracts";
@@ -10,6 +11,7 @@ import {
   getFastifySchema,
   identity,
   params,
+  query,
   requireEditor,
 } from "../route-utils.js";
 
@@ -23,9 +25,10 @@ export const forumChapterRoutes: FastifyPluginAsync<RouteDependencies> = async (
     { schema: getFastifySchema("listChapters") },
     async (request) => {
       const user = identity(dependencies, request);
+      const documentId = EntityIdSchema.parse(query(request).documentId);
       return {
         items: dependencies.forum
-          .chapters()
+          .chapters(documentId)
           .filter(
             (chapter) =>
               !chapter.hidden ||

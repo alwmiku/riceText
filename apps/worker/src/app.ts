@@ -234,9 +234,37 @@ export function createWorkerApp(): Hono<AppBindings> {
     return context.json(response("rerollDice", 201, result), 201);
   });
 
+  app.get("/api/documents", async (context) => {
+    const principal = await requirePrincipal(context);
+    const rows = await context.env.DB.prepare(
+      "SELECT document.id, document.title, document.current_revision, document.updated_at, " +
+        "CASE WHEN ? = 'moderator' OR document.created_by = ? OR EXISTS (" +
+        "SELECT 1 FROM document_acl acl WHERE acl.document_id = document.id " +
+        "AND acl.user_id = ? AND acl.permission IN ('edit', 'admin')) THEN 1 ELSE 0 END AS can_edit " +
+        "FROM documents document ORDER BY document.updated_at DESC, document.id",
+    )
+      .bind(principal.role, principal.id, principal.id)
+      .all<{
+        id: string;
+        title: string;
+        current_revision: number;
+        updated_at: string;
+        can_edit: number;
+      }>();
+    return context.json(response("listDocuments", 200, {
+      items: rows.results.map((row) => ({
+        id: row.id,
+        title: row.title,
+        revision: row.current_revision,
+        savedAt: row.updated_at,
+        canEdit: row.can_edit === 1,
+      })),
+    }));
+  });
+
   app.get("/api/documents/:documentId", async (context) => {
     const input = params("getDocument", context.req.param()) as { documentId: string };
-    const principal = await optionalPrincipal(context);
+    const principal = await requirePrincipal(context);
     const repository = new D1ReadRepository(context.env.DB);
     const document = await repository.document(input.documentId);
     const visible = await visibleEnvelope(
@@ -335,6 +363,7 @@ export function createWorkerApp(): Hono<AppBindings> {
   });
 
   app.get("/api/documents/:documentId/revisions", async (context) => {
+    await requirePrincipal(context);
     const input = params("listRevisions", context.req.param()) as { documentId: string };
     const query = RevisionQuerySchema.parse(context.req.query());
     const repository = new D1ReadRepository(context.env.DB);
@@ -352,7 +381,7 @@ export function createWorkerApp(): Hono<AppBindings> {
       documentId: string;
       revision: string;
     };
-    const principal = await optionalPrincipal(context);
+    const principal = await requirePrincipal(context);
     const repository = new D1ReadRepository(context.env.DB);
     const result = await repository.revision(input.documentId, Number(input.revision));
     const visible = await visibleEnvelope(
@@ -597,10 +626,11 @@ export function createWorkerApp(): Hono<AppBindings> {
   });
 
   app.get("/api/forum/chapters", async (context) => {
-    const principal = await optionalPrincipal(context);
+    const principal = await requirePrincipal(context);
+    const input = parseQuery("listChapters", context.req.query()) as { documentId: string };
     const repository = new D1ReadRepository(context.env.DB);
     const items = [];
-    for (const chapter of await repository.chapters()) {
+    for (const chapter of await repository.chapters(input.documentId)) {
       if (!chapter.hidden || (await canEditDocument(context, chapter.documentId, principal))) {
         items.push(chapter);
       }

@@ -143,7 +143,7 @@ export function useChapterUpload({
     setUploading(true);
     let uploaded = 0;
     try {
-      const directory = await listForumChapters();
+      const directory = await listForumChapters(novelId);
       const revisionById = new Map(
         directory.map((chapter) => [chapter.id, chapter.revision]),
       );

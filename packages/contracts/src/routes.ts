@@ -17,6 +17,7 @@ import {
   ForumSessionSchema,
   DiceRollSchema,
   DocumentEnvelopeSchema,
+  DocumentListItemSchema,
   EntityIdSchema,
   MentionSearchResultSchema,
   PollSchema,
@@ -100,12 +101,18 @@ const pollParams = z.object({ pollId: EntityIdSchema }).strict();
 const novelParams = z.object({ novelId: EntityIdSchema.describe("章节所属的文档/小说 ID") }).strict();
 const novelChapterParams = z.object({ novelId: EntityIdSchema, chapterId: EntityIdSchema }).strict();
 const documentChapterParams = z.object({ documentId: EntityIdSchema, chapterId: EntityIdSchema }).strict();
+const documentQuery = z.object({ documentId: EntityIdSchema }).strict();
 
 /** 全部REST 契约；OpenAPI 和 Fastify schema 均由此生成。 */
 export const contractRoutes: readonly ContractRoute[] = [
   {
+    operationId: "listDocuments", method: "GET", path: "/api/documents", tags: ["文档"],
+    summary: "读取可选文章", description: "仅登录用户可用；返回可读取文章并标记当前身份是否有编辑权。",
+    responses: { 200: { description: "按更新时间倒序的文章摘要。", schema: z.object({ items: z.array(DocumentListItemSchema) }).strict() }, 401: { description: "游客不能读取服务器文章列表。", schema: ApiErrorSchema } },
+  },
+  {
     operationId: "getDocument", method: "GET", path: "/api/documents/:documentId", tags: ["文档"],
-    summary: "读取当前文档", description: "读取最新不可变修订的 Tiptap JSON。任何论坛身份均可访问。",
+    summary: "读取当前文档", description: "仅登录用户读取最新不可变修订；非编辑者看不到隐藏章节。",
     params: documentParams,
     responses: { 200: { description: "当前文档，例如 revision 为 1 的 demo-post。", schema: DocumentEnvelopeSchema }, 404: { description: "文档不存在。", schema: ApiErrorSchema } },
   },
@@ -229,7 +236,8 @@ export const contractRoutes: readonly ContractRoute[] = [
   },
   {
     operationId: "listChapters", method: "GET", path: "/api/forum/chapters", tags: ["论坛业务"], implementationStatus: "implemented",
-    summary: "读取章节目录", description: "返回当前文档按 order 排序的持久化章节目录。",
+    summary: "读取章节目录", description: "仅登录用户返回指定文档按 order 排序的章节目录，非编辑者看不到隐藏章节。",
+    query: documentQuery,
     responses: { 200: { description: "按 order 升序的章节。", schema: z.object({ items: z.array(ChapterSchema) }).strict() } },
   },
   {

@@ -53,22 +53,34 @@ export interface ComposeDocumentController {
 export function useComposeDocument(
   documentId: string,
   chapterIndex?: number,
+  options: { serverEnabled?: boolean; localOnly?: boolean } = {},
 ): ComposeDocumentController {
+  const serverEnabled = options.serverEnabled ?? true;
+  const localOnly = options.localOnly ?? false;
   const queryClient = useQueryClient();
-  const placeholder = useMemo(() => missingDocument(documentId), [documentId]);
+  const placeholder = useMemo(() => {
+    const missing = missingDocument(documentId);
+    return localOnly
+      ? { ...missing, content: { type: "doc", content: [{ type: "paragraph" }] } }
+      : missing;
+  }, [documentId, localOnly]);
   const { data = placeholder, isPlaceholderData: queryIsPlaceholderData } = useQuery({
     queryKey: ["document", documentId],
     queryFn: ({ signal }) => getDocument(documentId, signal),
     placeholderData: placeholder,
+    enabled: serverEnabled,
   });
   // state 驱动渲染，ref 让 autosave、发布和长文本桥接始终读取最新正文与代次。
   const [document, setDocument] = useState<DocumentEnvelope>(data);
   const [content, setContent] = useState<RichTextNode>(data.content);
   const [generation, setGeneration] = useState(0);
   const [autosaveEnabled, setAutosaveEnabled] = useState(true);
-  const [articleStarted, setArticleStarted] = useState(data.storage !== "missing");
+  const [articleStarted, setArticleStarted] = useState(
+    localOnly || data.storage !== "missing",
+  );
   const contentRef = useRef<RichTextNode>(data.content);
   const generationRef = useRef(0);
+  const documentIdRef = useRef(documentId);
   // 保存前注册新增章节后同步到的服务器章节 id；保存成功回调用它更新目录缓存。
   const activeChapterServerIdRef = useRef<string | undefined>(undefined);
   // 章节身份按正文中的位置派生（chapter-<index>）：编辑器「新增章节」在服务端
@@ -82,7 +94,22 @@ export function useComposeDocument(
   );
   // Query 结束到本地 state 水合之间仍视为加载中，避免编辑器在这一帧上报占位正文。
   const hydrationPending = generationRef.current === 0 && data !== document;
-  const isDocumentLoading = queryIsPlaceholderData || hydrationPending;
+  const isDocumentLoading = serverEnabled && (queryIsPlaceholderData || hydrationPending);
+
+  // 切换文章时先同步切换到该文档自己的空壳/本地草稿，禁止沿用上一文章正文。
+  useEffect(() => {
+    if (documentIdRef.current === documentId) return;
+    documentIdRef.current = documentId;
+    const draft = loadLocalDocumentDraft(documentId);
+    const nextContent = draft?.content ?? placeholder.content;
+    const nextGeneration = draft ? 1 : 0;
+    setDocument(placeholder);
+    setArticleStarted(localOnly || Boolean(draft));
+    contentRef.current = nextContent;
+    generationRef.current = nextGeneration;
+    setContent(nextContent);
+    setGeneration(nextGeneration);
+  }, [documentId, localOnly, placeholder]);
 
   // 占位文档的 revision 只是占位元数据，不能作为服务器版本的新旧依据。
   // 首次真实编辑发生前始终接纳查询结果；编辑后则由 generationRef 阻止迟到响应覆盖正文。
@@ -95,12 +122,12 @@ export function useComposeDocument(
     if (draft && !restoreDraft) clearLocalDocumentDraft(documentId);
     const nextContent = draft && restoreDraft ? draft.content : data.content;
     const nextGeneration = restoreDraft ? 1 : 0;
-    setArticleStarted(data.storage !== "missing" || Boolean(restoreDraft));
+    setArticleStarted(localOnly || data.storage !== "missing" || Boolean(restoreDraft));
     contentRef.current = nextContent;
     generationRef.current = nextGeneration;
     setContent(nextContent);
     setGeneration(nextGeneration);
-  }, [data, document, documentId]);
+  }, [data, document, documentId, localOnly]);
 
   const replaceContent = useCallback((next: RichTextNode) => {
     contentRef.current = next;
@@ -137,7 +164,7 @@ export function useComposeDocument(
       const savedChapterId = activeChapterServerIdRef.current ?? chapterId;
       if (savedChapterId && chapterIndex != null) {
         queryClient.setQueryData<ForumChapterItem[]>(
-          ["forum", "chapters"],
+          ["forum", "chapters", documentId],
           (current = []) => {
             const existing = current.find(
               (chapter) => chapter.id === savedChapterId,
@@ -173,7 +200,8 @@ export function useComposeDocument(
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["revisions", next.id] });
-      void queryClient.invalidateQueries({ queryKey: ["forum", "chapters"] });
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+      void queryClient.invalidateQueries({ queryKey: ["forum", "chapters", documentId] });
     },
   });
 
@@ -198,11 +226,11 @@ export function useComposeDocument(
       if (!active) return undefined;
       // 目录未同步时取服务器最新清单，避免把已有章节误判为新增。
       let directory =
-        queryClient.getQueryData<ForumChapterItem[]>(["forum", "chapters"]);
+        queryClient.getQueryData<ForumChapterItem[]>(["forum", "chapters", documentId]);
       if (!directory) {
-        directory = await listForumChapters();
+        directory = await listForumChapters(documentId);
         queryClient.setQueryData<ForumChapterItem[]>(
-          ["forum", "chapters"],
+          ["forum", "chapters", documentId],
           directory,
         );
       }
@@ -231,7 +259,7 @@ export function useComposeDocument(
         if (created.length > 0) {
           // 服务器 id 同步回本地目录缓存（按 order 保持稳定顺序）。
           queryClient.setQueryData<ForumChapterItem[]>(
-            ["forum", "chapters"],
+            ["forum", "chapters", documentId],
             (current = []) =>
               [
                 ...current.filter(
@@ -245,7 +273,7 @@ export function useComposeDocument(
       // 清理目录中已超出正文末尾的残留章节行（如离线时删除的章节），
       // 让目录与本地正文在保存时重新对齐。
       const directoryAfter =
-        queryClient.getQueryData<ForumChapterItem[]>(["forum", "chapters"]) ??
+        queryClient.getQueryData<ForumChapterItem[]>(["forum", "chapters", documentId]) ??
         [];
       const stale = directoryAfter.filter((row) => row.order >= chapters.length);
       if (stale.length > 0) {
@@ -260,7 +288,7 @@ export function useComposeDocument(
         }
         if (removedIds.length > 0) {
           queryClient.setQueryData<ForumChapterItem[]>(
-            ["forum", "chapters"],
+            ["forum", "chapters", documentId],
             (current = []) =>
               current.filter((row) => !removedIds.includes(row.id)),
           );
@@ -268,7 +296,7 @@ export function useComposeDocument(
       }
       return (
         queryClient
-          .getQueryData<ForumChapterItem[]>(["forum", "chapters"])
+          .getQueryData<ForumChapterItem[]>(["forum", "chapters", documentId])
           ?.find((row) => row.order === activeIndex)?.id ?? active.id
       );
     },
@@ -290,6 +318,9 @@ export function useComposeDocument(
         }
       }
       if (!articleStarted) return false;
+      if (localOnly) {
+        return autosave.saveLocal(contentRef.current, generationRef.current);
+      }
       if (document.storage === "missing") {
         const saved = await saveDocument(documentId, {
           title: document.title,
@@ -303,7 +334,8 @@ export function useComposeDocument(
         contentRef.current = saved.content;
         setContent(saved.content);
         autosave.acceptSaved(saved, saved.content, generationRef.current);
-        void queryClient.invalidateQueries({ queryKey: ["forum", "chapters"] });
+        void queryClient.invalidateQueries({ queryKey: ["forum", "chapters", documentId] });
+        void queryClient.invalidateQueries({ queryKey: ["documents"] });
         return true;
       }
       // 1. 注册新增章节并拿到服务器 id（离线时保存路径会自行降级为本地草稿）。
@@ -325,6 +357,7 @@ export function useComposeDocument(
       document,
       documentId,
       isDocumentLoading,
+      localOnly,
       prepareChapterForSave,
       queryClient,
       replaceContent,

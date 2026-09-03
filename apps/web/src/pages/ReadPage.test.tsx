@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
   listForumChapters: vi.fn(),
+  listDocuments: vi.fn(),
   listSuggestionBatches: vi.fn(),
   listSuggestions: vi.fn(),
   reviewSuggestionBatch: vi.fn(),
@@ -24,7 +25,17 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../lib/api', () => ({
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
+  missingDocument: (id: string) => ({
+    id,
+    title: '未命名文章',
+    schemaVersion: 1,
+    revision: 0,
+    savedAt: new Date(0).toISOString(),
+    content: { type: 'doc', content: [] },
+    storage: 'missing',
+  }),
   listForumChapters: mocks.listForumChapters,
+  listDocuments: mocks.listDocuments,
   listSuggestionBatches: mocks.listSuggestionBatches,
   listSuggestions: mocks.listSuggestions,
   reviewSuggestionBatch: mocks.reviewSuggestionBatch,
@@ -59,6 +70,16 @@ const interactiveDocument: DocumentEnvelope = {
 };
 
 function renderPage(identity: SeedIdentity, initialPath = '/read') {
+  localStorage.setItem('ricetext:selected-document', 'demo-post');
+  mocks.listDocuments.mockResolvedValue([
+    {
+      id: 'demo-post',
+      title: interactiveDocument.title,
+      revision: interactiveDocument.revision,
+      savedAt: interactiveDocument.savedAt,
+      canEdit: identity.role !== 'reader',
+    },
+  ]);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><AppContext.Provider value={{ identity, setIdentity: vi.fn(), authMode: "demo", authStatus: "authenticated", login: vi.fn(), logout: vi.fn(async () => undefined), refreshIdentity: vi.fn(async () => undefined) }}>{children}</AppContext.Provider></QueryClientProvider>;
   return render(<MemoryRouter initialEntries={[initialPath]}><ReadPage /></MemoryRouter>, { wrapper });
@@ -69,6 +90,15 @@ describe('ReadPage', () => {
     mocks.getDocument.mockReset().mockResolvedValue(interactiveDocument);
     mocks.getCommentThread.mockReset().mockResolvedValue(seedComments);
     mocks.listForumChapters.mockReset().mockResolvedValue([]);
+    mocks.listDocuments.mockReset().mockResolvedValue([
+      {
+        id: 'demo-post',
+        title: interactiveDocument.title,
+        revision: interactiveDocument.revision,
+        savedAt: interactiveDocument.savedAt,
+        canEdit: true,
+      },
+    ]);
     mocks.listSuggestionBatches.mockReset().mockResolvedValue([]);
     mocks.listSuggestions.mockReset().mockResolvedValue(seedSuggestions);
     mocks.reviewSuggestionBatch.mockReset();
@@ -222,23 +252,13 @@ describe('ReadPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('读者看不到已隐藏章节（目录与正文都移除）', async () => {
-    mocks.listForumChapters.mockResolvedValueOnce([
-      {
-        id: 'chapter-0',
-        title: '正文',
-        order: 0,
-        documentId: 'demo-post',
-        revision: 1,
-        savedAt: '2026-08-20T08:00:00.000Z',
-        hidden: true,
-      },
-    ]);
+  it('读者的正文和目录请求都绑定当前文章 ID', async () => {
     renderPage(identities[1]!);
     await waitFor(() =>
-      expect(
-        screen.queryByRole('navigation', { name: '章节目录' }),
-      ).not.toBeInTheDocument(),
+      expect(mocks.getDocument).toHaveBeenCalledWith('demo-post', expect.anything()),
+    );
+    await waitFor(() =>
+      expect(mocks.listForumChapters).toHaveBeenCalledWith('demo-post'),
     );
   });
 

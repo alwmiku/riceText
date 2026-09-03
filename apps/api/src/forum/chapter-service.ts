@@ -11,7 +11,7 @@ export class ChapterService {
   }
 
   /** 章节目录。 */
-  chapters(): Array<{
+  chapters(documentId: string): Array<{
     id: string;
     title: string;
     order: number;
@@ -22,9 +22,10 @@ export class ChapterService {
   }> {
     const rows = this.#db
       .prepare(
-        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden FROM chapters ORDER BY sort_order",
+        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden " +
+          "FROM chapters WHERE document_id = ? ORDER BY sort_order",
       )
-      .all() as Array<{
+      .all(documentId) as Array<{
       id: string;
       title: string;
       sort_order: number;

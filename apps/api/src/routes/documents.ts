@@ -45,6 +45,12 @@ export const documentRoutes: FastifyPluginAsync<RouteDependencies> = async (
   dependencies,
 ) => {
   app.get(
+    "/api/documents",
+    { schema: getFastifySchema("listDocuments") },
+    async (request) => ({ items: dependencies.documents.list(identity(dependencies, request)) }),
+  );
+
+  app.get(
     "/api/documents/:documentId",
     { schema: getFastifySchema("getDocument") },
     async (request) => {

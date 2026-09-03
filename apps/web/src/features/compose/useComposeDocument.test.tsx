@@ -249,7 +249,7 @@ describe("useComposeDocument hydration", () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    client.setQueryData<ForumChapterItem[]>(["forum", "chapters"], [
+    client.setQueryData<ForumChapterItem[]>(["forum", "chapters", "demo-post"], [
       {
         id: "chapter-1",
         title: "第一章 潮汐表",
@@ -292,6 +292,7 @@ describe("useComposeDocument hydration", () => {
     const chapters = client.getQueryData<ForumChapterItem[]>([
       "forum",
       "chapters",
+      "demo-post",
     ])!;
     expect(chapters.find((chapter) => chapter.id === "chapter-1")).toMatchObject({
       revision: 5,
@@ -356,6 +357,7 @@ describe("useComposeDocument hydration", () => {
     const chapters = client.getQueryData<ForumChapterItem[]>([
       "forum",
       "chapters",
+      "demo-post",
     ])!;
     expect(chapters).toContainEqual(
       expect.objectContaining({ id: "chapter-2", order: 2, revision: 0 }),

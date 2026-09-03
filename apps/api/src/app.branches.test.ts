@@ -448,7 +448,7 @@ describe("RiceText API 补充分支", () => {
 
     const chapters = await app.inject({
       method: "GET",
-      url: "/api/forum/chapters",
+      url: "/api/forum/chapters?documentId=demo-post",
     });
     expect(
       chapters.json().items.map((chapter: { order: number }) => chapter.order),

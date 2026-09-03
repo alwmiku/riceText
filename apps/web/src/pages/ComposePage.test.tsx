@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
   listForumChapters: vi.fn(),
+  listDocuments: vi.fn(),
   saveDocument: vi.fn(),
   restoreRevision: vi.fn(),
   getRevision: vi.fn(),
@@ -38,6 +39,7 @@ vi.mock('../lib/api', () => ({
     storage: 'missing',
   }),
   listForumChapters: mocks.listForumChapters,
+  listDocuments: mocks.listDocuments,
   restoreRevision: mocks.restoreRevision,
   saveDocument: mocks.saveDocument,
   setDocumentChapterHidden: mocks.setDocumentChapterHidden,
@@ -76,9 +78,29 @@ vi.mock('../features/comments/CommentThread', () => ({
   CommentThread: (props: { initial: readonly unknown[] }) => <div>模拟回复树 {props.initial.length}</div>,
 }));
 
-function renderPage(identity = identities[0]!) {
+function renderPage(
+  identity = identities[0]!,
+  authStatus: "authenticated" | "unauthenticated" = "authenticated",
+  articles: Array<{
+    id: string;
+    title: string;
+    revision: number;
+    savedAt: string;
+    canEdit: boolean;
+  }> = [
+    {
+      id: 'demo-post',
+      title: defaultDocument.title,
+      revision: defaultDocument.revision,
+      savedAt: defaultDocument.savedAt,
+      canEdit: identity.role !== 'reader',
+    },
+  ],
+) {
+  localStorage.setItem('ricetext:selected-document', 'demo-post');
+  mocks.listDocuments.mockResolvedValue(articles);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><AppContext.Provider value={{ identity, setIdentity: vi.fn(), authMode: "demo", authStatus: "authenticated", login: vi.fn(), logout: vi.fn(async () => undefined), refreshIdentity: vi.fn(async () => undefined) }}>{children}</AppContext.Provider></QueryClientProvider>;
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><AppContext.Provider value={{ identity, setIdentity: vi.fn(), authMode: authStatus === "authenticated" ? "demo" : "session", authStatus, login: vi.fn(), logout: vi.fn(async () => undefined), refreshIdentity: vi.fn(async () => undefined) }}>{children}</AppContext.Provider></QueryClientProvider>;
   return render(<MemoryRouter><ComposePage /></MemoryRouter>, { wrapper });
 }
 
@@ -89,6 +111,8 @@ function autosaveValue(state: SaveState = 'saved') {
     savedAt: defaultDocument.savedAt,
     conflictMessage: state === 'conflict' ? '服务器版本已更新' : '',
     flush: mocks.flush,
+    saveLocal: vi.fn(() => true),
+    acceptSaved: vi.fn(),
     acceptLatest: vi.fn(),
   };
 }
@@ -96,6 +120,7 @@ function autosaveValue(state: SaveState = 'saved') {
 /** 带两个章节标记（chapterStart）的文档，供删除与章节位置用例使用。 */
 const twoChapterDoc: DocumentEnvelope = {
   ...defaultDocument,
+  storage: 'server',
   content: {
     type: 'doc',
     content: [
@@ -126,9 +151,21 @@ describe('ComposePage', () => {
     }));
     mocks.deleteDocumentChapter.mockReset().mockResolvedValue({ id: 'chapter-0', deleted: true });
     mocks.listForumChapters.mockReset().mockResolvedValue([]);
+    mocks.listDocuments.mockReset().mockResolvedValue([
+      {
+        id: 'demo-post',
+        title: defaultDocument.title,
+        revision: defaultDocument.revision,
+        savedAt: defaultDocument.savedAt,
+        canEdit: true,
+      },
+    ]);
     mocks.saveDocument.mockReset();
     mocks.flush.mockReset().mockResolvedValue(true);
-    mocks.getDocument.mockReset().mockResolvedValue(defaultDocument);
+    mocks.getDocument.mockReset().mockResolvedValue({
+      ...defaultDocument,
+      storage: 'server',
+    });
     mocks.getCommentThread.mockReset().mockResolvedValue([]);
     mocks.restoreRevision.mockReset().mockResolvedValue({ ...defaultDocument, revision: 19, savedAt: '2026-08-20T12:00:00.000Z' });
     mocks.getRevision.mockReset().mockResolvedValue({
@@ -149,6 +186,23 @@ describe('ComposePage', () => {
     vi.restoreAllMocks();
   });
 
+  it('游客只得到空白本地编辑器，不请求服务器文章或章节', async () => {
+    const guest = {
+      id: 'anonymous',
+      name: '未登录',
+      role: 'reader' as const,
+      avatar: '访',
+      coins: 0,
+      replied: false,
+    };
+    renderPage(guest, 'unauthenticated');
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true');
+    expect(mocks.listDocuments).not.toHaveBeenCalled();
+    expect(mocks.getDocument).not.toHaveBeenCalled();
+    expect(mocks.listForumChapters).not.toHaveBeenCalled();
+    expect(screen.queryByRole('combobox', { name: '选择文章' })).not.toBeInTheDocument();
+  });
+
   it('空库显示创建文章，点击后只创建可编辑的本地空白正文', async () => {
     mocks.getDocument.mockResolvedValue({
       id: 'demo-post',
@@ -163,16 +217,18 @@ describe('ComposePage', () => {
     const create = await screen.findByRole('button', { name: '创建文章' });
     expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'false');
     fireEvent.click(create);
-    expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true');
+    await waitFor(() =>
+      expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'),
+    );
     expect(screen.getByRole('button', { name: '模拟新增章节' })).toBeInTheDocument();
     expect(screen.getByText('已在本地创建空白文章，点击保存后上传服务器')).toBeInTheDocument();
   });
 
-  it('切换完整、极简和移动布局，并从极简入口展开', () => {
+  it('切换完整、极简和移动布局，并从极简入口展开', async () => {
     renderPage();
     expect(screen.getByTestId('editor')).toHaveAttribute('data-mode', 'full');
     expect(screen.getByText('模拟章节目录')).toBeInTheDocument();
-    expect(screen.getByText('模拟创作工具')).toBeInTheDocument();
+    expect(await screen.findByText('模拟创作工具')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '极简' }));
     expect(screen.getByTestId('editor')).toHaveAttribute('data-mode', 'compact');
@@ -185,8 +241,9 @@ describe('ComposePage', () => {
     expect(screen.getByText(/移动编辑/)).toBeInTheDocument();
   });
 
-  it('移动编辑模式通过左侧抽屉切换章节', () => {
+  it('移动编辑模式通过左侧抽屉切换章节', async () => {
     renderPage();
+    await screen.findByText('模拟创作工具');
 
     fireEvent.click(screen.getByRole('button', { name: '移动' }));
     expect(screen.getByRole('button', { name: '打开章节目录' })).toBeInTheDocument();
@@ -303,7 +360,7 @@ describe('ComposePage', () => {
   });
 
   it('发布前 flush 自动保存，并可关闭成功提示', async () => {
-    renderPage(identities[1]!);
+    renderPage(identities[0]!);
     await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
     fireEvent.click(screen.getByRole('button', { name: '极简' }));
     fireEvent.click(screen.getByRole('button', { name: '模拟发布' }));
@@ -320,7 +377,7 @@ describe('ComposePage', () => {
     const { container } = renderPage();
     await waitFor(() => expect(screen.getByTestId('editor')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: '模拟比较' }));
+    fireEvent.click(await screen.findByRole('button', { name: '模拟比较' }));
     await waitFor(() => expect(mocks.getRevision).toHaveBeenCalledWith('demo-post', 17));
     expect(await screen.findByRole('region', { name: '版本格式比较视图' })).toBeInTheDocument();
     expect(screen.getAllByText('历史内容').length).toBeGreaterThan(0);
@@ -345,7 +402,11 @@ describe('ComposePage', () => {
     expect(await screen.findByText('模拟回复树 1')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '关闭' }));
 
-    fireEvent.click(screen.getByRole('button', { name: '模拟回退' }));
+    fireEvent.click(await screen.findByRole(
+      'button',
+      { name: '模拟回退' },
+      { timeout: 5_000 },
+    ));
     await waitFor(() => expect(mocks.restoreRevision).toHaveBeenCalledWith('demo-post', 17, 18));
     expect(screen.getByText('已回退到版本 17，并创建版本 19')).toBeInTheDocument();
   });
@@ -353,7 +414,11 @@ describe('ComposePage', () => {
   it('回退失败时显示接口错误', async () => {
     mocks.restoreRevision.mockRejectedValueOnce(new Error('目标版本不存在'));
     renderPage();
-    fireEvent.click(screen.getByRole('button', { name: '模拟回退' }));
+    fireEvent.click(await screen.findByRole(
+      'button',
+      { name: '模拟回退' },
+      { timeout: 5_000 },
+    ));
     expect(await screen.findByText('目标版本不存在')).toBeInTheDocument();
   });
 

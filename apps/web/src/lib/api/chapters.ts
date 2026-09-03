@@ -2,9 +2,11 @@ import type { DocumentEnvelope as ContractDocumentEnvelope } from "@ricetext/con
 import type { ForumChapterItem, RichTextNode } from "../types";
 import { api, isServiceUnavailable, rethrowClientError } from "./client";
 
-export async function listForumChapters(): Promise<ForumChapterItem[]> {
+export async function listForumChapters(
+  documentId: string,
+): Promise<ForumChapterItem[]> {
   try {
-    return (await api().listChapters()).items;
+    return (await api().listChapters(documentId)).items;
   } catch (error) {
     if (!isServiceUnavailable(error)) rethrowClientError(error);
     return [];

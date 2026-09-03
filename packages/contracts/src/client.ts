@@ -19,6 +19,7 @@ import type {
   ResolveReplyGateResponseSchema,
   SuggestionBatchSchema,
   SuggestionSchema,
+  DocumentListItem,
 } from "./schemas.js";
 
 /** 非 2xx 响应抛出的类型化错误。 */
@@ -52,10 +53,12 @@ export interface ApiClientOptions {
 
 /** 由共享契约约束的浏览器 API 客户端。 */
 export interface RiceTextApiClient {
+  /** 读取当前登录身份可选择的文章。 */
+  listDocuments(signal?: AbortSignal): Promise<{ items: DocumentListItem[] }>;
   /** 读取文档当前 revision 和 Tiptap JSON。 */
   getDocument(documentId: string, signal?: AbortSignal): Promise<DocumentEnvelope>;
   /** 按 baseRevision 乐观并发更新正文。 */
-  updateDocument(documentId: string, body: { schemaVersion: number; baseRevision: number; clientMutationId: string; content: DocumentEnvelope["content"] }, signal?: AbortSignal): Promise<DocumentEnvelope>;
+  updateDocument(documentId: string, body: { schemaVersion: number; baseRevision: number; clientMutationId: string; title?: string; content: DocumentEnvelope["content"] }, signal?: AbortSignal): Promise<DocumentEnvelope>;
   /** 使用 ProseMirror 增量 steps 更新文档（服务端完整应用）。 */
   updateDocumentSteps(documentId: string, body: { schemaVersion: number; baseRevision: number; clientMutationId: string; steps: Array<Record<string, unknown>>; chapterId?: string }, signal?: AbortSignal): Promise<DocumentEnvelope>;
   /** 注册正文中出现、但目录缺失的新章节；返回服务器分配的章节 id，客户端应同步回本地目录。 */
@@ -91,7 +94,7 @@ export interface RiceTextApiClient {
   /** 读取当前和可切换的论坛身份。 */
   getForumSession(signal?: AbortSignal): Promise<ForumSession>;
   /** 读取章节目录（按 order 排序，含每章独立版本号）。 */
-  listChapters(signal?: AbortSignal): Promise<{ items: Array<z.infer<typeof ChapterSchema>> }>;
+  listChapters(documentId: string, signal?: AbortSignal): Promise<{ items: Array<z.infer<typeof ChapterSchema>> }>;
   /** 按名称或 ID 搜索好友/用户。 */
   searchUsers(query: string, friendsOnly?: boolean, signal?: AbortSignal): Promise<{ items: ForumUser[] }>;
   /** 在发布前由服务端解析非好友 mention。 */
@@ -155,6 +158,7 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     return encoded ? `?${encoded}` : "";
   };
   return {
+    listDocuments: (signal) => request("/api/documents", { signal }),
     getDocument: (id, signal) => request(`/api/documents/${id}`, { signal }),
     updateDocument: (id, body, signal) => request(`/api/documents/${id}`, { method: "PUT", body: json(body), signal }),
     updateDocumentSteps: (id, body, signal) => request(`/api/documents/${id}/steps`, { method: "PATCH", body: json(body), signal }),
@@ -174,7 +178,8 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     createCommentReply: (documentId, anchorId, body, parentId, signal) => request(`/api/documents/${documentId}/comments/${anchorId}/replies`, { method: "POST", body: json({ body, parentId: parentId ?? null }), signal }),
     voteComment: (replyId, value, signal) => request(`/api/comments/replies/${replyId}/vote`, { method: "PUT", body: json({ value }), signal }),
     getForumSession: (signal) => request("/api/forum/session", { signal }),
-    listChapters: (signal) => request("/api/forum/chapters", { signal }),
+    listChapters: (documentId, signal) =>
+      request(`/api/forum/chapters${query({ documentId })}`, { signal }),
     searchUsers: (q, friendsOnly = false, signal) => request(`/api/forum/users/search${query({ q, friendsOnly })}`, { signal }),
     resolveMention: (name, userId, signal) => request("/api/forum/mentions/resolve", { method: "POST", body: json({ name, ...(userId ? { userId } : {}) }), signal }),
     resolveReplyGate: (gateId, documentId, signal) => request("/api/forum/reply-gates/resolve", { method: "POST", body: json({ gateId, documentId }), signal }),

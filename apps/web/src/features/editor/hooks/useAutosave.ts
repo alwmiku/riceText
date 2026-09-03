@@ -32,6 +32,8 @@ export interface AutosaveResult {
     generation?: number,
     chapterIdOverride?: string,
   ) => Promise<boolean>;
+  /** 游客显式保存时只写浏览器草稿，不发服务器请求。 */
+  saveLocal: (content: RichTextNode, generation: number) => boolean;
   /** 首次整篇创建由宿主完成后，同步服务器基线并取消待执行的本地草稿定时器。 */
   acceptSaved: (
     next: DocumentEnvelope,
@@ -275,6 +277,9 @@ export function useAutosave({
             }
           : undefined,
       ),
+    saveLocal(savedContent, savedGeneration) {
+      return persistLocal({ content: savedContent, generation: savedGeneration });
+    },
     acceptSaved(next, savedContent, savedGeneration) {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       revisionRef.current = next.revision;

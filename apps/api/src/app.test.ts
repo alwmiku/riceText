@@ -70,6 +70,25 @@ describe("RiceText API", () => {
       payload,
     });
     expect(replayed.statusCode).toBe(200);
+    const authorList = await app.inject({
+      method: "GET",
+      url: "/api/documents",
+      headers: { "x-user-id": "author" },
+    });
+    expect(authorList.json().items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "empty-post", canEdit: true }),
+        expect.objectContaining({ id: "demo-post", canEdit: true }),
+      ]),
+    );
+    const emptyChapters = await app.inject({
+      method: "GET",
+      url: "/api/forum/chapters?documentId=empty-post",
+      headers: { "x-user-id": "author" },
+    });
+    expect(emptyChapters.json().items).toEqual([
+      expect.objectContaining({ documentId: "empty-post", title: "正文" }),
+    ]);
     const reader = await app.inject({
       method: "PUT",
       url: "/api/documents/reader-post",
@@ -186,7 +205,7 @@ describe("RiceText API", () => {
   });
 
   it("保存时仅递增本次编辑章节的版本号", async () => {
-    const directoryBefore = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number; savedAt: string }>;
+    const directoryBefore = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; revision: number; savedAt: string }>;
     const chapterOneBefore = directoryBefore.find((item) => item.id === "chapter-1")!;
     const chapterTwoBefore = directoryBefore.find((item) => item.id === "chapter-2")!;
     expect(chapterOneBefore.revision).toBe(1);
@@ -200,7 +219,7 @@ describe("RiceText API", () => {
     });
     expect(saved.statusCode).toBe(201);
 
-    const directoryAfter = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number; savedAt: string }>;
+    const directoryAfter = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; revision: number; savedAt: string }>;
     const chapterOneAfter = directoryAfter.find((item) => item.id === "chapter-1")!;
     const chapterTwoAfter = directoryAfter.find((item) => item.id === "chapter-2")!;
     expect(chapterOneAfter.revision).toBe(2);
@@ -232,7 +251,7 @@ describe("RiceText API", () => {
     // 种子版本不属于新章节；只有创建它的保存可见。
     expect(history.map((item) => item.revision)).toEqual([2]);
 
-    const directory = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number; title: string }>;
+    const directory = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; revision: number; title: string }>;
     expect(directory.find((item) => item.id === chapterId)).toMatchObject({ title: "第五章 新章节", revision: 1 });
 
     // 3. 再次编辑新章节：继续产生按章归集的历史记录。
@@ -243,7 +262,7 @@ describe("RiceText API", () => {
     expect(second.statusCode, second.body).toBe(201);
     const historyAfter = (await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions?chapterId=" + chapterId })).json().items as Array<{ revision: number }>;
     expect(historyAfter.map((item) => item.revision)).toEqual([3, 2]);
-    const directoryAfter = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number }>;
+    const directoryAfter = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; revision: number }>;
     expect(directoryAfter.find((item) => item.id === chapterId)?.revision).toBe(2);
   });
   it("删除章节目录行幂等，并解除关联校订的章节归属", async () => {
@@ -265,7 +284,7 @@ describe("RiceText API", () => {
     db.close();
     expect(suggestion.chapter_id).toBeNull();
 
-    const catalog = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string }>;
+    const catalog = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string }>;
     expect(catalog.some((item) => item.id === chapterId)).toBe(false);
 
     // 3. 幂等：重复删除返回 deleted = false。
@@ -296,19 +315,19 @@ describe("RiceText API", () => {
     expect(history.map((item) => item.revision)).toEqual([3]);
   });
   it("隐藏/恢复章节：服务器记录读者不可读状态", async () => {
-    const before = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; hidden: boolean }>;
+    const before = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; hidden: boolean }>;
     expect(before.find((item) => item.id === "chapter-1")?.hidden).toBe(false);
 
     const hidden = await app.inject({ method: "PATCH", url: "/api/documents/demo-post/chapters/chapter-1", headers: { "x-user-id": "author" }, payload: { hidden: true } });
     expect(hidden.statusCode, hidden.body).toBe(200);
     expect(hidden.json()).toMatchObject({ id: "chapter-1", hidden: true });
 
-    const readerDirectory = (await app.inject({ method: "GET", url: "/api/forum/chapters", headers: { "x-user-id": "reader" } })).json().items as Array<{ id: string; hidden: boolean }>;
+    const readerDirectory = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post", headers: { "x-user-id": "reader" } })).json().items as Array<{ id: string; hidden: boolean }>;
     expect(readerDirectory.some((item) => item.id === "chapter-1")).toBe(false);
     const readerDocument = (await app.inject({ method: "GET", url: "/api/documents/demo-post", headers: { "x-user-id": "reader" } })).json();
     expect(JSON.stringify(readerDocument.content)).not.toContain("第一章 潮汐表");
 
-    const authorDirectory = (await app.inject({ method: "GET", url: "/api/forum/chapters", headers: { "x-user-id": "author" } })).json().items as Array<{ id: string; hidden: boolean }>;
+    const authorDirectory = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post", headers: { "x-user-id": "author" } })).json().items as Array<{ id: string; hidden: boolean }>;
     expect(authorDirectory.find((item) => item.id === "chapter-1")?.hidden).toBe(true);
     const authorDocument = (await app.inject({ method: "GET", url: "/api/documents/demo-post", headers: { "x-user-id": "author" } })).json();
     expect(JSON.stringify(authorDocument.content)).toContain("第一章 潮汐表");
@@ -651,7 +670,7 @@ describe("RiceText API", () => {
     expect(retried.json().revision).toBe(2);
 
     // 章节独立版本号递增
-    const chapters = (await app.inject({ method: "GET", url: "/api/forum/chapters" })).json().items as Array<{ id: string; revision: number }>;
+    const chapters = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; revision: number }>;
     expect(chapters.find((item) => item.id === "chapter-0")?.revision).toBe(2);
     expect(chapters.find((item) => item.id === "chapter-1")?.revision).toBe(1);
 

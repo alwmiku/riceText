@@ -25,6 +25,7 @@ export function StandardComposeWorkspace({
   onCompareRevision,
   onAddChapter,
   createArticle,
+  showServerTools,
   onDeleteChapter,
   hiddenChapters,
   onToggleHidden,
@@ -66,6 +67,8 @@ export function StandardComposeWorkspace({
   onAddChapter?: () => void;
   /** 空库入口显示为红色「创建文章」。 */
   createArticle?: boolean;
+  /** 只有已登录且文章已上传服务器时才挂载校订、历史等远端面板。 */
+  showServerTools: boolean;
   /** 章节行内「删除章节」入口（带确认，仅改本地草稿）。 */
   onDeleteChapter?: (index: number) => void;
   onSelectChapter: (index: number) => void;
@@ -109,17 +112,19 @@ export function StandardComposeWorkspace({
           </div>
           {comparison ?? editor}
         </section>
-        <ForumBusinessPanel
-          identity={identity}
-          documentId={documentId}
-          baseRevision={revision}
-          chapterId={chapterId}
-          chapterTitle={chapters[activeIndex]?.title ?? title}
-          activeContent={activeContent}
-          {...(comparingRevision !== undefined ? { comparingRevision } : {})}
-          {...(onCompareRevision ? { onCompare: onCompareRevision } : {})}
-          onRestore={onRestore}
-        />
+        {showServerTools ? (
+          <ForumBusinessPanel
+            identity={identity}
+            documentId={documentId}
+            baseRevision={revision}
+            chapterId={chapterId}
+            chapterTitle={chapters[activeIndex]?.title ?? title}
+            activeContent={activeContent}
+            {...(comparingRevision !== undefined ? { comparingRevision } : {})}
+            {...(onCompareRevision ? { onCompare: onCompareRevision } : {})}
+            onRestore={onRestore}
+          />
+        ) : null}
       </div>
     );
   }
@@ -180,18 +185,20 @@ export function StandardComposeWorkspace({
                   {...(activeRevision !== undefined ? { activeRevision } : {})}
                   className="static max-h-none rounded-md shadow-none"
                 />
-                <ForumBusinessPanel
-                  identity={identity}
-                  documentId={documentId}
-                  baseRevision={revision}
-                  chapterId={chapterId}
-                  chapterTitle={chapters[activeIndex]?.title ?? title}
-                  activeContent={activeContent}
-                  {...(comparingRevision !== undefined ? { comparingRevision } : {})}
-                  {...(onCompareRevision ? { onCompare: onCompareRevision } : {})}
-                  onRestore={onRestore}
-                  className="static mt-2 max-h-none rounded-md shadow-none"
-                />
+                {showServerTools ? (
+                  <ForumBusinessPanel
+                    identity={identity}
+                    documentId={documentId}
+                    baseRevision={revision}
+                    chapterId={chapterId}
+                    chapterTitle={chapters[activeIndex]?.title ?? title}
+                    activeContent={activeContent}
+                    {...(comparingRevision !== undefined ? { comparingRevision } : {})}
+                    {...(onCompareRevision ? { onCompare: onCompareRevision } : {})}
+                    onRestore={onRestore}
+                    className="static mt-2 max-h-none rounded-md shadow-none"
+                  />
+                ) : null}
               </div>
             </div>
           ) : null}

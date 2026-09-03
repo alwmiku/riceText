@@ -1,4 +1,5 @@
 export { ApiError } from "./api/client";
+export { listDocuments } from "./api/document-list";
 export {
   getDocument,
   missingDocument,

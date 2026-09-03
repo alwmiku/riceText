@@ -14,6 +14,8 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { useAppContext } from "../app-context";
 import { Button, Dialog, Segmented } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
+import { ArticleSelector } from "../features/documents/ArticleSelector";
+import { useArticleSelection } from "../features/documents/useArticleSelection";
 import { LongTextWorkspace } from "../features/compose/LongTextWorkspace";
 import { SaveStatus } from "../features/compose/SaveStatus";
 import { StandardComposeWorkspace } from "../features/compose/StandardComposeWorkspace";
@@ -71,12 +73,22 @@ function toChineseNumber(value: number): string {
 /** 创作页编排层：组合文档、长文本、上传和展示控制器，不承载各领域内部状态机。 */
 export default function ComposePage() {
   const { identity } = useAppContext();
+  const articleSelection = useArticleSelection();
+  const activeDocumentId = articleSelection.authenticated
+    ? articleSelection.selectedId || `article-${identity.id}`
+    : "guest-local";
+  const selectedArticle = articleSelection.articles.find(
+    (article) => article.id === activeDocumentId,
+  );
+  const canEditSelected = articleSelection.authenticated
+    ? (selectedArticle?.canEdit ?? articleSelection.canCreate)
+    : true;
   const [mode, setMode] = useState<EditorMode>(() =>
     window.matchMedia("(max-width: 600px)").matches ? "mobile" : "full",
   );
   // 记住上次编辑的章节：刷新/重进页面后仍停留在原章节（移动端尤其依赖）。
   // 索引按文档 ID 隔离，超出章节数时由 activeIndex 钳制。
-  const ACTIVE_CHAPTER_STORAGE_KEY = "ricetext:active-chapter:demo-post";
+  const ACTIVE_CHAPTER_STORAGE_KEY = `ricetext:active-chapter:${activeDocumentId}`;
   const [chapterIndex, setChapterIndex] = useState<number>(() => {
     try {
       const stored = Number.parseInt(
@@ -112,11 +124,15 @@ export default function ComposePage() {
   const editorRef = useRef<Editor | null>(null);
 
   const { data: chapterDirectory = [] } = useQuery({
-    queryKey: ["forum", "chapters"],
-    queryFn: () => listForumChapters(),
+    queryKey: ["forum", "chapters", activeDocumentId],
+    queryFn: () => listForumChapters(activeDocumentId),
+    enabled: articleSelection.authenticated && !articleSelection.loading,
   });
   // 三个控制器通过完整文档快照衔接；页面只负责跨领域编排和提示展示。
-  const compose = useComposeDocument("demo-post", chapterIndex);
+  const compose = useComposeDocument(activeDocumentId, chapterIndex, {
+    serverEnabled: articleSelection.authenticated && !articleSelection.loading,
+    localOnly: !articleSelection.authenticated,
+  });
   const longText = useLongTextWorkspace({
     content: compose.content,
     contentRef: compose.contentRef,
@@ -125,7 +141,7 @@ export default function ComposePage() {
     setNotice,
   });
   const upload = useChapterUpload({
-    novelId: "demo-post",
+    novelId: activeDocumentId,
     getDocument: () => {
       // 上传准备必须先冲刷章节防抖队列，才能冻结用户眼前的最新正文。
       longText.flushEdits();
@@ -320,7 +336,9 @@ export default function ComposePage() {
       }
       content={longText.enabled ? longText.editorContent : editorContent}
       mode={mode}
-      editable={!compose.isPlaceholderData && compose.articleStarted}
+      editable={
+        !compose.isPlaceholderData && compose.articleStarted && canEditSelected
+      }
       longTextMode={longText.enabled}
       onChange={(next) => {
         if (compose.isPlaceholderData) return;
@@ -373,9 +391,25 @@ export default function ComposePage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {articleSelection.authenticated ? (
+            <ArticleSelector
+              articles={articleSelection.articles}
+              value={activeDocumentId}
+              canCreate={articleSelection.canCreate}
+              disabled={articleSelection.loading}
+              onChange={(id) => {
+                articleSelection.setSelectedId(id);
+                setChapterIndex(0);
+              }}
+              onCreate={() => {
+                articleSelection.createArticle();
+                setChapterIndex(0);
+              }}
+            />
+          ) : null}
           <Button
             size="sm"
-            disabled={!compose.articleStarted}
+            disabled={!compose.articleStarted || !canEditSelected}
             variant={longText.enabled ? "secondary" : "outline"}
             aria-pressed={longText.enabled}
             onClick={() => {
@@ -516,15 +550,24 @@ export default function ComposePage() {
           identity={identity}
           documentId={compose.document.id}
           revision={compose.autosave.revision}
-          saveDisabled={compose.isPlaceholderData || !compose.articleStarted}
+          saveDisabled={
+            compose.isPlaceholderData || !compose.articleStarted || !canEditSelected
+          }
           activeCharCount={activeCharCount}
           chapterId={chapterDirectory[activeIndex]?.id}
           activeRevision={activeRevision}
           activeContent={editorContent}
           comparingRevision={comparingRevision}
           onCompareRevision={(revision) => void compareRevision(revision)}
-          onAddChapter={compose.articleStarted ? addChapter : createArticle}
+          {...(canEditSelected
+            ? {
+                onAddChapter: compose.articleStarted ? addChapter : createArticle,
+              }
+            : {})}
           createArticle={!compose.articleStarted}
+          showServerTools={
+            articleSelection.authenticated && compose.document.storage === "server"
+          }
           onDeleteChapter={deleteChapter}
           hiddenChapters={chapterDirectory.map((chapter) => chapter.hidden)}
           onToggleHidden={(index, hidden) => void toggleChapterHidden(index, hidden)}

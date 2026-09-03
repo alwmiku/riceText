@@ -8,6 +8,7 @@ import {
   getDocument,
   getRevision,
   getRevisions,
+  listDocuments,
   listForumChapters,
   listSuggestions,
   restoreRevision,
@@ -45,6 +46,25 @@ describe('web api client', () => {
     vi.stubEnv('DEV', true);
     vi.stubEnv('VITE_DEMO_AUTH', 'false');
     expect(isDemoAuthHeaderEnabled()).toBe(false);
+  });
+
+  it('读取文章选择列表并按文档查询章节', async () => {
+    const article = {
+      id: 'demo-post',
+      title: '测试文章',
+      revision: 2,
+      savedAt: '2026-09-03T00:00:00.000Z',
+      canEdit: true,
+    };
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ items: [article] }))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }));
+    await expect(listDocuments()).resolves.toEqual([article]);
+    await expect(listForumChapters('demo-post')).resolves.toEqual([]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/documents');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      '/api/forum/chapters?documentId=demo-post',
+    );
   });
 
   it('读取服务器文档并携带当前论坛身份与中止信号', async () => {
@@ -261,7 +281,7 @@ describe('web api client', () => {
 
   it('章节目录在服务不可用时降级为空数组', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(null, { status: 502 }));
-    await expect(listForumChapters()).resolves.toEqual([]);
+    await expect(listForumChapters('demo-post')).resolves.toEqual([]);
   });
 
   it('按契约回滚指定版本', async () => {

@@ -55,7 +55,7 @@ export class ForumService {
     return this.#session.resolveMention(name, userId);
   }
 
-  chapters(): Array<{
+  chapters(documentId: string): Array<{
     id: string;
     title: string;
     order: number;
@@ -64,7 +64,7 @@ export class ForumService {
     savedAt: string;
     hidden: boolean;
   }> {
-    return this.#chapters.chapters();
+    return this.#chapters.chapters(documentId);
   }
 
   chapterHashes(documentId: string): Map<string, string | null> {

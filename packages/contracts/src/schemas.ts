@@ -101,6 +101,18 @@ export const DocumentEnvelopeSchema = z
 /** 当前文档快照。 */
 export type DocumentEnvelope = z.infer<typeof DocumentEnvelopeSchema>;
 
+/** 登录用户文章选择器使用的轻量摘要。 */
+export const DocumentListItemSchema = z
+  .object({
+    id: EntityIdSchema,
+    title: z.string().min(1).max(200),
+    revision: z.number().int().nonnegative(),
+    savedAt: DateTimeSchema,
+    canEdit: z.boolean(),
+  })
+  .strict();
+export type DocumentListItem = z.infer<typeof DocumentListItemSchema>;
+
 /** 写入文档时固定使用的乐观并发请求体。 */
 export const UpdateDocumentRequestSchema = z
   .object({

@@ -15,10 +15,12 @@ import {
   UserRound,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAppContext } from "../app-context";
 import { Badge, Button, Dialog } from "../components/ui";
 import { CommentThread } from "../features/comments/CommentThread";
+import { ArticleSelector } from "../features/documents/ArticleSelector";
+import { useArticleSelection } from "../features/documents/useArticleSelection";
 import { ChapterSuggestionEditor } from "../features/proofread/ChapterSuggestionEditor";
 import { ProofreadWorkspace } from "../features/proofread/ProofreadWorkspace";
 import { ReaderSuggestion } from "../features/proofread/ReaderSuggestion";
@@ -27,17 +29,23 @@ import {
   getCommentThread,
   getDocument,
   listForumChapters,
+  missingDocument,
   listSuggestions,
 } from "../lib/api";
 import { chapterTextLines, splitDocumentByHeadings } from "../lib/chapters";
-import { defaultDocument } from "../lib/seed";
 import type { CommentReply } from "../lib/types";
 import { formatTime } from "../lib/utils";
 
 /** 纯阅读页面：只挂载静态 RichTextViewer，不创建 ProseMirror Editor。 */
 export default function ReadPage() {
   const { identity } = useAppContext();
+  const articleSelection = useArticleSelection();
+  const documentId = articleSelection.selectedId;
+  const selectedArticle = articleSelection.articles.find(
+    (article) => article.id === documentId,
+  );
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [threadId, setThreadId] = useState<string | null>(null);
   const [proofreading, setProofreading] = useState(
     () => searchParams.get("proofread") === "1",
@@ -56,10 +64,15 @@ export default function ReadPage() {
   const [chapterIndex, setChapterIndex] = useState(() =>
     Number.isFinite(initialChapter) && initialChapter >= 0 ? initialChapter : 1,
   );
-  const { data: document = defaultDocument } = useQuery({
-    queryKey: ["document", "demo-post"],
-    queryFn: ({ signal }) => getDocument("demo-post", signal),
-    placeholderData: defaultDocument,
+  const placeholder = useMemo(
+    () => missingDocument(documentId || "pending-selection"),
+    [documentId],
+  );
+  const { data: document = placeholder } = useQuery({
+    queryKey: ["document", documentId],
+    queryFn: ({ signal }) => getDocument(documentId, signal),
+    placeholderData: placeholder,
+    enabled: Boolean(documentId) && articleSelection.authenticated,
   });
   const { chapters } = useMemo(
     () => splitDocumentByHeadings(document.content as JSONContent),
@@ -67,26 +80,14 @@ export default function ReadPage() {
   );
   // 隐藏章节：读者过滤掉，作者（含版主）仍可预览与校订。
   const { data: chapterDirectory = [] } = useQuery({
-    queryKey: ["forum", "chapters"],
-    queryFn: () => listForumChapters(),
+    queryKey: ["forum", "chapters", documentId],
+    queryFn: () => listForumChapters(documentId),
+    enabled: Boolean(documentId) && articleSelection.authenticated,
   });
-  const hiddenIds = useMemo(
-    () =>
-      new Set(
-        chapterDirectory
-          .filter((chapter) => chapter.hidden)
-          .map((chapter) => chapter.id),
-      ),
-    [chapterDirectory],
-  );
-  const isReader = identity.role === "reader";
-  const visibleChapters = useMemo(
-    () =>
-      isReader
-        ? chapters.filter((chapter) => !hiddenIds.has(chapter.id))
-        : chapters,
-    [chapters, hiddenIds, isReader],
-  );
+  // 隐藏章节已经由服务端按 sort_order 从正文和目录中同时裁剪；前端不能再用
+  // 存储层 chapter id 对正文派生 id 二次过滤，否则多文章作用域下会发生错配。
+  const visibleChapters =
+    (document.content.content?.length ?? 0) === 0 ? [] : chapters;
   const activeIndex = Math.min(
     chapterIndex,
     Math.max(0, visibleChapters.length - 1),
@@ -107,8 +108,7 @@ export default function ReadPage() {
     enabled: Boolean(threadId),
   });
   // 只有作者与版主可以进入校订：普通读者既看不到入口也不加载校订数据。
-  const canProofread =
-    identity.role === "author" || identity.role === "moderator";
+  const canProofread = selectedArticle?.canEdit ?? false;
   const { data: suggestions = [] } = useQuery({
     queryKey: ["forum", "suggestions", document.id],
     queryFn: ({ signal }) => listSuggestions(document.id, signal),
@@ -207,6 +207,22 @@ export default function ReadPage() {
   );
   return (
     <main className="mx-auto max-w-[1600px] px-5 pt-[18px] pb-[42px] max-[840px]:px-2.5 max-[840px]:pt-3 max-[840px]:pb-7 max-[430px]:px-0 max-[430px]:pt-2 max-[430px]:pb-5">
+      <div className="mx-auto mb-4 flex max-w-[1320px] justify-end px-1">
+        <ArticleSelector
+          articles={articleSelection.articles}
+          value={documentId}
+          canCreate={articleSelection.canCreate}
+          disabled={articleSelection.loading}
+          onChange={(id) => {
+            articleSelection.setSelectedId(id);
+            setChapterIndex(0);
+          }}
+          onCreate={() => {
+            articleSelection.createArticle();
+            navigate("/compose");
+          }}
+        />
+      </div>
       <div className="mx-auto grid max-w-[1320px] grid-cols-[200px_minmax(0,1fr)_280px] items-start gap-8 [&>nav]:order-1 [&>article]:order-2 [&>aside]:order-3 max-[1180px]:grid-cols-[minmax(0,1fr)_280px] max-[1180px]:[&>nav]:hidden max-[840px]:block max-[840px]:[&>nav]:hidden max-[840px]:[&>aside]:hidden">
         <article className="min-w-0 border border-border bg-white p-[clamp(28px,6vw,72px)] shadow-[0_8px_32px_rgb(25_36_45/0.05)] max-[840px]:p-[30px_22px] max-[430px]:border-x-0 max-[430px]:p-[28px_18px] max-[430px]:[&_.rt-viewer]:text-base max-[430px]:[&_.rt-viewer]:leading-[1.85] max-[430px]:[&_.rt-viewer_h1]:text-[25px]">
           <header className="mb-8 border-b border-border pb-4 font-sans">

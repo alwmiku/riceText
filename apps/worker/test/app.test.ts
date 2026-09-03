@@ -102,8 +102,27 @@ describe("RiceText Worker", () => {
   });
 
   it("reads document, revision history and chapters from D1", async () => {
-    const documentResponse = await exports.default.fetch(
+    const anonymousDocument = await exports.default.fetch(
       "http://example.com/api/documents/demo-post",
+    );
+    expect(anonymousDocument.status).toBe(401);
+    const anonymousList = await exports.default.fetch("http://example.com/api/documents");
+    expect(anonymousList.status).toBe(401);
+
+    const list = await exports.default.fetch(
+      new Request("http://example.com/api/documents", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    expect(list.status).toBe(200);
+    await expect(list.json()).resolves.toMatchObject({
+      items: [{ id: "demo-post", canEdit: true }],
+    });
+
+    const documentResponse = await exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post", {
+        headers: { "x-user-id": "reader" },
+      }),
     );
     expect(documentResponse.status).toBe(200);
     await expect(documentResponse.json()).resolves.toMatchObject({
@@ -113,7 +132,9 @@ describe("RiceText Worker", () => {
     });
 
     const revisionResponse = await exports.default.fetch(
-      "http://example.com/api/documents/demo-post/revisions?limit=10",
+      new Request("http://example.com/api/documents/demo-post/revisions?limit=10", {
+        headers: { "x-user-id": "reader" },
+      }),
     );
     expect(revisionResponse.status).toBe(200);
     await expect(revisionResponse.json()).resolves.toMatchObject({
@@ -122,7 +143,9 @@ describe("RiceText Worker", () => {
     });
 
     const chapterResponse = await exports.default.fetch(
-      "http://example.com/api/forum/chapters",
+      new Request("http://example.com/api/forum/chapters?documentId=demo-post", {
+        headers: { "x-user-id": "reader" },
+      }),
     );
     expect(chapterResponse.status).toBe(200);
     await expect(chapterResponse.json()).resolves.toMatchObject({
@@ -251,6 +274,20 @@ describe("RiceText Worker", () => {
       revision: 1,
     });
     expect((await save()).status).toBe(200);
+    const demoChapters = await exports.default.fetch(
+      new Request("http://example.com/api/forum/chapters?documentId=demo-post", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    const emptyChapters = await exports.default.fetch(
+      new Request("http://example.com/api/forum/chapters?documentId=empty-post", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    expect(((await demoChapters.json()) as { items: unknown[] }).items).toHaveLength(1);
+    await expect(emptyChapters.json()).resolves.toMatchObject({
+      items: [{ documentId: "empty-post", title: "正文" }],
+    });
 
     const reader = await exports.default.fetch(
       new Request("http://example.com/api/documents/reader-post", {
@@ -417,7 +454,9 @@ describe("RiceText Worker", () => {
     expect(result.content.content[0]?.content?.[0]?.text).toMatch(/^海/);
 
     const history = await exports.default.fetch(
-      "http://example.com/api/documents/demo-post/revisions",
+      new Request("http://example.com/api/documents/demo-post/revisions", {
+        headers: { "x-user-id": "author" },
+      }),
     );
     const historyBody = (await history.json()) as {
       items: Array<{ revision: number; operation: string; summary: string; stepsSummary: string | null }>;
@@ -529,7 +568,7 @@ describe("RiceText Worker", () => {
     await expect(hidden.json()).resolves.toMatchObject({ hidden: true });
 
     const readerDirectory = await exports.default.fetch(
-      new Request("http://example.com/api/forum/chapters", {
+      new Request("http://example.com/api/forum/chapters?documentId=demo-post", {
         headers: { "x-user-id": "reader" },
       }),
     );
@@ -543,7 +582,7 @@ describe("RiceText Worker", () => {
     expect(JSON.stringify((await readerDocument.json()) as unknown)).not.toContain("隐藏章节正文");
 
     const authorDirectory = await exports.default.fetch(
-      new Request("http://example.com/api/forum/chapters", {
+      new Request("http://example.com/api/forum/chapters?documentId=demo-post", {
         headers: { "x-user-id": "author" },
       }),
     );
@@ -591,7 +630,10 @@ describe("RiceText Worker", () => {
     );
     expect(saved.status).toBe(201);
     const history = await exports.default.fetch(
-      "http://example.com/api/documents/demo-post/revisions?chapterId=chapter-1",
+      new Request(
+        "http://example.com/api/documents/demo-post/revisions?chapterId=chapter-1",
+        { headers: { "x-user-id": "author" } },
+      ),
     );
     const page = (await history.json()) as { items: Array<{ revision: number }> };
     expect(page.items.map((item) => item.revision)).toEqual([2]);
@@ -1831,7 +1873,9 @@ describe("RiceText Worker", () => {
 
   it("returns stable contract errors", async () => {
     const missing = await exports.default.fetch(
-      "http://example.com/api/documents/missing-document",
+      new Request("http://example.com/api/documents/missing-document", {
+        headers: { "x-user-id": "reader" },
+      }),
     );
     expect(missing.status).toBe(404);
     await expect(missing.json()).resolves.toEqual({
@@ -1839,7 +1883,9 @@ describe("RiceText Worker", () => {
     });
 
     const invalid = await exports.default.fetch(
-      "http://example.com/api/documents/demo-post/revisions/not-a-number",
+      new Request("http://example.com/api/documents/demo-post/revisions/not-a-number", {
+        headers: { "x-user-id": "reader" },
+      }),
     );
     expect(invalid.status).toBe(422);
     await expect(invalid.json()).resolves.toMatchObject({
