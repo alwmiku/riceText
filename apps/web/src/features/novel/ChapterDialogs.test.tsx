@@ -21,11 +21,13 @@ const uploadDiff: ChapterUploadDiff = {
   toUpdate: 2,
   added: 1,
   modified: 1,
+  uploaded: 0,
   gaps: 2,
+  stale: false,
   rows: [
-    { id: "one", title: "第一章", status: "新增" },
-    { id: "two", title: "第二章", status: "修改" },
-    { id: "three", title: "第三章", status: "未变化" },
+    { id: "one", title: "第一章", action: "新增", status: "待上传", attempts: 0 },
+    { id: "two", title: "第二章", action: "修改", status: "待上传", attempts: 0 },
+    { id: "three", title: "第三章", action: "未变化", status: "未变化", attempts: 0 },
   ],
 };
 
@@ -74,14 +76,16 @@ describe("ChapterUploadDialog", () => {
         uploading={false}
         onOpenChange={onOpenChange}
         onConfirm={onConfirm}
+        onReprepare={vi.fn()}
       />,
     );
 
     expect(screen.getByText(/仍有/)).toHaveTextContent("2");
     expect(screen.getByText(/本地共/)).toHaveTextContent("本次上传 2 个");
-    expect(screen.getByText("未变化")).toHaveClass("text-muted-foreground");
+    expect(screen.getByText("总上传进度")).toBeInTheDocument();
+    expect(screen.getByLabelText("长文本上传总进度")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "确认分章上传" }));
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: "稍后继续" }));
     expect(onConfirm).toHaveBeenCalledOnce();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
@@ -94,11 +98,12 @@ describe("ChapterUploadDialog", () => {
         uploading
         onOpenChange={vi.fn()}
         onConfirm={vi.fn()}
+        onReprepare={vi.fn()}
       />,
     );
     expect(screen.getByText(/全部原文已连续切分/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上传中…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "稍后继续" })).toBeDisabled();
 
     rerender(
       <ChapterUploadDialog
@@ -107,6 +112,7 @@ describe("ChapterUploadDialog", () => {
         uploading={false}
         onOpenChange={vi.fn()}
         onConfirm={vi.fn()}
+        onReprepare={vi.fn()}
       />,
     );
     expect(screen.queryByRole("button", { name: "确认分章上传" })).not.toBeInTheDocument();

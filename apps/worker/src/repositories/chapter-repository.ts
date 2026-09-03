@@ -154,6 +154,13 @@ export class D1ChapterRepository {
     },
   ): Promise<{ id: string; title: string; order: number; revision: number }> {
     await this.requireDocument(documentId);
+    const owner = await this.db
+      .prepare("SELECT document_id FROM chapters WHERE id = ?")
+      .bind(chapterId)
+      .first<{ document_id: string }>();
+    if (owner && owner.document_id !== documentId) {
+      throw new WorkerHttpError(409, "CHAPTER_ID_CONFLICT", "章节 ID 已属于另一篇文档");
+    }
     const content = sanitizeDocumentForWrite(input.content);
     const revision = input.baseRevision + 1;
     const now = new Date().toISOString();

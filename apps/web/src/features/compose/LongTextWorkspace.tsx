@@ -1,5 +1,5 @@
 import type { ChapterTitleStyle } from "@ricetext/editor-core";
-import { FileUp, Save } from "lucide-react";
+import { FileUp, Save, Trash2 } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { Button } from "../../components/ui";
 import { ChapterRawPreview } from "../novel/ChapterRawPreview";
@@ -34,15 +34,19 @@ export function LongTextWorkspace({
   editor,
   chapterTitleStyle,
   hasLocalDraft,
+  hasStoredDraft,
   isPlaceholderData,
   uploadOpen,
   uploadDiff,
   preparingUpload,
   uploading,
+  hasUploadCheckpoint,
   onChapterTitleStyleChange,
   onImportFile,
   onRestoreDraft,
+  onClearDraft,
   onPrepareUpload,
+  onResumeUpload,
   onCancelUpload,
   onConfirmUpload,
   onExit,
@@ -61,18 +65,22 @@ export function LongTextWorkspace({
   editor: ReactNode;
   chapterTitleStyle: ChapterTitleStyle;
   hasLocalDraft: boolean;
+  hasStoredDraft: boolean;
   isPlaceholderData: boolean;
   uploadOpen: boolean;
   uploadDiff: ChapterUploadDiff | null;
   preparingUpload: boolean;
   uploading: boolean;
+  hasUploadCheckpoint: boolean;
   onChapterTitleStyleChange: (style: ChapterTitleStyle) => void;
   onImportFile: (file: File) => Promise<void>;
   onRestoreDraft: () => Promise<void>;
+  onClearDraft: () => Promise<boolean>;
   onPrepareUpload: () => Promise<void>;
+  onResumeUpload: () => void;
   onCancelUpload: () => void;
   onConfirmUpload: () => Promise<void>;
-  onExit: () => void;
+  onExit: () => boolean | Promise<boolean>;
   onAddChapter: (title: string, text: string) => boolean;
   onSelect: (index: number) => void;
   onDelete: (index: number) => void;
@@ -146,6 +154,17 @@ export function LongTextWorkspace({
                 恢复本机草稿
               </Button>
             ) : null}
+            {hasStoredDraft ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={uploading}
+                onClick={() => void onClearDraft()}
+              >
+                <Trash2 data-icon="inline-start" />
+                清除本机草稿
+              </Button>
+            ) : null}
             <Button
               size="sm"
               variant="outline"
@@ -163,21 +182,26 @@ export function LongTextWorkspace({
             <Button
               size="sm"
               disabled={preparingUpload || uploading}
-              onClick={() => void onPrepareUpload()}
+              onClick={() => {
+                if (hasUploadCheckpoint) onResumeUpload();
+                else void onPrepareUpload();
+              }}
             >
-              <Save size={14} />
+              <Save data-icon="inline-start" />
               {preparingUpload
                 ? "计算差异…"
                 : uploading
                   ? "上传中…"
-                  : "确定并上传"}
+                  : hasUploadCheckpoint
+                    ? "继续上传"
+                    : "确定并上传"}
             </Button>
-            <Button size="sm" variant="ghost" onClick={onExit}>
+            <Button size="sm" variant="ghost" onClick={() => void onExit()}>
               退出长文本
             </Button>
           </div>
         </div>
-        <div className="grid grid-cols-[340px_minmax(420px,1fr)_minmax(0,1.6fr)] items-start gap-3 p-3">
+        <div className="grid grid-cols-[340px_minmax(420px,1fr)_minmax(0,1.6fr)] items-start gap-3 p-3 max-[900px]:grid-cols-1">
           <ChapterSidebar
             chapters={chapters}
             activeIndex={activeIndex}
@@ -214,6 +238,7 @@ export function LongTextWorkspace({
           if (!nextOpen) onCancelUpload();
         }}
         onConfirm={() => void onConfirmUpload()}
+        onReprepare={() => void onPrepareUpload()}
       />
     </>
   );

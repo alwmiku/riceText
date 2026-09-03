@@ -16,6 +16,7 @@ import {
   saveDocumentSteps,
   submitSuggestion,
   uploadAsset,
+  uploadLongTextChapter,
   voteComment,
 } from './api';
 
@@ -343,6 +344,35 @@ describe('web api client', () => {
     const huge = { name: 'huge.png', type: 'image/png', size: 8 * 1024 * 1024 + 1 } as File;
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));
     await expect(uploadAsset(huge)).rejects.toMatchObject({ status: 422, message: '上传限制为 8 MB' });
+  });
+
+  it('长文本章节上传保留服务端冲突代码', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: {
+            code: 'CHAPTER_REVISION_CONFLICT',
+            message: '章节已被其他修改更新',
+            details: { currentRevision: 5 },
+          },
+        },
+        { status: 409 },
+      ),
+    );
+
+    await expect(
+      uploadLongTextChapter('article-a', 'chapter-a', {
+        title: '第一章',
+        order: 0,
+        content: { type: 'doc', content: [] },
+        hash: 'a'.repeat(64),
+        baseRevision: 4,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: 'CHAPTER_REVISION_CONFLICT',
+      details: { currentRevision: 5 },
+    });
   });
 
   it('间贴读取与赞踩覆盖服务器和离线回退', async () => {

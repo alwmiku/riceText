@@ -123,6 +123,8 @@ export default function ComposePage() {
     currentContent: RichTextNode;
   } | null>(null);
   const editorRef = useRef<Editor | null>(null);
+  const articleSwitchRef = useRef(false);
+  const [switchingArticle, setSwitchingArticle] = useState(false);
 
   const { data: chapterDirectory = [] } = useQuery({
     queryKey: ["forum", "chapters", activeDocumentId],
@@ -136,6 +138,7 @@ export default function ComposePage() {
     initialTitle: articleSelection.selectedDraftTitle,
   });
   const longText = useLongTextWorkspace({
+    documentId: activeDocumentId,
     content: compose.content,
     contentRef: compose.contentRef,
     replaceContent: compose.replaceContent,
@@ -350,7 +353,9 @@ export default function ComposePage() {
   const editor = (
     <RichTextEditor
       key={
-        longText.enabled ? `long-text-${longText.documentVersion}` : activeIndex
+        longText.enabled
+          ? `long-text-${activeDocumentId}-${longText.documentVersion}`
+          : `chapter-${activeDocumentId}-${activeIndex}`
       }
       content={longText.enabled ? longText.editorContent : editorContent}
       mode={mode}
@@ -414,16 +419,44 @@ export default function ComposePage() {
               articles={articleSelection.articles}
               value={activeDocumentId}
               canCreate={articleSelection.canCreate}
-              disabled={articleSelection.loading}
+              disabled={
+                switchingArticle || upload.preparing || upload.uploading
+              }
               open={newArticleDialogOpen}
               onOpenChange={setNewArticleDialogOpen}
-              onChange={(id) => {
-                articleSelection.setSelectedId(id);
-                setChapterIndex(0);
+              onChange={async (id) => {
+                if (articleSwitchRef.current) return;
+                articleSwitchRef.current = true;
+                setSwitchingArticle(true);
+                try {
+                  if (longText.enabled && !(await longText.close())) return;
+                  upload.cancel();
+                  articleSelection.setSelectedId(id);
+                  const stored = Number.parseInt(
+                    window.localStorage.getItem(`ricetext:active-chapter:${id}`) ?? "",
+                    10,
+                  );
+                  setChapterIndex(
+                    Number.isFinite(stored) && stored >= 0 ? stored : 0,
+                  );
+                } finally {
+                  articleSwitchRef.current = false;
+                  setSwitchingArticle(false);
+                }
               }}
-              onCreate={(title) => {
-                articleSelection.createArticle(title);
-                setChapterIndex(0);
+              onCreate={async (title) => {
+                if (articleSwitchRef.current) return;
+                articleSwitchRef.current = true;
+                setSwitchingArticle(true);
+                try {
+                  if (longText.enabled && !(await longText.close())) return;
+                  upload.cancel();
+                  articleSelection.createArticle(title);
+                  setChapterIndex(0);
+                } finally {
+                  articleSwitchRef.current = false;
+                  setSwitchingArticle(false);
+                }
               }}
             />
           ) : null}
@@ -433,7 +466,7 @@ export default function ComposePage() {
             variant={longText.enabled ? "secondary" : "outline"}
             aria-pressed={longText.enabled}
             onClick={() => {
-              if (longText.enabled) longText.close();
+              if (longText.enabled) void longText.close();
               else void longText.open();
             }}
           >
@@ -527,15 +560,19 @@ export default function ComposePage() {
           editor={<EditorErrorBoundary>{editor}</EditorErrorBoundary>}
           chapterTitleStyle={longText.chapterTitleStyle}
           hasLocalDraft={longText.hasLocalDraft}
+          hasStoredDraft={longText.hasStoredDraft}
           isPlaceholderData={compose.isPlaceholderData}
           uploadOpen={upload.open}
           uploadDiff={upload.diff}
           preparingUpload={upload.preparing}
           uploading={upload.uploading}
+          hasUploadCheckpoint={upload.hasCheckpoint}
           onChapterTitleStyleChange={longText.setChapterTitleStyle}
           onImportFile={longText.importFile}
           onRestoreDraft={longText.restoreDraft}
+          onClearDraft={longText.clearDraft}
           onPrepareUpload={upload.prepare}
+          onResumeUpload={upload.resume}
           onCancelUpload={upload.cancel}
           onConfirmUpload={upload.confirm}
           onExit={longText.close}

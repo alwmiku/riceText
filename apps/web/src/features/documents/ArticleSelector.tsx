@@ -60,6 +60,7 @@ export function ArticleSelector({
           type="button"
           size="sm"
           variant="outline"
+          disabled={disabled}
           onClick={() => setDialogOpen(true)}
         >
           <FilePlus2 data-icon="inline-start" />

@@ -6,6 +6,7 @@ describe("createLongTextDocument", () => {
   it("converts detected chapters to long-text blocks", () => {
     const document = createLongTextDocument(
       "第一章 起点\n第一章正文\n第二章 终点\n第二章正文",
+      "demo-post",
     );
 
     expect(document).toMatchObject({
@@ -37,9 +38,22 @@ describe("createLongTextDocument", () => {
     });
   });
 
+  it("isolates generated chapter IDs by document", () => {
+    const source = "第一章 起点\n正文";
+    const first = createLongTextDocument(source, "article-a");
+    const second = createLongTextDocument(source, "article-b");
+    const firstId = String(first.content?.[0]?.attrs?.chapterId);
+    const secondId = String(second.content?.[0]?.attrs?.chapterId);
+
+    expect(firstId).not.toBe(secondId);
+    expect(firstId).toMatch(/^lt-/);
+    expect(secondId).toMatch(/^lt-/);
+  });
+
   it("keeps leading extra material with its original range", () => {
     const document = createLongTextDocument(
       "番外：序曲\n番外正文\n第一章 起点\n正文",
+      "demo-post",
     );
     const blocks = document.content as Array<{
       attrs: { title: string; start: number; end: number };
@@ -53,7 +67,7 @@ describe("createLongTextDocument", () => {
 
   it("splits an oversized chapter without expanding it into paragraphs", () => {
     const source = "字".repeat(50_001);
-    const document = createLongTextDocument(source);
+    const document = createLongTextDocument(source, "demo-post");
     const blocks = document.content as Array<{
       type: string;
       attrs: { text: string };

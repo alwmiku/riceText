@@ -28,6 +28,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly details?: unknown,
+    readonly code = "UNKNOWN_ERROR",
   ) {
     super(message);
     this.name = "ApiError";
@@ -59,7 +60,7 @@ export function isServiceUnavailable(error: unknown): boolean {
 /** Convert the shared client's typed error to the Web host's public ApiError. */
 export function rethrowClientError(error: unknown): never {
   if (error instanceof ApiClientError) {
-    throw new ApiError(error.message, error.status, error.details);
+    throw new ApiError(error.message, error.status, error.details, error.code);
   }
   throw error;
 }

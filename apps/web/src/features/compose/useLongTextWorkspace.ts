@@ -10,12 +10,19 @@ import {
   type MutableRefObject,
 } from "react";
 import type { RichTextNode } from "../../lib/types";
+import { createId } from "../../lib/utils";
 import {
+  deleteLongTextValue,
   loadLongTextDraft,
   loadLongTextRaw,
+  saveLongTextDraft,
   saveLongTextRaw,
 } from "../../lib/long-text-draft-storage";
 import { createLongTextDocument } from "../editor/long-text/long-text-import";
+import {
+  longTextChapterId,
+  scopeLongTextChapterIds,
+} from "../editor/long-text/long-text-ids";
 import {
   appendGapLongTextChapter,
   appendLongTextChapter,
@@ -32,10 +39,13 @@ import {
 import { useLongTextDraftPersistence } from "./useLongTextDraftPersistence";
 import { useLongTextEditorBuffer } from "./useLongTextEditorBuffer";
 
-const LOCAL_LONG_TEXT_KEY = "ricetext:local-long-text:demo-post";
-const LOCAL_LONG_TEXT_RAW_KEY = "ricetext:local-long-text-raw:demo-post";
+const longTextDraftKey = (documentId: string) =>
+  `ricetext:local-long-text:${documentId}`;
+const longTextRawKey = (documentId: string) =>
+  `ricetext:local-long-text-raw:${documentId}`;
 
 interface LongTextWorkspaceOptions {
+  documentId: string;
   content: RichTextNode;
   contentRef: MutableRefObject<RichTextNode>;
   replaceContent: (next: RichTextNode) => void;
@@ -45,6 +55,7 @@ interface LongTextWorkspaceOptions {
 
 /** 长文本领域编排：管理模式切换、草稿恢复、章节命令和原文覆盖率。 */
 export function useLongTextWorkspace({
+  documentId,
   content,
   contentRef,
   replaceContent,
@@ -54,6 +65,7 @@ export function useLongTextWorkspace({
   // React state 驱动界面；ref 为异步流程和防抖回调提供同步的当前值。
   const [enabled, setEnabled] = useState(false);
   const [hasLocalDraft, setHasLocalDraft] = useState(false);
+  const [hasStoredDraft, setHasStoredDraft] = useState(false);
   const [documentVersion, setDocumentVersion] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const [chapterTitleStyle, setChapterTitleStyle] =
@@ -63,6 +75,7 @@ export function useLongTextWorkspace({
   const normalContentRef = useRef<RichTextNode | null>(null);
   // 每次异步打开/恢复递增令牌；旧请求返回时发现令牌失效便放弃写入。
   const operationRef = useRef(0);
+  const importWriteRef = useRef<Promise<void> | null>(null);
   const handleDraftError = useCallback(
     () => setNotice("本机草稿自动保存失败，请检查浏览器存储空间"),
     [setNotice],
@@ -71,13 +84,19 @@ export function useLongTextWorkspace({
     markChanged,
     suspend: suspendDraft,
     resume: resumeDraft,
+    acceptCurrent: acceptCurrentDraft,
     saveNow: saveDraftNow,
   } = useLongTextDraftPersistence({
     enabled,
-    draftKey: LOCAL_LONG_TEXT_KEY,
+    draftKey: longTextDraftKey(documentId),
     contentRef,
     onError: handleDraftError,
   });
+  const skipNextCloseSaveRef = useRef(false);
+  const markWorkspaceChanged = useCallback(() => {
+    skipNextCloseSaveRef.current = false;
+    markChanged();
+  }, [markChanged]);
   const {
     flush: flushEdits,
     updateEditor,
@@ -86,7 +105,7 @@ export function useLongTextWorkspace({
     contentRef,
     activeIndexRef,
     replaceContent,
-    onChanged: markChanged,
+    onChanged: markWorkspaceChanged,
   });
 
   // 结构变化递增 documentVersion，强制单章编辑器按新的章节边界重建。
@@ -94,9 +113,9 @@ export function useLongTextWorkspace({
     (next: RichTextNode) => {
       replaceContent(next);
       setDocumentVersion((version) => version + 1);
-      markChanged();
+      markWorkspaceChanged();
     },
-    [markChanged, replaceContent],
+    [markWorkspaceChanged, replaceContent],
   );
 
   const chapterSummaries = useMemo(
@@ -119,21 +138,25 @@ export function useLongTextWorkspace({
     // 普通正文先暂存；长文本使用独立内存文档并停用服务器 autosave。
     const operation = ++operationRef.current;
     normalContentRef.current = contentRef.current;
+    skipNextCloseSaveRef.current = false;
     suspendDraft();
+    acceptCurrentDraft();
     activeIndexRef.current = 0;
     setActiveIndex(0);
     setHasLocalDraft(false);
+    setHasStoredDraft(false);
     setAutosaveEnabled(false);
     setEnabled(true);
     replaceContent({ type: "doc", content: [] });
     setDocumentVersion((version) => version + 1);
     try {
       const [raw, stored] = await Promise.all([
-        loadLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY),
-        loadLongTextDraft(LOCAL_LONG_TEXT_KEY),
+        loadLongTextRaw(longTextRawKey(documentId)),
+        loadLongTextDraft(longTextDraftKey(documentId)),
       ]);
       if (operation !== operationRef.current) return;
       setRawText(raw ?? null);
+      setHasStoredDraft(Boolean(stored));
       if (stored && (stored.content ?? []).length > 0) {
         setHasLocalDraft(true);
         setNotice("检测到本机草稿，可点击“恢复本机草稿”");
@@ -147,7 +170,9 @@ export function useLongTextWorkspace({
       if (operation === operationRef.current) resumeDraft();
     }
   }, [
+    acceptCurrentDraft,
     contentRef,
+    documentId,
     replaceContent,
     resumeDraft,
     setAutosaveEnabled,
@@ -155,25 +180,45 @@ export function useLongTextWorkspace({
     suspendDraft,
   ]);
 
-  const close = useCallback(() => {
-    // 先落下防抖编辑，再恢复进入工作区前的普通正文和服务器 autosave。
+  const close = useCallback(async () => {
+    // 切换视图前先持久化最后一次缓冲编辑，再恢复普通正文。
     operationRef.current += 1;
+    const pendingImport = importWriteRef.current;
     flushEdits();
     suspendDraft();
+    try {
+      if (pendingImport) await pendingImport;
+      else if (!skipNextCloseSaveRef.current) await saveDraftNow();
+      if (pendingImport || !skipNextCloseSaveRef.current) setHasStoredDraft(true);
+    } catch {
+      handleDraftError();
+      resumeDraft();
+      return false;
+    }
+    skipNextCloseSaveRef.current = false;
     const normalContent = normalContentRef.current;
     normalContentRef.current = null;
     if (normalContent) replaceContent(normalContent);
     setEnabled(false);
     setAutosaveEnabled(true);
-  }, [flushEdits, replaceContent, setAutosaveEnabled, suspendDraft]);
+    return true;
+  }, [
+    flushEdits,
+    handleDraftError,
+    replaceContent,
+    resumeDraft,
+    saveDraftNow,
+    setAutosaveEnabled,
+    suspendDraft,
+  ]);
 
   const restoreDraft = useCallback(async () => {
     const operation = ++operationRef.current;
     suspendDraft();
     try {
       const [raw, stored] = await Promise.all([
-        loadLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY),
-        loadLongTextDraft(LOCAL_LONG_TEXT_KEY),
+        loadLongTextRaw(longTextRawKey(documentId)),
+        loadLongTextDraft(longTextDraftKey(documentId)),
       ]);
       if (operation !== operationRef.current) return;
       setRawText(raw ?? null);
@@ -184,9 +229,10 @@ export function useLongTextWorkspace({
       }
       activeIndexRef.current = 0;
       setActiveIndex(0);
-      replaceContent(stored);
+      replaceContent(scopeLongTextChapterIds(stored, documentId));
       setDocumentVersion((version) => version + 1);
       setHasLocalDraft(false);
+      setHasStoredDraft(true);
       setNotice("已恢复本机草稿");
     } catch {
       if (operation === operationRef.current)
@@ -194,34 +240,60 @@ export function useLongTextWorkspace({
     } finally {
       if (operation === operationRef.current) resumeDraft();
     }
-  }, [replaceContent, resumeDraft, setNotice, suspendDraft]);
+  }, [documentId, replaceContent, resumeDraft, setNotice, suspendDraft]);
 
   const importFile = useCallback(
     async (file: File) => {
+      const operation = ++operationRef.current;
+      const capturedDocumentId = documentId;
       try {
         const text = await file.text();
+        if (operation !== operationRef.current) return;
         if (!text.trim()) {
           setNotice("未导入空白文本");
           return;
         }
-        const imported = createLongTextDocument(text, chapterTitleStyle);
-        operationRef.current += 1;
+        const imported = createLongTextDocument(
+          text,
+          capturedDocumentId,
+          chapterTitleStyle,
+        );
+        suspendDraft();
+        const writes = Promise.all([
+          saveLongTextRaw(longTextRawKey(capturedDocumentId), text),
+          saveLongTextDraft(longTextDraftKey(capturedDocumentId), imported),
+        ]).then(() => undefined);
+        importWriteRef.current = writes;
+        try {
+          await writes;
+        } finally {
+          if (importWriteRef.current === writes) importWriteRef.current = null;
+        }
+        if (operation !== operationRef.current) return;
+        acceptCurrentDraft();
         resumeDraft();
         setHasLocalDraft(false);
+        setHasStoredDraft(true);
         activeIndexRef.current = 0;
         setActiveIndex(0);
         setRawText(text);
-        void saveLongTextRaw(LOCAL_LONG_TEXT_RAW_KEY, text).catch(() => {
-          setNotice("原文快照保存失败，原文对照列可能不可用");
-        });
         replaceLongTextDocument(imported);
         setEnabled(true);
         setNotice(`已导入 ${file.name}，共 ${text.length.toLocaleString()} 字`);
       } catch (error) {
+        resumeDraft();
         setNotice(error instanceof Error ? error.message : "文本导入失败");
       }
     },
-    [chapterTitleStyle, replaceLongTextDocument, resumeDraft, setNotice],
+    [
+      acceptCurrentDraft,
+      chapterTitleStyle,
+      documentId,
+      replaceLongTextDocument,
+      resumeDraft,
+      setNotice,
+      suspendDraft,
+    ],
   );
 
   const saveDraft = useCallback(async () => {
@@ -229,6 +301,7 @@ export function useLongTextWorkspace({
     try {
       await saveDraftNow();
       setHasLocalDraft(false);
+      setHasStoredDraft(true);
       setNotice("长文本已保存在本机；上传时将按章节分别提交");
       return true;
     } catch {
@@ -236,6 +309,36 @@ export function useLongTextWorkspace({
       return false;
     }
   }, [flushEdits, saveDraftNow, setNotice]);
+
+  const clearDraft = useCallback(async () => {
+    operationRef.current += 1;
+    suspendDraft();
+    try {
+      await Promise.all([
+        deleteLongTextValue(longTextDraftKey(documentId)),
+        deleteLongTextValue(longTextRawKey(documentId)),
+      ]);
+      setHasLocalDraft(false);
+      setHasStoredDraft(false);
+      setRawText(null);
+      skipNextCloseSaveRef.current = true;
+      acceptCurrentDraft();
+      setNotice("已清除当前文章的本机长文本草稿和原文快照");
+      return true;
+    } catch {
+      setNotice("清除本机长文本草稿失败，请检查浏览器存储");
+      return false;
+    } finally {
+      if (enabled) resumeDraft();
+    }
+  }, [
+    acceptCurrentDraft,
+    documentId,
+    enabled,
+    resumeDraft,
+    setNotice,
+    suspendDraft,
+  ]);
 
   const selectChapter = useCallback(
     (index: number) => {
@@ -298,7 +401,7 @@ export function useLongTextWorkspace({
       flushEdits();
       applyOperation(
         appendLongTextChapter(contentRef.current, {
-          chapterId: `manual-chapter-${Date.now()}`,
+          chapterId: longTextChapterId(documentId, createId("chapter")),
           title,
           text,
         }),
@@ -306,7 +409,7 @@ export function useLongTextWorkspace({
       setNotice(`已添加章节“${title || "未命名章节"}”`);
       return true;
     },
-    [applyOperation, contentRef, flushEdits, setNotice],
+    [applyOperation, contentRef, documentId, flushEdits, setNotice],
   );
 
   const createChapterFromGap = useCallback(
@@ -316,7 +419,7 @@ export function useLongTextWorkspace({
       if (
         applyOperation(
           appendGapLongTextChapter(contentRef.current, {
-            chapterId: `gap-chapter-${Date.now()}`,
+            chapterId: longTextChapterId(documentId, createId("chapter")),
             text,
             start,
             end,
@@ -326,7 +429,7 @@ export function useLongTextWorkspace({
         setNotice("已把未切分段落创建为新章节，请补充标题并核对内容");
       }
     },
-    [applyOperation, contentRef, flushEdits, setNotice],
+    [applyOperation, contentRef, documentId, flushEdits, setNotice],
   );
 
   const splitChapter = useCallback(
@@ -338,7 +441,7 @@ export function useLongTextWorkspace({
         current &&
         applyOperation(
           splitLongTextChapter(contentRef.current, index, {
-            chapterId: `chapter-${Date.now()}`,
+            chapterId: longTextChapterId(documentId, createId("chapter")),
             before,
             after,
           }),
@@ -349,12 +452,13 @@ export function useLongTextWorkspace({
         );
       }
     },
-    [applyOperation, contentRef, flushEdits, setNotice],
+    [applyOperation, contentRef, documentId, flushEdits, setNotice],
   );
 
   return {
     enabled,
     hasLocalDraft,
+    hasStoredDraft,
     documentVersion,
     activeIndex,
     chapterTitleStyle,
@@ -368,6 +472,7 @@ export function useLongTextWorkspace({
     restoreDraft,
     importFile,
     saveDraft,
+    clearDraft,
     flushEdits,
     updateEditor,
     selectChapter,

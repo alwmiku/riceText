@@ -87,6 +87,7 @@ function createProps() {
     editor: <div>编辑器</div> as ReactNode,
     chapterTitleStyle: "auto" as const,
     hasLocalDraft: true,
+    hasStoredDraft: true,
     isPlaceholderData: false,
     uploadOpen: true,
     uploadDiff: {
@@ -94,15 +95,28 @@ function createProps() {
       toUpdate: 1,
       added: 1,
       modified: 0,
+      uploaded: 0,
       gaps: 0,
-      rows: [{ id: "chapter-0", title: "第一章", status: "新增" as const }],
+      stale: false,
+      rows: [
+        {
+          id: "chapter-0",
+          title: "第一章",
+          action: "新增" as const,
+          status: "待上传" as const,
+          attempts: 0,
+        },
+      ],
     },
     preparingUpload: false,
     uploading: false,
+    hasUploadCheckpoint: false,
     onChapterTitleStyleChange: vi.fn(),
     onImportFile: vi.fn().mockResolvedValue(undefined),
     onRestoreDraft: vi.fn().mockResolvedValue(undefined),
+    onClearDraft: vi.fn().mockResolvedValue(true),
     onPrepareUpload: vi.fn().mockResolvedValue(undefined),
+    onResumeUpload: vi.fn(),
     onCancelUpload: vi.fn(),
     onConfirmUpload: vi.fn().mockResolvedValue(undefined),
     onExit: vi.fn(),
@@ -134,9 +148,11 @@ describe("LongTextWorkspace", () => {
     expect(props.onImportFile).toHaveBeenCalledWith(file);
 
     fireEvent.click(screen.getByRole("button", { name: "恢复本机草稿" }));
+    fireEvent.click(screen.getByRole("button", { name: "清除本机草稿" }));
     fireEvent.click(screen.getByRole("button", { name: "确定并上传" }));
     fireEvent.click(screen.getByRole("button", { name: "退出长文本" }));
     expect(props.onRestoreDraft).toHaveBeenCalledOnce();
+    expect(props.onClearDraft).toHaveBeenCalledOnce();
     expect(props.onPrepareUpload).toHaveBeenCalledOnce();
     expect(props.onExit).toHaveBeenCalledOnce();
 

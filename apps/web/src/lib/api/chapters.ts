@@ -4,11 +4,12 @@ import { api, isServiceUnavailable, rethrowClientError } from "./client";
 
 export async function listForumChapters(
   documentId: string,
+  options?: { strict?: boolean },
 ): Promise<ForumChapterItem[]> {
   try {
     return (await api().listChapters(documentId)).items;
   } catch (error) {
-    if (!isServiceUnavailable(error)) rethrowClientError(error);
+    if (options?.strict || !isServiceUnavailable(error)) rethrowClientError(error);
     return [];
   }
 }
@@ -72,8 +73,12 @@ export async function uploadLongTextChapter(
     baseRevision: number;
   },
 ): Promise<{ id: string; title: string; order: number; revision: number }> {
-  return api().saveNovelChapter(novelId, chapterId, {
-    ...input,
-    content: input.content as unknown as ContractDocumentEnvelope["content"],
-  });
+  try {
+    return await api().saveNovelChapter(novelId, chapterId, {
+      ...input,
+      content: input.content as unknown as ContractDocumentEnvelope["content"],
+    });
+  } catch (error) {
+    rethrowClientError(error);
+  }
 }

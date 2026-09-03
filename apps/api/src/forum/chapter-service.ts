@@ -209,9 +209,13 @@ export class ChapterService {
       baseRevision: number;
     },
   ): { id: string; title: string; order: number; revision: number } {
-    const existing = this.#db
-      .prepare("SELECT revision FROM chapters WHERE id = ? AND document_id = ?")
-      .get(chapterId, documentId) as { revision: number } | undefined;
+    const owner = this.#db
+      .prepare("SELECT document_id, revision FROM chapters WHERE id = ?")
+      .get(chapterId) as { document_id: string; revision: number } | undefined;
+    if (owner && owner.document_id !== documentId) {
+      throw new HttpError(409, "CHAPTER_ID_CONFLICT", "章节 ID 已属于另一篇文档");
+    }
+    const existing = owner;
     if (existing && existing.revision !== input.baseRevision)
       throw new HttpError(
         409,
@@ -233,7 +237,8 @@ export class ChapterService {
            revision = excluded.revision,
            content_json = excluded.content_json,
            content_hash = excluded.content_hash,
-           updated_at = excluded.updated_at`,
+           updated_at = excluded.updated_at
+         WHERE chapters.document_id = excluded.document_id`,
       )
       .run(
         chapterId,

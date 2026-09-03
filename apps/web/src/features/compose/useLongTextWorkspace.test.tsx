@@ -9,6 +9,7 @@ const storage = vi.hoisted(() => ({
   loadRaw: vi.fn(),
   saveDraft: vi.fn(),
   saveRaw: vi.fn(),
+  deleteValue: vi.fn(),
 }));
 
 vi.mock("../../lib/long-text-draft-storage", () => ({
@@ -16,6 +17,7 @@ vi.mock("../../lib/long-text-draft-storage", () => ({
   loadLongTextRaw: storage.loadRaw,
   saveLongTextDraft: storage.saveDraft,
   saveLongTextRaw: storage.saveRaw,
+  deleteLongTextValue: storage.deleteValue,
 }));
 
 const normalDocument: RichTextNode = {
@@ -25,7 +27,7 @@ const normalDocument: RichTextNode = {
   ],
 };
 
-function useHarness() {
+function useHarness(documentId = "article-a") {
   const [content, setContent] = useState<RichTextNode>(normalDocument);
   const contentRef = useRef(content);
   const replaceContent = useCallback((next: RichTextNode) => {
@@ -35,6 +37,7 @@ function useHarness() {
   const setAutosaveEnabled = useRef(vi.fn()).current;
   const setNotice = useRef(vi.fn()).current;
   const workspace = useLongTextWorkspace({
+    documentId,
     content,
     contentRef,
     replaceContent,
@@ -51,6 +54,7 @@ describe("useLongTextWorkspace", () => {
     storage.loadRaw.mockReset().mockResolvedValue(undefined);
     storage.saveDraft.mockReset().mockResolvedValue(undefined);
     storage.saveRaw.mockReset().mockResolvedValue(undefined);
+    storage.deleteValue.mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -98,10 +102,68 @@ describe("useLongTextWorkspace", () => {
       await vi.advanceTimersByTimeAsync(1200);
     });
     expect(storage.saveDraft).toHaveBeenCalled();
+    expect(storage.saveRaw).toHaveBeenCalledWith(
+      "ricetext:local-long-text-raw:article-a",
+      expect.any(String),
+    );
 
-    act(() => result.current.workspace.close());
+    await act(async () => result.current.workspace.clearDraft());
+    expect(storage.deleteValue).toHaveBeenCalledWith(
+      "ricetext:local-long-text:article-a",
+    );
+    expect(storage.deleteValue).toHaveBeenCalledWith(
+      "ricetext:local-long-text-raw:article-a",
+    );
+
+    await act(async () => result.current.workspace.close());
     expect(result.current.workspace.enabled).toBe(false);
     expect(result.current.content).toEqual(normalDocument);
     expect(result.current.setAutosaveEnabled).toHaveBeenLastCalledWith(true);
+  });
+
+  it("keeps the workspace open when the final draft save fails", async () => {
+    storage.saveDraft.mockRejectedValueOnce(new Error("quota exceeded"));
+    const { result } = renderHook(() => useHarness());
+
+    await act(async () => result.current.workspace.open());
+    let closed = true;
+    await act(async () => {
+      closed = await result.current.workspace.close();
+    });
+
+    expect(closed).toBe(false);
+    expect(result.current.workspace.enabled).toBe(true);
+    expect(result.current.setAutosaveEnabled).toHaveBeenLastCalledWith(false);
+  });
+
+  it("ignores an import that finishes after leaving its document", async () => {
+    let resolveText!: (text: string) => void;
+    const file = {
+      name: "slow.txt",
+      text: () =>
+        new Promise<string>((resolve) => {
+          resolveText = resolve;
+        }),
+    } as unknown as File;
+    const { result, rerender } = renderHook(
+      ({ documentId }) => useHarness(documentId),
+      { initialProps: { documentId: "article-a" } },
+    );
+
+    await act(async () => result.current.workspace.open());
+    let importing!: Promise<void>;
+    act(() => {
+      importing = result.current.workspace.importFile(file);
+    });
+    await act(async () => result.current.workspace.close());
+    rerender({ documentId: "article-b" });
+    await act(async () => {
+      resolveText("第一章 旧文章\n不应进入新文章");
+      await importing;
+    });
+
+    expect(result.current.workspace.enabled).toBe(false);
+    expect(result.current.content).toEqual(normalDocument);
+    expect(storage.saveRaw).not.toHaveBeenCalled();
   });
 });
