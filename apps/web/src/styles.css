@@ -214,6 +214,16 @@
   padding-inline-start: 1.6em;
 }
 
+/** 长标题悬停轮播：TextMarquee 组件按实际溢出距离驱动 --marquee-distance。 */
+@keyframes text-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-1 * var(--marquee-distance, 0px)));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -1,6 +1,7 @@
 import { Menu, PanelLeftOpen, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui";
+import { TextMarquee } from "../../components/ui/text-marquee";
 
 /** 章节导航项（来自文档切分）。 */
 export interface TocChapter {
@@ -21,7 +22,7 @@ function TocItems({
   return (
     <ol className="m-0 grid list-none gap-0.5 p-0">
       {chapters.map((chapter, index) => {
-        const [main, sub] = chapter.title.split(" · ");
+        const [main = "", sub] = chapter.title.split(" · ");
         const active = index === currentIndex;
         return (
           <li
@@ -36,11 +37,13 @@ function TocItems({
               type="button"
               aria-current={active ? "true" : undefined}
               onClick={() => onSelect(index)}
-              className="flex w-full cursor-pointer items-baseline gap-[7px] overflow-hidden rounded-[5px] border-0 bg-transparent px-2 py-1 text-left text-[13px] leading-[1.45] font-bold text-[#37414b] whitespace-nowrap text-ellipsis before:text-[#0f766e] before:content-['•'] hover:bg-[#eef5f3] hover:text-[#14766d]"
+              className="flex w-full cursor-pointer items-baseline gap-[7px] overflow-hidden rounded-[5px] border-0 bg-transparent px-2 py-1 text-left text-[13px] leading-[1.45] font-bold text-[#37414b] before:text-[#0f766e] before:content-['•'] hover:bg-[#eef5f3] hover:text-[#14766d]"
             >
-              <span className="min-w-0 flex-1 truncate">{main}</span>
+              <span className="min-w-0 flex-1">
+                <TextMarquee text={main} className="text-[13px] font-bold leading-[1.45]" />
+              </span>
               {sub ? (
-                <small className="truncate text-[10px] text-muted-foreground">
+                <small className="max-w-[45%] shrink-0 truncate text-[10px] text-muted-foreground">
                   {sub}
                 </small>
               ) : null}

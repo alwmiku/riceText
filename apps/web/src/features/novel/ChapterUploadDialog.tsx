@@ -13,6 +13,7 @@ import {
 } from "../../components/ui/marker";
 import { Progress } from "../../components/ui/progress";
 import { ScrollArea } from "../../components/ui/scroll-area";
+import { TextMarquee } from "../../components/ui/text-marquee";
 import { cn } from "../../lib/utils";
 
 export type ChapterUploadAction = "新增" | "修改" | "未变化";
@@ -100,9 +101,10 @@ function ChapterListRow({
       className="flex min-w-0 items-center gap-3 border-b px-1.5 py-1.5 text-xs last:border-b-0"
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">
-          {index + 1}. {row.title}
-        </p>
+        <TextMarquee
+          text={(index + 1) + ". " + row.title}
+          className="text-xs font-medium"
+        />
         <p className="truncate text-muted-foreground">
           {row.action}
           {row.attempts > 0 ? " · 已尝试 " + row.attempts + " 次" : ""}
@@ -172,7 +174,8 @@ function VirtualChapterList({ rows }: { rows: readonly ChapterUploadRow[] }) {
   return (
     <ScrollArea
       ref={rootRef}
-      className="min-h-0 flex-1 [&_[data-slot=scroll-area-thumb]]:rounded-full [&_[data-slot=scroll-area-thumb]]:bg-muted-foreground/40 [&_[data-slot=scroll-area-thumb]]:hover:bg-muted-foreground/60 [&_[data-slot=scroll-area-thumb]]:transition-colors"
+      type="auto"
+      className="min-h-0 flex-1 [&_[data-slot=scroll-area-thumb]]:rounded-full [&_[data-slot=scroll-area-thumb]]:bg-muted-foreground/45 [&_[data-slot=scroll-area-thumb]]:hover:bg-muted-foreground/65 [&_[data-slot=scroll-area-thumb]]:transition-colors"
     >
       <div
         className="relative w-full"
