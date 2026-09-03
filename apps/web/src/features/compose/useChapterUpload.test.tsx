@@ -813,4 +813,53 @@ describe("useChapterUpload", () => {
     ]);
   });
 
+  it("目标顺序被服务器占位行占用：先把占位行暂存腾位再批量写入", async () => {
+    const one = () => ({
+      type: "doc",
+      content: [chapter("new", "新章", "正文")],
+    });
+    // 服务器目录只有一篇「正文」占位行（位于 order 0），本地新章 id 不同。
+    mocks.list.mockResolvedValue([
+      { id: "article-0-chapter-0-abc", order: 0, revision: 1 },
+    ]);
+    mocks.sync.mockResolvedValue({
+      toUpdate: ["new"],
+      existing: ["article-0-chapter-0-abc"],
+    });
+    const notice = vi.fn();
+    const { result } = renderHook(
+      () =>
+        useChapterUpload({
+          novelId: "demo-post",
+          getDocument: one,
+          getCoverage: () => [],
+          onNotice: notice,
+        }),
+      { wrapper },
+    );
+
+    await act(async () => result.current.prepare());
+    await act(async () => result.current.confirm());
+
+    // 先暂存占位行到临时顺序，再把新章写入目标顺序。
+    expect(mocks.stage).toHaveBeenCalledTimes(1);
+    const stagePayload = mocks.stage.mock.calls[0]?.[1] as Array<
+      Record<string, unknown>
+    >;
+    expect(stagePayload).toEqual([
+      {
+        id: "article-0-chapter-0-abc",
+        temporaryOrder: 1,
+        baseRevision: 1,
+      },
+    ]);
+    const batchPayload = mocks.batchUpload.mock.calls[0]?.[1] as Array<
+      Record<string, unknown>
+    >;
+    expect(batchPayload).toHaveLength(1);
+    expect(batchPayload[0]).toMatchObject({ id: "new", order: 0 });
+    expect(result.current.diff?.rows[0]).toMatchObject({ status: "已上传" });
+  });
+
+
 });

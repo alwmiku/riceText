@@ -79,21 +79,19 @@ function isBlockingUploadError(error: unknown): boolean {
   );
 }
 
-/** 与 prepare 阶段一致的章节 id 解析：目录已有 id > 作用域 id > 按顺序取目录行。 */
+/**
+ * 章节 id 只认本地草稿自带的语义 id（作用域化）：绝不按服务器「同位置」
+ * 回退对齐——服务器上同顺序的行可能是「正文」占位行或旧存储行，位置对齐
+ * 会把几千个本地章节错认成同一批已存在章节（改数/冲突假象）。新文件上传
+ * 模型下：id 相同就复用，id 不同就是新章。
+ */
 function resolveChapterId(
   node: RichTextNode,
   order: number,
-  directoryById: ReadonlyMap<string, { id: string }>,
-  directoryByOrder: ReadonlyMap<number, { id: string }>,
   novelId: string,
 ): string {
   const rawId = String(node.attrs?.chapterId ?? `chapter-${order}`);
-  const scopedId = longTextChapterId(novelId, rawId);
-  return directoryById.has(rawId)
-    ? rawId
-    : directoryById.has(scopedId)
-      ? scopedId
-      : (directoryByOrder.get(order)?.id ?? scopedId);
+  return longTextChapterId(novelId, rawId);
 }
 
 /** 服务器章节目录行（buildCheckpoint 使用的最小投影）。 */
@@ -138,13 +136,7 @@ async function buildCheckpoint(
     const converted = await Promise.all(
       nodes.slice(offset, offset + 64).map(
         async (node, order): Promise<UploadCheckpointChapter> => {
-          const id = resolveChapterId(
-            node,
-            order,
-            directoryById,
-            directoryByOrder,
-            capturedNovelId,
-          );
+          const id = resolveChapterId(node, order, capturedNovelId);
           const title = String(node.attrs?.title ?? "未命名章节");
           const normalizedNode: RichTextNode = {
             ...node,
@@ -190,9 +182,13 @@ async function buildCheckpoint(
   );
   const toUpdate = new Set(sync.toUpdate);
   const existing = new Set(sync.existing);
+  // 需要暂存的场景：本地章节已存在但服务器顺序不同，或目标顺序被其他
+  // 服务器章节（如「正文」占位行）占用——先统一挪到全局唯一临时顺序。
   const hasMoves = chapters.some((chapter) => {
     const remote = directoryById.get(chapter.id);
-    return remote && remote.order !== chapter.order;
+    if (remote) return remote.order !== chapter.order;
+    const occupant = directoryByOrder.get(chapter.order);
+    return occupant !== undefined && occupant.id !== chapter.id;
   });
   const checkpoint: UploadCheckpointV2 = {
     version: 2,
@@ -614,11 +610,17 @@ export function useChapterUpload({
           break;
         }
         if (fatal) {
+          // 带上服务端错误码与冲突章节 id，便于直接定位是哪个 id/顺序冲突。
+          const serverDetail =
+            (fatal.error instanceof ApiError
+              ? `${fatal.error.code} ${fatal.error.details ? JSON.stringify(fatal.error.details) : ""}`
+              : "") || undefined;
           for (const chapter of fatal.batch) {
             const state = stateById.get(chapter.id)!;
             state.status = "失败";
             state.error =
-              fatal.error instanceof Error ? fatal.error.message : "上传失败";
+              (fatal.error instanceof Error ? fatal.error.message : "上传失败") +
+              (serverDetail ? `（${serverDetail}）` : "");
             state.retryable = fatal.retryable;
           }
           await persistCheckpoint({ ...checkpoint });
@@ -629,7 +631,7 @@ export function useChapterUpload({
               (fatal.error.status === 422 || fatal.error.status === 413));
           onNoticeRef.current(
             fatalBlocking
-              ? `“${fatal.batch[0]?.title ?? ""}”存在版本、结构或大小冲突，请重新检查差异`
+              ? `“${fatal.batch[0]?.title ?? ""}”存在版本、结构或大小冲突${serverDetail}，请重新检查差异`
               : fatal.retryable
                 ? "网络中断或服务端繁忙，已暂停；可点击继续上传重试"
                 : `“${fatal.batch[0]?.title ?? ""}”上传失败，请重新检查差异`,
@@ -675,11 +677,12 @@ export function useChapterUpload({
           return true;
         }
         for (const item of batch) {
-          const state = stateById.get(item.id)!;
+          const state = stateById.get(item.id);
           const result = outcome.value.chapters.find(
             (entry) => entry.id === item.id,
           );
-          state.baseRevision = result?.revision ?? state.baseRevision;
+          // 暂存项可能是计划外的占位行（为目标顺序腾位），只更新计划内章节。
+          if (state) state.baseRevision = result?.revision ?? state.baseRevision;
         }
         if (await afterBatch({ ...checkpoint }, operation)) return true;
         await yieldToUI();
@@ -781,27 +784,45 @@ export function useChapterUpload({
       const freshOrderById = new Map(
         freshDirectory.map((chapter) => [chapter.id, chapter]),
       );
+      const occupiedByOrder = new Map(
+        freshDirectory.map((chapter) => [chapter.order, chapter]),
+      );
       const maxServerOrder = Math.max(
         -1,
         ...freshDirectory.map((chapter) => chapter.order),
       );
-      // 用 Map 查找代替 O(n²) 的数组 find，几千章时避免每章线性扫描目录。
-      const moving = active.filter((chapter) => {
-        const remote = freshOrderById.get(chapter.id);
-        return remote && remote.order !== chapter.order;
-      });
-      if (moving.length > 0 && checkpoint.reorderPhase === "staging") {
-        for (const [index, chapter] of moving.entries()) {
-          if (!(chapter.id in checkpoint.temporaryOrders)) {
-            checkpoint.temporaryOrders[chapter.id] = maxServerOrder + index + 1;
-          }
+      // 需要暂存的服务器章节：本地章节已存在但服务器顺序不同，或目标顺序
+      // 被其他服务器章节（占位行/旧行）占用——用 Map 降低扫描成本。
+      // key = 被挪动的服务器行 id；value = 需要腾出的目标顺序（用于派生临时顺序）。
+      const stagePlan = new Map<string, number>();
+      for (const chapter of active) {
+        const owned = freshOrderById.get(chapter.id);
+        if (owned && owned.order !== chapter.order) {
+          stagePlan.set(owned.id, chapter.order);
+          continue;
         }
-        const stagedItems = moving.map(
-          (chapter): StageChapterReorderItem => ({
-            id: chapter.id,
-            temporaryOrder: checkpoint.temporaryOrders[chapter.id]!,
+        if (owned) continue;
+        const occupant = occupiedByOrder.get(chapter.order);
+        if (occupant && occupant.id !== chapter.id) {
+          stagePlan.set(occupant.id, chapter.order);
+        }
+      }
+      if (stagePlan.size > 0 && checkpoint.reorderPhase === "staging") {
+        let next = 0;
+        for (const rowId of stagePlan.keys()) {
+          if (!(rowId in checkpoint.temporaryOrders)) {
+            checkpoint.temporaryOrders[rowId] = maxServerOrder + next + 1;
+          }
+          next += 1;
+        }
+        const stagedItems = [...stagePlan.keys()].map(
+          (rowId): StageChapterReorderItem => ({
+            id: rowId,
+            temporaryOrder: checkpoint.temporaryOrders[rowId]!,
             baseRevision:
-              revisionById.get(chapter.id) ?? chapter.baseRevision,
+              revisionById.get(rowId) ??
+              freshOrderById.get(rowId)?.revision ??
+              0,
           }),
         );
         progressRef.current = {
@@ -810,10 +831,10 @@ export function useChapterUpload({
         };
         if (await uploadStaging(checkpoint, operation, stagedItems)) return;
       }
-      // 非移动章节以最新目录版本为准；移动章节保留暂存后的版本（暂存已递增）。
-      const movingIds = new Set(moving.map((chapter) => chapter.id));
+      // 被暂存挪动的行不在上传范围内；其余章节以最新目录版本为准。
+      const stagedRowIds = new Set(stagePlan.keys());
       for (const chapter of active) {
-        if (movingIds.has(chapter.id)) continue;
+        if (stagedRowIds.has(chapter.id)) continue;
         const refreshed = revisionById.get(chapter.id);
         if (refreshed !== undefined) chapter.baseRevision = refreshed;
       }

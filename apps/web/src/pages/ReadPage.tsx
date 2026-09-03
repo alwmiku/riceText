@@ -121,13 +121,16 @@ export default function ReadPage() {
   });
   const headerSavedAt = activeChapterStatus?.savedAt ?? document.savedAt;
   const headerRevision = activeChapterStatus?.revision ?? document.revision;
+  // 正文优先使用已上传章节内容；目录行是占位行（未真正上传正文，读取 404）
+  // 时回退到文档正文按标题切分的章节块，保证文章仍然可读（间贴、黑幕等
+  // 节点只存在于文档正文中，占位行不能把它们吞掉）。
   const chapterDoc = useMemo<JSONContent>(
     () =>
       (uploadedChapter?.content as unknown as JSONContent | undefined) ?? {
         type: "doc",
-        content: visibleChapters[activeIndex]?.blocks ?? [],
+        content: chapters[activeIndex]?.blocks ?? [],
       },
-    [activeIndex, uploadedChapter?.content, visibleChapters],
+    [activeIndex, uploadedChapter?.content, chapters],
   );
   const { data: comments = [] } = useQuery<CommentReply[]>({
     queryKey: ["comments", document.id, threadId],
