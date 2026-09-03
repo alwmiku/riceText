@@ -47,6 +47,35 @@ describe("ChapterService chapter ownership", () => {
       }),
     ).toThrowError(expect.objectContaining({ code: "CHAPTER_ID_CONFLICT", status: 409 }));
 
+    expect(service.chapterContent("article-a", "shared-chapter")).toMatchObject({
+      id: "shared-chapter",
+      documentId: "article-a",
+      content,
+    });
+    service.saveChapter("article-a", "converted-chapter", {
+      title: "转换章节",
+      order: 1,
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "longTextBlock",
+            attrs: { title: "转换章节", text: "第一行\r\n\r\n第三行" },
+          },
+        ],
+      } as never,
+      hash: "converted-hash",
+      baseRevision: 0,
+    });
+    const converted = service.chapterContent("article-a", "converted-chapter");
+    expect(converted.content.content.map((node) => node.type)).toEqual([
+      "heading",
+      "paragraph",
+      "paragraph",
+      "paragraph",
+    ]);
+    expect(JSON.stringify(converted.content)).not.toContain("longTextBlock");
+
     expect(
       db.prepare(
         "SELECT document_id, title, content_hash, revision FROM chapters WHERE id = ?",

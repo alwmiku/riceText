@@ -1,4 +1,14 @@
-import { ChapterSchema, type Chapter, type TiptapDocument } from "@ricetext/contracts";
+import {
+  convertLongTextBlocksToChapters,
+  type JSONContent,
+} from "@ricetext/document-core";
+import {
+  ChapterContentSchema,
+  ChapterSchema,
+  type Chapter,
+  type ChapterContent,
+  type TiptapDocument,
+} from "@ricetext/contracts";
 import { chapterStorageId, sanitizeDocumentForWrite } from "@ricetext/server-core";
 import { WorkerHttpError } from "../http-error";
 
@@ -48,6 +58,22 @@ export class D1ChapterRepository {
       )
       .bind(chapterId, documentId)
       .first<ChapterRow>();
+  }
+
+  async content(documentId: string, chapterId: string): Promise<ChapterContent> {
+    const row = await this.db
+      .prepare(
+        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden, content_json " +
+          "FROM chapters WHERE id = ? AND document_id = ?",
+      )
+      .bind(chapterId, documentId)
+      .first<ChapterRow & { content_json: string | null }>();
+    if (!row?.content_json)
+      throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节正文不存在");
+    return ChapterContentSchema.parse({
+      ...chapter(row),
+      content: convertLongTextBlocksToChapters(JSON.parse(row.content_json)),
+    });
   }
 
   async create(
@@ -161,7 +187,9 @@ export class D1ChapterRepository {
     if (owner && owner.document_id !== documentId) {
       throw new WorkerHttpError(409, "CHAPTER_ID_CONFLICT", "章节 ID 已属于另一篇文档");
     }
-    const content = sanitizeDocumentForWrite(input.content);
+    const content = sanitizeDocumentForWrite(
+      convertLongTextBlocksToChapters(input.content as unknown as JSONContent),
+    );
     const revision = input.baseRevision + 1;
     const now = new Date().toISOString();
     try {

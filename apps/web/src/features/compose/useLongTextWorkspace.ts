@@ -467,6 +467,8 @@ export function useLongTextWorkspace({
     coverageChapters,
     editorContent,
     setChapterTitleStyle,
+    getBaseContent: () =>
+      normalContentRef.current ?? { type: "doc", content: [{ type: "paragraph" }] },
     open,
     close,
     restoreDraft,

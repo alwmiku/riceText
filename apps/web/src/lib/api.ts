@@ -9,6 +9,7 @@ export {
 export {
   createDocumentChapter,
   deleteDocumentChapter,
+  getLongTextChapter,
   listForumChapters,
   setDocumentChapterHidden,
   syncLongTextChapters,

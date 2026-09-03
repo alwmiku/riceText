@@ -14,6 +14,14 @@ export async function listForumChapters(
   }
 }
 
+export async function getLongTextChapter(
+  documentId: string,
+  chapterId: string,
+  signal?: AbortSignal,
+) {
+  return api().getNovelChapter(documentId, chapterId, signal);
+}
+
 export interface ChapterSyncItem {
   id: string;
   title: string;

@@ -703,6 +703,21 @@ describe("RiceText Worker", () => {
     });
   });
 
+  it("reads an uploaded chapter body by document and chapter ID", async () => {
+    const response = await exports.default.fetch(
+      new Request(
+        "http://example.com/api/forum/novels/demo-post/chapters/chapter-0",
+        { headers: { "x-user-id": "reader" } },
+      ),
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      id: "chapter-0",
+      documentId: "demo-post",
+      content: { type: "doc" },
+    });
+  });
+
   it("guards single-chapter saves with an atomic revision predicate", async () => {
     const save = (title: string) =>
       exports.default.fetch(

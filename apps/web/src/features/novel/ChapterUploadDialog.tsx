@@ -166,10 +166,13 @@ export function ChapterUploadDialog({
             <Button
               size="sm"
               variant="ghost"
-              disabled={uploading}
               onClick={() => onOpenChange(false)}
             >
-              {complete ? "关闭" : "稍后继续"}
+              {complete
+                ? "关闭"
+                : uploading
+                  ? "本章完成后暂停"
+                  : "稍后继续"}
             </Button>
             {!complete ? (
               diff.stale || hasBlockingConflict ? (

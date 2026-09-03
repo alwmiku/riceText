@@ -28,6 +28,7 @@ import { TocSidebar } from "../features/viewer/TocSidebar";
 import {
   getCommentThread,
   getDocument,
+  getLongTextChapter,
   listForumChapters,
   missingDocument,
   listSuggestions,
@@ -87,7 +88,15 @@ export default function ReadPage() {
   // 隐藏章节已经由服务端按 sort_order 从正文和目录中同时裁剪；前端不能再用
   // 存储层 chapter id 对正文派生 id 二次过滤，否则多文章作用域下会发生错配。
   const visibleChapters =
-    (document.content.content?.length ?? 0) === 0 ? [] : chapters;
+    chapterDirectory.length > 0
+      ? chapterDirectory.map((chapter) => ({
+          id: chapter.id,
+          title: chapter.title,
+          blocks: [] as JSONContent[],
+        }))
+      : (document.content.content?.length ?? 0) === 0
+        ? []
+        : chapters;
   const activeIndex = Math.min(
     chapterIndex,
     Math.max(0, visibleChapters.length - 1),
@@ -96,11 +105,29 @@ export default function ReadPage() {
   // 与版本号（无目录行时回退到文档级真实数据）。章节标题由正文自带的标题承担，
   // 头部不重复展示。
   const activeChapterStatus = chapterDirectory[activeIndex];
+  const { data: uploadedChapter } = useQuery({
+    queryKey: [
+      "forum",
+      "chapter-content",
+      documentId,
+      activeChapterStatus?.id,
+    ],
+    queryFn: ({ signal }) =>
+      getLongTextChapter(documentId, activeChapterStatus!.id, signal),
+    enabled:
+      Boolean(documentId) &&
+      Boolean(activeChapterStatus?.id) &&
+      activeChapterStatus!.revision > 0,
+  });
   const headerSavedAt = activeChapterStatus?.savedAt ?? document.savedAt;
   const headerRevision = activeChapterStatus?.revision ?? document.revision;
   const chapterDoc = useMemo<JSONContent>(
-    () => ({ type: "doc", content: visibleChapters[activeIndex]?.blocks ?? [] }),
-    [visibleChapters, activeIndex],
+    () =>
+      (uploadedChapter?.content as unknown as JSONContent | undefined) ?? {
+        type: "doc",
+        content: visibleChapters[activeIndex]?.blocks ?? [],
+      },
+    [activeIndex, uploadedChapter?.content, visibleChapters],
   );
   const { data: comments = [] } = useQuery<CommentReply[]>({
     queryKey: ["comments", document.id, threadId],

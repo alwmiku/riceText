@@ -12,6 +12,7 @@ import ReadPage from './ReadPage';
 const mocks = vi.hoisted(() => ({
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
+  getLongTextChapter: vi.fn(),
   listForumChapters: vi.fn(),
   listDocuments: vi.fn(),
   listSuggestionBatches: vi.fn(),
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../lib/api', () => ({
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
+  getLongTextChapter: mocks.getLongTextChapter,
   missingDocument: (id: string) => ({
     id,
     title: '未命名文章',
@@ -88,6 +90,16 @@ function renderPage(identity: SeedIdentity, initialPath = '/read') {
 describe('ReadPage', () => {
   beforeEach(() => {
     mocks.getDocument.mockReset().mockResolvedValue(interactiveDocument);
+    mocks.getLongTextChapter.mockReset().mockResolvedValue({
+      id: "chapter-0",
+      title: "正文",
+      order: 0,
+      documentId: "demo-post",
+      revision: 1,
+      savedAt: interactiveDocument.savedAt,
+      hidden: false,
+      content: interactiveDocument.content,
+    });
     mocks.getCommentThread.mockReset().mockResolvedValue(seedComments);
     mocks.listForumChapters.mockReset().mockResolvedValue([]);
     mocks.listDocuments.mockReset().mockResolvedValue([
@@ -220,6 +232,19 @@ describe('ReadPage', () => {
       },
     };
     mocks.getDocument.mockResolvedValueOnce(chapterDoc);
+    mocks.getLongTextChapter.mockResolvedValueOnce({
+      id: 'chapter-0',
+      title: '第一章 潮汐表',
+      order: 0,
+      documentId: 'demo-post',
+      revision: 6,
+      savedAt: '2026-09-02T01:08:00.000Z',
+      hidden: false,
+      content: {
+        type: 'doc',
+        content: chapterDoc.content.content?.slice(0, 2) ?? [],
+      },
+    });
     mocks.listForumChapters.mockResolvedValueOnce([
       {
         id: 'chapter-0',
@@ -250,6 +275,58 @@ describe('ReadPage', () => {
     expect(
       screen.getByText(formatTime('2026-09-02T01:08:00.000Z')),
     ).toBeInTheDocument();
+  });
+
+  it('主文档为空时按目录读取并展示分章上传的正文', async () => {
+    mocks.getDocument.mockResolvedValueOnce({
+      ...interactiveDocument,
+      content: { type: 'doc', content: [] },
+    });
+    mocks.listForumChapters.mockResolvedValueOnce([
+      {
+        id: 'uploaded-chapter',
+        title: '上传章节',
+        order: 0,
+        documentId: 'demo-post',
+        revision: 2,
+        savedAt: '2026-09-03T09:00:00.000Z',
+        hidden: false,
+      },
+    ]);
+    mocks.getLongTextChapter.mockResolvedValueOnce({
+      id: 'uploaded-chapter',
+      title: '上传章节',
+      order: 0,
+      documentId: 'demo-post',
+      revision: 2,
+      savedAt: '2026-09-03T09:00:00.000Z',
+      hidden: false,
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'longTextBlock',
+            attrs: {
+              chapterId: 'uploaded-chapter',
+              title: '上传章节',
+              text: '这是已经分章上传的正文。',
+              order: 0,
+            },
+          },
+        ],
+      },
+    });
+
+    renderPage(identities[1]!, '/read?chapter=0');
+
+    expect(
+      await screen.findByText('这是已经分章上传的正文。'),
+    ).toBeInTheDocument();
+    expect(mocks.getLongTextChapter).toHaveBeenCalledWith(
+      'demo-post',
+      'uploaded-chapter',
+      expect.anything(),
+    );
   });
 
   it('读者的正文和目录请求都绑定当前文章 ID', async () => {

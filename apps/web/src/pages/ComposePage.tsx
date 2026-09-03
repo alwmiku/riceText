@@ -28,8 +28,10 @@ import { RichTextEditor } from "../features/editor/RichTextEditor";
 import {
   deleteDocumentChapter,
   getCommentThread,
+  getLongTextChapter,
   listForumChapters,
   setDocumentChapterHidden,
+  uploadLongTextChapter,
 } from "../lib/api";
 import { getRevision } from "../lib/api/revisions";
 import {
@@ -44,7 +46,7 @@ import type {
   EditorMode,
   RichTextNode,
 } from "../lib/types";
-import { cn } from "../lib/utils";
+import { cn, sha256Hex } from "../lib/utils";
 
 const CHINESE_NUMERALS = [
   "零",
@@ -153,6 +155,8 @@ export default function ComposePage() {
       return compose.contentRef.current;
     },
     getCoverage: () => longText.coverageChapters,
+    ensureDocument: () =>
+      compose.ensureServerDocument(longText.getBaseContent()),
     onNotice: setNotice,
   });
 
@@ -160,26 +164,55 @@ export default function ComposePage() {
     () => splitDocumentByHeadings(compose.content),
     [compose.content],
   );
-  const displayedChapters = compose.articleStarted ? chapters : [];
-  const activeIndex = Math.min(chapterIndex, Math.max(0, chapters.length - 1));
+  const usesUploadedChapters =
+    (compose.content.content?.length ?? 0) === 0 &&
+    chapterDirectory.some((chapter) => chapter.revision > 0);
+  const navigationChapters = usesUploadedChapters
+    ? chapterDirectory.map((chapter) => ({
+        id: chapter.id,
+        title: chapter.title,
+        blocks: [],
+        start: chapter.order,
+        end: chapter.order + 1,
+      }))
+    : chapters;
+  const displayedChapters = compose.articleStarted ? navigationChapters : [];
+  const activeIndex = Math.min(
+    chapterIndex,
+    Math.max(0, navigationChapters.length - 1),
+  );
   // 目录「章节总结」的真实数据：字数按当前章节正文的非空白字符统计，
   // 修订号取该章节在服务端目录中的独立版本号。
-  const activeCharCount = useMemo(() => {
-    const chapter = chapters[activeIndex];
-    if (!chapter) return 0;
-    return chapterTextLines(chapter.blocks)
-      .join("")
-      .replace(/\s+/gu, "").length;
-  }, [activeIndex, chapters]);
   const activeChapterStatus = chapterDirectory[activeIndex];
+  const uploadedChapterKey = [
+    "forum",
+    "chapter-content",
+    activeDocumentId,
+    activeChapterStatus?.id,
+  ] as const;
+  const { data: uploadedChapter } = useQuery({
+    queryKey: uploadedChapterKey,
+    queryFn: ({ signal }) =>
+      getLongTextChapter(activeDocumentId, activeChapterStatus!.id, signal),
+    enabled: usesUploadedChapters && Boolean(activeChapterStatus?.id),
+  });
+  const activeCharCount = useMemo(() => {
+    const blocks = usesUploadedChapters
+      ? ((uploadedChapter?.content.content ?? []) as RichTextNode[])
+      : (chapters[activeIndex]?.blocks ?? []);
+    return chapterTextLines(blocks).join("").replace(/\s+/gu, "").length;
+  }, [activeIndex, chapters, uploadedChapter?.content.content, usesUploadedChapters]);
   const activeRevision = activeChapterStatus?.revision ?? 0;
   const activeSavedAt =
     compose.autosave.state === "saved"
       ? (activeChapterStatus?.savedAt ?? compose.document.savedAt)
       : compose.autosave.savedAt;
   const editorContent = useMemo<RichTextNode>(
-    () => ({ type: "doc", content: chapters[activeIndex]?.blocks ?? [] }),
-    [activeIndex, chapters],
+    () =>
+      usesUploadedChapters && uploadedChapter
+        ? (uploadedChapter.content as RichTextNode)
+        : { type: "doc", content: chapters[activeIndex]?.blocks ?? [] },
+    [activeIndex, chapters, uploadedChapter, usesUploadedChapters],
   );
   const { data: comments = [] } = useQuery<CommentReply[]>({
     queryKey: ["comments", compose.document.id, threadId],
@@ -317,6 +350,42 @@ export default function ComposePage() {
       await longText.saveDraft();
       return;
     }
+    if (usesUploadedChapters && activeChapterStatus) {
+      const snapshot = latestContent ?? editorContent;
+      try {
+        const hash = await sha256Hex(
+          JSON.stringify({
+            title: activeChapterStatus.title,
+            order: activeChapterStatus.order,
+            content: snapshot,
+          }),
+        );
+        const saved = await uploadLongTextChapter(
+          activeDocumentId,
+          activeChapterStatus.id,
+          {
+            title: activeChapterStatus.title,
+            order: activeChapterStatus.order,
+            content: snapshot,
+            hash,
+            baseRevision:
+              uploadedChapter?.revision ?? activeChapterStatus.revision,
+          },
+        );
+        queryClient.setQueryData(uploadedChapterKey, (current: typeof uploadedChapter) =>
+          current
+            ? { ...current, content: snapshot, revision: saved.revision }
+            : current,
+        );
+        void queryClient.invalidateQueries({
+          queryKey: ["forum", "chapters", activeDocumentId],
+        });
+        setNotice("章节已保存为版本 " + String(saved.revision));
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "章节保存失败");
+      }
+      return;
+    }
     const snapshot =
       latestContent ??
       (editorRef.current?.getJSON() as RichTextNode | undefined);
@@ -366,7 +435,13 @@ export default function ComposePage() {
       onChange={(next) => {
         if (compose.isPlaceholderData) return;
         if (longText.enabled) longText.updateEditor(next);
-        else compose.updateChapter(activeIndex, next);
+        else if (usesUploadedChapters && activeChapterStatus) {
+          queryClient.setQueryData(
+            uploadedChapterKey,
+            (current: typeof uploadedChapter) =>
+              current ? { ...current, content: next } : current,
+          );
+        } else compose.updateChapter(activeIndex, next);
       }}
       onSplitChapter={longText.splitChapter}
       onChapterEdit={longText.editChapter}

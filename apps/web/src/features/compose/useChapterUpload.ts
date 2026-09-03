@@ -1,3 +1,4 @@
+import { convertLongTextBlocksToChapters } from "@ricetext/document-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -41,6 +42,7 @@ interface ChapterUploadOptions {
   novelId: string;
   getDocument: () => RichTextNode;
   getCoverage: () => readonly CoverageChapter[];
+  ensureDocument?: () => Promise<boolean>;
   onNotice: (notice: string) => void;
 }
 
@@ -86,6 +88,7 @@ export function useChapterUpload({
   novelId,
   getDocument,
   getCoverage,
+  ensureDocument,
   onNotice,
 }: ChapterUploadOptions) {
   const queryClient = useQueryClient();
@@ -99,11 +102,14 @@ export function useChapterUpload({
   novelIdRef.current = novelId;
   const operationRef = useRef(0);
   const runnerRef = useRef(false);
+  const pauseRef = useRef(false);
   const getDocumentRef = useRef(getDocument);
   const getCoverageRef = useRef(getCoverage);
+  const ensureDocumentRef = useRef(ensureDocument);
   const onNoticeRef = useRef(onNotice);
   getDocumentRef.current = getDocument;
   getCoverageRef.current = getCoverage;
+  ensureDocumentRef.current = ensureDocument;
   onNoticeRef.current = onNotice;
 
   const publishCheckpoint = useCallback((checkpoint: UploadCheckpoint) => {
@@ -156,7 +162,12 @@ export function useChapterUpload({
   }, [novelId, publishCheckpoint]);
 
   const cancel = useCallback(() => {
-    if (uploading) return;
+    if (uploading) {
+      pauseRef.current = true;
+      setOpen(false);
+      onNoticeRef.current("将在当前章节上传完成后暂停");
+      return;
+    }
     operationRef.current += 1;
     setOpen(false);
     setPreparing(false);
@@ -178,6 +189,14 @@ export function useChapterUpload({
     const capturedNovelId = novelId;
     setPreparing(true);
     try {
+      if (ensureDocumentRef.current) {
+        const ready = await ensureDocumentRef.current();
+        if (operation !== operationRef.current) return;
+        if (!ready) {
+          onNoticeRef.current("无法创建服务器文章，请检查网络后重试");
+          return;
+        }
+      }
       const sourceHash = await sha256Hex(JSON.stringify(document));
       if (operation !== operationRef.current) return;
       const directory = await listForumChapters(capturedNovelId, { strict: true });
@@ -200,7 +219,10 @@ export function useChapterUpload({
             ...node,
             attrs: { ...node.attrs, chapterId: id, order },
           };
-          const content: RichTextNode = { type: "doc", content: [normalizedNode] };
+          const content = convertLongTextBlocksToChapters({
+            type: "doc",
+            content: [normalizedNode],
+          }) as RichTextNode;
           const hash = await sha256Hex(JSON.stringify({ title, order, content }));
           return {
             id,
@@ -262,6 +284,7 @@ export function useChapterUpload({
     const checkpoint = checkpointRef.current;
     if (!checkpoint || runnerRef.current) return;
     const operation = operationRef.current;
+    pauseRef.current = false;
     runnerRef.current = true;
     setUploading(true);
     let uploadedThisRun = 0;
@@ -281,6 +304,19 @@ export function useChapterUpload({
       const tracked = checkpoint.chapters.filter(
         (chapter) => chapter.action !== "未变化",
       );
+      for (const chapter of tracked) {
+        const standardContent = convertLongTextBlocksToChapters(
+          chapter.content,
+        ) as RichTextNode;
+        chapter.content = standardContent;
+        chapter.hash = await sha256Hex(
+          JSON.stringify({
+            title: chapter.title,
+            order: chapter.order,
+            content: standardContent,
+          }),
+        );
+      }
       const [directory, sync] = await Promise.all([
         listForumChapters(checkpoint.novelId, { strict: true }),
         syncLongTextChapters(
@@ -336,15 +372,7 @@ export function useChapterUpload({
       });
       for (const [index, chapter] of moving.entries()) {
         const temporaryOrder = maxServerOrder + index + 1;
-        const node = chapter.content.content?.[0];
-        const temporaryContent: RichTextNode = node
-          ? {
-              type: "doc",
-              content: [
-                { ...node, attrs: { ...node.attrs, order: temporaryOrder } },
-              ],
-            }
-          : chapter.content;
+        const temporaryContent = chapter.content;
         chapter.status = "上传中";
         publishCheckpoint({ ...checkpoint, chapters: [...checkpoint.chapters] });
         try {
@@ -370,6 +398,11 @@ export function useChapterUpload({
           chapter.baseRevision = staged.revision;
           chapter.status = "待上传";
           await saveLongTextValue(checkpointKey(checkpoint.novelId), checkpoint);
+          if (pauseRef.current) {
+            setHasCheckpoint(true);
+            onNoticeRef.current("上传已暂停，可稍后继续");
+            return;
+          }
         } catch (error) {
           const blocking = isBlockingUploadError(error);
           chapter.status = "失败";
@@ -409,6 +442,11 @@ export function useChapterUpload({
           uploadedThisRun += 1;
           publishCheckpoint({ ...checkpoint, chapters: [...checkpoint.chapters] });
           await saveLongTextValue(checkpointKey(checkpoint.novelId), checkpoint);
+          if (pauseRef.current) {
+            setHasCheckpoint(true);
+            onNoticeRef.current("上传已暂停，可稍后继续");
+            return;
+          }
         } catch (error) {
           const blocking = isBlockingUploadError(error);
           chapter.status = "失败";

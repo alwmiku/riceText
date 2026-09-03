@@ -103,7 +103,9 @@ describe("ChapterUploadDialog", () => {
     );
     expect(screen.getByText(/全部原文已连续切分/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上传中…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "稍后继续" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "本章完成后暂停" }),
+    ).toBeEnabled();
 
     rerender(
       <ChapterUploadDialog

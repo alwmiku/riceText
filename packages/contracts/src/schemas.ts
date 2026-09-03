@@ -408,6 +408,11 @@ export const ChapterSchema = z
     hidden: z.boolean(),
   })
   .strict();
+/** 分章上传后的单章正文；阅读页按需读取，避免下载整部长文本。 */
+export const ChapterContentSchema = ChapterSchema.extend({
+  content: TiptapDocumentSchema,
+}).strict();
+export type ChapterContent = z.infer<typeof ChapterContentSchema>;
 /** 章节差异同步清单中的单个本地章节。 */
 export const ChapterSyncItemSchema = z
   .object({

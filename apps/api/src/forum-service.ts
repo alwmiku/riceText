@@ -113,6 +113,10 @@ export class ForumService {
     return this.#chapters.createChapter(documentId, input);
   }
 
+  chapterContent(documentId: string, chapterId: string) {
+    return this.#chapters.chapterContent(documentId, chapterId);
+  }
+
   saveChapter(
     documentId: string,
     chapterId: string,

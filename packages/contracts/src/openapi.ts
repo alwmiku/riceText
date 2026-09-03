@@ -12,6 +12,7 @@ const PUBLIC_OPERATIONS = new Set([
   "readAsset",
   "getDiceRoll",
   "listChapters",
+  "getNovelChapter",
 ]);
 
 /**

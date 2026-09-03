@@ -3,6 +3,7 @@ import {
   ApiErrorSchema,
   AssetSchema,
   AttachmentSchema,
+  ChapterContentSchema,
   ChapterSchema,
   CommentReplySchema,
   CommentSortSchema,
@@ -151,6 +152,12 @@ export const contractRoutes: readonly ContractRoute[] = [
     summary: "对比章节内容哈希", description: "需要文档 owner、ACL editor 或 moderator。客户端提交本地章节清单（含 SHA-256 哈希），服务端对比已存哈希，返回需要上传的章节与已存在（无需上传）的章节 ID。",
     params: novelParams, body: SyncNovelChaptersRequestSchema,
     responses: { 200: { description: "需要更新与已存在的章节 ID。", schema: SyncNovelChaptersResponseSchema } },
+  },
+  {
+    operationId: "getNovelChapter", method: "GET", path: "/api/forum/novels/:novelId/chapters/:chapterId", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "读取单个已上传章节", description: "按文章与章节 ID 返回分章正文；隐藏章节仅编辑者可读。",
+    params: novelChapterParams,
+    responses: { 200: { description: "章节目录元数据与正文。", schema: ChapterContentSchema }, 404: { description: "文章、章节不存在或当前身份不可读。", schema: ApiErrorSchema } },
   },
   {
     operationId: "saveNovelChapter", method: "PUT", path: "/api/forum/novels/:novelId/chapters/:chapterId", tags: ["论坛业务"], implementationStatus: "implemented",

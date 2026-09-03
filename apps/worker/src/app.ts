@@ -403,6 +403,22 @@ export function createWorkerApp(): Hono<AppBindings> {
     return context.json(response("syncNovelChapters", 200, result));
   });
 
+  app.get("/api/forum/novels/:novelId/chapters/:chapterId", async (context) => {
+    const input = params("getNovelChapter", context.req.param()) as {
+      novelId: string;
+      chapterId: string;
+    };
+    const principal = await requirePrincipal(context);
+    const repository = new D1ChapterRepository(context.env.DB);
+    const chapter = await repository.content(input.novelId, input.chapterId);
+    if (
+      chapter.hidden &&
+      !(await canEditDocument(context, chapter.documentId, principal))
+    )
+      throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节正文不存在");
+    return context.json(chapter);
+  });
+
   app.put("/api/forum/novels/:novelId/chapters/:chapterId", async (context) => {
     const input = params("saveNovelChapter", context.req.param()) as {
       novelId: string;

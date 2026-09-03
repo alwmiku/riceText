@@ -1,10 +1,15 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  convertLongTextBlocksToChapters,
+  type JSONContent,
+} from "@ricetext/document-core";
+import {
   EntityIdSchema,
   SaveNovelChapterRequestSchema,
   SyncNovelChaptersRequestSchema,
 } from "@ricetext/contracts";
 import { sanitizeDocument } from "../../document-service.js";
+import { HttpError } from "../../errors.js";
 import type { RouteDependencies } from "../dependencies.js";
 import {
   canEditDocument,
@@ -54,6 +59,24 @@ export const forumChapterRoutes: FastifyPluginAsync<RouteDependencies> = async (
     },
   );
 
+  app.get(
+    "/api/forum/novels/:novelId/chapters/:chapterId",
+    { schema: getFastifySchema("getNovelChapter") },
+    async (request) => {
+      const user = identity(dependencies, request);
+      const chapter = dependencies.forum.chapterContent(
+        params(request).novelId!,
+        params(request).chapterId!,
+      );
+      if (
+        chapter.hidden &&
+        !canEditDocument(dependencies, user, chapter.documentId)
+      )
+        throw new HttpError(404, "CHAPTER_NOT_FOUND", "章节正文不存在");
+      return chapter;
+    },
+  );
+
   app.put(
     "/api/forum/novels/:novelId/chapters/:chapterId",
     { schema: getFastifySchema("saveNovelChapter") },
@@ -66,7 +89,11 @@ export const forumChapterRoutes: FastifyPluginAsync<RouteDependencies> = async (
         {
           title: body.title,
           order: body.order,
-          content: sanitizeDocument(body.content),
+          content: sanitizeDocument(
+            convertLongTextBlocksToChapters(
+              body.content as unknown as JSONContent,
+            ),
+          ),
           hash: body.hash,
           baseRevision: body.baseRevision,
         },

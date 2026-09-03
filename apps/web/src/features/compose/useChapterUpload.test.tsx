@@ -83,6 +83,72 @@ describe("useChapterUpload", () => {
     mocks.deleteCheckpoint.mockReset().mockResolvedValue(undefined);
   });
 
+  it("creates a missing server document before requesting chapter differences", async () => {
+    const ensureDocument = vi.fn().mockResolvedValue(true);
+    const { result } = renderHook(
+      () =>
+        useChapterUpload({
+          novelId: "article-local",
+          getDocument: documentFixture,
+          getCoverage: () => [],
+          ensureDocument,
+          onNotice: vi.fn(),
+        }),
+      { wrapper },
+    );
+
+    await act(async () => result.current.prepare());
+
+    expect(ensureDocument).toHaveBeenCalledOnce();
+    expect(ensureDocument.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.list.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("closes the dialog and pauses after the current chapter", async () => {
+    let finishUpload!: (value: { revision: number }) => void;
+    mocks.list.mockResolvedValue([]);
+    mocks.sync.mockResolvedValue({ toUpdate: ["new"], existing: [] });
+    mocks.upload.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishUpload = resolve;
+        }),
+    );
+    const oneChapter = () => ({
+      type: "doc",
+      content: [chapter("new", "新章", "正文")],
+    });
+    const notice = vi.fn();
+    const { result } = renderHook(
+      () =>
+        useChapterUpload({
+          novelId: "demo-post",
+          getDocument: oneChapter,
+          getCoverage: () => [],
+          onNotice: notice,
+        }),
+      { wrapper },
+    );
+
+    await act(async () => result.current.prepare());
+    let confirmation!: Promise<void>;
+    act(() => {
+      confirmation = result.current.confirm();
+    });
+    await waitFor(() => expect(result.current.uploading).toBe(true));
+    act(() => result.current.cancel());
+    expect(result.current.open).toBe(false);
+
+    await act(async () => {
+      finishUpload({ revision: 1 });
+      await confirmation;
+    });
+    expect(mocks.upload).toHaveBeenCalledTimes(1);
+    expect(result.current.hasCheckpoint).toBe(true);
+    expect(notice).toHaveBeenLastCalledWith("上传已暂停，可稍后继续");
+  });
+
   it("maps sync results and uploads only the frozen changed chapters", async () => {
     const document = documentFixture();
     const notice = vi.fn();
@@ -124,6 +190,16 @@ describe("useChapterUpload", () => {
       "demo-post",
       "new",
       expect.objectContaining({ title: "新章", order: 0, baseRevision: 0 }),
+    );
+    expect(mocks.upload.mock.calls[0]?.[2].content).toMatchObject({
+      type: "doc",
+      content: [
+        { type: "heading", attrs: { chapterStart: true, level: 2 } },
+        { type: "paragraph", content: [{ type: "text", text: "new text" }] },
+      ],
+    });
+    expect(JSON.stringify(mocks.upload.mock.calls[0]?.[2].content)).not.toContain(
+      "longTextBlock",
     );
     expect(mocks.upload).toHaveBeenNthCalledWith(
       2,

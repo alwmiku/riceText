@@ -15,12 +15,14 @@ const mocks = vi.hoisted(() => ({
   flush: vi.fn(),
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
+  getLongTextChapter: vi.fn(),
   listForumChapters: vi.fn(),
   listDocuments: vi.fn(),
   saveDocument: vi.fn(),
   restoreRevision: vi.fn(),
   getRevision: vi.fn(),
   setDocumentChapterHidden: vi.fn(),
+  uploadLongTextChapter: vi.fn(),
 }));
 
 vi.mock('../features/editor/hooks/useAutosave', () => ({ useAutosave: mocks.autosave }));
@@ -29,6 +31,7 @@ vi.mock('../lib/api', () => ({
   deleteDocumentChapter: mocks.deleteDocumentChapter,
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
+  getLongTextChapter: mocks.getLongTextChapter,
   missingDocument: (id: string) => ({
     id,
     title: '未命名文章',
@@ -43,12 +46,14 @@ vi.mock('../lib/api', () => ({
   restoreRevision: mocks.restoreRevision,
   saveDocument: mocks.saveDocument,
   setDocumentChapterHidden: mocks.setDocumentChapterHidden,
+  uploadLongTextChapter: mocks.uploadLongTextChapter,
 }));
 vi.mock('../lib/api/revisions', () => ({
   getRevision: mocks.getRevision,
 }));
 vi.mock('../features/editor/RichTextEditor', () => ({
   RichTextEditor: (props: {
+    content: RichTextNode;
     mode: string;
     editable?: boolean;
     onChange: (content: RichTextNode) => void;
@@ -56,7 +61,7 @@ vi.mock('../features/editor/RichTextEditor', () => ({
     onReady?: (editor: null) => void;
     onExpand?: () => void;
     onCommentAnchorOpen?: (id: string) => void;
-  }) => <section data-testid="editor" data-mode={props.mode} data-editable={String(props.editable)}>
+  }) => <section data-testid="editor" data-mode={props.mode} data-editable={String(props.editable)} data-content={JSON.stringify(props.content)}>
     <button type="button" onClick={() => props.onChange({ type: 'doc', content: [{ type: 'paragraph' }] })}>模拟编辑</button>
     <button type="button" onClick={() => props.onSubmit?.({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'submitted' }] }] })}>模拟发布</button>
     <button type="button" onClick={props.onExpand}>模拟展开</button>
@@ -162,6 +167,8 @@ describe('ComposePage', () => {
     ]);
     mocks.saveDocument.mockReset();
     mocks.flush.mockReset().mockResolvedValue(true);
+    mocks.getLongTextChapter.mockReset().mockResolvedValue(undefined);
+    mocks.uploadLongTextChapter.mockReset().mockResolvedValue({ revision: 2 });
     mocks.getDocument.mockReset().mockResolvedValue({
       ...defaultDocument,
       storage: 'server',
@@ -443,6 +450,77 @@ describe('ComposePage', () => {
       { timeout: 5_000 },
     ));
     expect(await screen.findByText('目标版本不存在')).toBeInTheDocument();
+  });
+
+  it('按章加载并保存长文本上传后的标准正文', async () => {
+    const uploadedContent: RichTextNode = {
+      type: 'doc',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2, chapterStart: true, textAlign: 'left' },
+          content: [{ type: 'text', text: '上传章节' }],
+        },
+        {
+          type: 'paragraph',
+          attrs: { textAlign: 'left' },
+          content: [{ type: 'text', text: '第一行' }],
+        },
+        { type: 'paragraph', attrs: { textAlign: 'left' } },
+        {
+          type: 'paragraph',
+          attrs: { textAlign: 'left' },
+          content: [{ type: 'text', text: '第三行' }],
+        },
+      ],
+    };
+    mocks.getDocument.mockResolvedValueOnce({
+      ...defaultDocument,
+      content: { type: 'doc', content: [] },
+      storage: 'server',
+    });
+    mocks.listForumChapters.mockResolvedValueOnce([
+      {
+        id: 'uploaded-chapter',
+        title: '上传章节',
+        order: 0,
+        documentId: 'demo-post',
+        revision: 1,
+        savedAt: defaultDocument.savedAt,
+        hidden: false,
+      },
+    ]);
+    mocks.getLongTextChapter.mockResolvedValue({
+      id: 'uploaded-chapter',
+      title: '上传章节',
+      order: 0,
+      documentId: 'demo-post',
+      revision: 1,
+      savedAt: defaultDocument.savedAt,
+      hidden: false,
+      content: uploadedContent,
+    });
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('editor')).toHaveAttribute(
+        'data-content',
+        JSON.stringify(uploadedContent),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '模拟发布' }));
+    await waitFor(() =>
+      expect(mocks.uploadLongTextChapter).toHaveBeenCalledWith(
+        'demo-post',
+        'uploaded-chapter',
+        expect.objectContaining({
+          order: 0,
+          baseRevision: 1,
+          content: expect.objectContaining({ type: 'doc' }),
+        }),
+      ),
+    );
+    expect(await screen.findByText('章节已保存为版本 2')).toBeInTheDocument();
   });
 
   it('冲突时允许复制本地正文', async () => {

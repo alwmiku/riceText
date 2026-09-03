@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type {
   Asset,
   ChapterSchema,
+  ChapterContent,
   DeleteDocumentChapterResponseSchema,
   CommentReply,
   CommentThread,
@@ -70,6 +71,7 @@ export interface RiceTextApiClient {
   /** 对比章节内容哈希，返回需要上传与已存在的章节 ID。 */
   syncNovelChapters(novelId: string, chapters: Array<{ id: string; title: string; order: number; hash: string }>, signal?: AbortSignal): Promise<{ toUpdate: string[]; existing: string[] }>;
   /** 保存单个章节内容并递增该章节版本号。 */
+  getNovelChapter(novelId: string, chapterId: string, signal?: AbortSignal): Promise<ChapterContent>;
   saveNovelChapter(novelId: string, chapterId: string, input: { title: string; order: number; content: DocumentEnvelope["content"]; hash: string; baseRevision: number }, signal?: AbortSignal): Promise<{ id: string; title: string; order: number; revision: number }>;
   /** 游标分页读取不可变版本历史。 */
   listRevisions(documentId: string, cursor?: string, chapterId?: string, signal?: AbortSignal): Promise<RevisionPage>;
@@ -166,6 +168,7 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     deleteDocumentChapter: (id, chapterId, signal) => request(`/api/documents/${id}/chapters/${chapterId}`, { method: "DELETE", signal }),
     updateDocumentChapter: (id, chapterId, body, signal) => request(`/api/documents/${id}/chapters/${chapterId}`, { method: "PATCH", body: json(body), signal }),
     syncNovelChapters: (novelId, chapters, signal) => request(`/api/forum/novels/${novelId}/chapters/sync`, { method: "POST", body: json({ chapters }), signal }),
+    getNovelChapter: (novelId, chapterId, signal) => request(`/api/forum/novels/${novelId}/chapters/${chapterId}`, { signal }),
     saveNovelChapter: (novelId, chapterId, input, signal) => request(`/api/forum/novels/${novelId}/chapters/${chapterId}`, { method: "PUT", body: json(input), signal }),
     listRevisions: (id, cursor, chapterId, signal) => request(`/api/documents/${id}/revisions${query({ cursor, chapterId })}`, { signal }),
     getRevision: (id, revision, signal) => request(`/api/documents/${id}/revisions/${revision}`, { signal }),

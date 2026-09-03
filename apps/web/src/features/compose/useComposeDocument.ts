@@ -41,6 +41,7 @@ export interface ComposeDocumentController {
   setAutosaveEnabled: (enabled: boolean) => void;
   replaceContent: (next: RichTextNode) => void;
   createLocalArticle: () => void;
+  ensureServerDocument: (baseContent: RichTextNode) => Promise<boolean>;
   updateChapter: (chapterIndex: number, chapter: RichTextNode) => void;
   publishChapter: (
     chapterIndex: number,
@@ -310,6 +311,37 @@ export function useComposeDocument(
     [documentId, queryClient],
   );
 
+  const ensureServerDocument = useCallback(
+    async (baseContent: RichTextNode) => {
+      if (localOnly || document.storage !== "missing") return true;
+      if (isDocumentLoading || !articleStarted) return false;
+      const saved = await saveDocument(documentId, {
+        title: document.title,
+        schemaVersion: document.schemaVersion,
+        baseRevision: 0,
+        clientMutationId: createId("create"),
+        content: baseContent,
+      });
+      if (saved.storage !== "server") return false;
+      setDocument(saved);
+      autosave.acceptSaved(saved, baseContent, generationRef.current);
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["forum", "chapters", documentId],
+      });
+      return true;
+    },
+    [
+      articleStarted,
+      autosave,
+      document,
+      documentId,
+      isDocumentLoading,
+      localOnly,
+      queryClient,
+    ],
+  );
+
   const publishChapter = useCallback(
     async (chapterIndex: number, latestChapter?: RichTextNode) => {
       // 提交快捷键可能早于 React onChange；显式合并编辑器快照后再 flush。
@@ -401,6 +433,7 @@ export function useComposeDocument(
     setAutosaveEnabled,
     replaceContent,
     createLocalArticle,
+    ensureServerDocument,
     updateChapter,
     publishChapter,
     rollback,

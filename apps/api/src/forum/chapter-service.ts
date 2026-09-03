@@ -1,5 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { TiptapDocument } from "@ricetext/contracts";
+import {
+  convertLongTextBlocksToChapters,
+  type JSONContent,
+} from "@ricetext/document-core";
 import { chapterStorageId } from "@ricetext/server-core";
 import { HttpError } from "../errors.js";
 
@@ -43,6 +47,41 @@ export class ChapterService {
       savedAt: row.updated_at,
       hidden: row.hidden === 1,
     }));
+  }
+
+  /** 读取分章上传的正文；目录占位行在首次保存前没有正文。 */
+  chapterContent(documentId: string, chapterId: string) {
+    const row = this.#db
+      .prepare(
+        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden, content_json " +
+          "FROM chapters WHERE id = ? AND document_id = ?",
+      )
+      .get(chapterId, documentId) as
+      | {
+          id: string;
+          title: string;
+          sort_order: number;
+          document_id: string;
+          revision: number;
+          updated_at: string;
+          hidden: number;
+          content_json: string | null;
+        }
+      | undefined;
+    if (!row?.content_json)
+      throw new HttpError(404, "CHAPTER_NOT_FOUND", "章节正文不存在");
+    return {
+      id: row.id,
+      title: row.title,
+      order: row.sort_order,
+      documentId: row.document_id,
+      revision: row.revision,
+      savedAt: row.updated_at,
+      hidden: row.hidden === 1,
+      content: convertLongTextBlocksToChapters(
+        JSON.parse(row.content_json),
+      ) as TiptapDocument,
+    };
   }
 
   /** 服务器已有章节的内容哈希（id -> hash），用于差异对比。 */
@@ -226,6 +265,9 @@ export class ChapterService {
           baseRevision: input.baseRevision,
         },
       );
+    const content = convertLongTextBlocksToChapters(
+      input.content as unknown as JSONContent,
+    ) as TiptapDocument;
     const revision = (existing?.revision ?? 0) + 1;
     this.#db
       .prepare(
@@ -246,7 +288,7 @@ export class ChapterService {
         input.order,
         documentId,
         revision,
-        JSON.stringify(input.content),
+        JSON.stringify(content),
         input.hash,
         new Date().toISOString(),
       );
