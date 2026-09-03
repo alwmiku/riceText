@@ -1,5 +1,7 @@
 import { FilePlus2 } from "lucide-react";
-import { Button } from "../../components/ui";
+import { useState, type FormEvent } from "react";
+import { Button, Dialog } from "../../components/ui";
+import { Input } from "../../components/ui/input";
 import type { DocumentListItem } from "@ricetext/contracts";
 
 /** 紧凑文章选择器；原生 select 保持键盘和移动端选择体验。 */
@@ -10,16 +12,33 @@ export function ArticleSelector({
   disabled,
   onChange,
   onCreate,
+  open,
+  onOpenChange,
 }: {
   articles: readonly DocumentListItem[];
   value: string;
   canCreate: boolean;
   disabled?: boolean;
   onChange: (id: string) => void;
-  onCreate: () => void;
+  onCreate: (title: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const dialogOpen = open ?? internalOpen;
+  const setDialogOpen = onOpenChange ?? setInternalOpen;
+  const [title, setTitle] = useState("");
+  const normalizedTitle = title.trim();
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!normalizedTitle) return;
+    onCreate(normalizedTitle);
+    setTitle("");
+    setDialogOpen(false);
+  };
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <>
+      <div className="flex min-w-0 items-center gap-2">
       <label className="sr-only" htmlFor="article-selector">选择文章</label>
       <select
         id="article-selector"
@@ -37,11 +56,48 @@ export function ArticleSelector({
         ))}
       </select>
       {canCreate ? (
-        <Button type="button" size="sm" variant="outline" onClick={onCreate}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setDialogOpen(true)}
+        >
           <FilePlus2 data-icon="inline-start" />
           新文章
         </Button>
       ) : null}
-    </div>
+      </div>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title="新建文章"
+        description="文章先保存在本地，第一次点击保存后上传服务器。"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              取消
+            </Button>
+            <Button type="submit" form="create-article-form" disabled={!normalizedTitle}>
+              <FilePlus2 data-icon="inline-start" />
+              创建
+            </Button>
+          </>
+        }
+      >
+        <form id="create-article-form" onSubmit={submit}>
+          <label htmlFor="new-article-title" className="mb-2 block text-sm font-semibold">
+            文章名称
+          </label>
+          <Input
+            id="new-article-title"
+            value={title}
+            maxLength={200}
+            autoFocus
+            placeholder="输入文章名称"
+            onChange={(event) => setTitle(event.target.value)}
+          />
+        </form>
+      </Dialog>
+    </>
   );
 }

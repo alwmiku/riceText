@@ -111,6 +111,7 @@ export default function ComposePage() {
     }
   }, [chapterIndex, ACTIVE_CHAPTER_STORAGE_KEY]);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [newArticleDialogOpen, setNewArticleDialogOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -132,6 +133,7 @@ export default function ComposePage() {
   const compose = useComposeDocument(activeDocumentId, chapterIndex, {
     serverEnabled: articleSelection.authenticated && !articleSelection.loading,
     localOnly: !articleSelection.authenticated,
+    initialTitle: articleSelection.selectedDraftTitle,
   });
   const longText = useLongTextWorkspace({
     content: compose.content,
@@ -245,11 +247,27 @@ export default function ComposePage() {
   };
 
   // 空库先建立纯本地空白文章；只有之后点击保存才会创建服务器首版。
-  const createArticle = () => {
+  const createArticle = () => setNewArticleDialogOpen(true);
+
+  useEffect(() => {
+    if (
+      articleSelection.loading ||
+      selectedArticle ||
+      !articleSelection.selectedDraftTitle ||
+      compose.articleStarted
+    ) return;
     compose.createLocalArticle();
     setChapterIndex(0);
-    setNotice("已在本地创建空白文章，点击保存后上传服务器");
-  };
+    setNotice(
+      `已在本地创建《${articleSelection.selectedDraftTitle}》，点击保存后上传服务器`,
+    );
+  }, [
+    articleSelection.loading,
+    articleSelection.selectedDraftTitle,
+    compose.articleStarted,
+    selectedArticle,
+    compose.createLocalArticle,
+  ]);
 
   // 在文档末尾追加一个空章节并切换到它；保存时随整篇正文一起入库。
   const addChapter = () => {
@@ -397,12 +415,14 @@ export default function ComposePage() {
               value={activeDocumentId}
               canCreate={articleSelection.canCreate}
               disabled={articleSelection.loading}
+              open={newArticleDialogOpen}
+              onOpenChange={setNewArticleDialogOpen}
               onChange={(id) => {
                 articleSelection.setSelectedId(id);
                 setChapterIndex(0);
               }}
-              onCreate={() => {
-                articleSelection.createArticle();
+              onCreate={(title) => {
+                articleSelection.createArticle(title);
                 setChapterIndex(0);
               }}
             />

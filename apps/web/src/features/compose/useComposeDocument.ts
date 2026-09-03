@@ -53,17 +53,24 @@ export interface ComposeDocumentController {
 export function useComposeDocument(
   documentId: string,
   chapterIndex?: number,
-  options: { serverEnabled?: boolean; localOnly?: boolean } = {},
+  options: {
+    serverEnabled?: boolean;
+    localOnly?: boolean;
+    initialTitle?: string | undefined;
+  } = {},
 ): ComposeDocumentController {
   const serverEnabled = options.serverEnabled ?? true;
   const localOnly = options.localOnly ?? false;
   const queryClient = useQueryClient();
   const placeholder = useMemo(() => {
-    const missing = missingDocument(documentId);
+    const missing = {
+      ...missingDocument(documentId),
+      ...(options.initialTitle ? { title: options.initialTitle } : {}),
+    };
     return localOnly
       ? { ...missing, content: { type: "doc", content: [{ type: "paragraph" }] } }
       : missing;
-  }, [documentId, localOnly]);
+  }, [documentId, localOnly, options.initialTitle]);
   const { data = placeholder, isPlaceholderData: queryIsPlaceholderData } = useQuery({
     queryKey: ["document", documentId],
     queryFn: ({ signal }) => getDocument(documentId, signal),

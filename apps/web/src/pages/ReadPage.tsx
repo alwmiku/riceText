@@ -217,8 +217,8 @@ export default function ReadPage() {
             articleSelection.setSelectedId(id);
             setChapterIndex(0);
           }}
-          onCreate={() => {
-            articleSelection.createArticle();
+          onCreate={(title) => {
+            articleSelection.createArticle(title);
             navigate("/compose");
           }}
         />

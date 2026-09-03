@@ -217,11 +217,34 @@ describe('ComposePage', () => {
     const create = await screen.findByRole('button', { name: '创建文章' });
     expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'false');
     fireEvent.click(create);
+    const dialog = screen.getByRole('dialog', { name: '新建文章' });
+    fireEvent.change(within(dialog).getByLabelText('文章名称'), {
+      target: { value: '第一篇文章' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: '创建' }));
     await waitFor(() =>
       expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'),
     );
     expect(screen.getByRole('button', { name: '模拟新增章节' })).toBeInTheDocument();
-    expect(screen.getByText('已在本地创建空白文章，点击保存后上传服务器')).toBeInTheDocument();
+    expect(screen.getByText('已在本地创建《第一篇文章》，点击保存后上传服务器')).toBeInTheDocument();
+  });
+
+  it('新建文章先填写名称，并把名称保存在对应本地草稿中', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '新文章' }));
+    const dialog = screen.getByRole('dialog', { name: '新建文章' });
+    fireEvent.change(within(dialog).getByLabelText('文章名称'), {
+      target: { value: '我的第二篇文章' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: '创建' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '模拟新增章节' })).toBeInTheDocument(),
+    );
+    const draftId = localStorage.getItem('ricetext:selected-document')!;
+    expect(draftId).toMatch(/^article_/);
+    expect(localStorage.getItem(`ricetext:draft-title:${draftId}`)).toBe(
+      '我的第二篇文章',
+    );
   });
 
   it('切换完整、极简和移动布局，并从极简入口展开', async () => {

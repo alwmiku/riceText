@@ -5,6 +5,7 @@ import { listDocuments } from "../../lib/api";
 import { createId } from "../../lib/utils";
 
 const selectionKey = "ricetext:selected-document";
+const draftTitleKey = (id: string) => `ricetext:draft-title:${id}`;
 
 /** 登录用户共享文章选择；游客始终隔离到只存在浏览器中的空白文档。 */
 export function useArticleSelection() {
@@ -22,6 +23,10 @@ export function useArticleSelection() {
 
   useEffect(() => {
     if (!authenticated || query.isLoading) return;
+    if (selectedId && articles.some((article) => article.id === selectedId)) {
+      localStorage.removeItem(draftTitleKey(selectedId));
+      return;
+    }
     // 非空选择也可能是尚未上传的新文章；服务端 404 会安全落到本地创建态。
     if (selectedId) return;
     const next = articles[0]?.id ?? "";
@@ -34,10 +39,11 @@ export function useArticleSelection() {
     setSelectedIdState(id);
     localStorage.setItem(selectionKey, id);
   };
-  const createArticle = () => {
+  const createArticle = (title: string) => {
     const id = createId("article");
     setSelectedIdState(id);
     localStorage.setItem(selectionKey, id);
+    localStorage.setItem(draftTitleKey(id), title.trim());
     return id;
   };
   return {
@@ -45,6 +51,9 @@ export function useArticleSelection() {
     articles,
     loading: authStatus === "loading" || (authenticated && query.isLoading),
     selectedId: authenticated ? selectedId : "guest-local",
+    selectedDraftTitle: selectedId
+      ? localStorage.getItem(draftTitleKey(selectedId)) ?? undefined
+      : undefined,
     canCreate: authenticated && identity.role !== "reader",
     setSelectedId,
     createArticle,

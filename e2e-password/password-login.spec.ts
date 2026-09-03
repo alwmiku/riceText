@@ -30,6 +30,9 @@ test("账号密码登录、刷新会话并退出", async ({ page }) => {
   const create = page.getByRole("button", { name: "创建文章" });
   await expect(create).toBeVisible();
   await create.click();
+  const firstDialog = page.getByRole("dialog", { name: "新建文章" });
+  await firstDialog.getByLabel("文章名称").fill("第一篇文章");
+  await firstDialog.getByRole("button", { name: "创建" }).click();
   const editor = page.locator(".ProseMirror");
   await expect(editor).toHaveAttribute("contenteditable", "true");
   await expect(editor).toHaveText("");
@@ -51,34 +54,45 @@ test("账号密码登录、刷新会话并退出", async ({ page }) => {
     return response.json();
   });
   expect(stored).toMatchObject({
-    title: "未命名文章",
+    title: "第一篇文章",
     revision: 1,
   });
   expect(JSON.stringify(stored)).toContain("第一篇文章正文");
   const firstId = (stored as { id: string }).id;
-  const secondStatus = await page.evaluate(async () => {
-    const response = await fetch("/api/documents/second-post", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        title: "第二篇文章",
-        schemaVersion: 1,
-        baseRevision: 0,
-        clientMutationId: "create-second-e2e",
-        content: {
-          type: "doc",
-          content: [{ type: "paragraph", content: [{ type: "text", text: "第二篇正文" }] }],
-        },
-      }),
-    });
-    return response.status;
+  await page.getByRole("button", { name: "新文章" }).click();
+  const secondDialog = page.getByRole("dialog", { name: "新建文章" });
+  await secondDialog.getByLabel("文章名称").fill("第二篇文章");
+  await secondDialog.getByRole("button", { name: "创建" }).click();
+  await expect(page.locator(".ProseMirror")).toHaveText("");
+  await page.locator(".ProseMirror").click();
+  await page.keyboard.type("第二篇正文");
+  await expect(page.locator(".save-status")).toContainText("已自动保存到本地", {
+    timeout: 10_000,
   });
-  expect(secondStatus).toBe(201);
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.locator(".save-status")).toContainText("已保存到服务器", {
+    timeout: 10_000,
+  });
+  const secondStored = await page.evaluate(async () => {
+    const list = (await (await fetch("/api/documents")).json()) as {
+      items: Array<{ id: string; title: string }>;
+    };
+    const id = list.items.find((item) => item.title === "第二篇文章")!.id;
+    return (await (await fetch("/api/documents/" + id)).json()) as unknown;
+  });
+  expect(JSON.stringify(secondStored)).toContain("第二篇正文");
 
   await page.reload();
   const selector = page.getByRole("combobox", { name: "选择文章" });
   await expect(selector.locator("option")).toHaveCount(2);
-  await selector.selectOption("second-post");
+  const secondId = await page.evaluate(async () => {
+    const response = await fetch("/api/documents");
+    const list = (await response.json()) as {
+      items: Array<{ id: string; title: string }>;
+    };
+    return list.items.find((item) => item.title === "第二篇文章")!.id;
+  });
+  await selector.selectOption(secondId);
   await expect(page.locator(".ProseMirror")).toContainText("第二篇正文");
   await selector.selectOption(firstId);
   await expect(page.locator(".ProseMirror")).toContainText("第一篇文章正文");
