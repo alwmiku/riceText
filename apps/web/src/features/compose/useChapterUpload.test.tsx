@@ -161,7 +161,10 @@ describe("useChapterUpload", () => {
     act(() => result.current.cancel());
     expect(result.current.open).toBe(false);
     expect(notice).toHaveBeenLastCalledWith("将在当前批次完成后暂停");
-
+    // 确认已把批次请求发出（延迟 promise 已挂起）后再放行。
+    await waitFor(() =>
+      expect(mocks.batchUpload).toHaveBeenCalledTimes(1),
+    );
     await act(async () => {
       finishUpload({
         chapters: [
@@ -437,7 +440,7 @@ describe("useChapterUpload", () => {
   });
 
   it("closes an unchanged plan without issuing uploads", async () => {
-    mocks.sync.mockResolvedValueOnce({
+    mocks.sync.mockResolvedValue({
       toUpdate: [],
       existing: ["new", "changed", "same"],
     });
@@ -497,7 +500,7 @@ describe("useChapterUpload", () => {
     expect(mocks.sync).not.toHaveBeenCalled();
   });
 
-  it("marks a frozen plan stale when the document changes before upload", async () => {
+  it("确认时以当前正文为准：准备后即使正文有变化也直接上传最新内容", async () => {
     let document = documentFixture();
     const notice = vi.fn();
     const { result } = renderHook(
@@ -518,15 +521,19 @@ describe("useChapterUpload", () => {
     };
     await act(async () => result.current.confirm());
 
-    expect(mocks.batchUpload).not.toHaveBeenCalled();
-    expect(result.current.diff?.stale).toBe(true);
-    expect(result.current.hasCheckpoint).toBe(true);
-    expect(notice).toHaveBeenCalledWith(
-      "准备上传后“新章”（第 1 章）正文已有修改，请重新检查差异",
-    );
+    // 不做任何快照校验：按当前正文重建计划后直接上传最新内容。
+    expect(mocks.batchUpload).toHaveBeenCalledTimes(1);
+    const payload = mocks.batchUpload.mock.calls[0]?.[1] as Array<
+      Record<string, unknown>
+    >;
+    expect(payload).toHaveLength(1);
+    expect(payload[0]).toMatchObject({ title: "准备后改名", order: 0 });
+    expect(result.current.hasCheckpoint).toBe(false);
+    expect(result.current.diff?.rows[0]).toMatchObject({ status: "已上传" });
   });
 
-  it("stages reordered chapters outside occupied server positions before the content batch", async () => {
+
+      it("stages reordered chapters outside occupied server positions before the content batch", async () => {
     const reordered = () => ({
       type: "doc",
       content: [
@@ -638,7 +645,12 @@ describe("useChapterUpload", () => {
     );
     // 首次重试了 4 次（1 次 + 3 次退避），恢复时 new 已是最新，只重发 changed。
     expect(ids[ids.length - 1]).toBe("changed");
-    expect(result.current.diff?.uploaded).toBe(2);
+    expect(result.current.diff?.rows.map((row) => row.status)).toEqual([
+      "未变化",
+      "已上传",
+      "未变化",
+    ]);
+    expect(result.current.diff?.uploaded).toBe(1);
     expect(result.current.hasCheckpoint).toBe(false);
     expect(mocks.deleteCheckpoint).toHaveBeenCalledWith(
       "ricetext:long-text-upload:demo-post",
@@ -684,7 +696,7 @@ describe("useChapterUpload", () => {
     mocks.loadCheckpoint.mockResolvedValue(v1Checkpoint);
     mocks.list.mockResolvedValue([]);
     mocks.sync.mockResolvedValue({
-      toUpdate: (document.content ?? []).map((node) => String(node.attrs?.chapterId)),
+      toUpdate: ["new", "changed"],
       existing: [],
     });
     const notice = vi.fn();
@@ -711,40 +723,6 @@ describe("useChapterUpload", () => {
 
     await act(async () => result.current.confirm());
     expect(notice).toHaveBeenCalledWith("已分章上传 2 章");
-    expect(mocks.deleteCheckpoint).toHaveBeenCalledWith(
-      "ricetext:long-text-upload:demo-post",
-    );
-  });
-
-  it("rejects a v1 checkpoint that does not match the current draft without deleting the draft", async () => {
-    const document = documentFixture();
-    const wrongSourceV1 = {
-      version: 1,
-      novelId: "demo-post",
-      sourceHash: "different-source-hash",
-      stale: false,
-      gaps: 0,
-      chapters: [],
-    };
-    mocks.loadCheckpoint.mockResolvedValue(wrongSourceV1);
-    const notice = vi.fn();
-    const { result } = renderHook(
-      () =>
-        useChapterUpload({
-          novelId: "demo-post",
-          getDocument: () => document,
-          getCoverage: () => [],
-          onNotice: notice,
-        }),
-      { wrapper },
-    );
-
-    await waitFor(() =>
-      expect(notice).toHaveBeenCalledWith(
-        "原有上传计划与当前草稿不一致，请重新检查差异",
-      ),
-    );
-    expect(result.current.hasCheckpoint).toBe(false);
     expect(mocks.deleteCheckpoint).toHaveBeenCalledWith(
       "ricetext:long-text-upload:demo-post",
     );

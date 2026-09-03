@@ -46,7 +46,6 @@ export interface ChapterUploadDiff {
   /** 待上传（含上传中）章节数。 */
   pending: number;
   gaps: number;
-  stale: boolean;
   /** 当前正在发送的第几批（1-based），未在上传时为 null。 */
   batchCurrent: number | null;
   /** 当前运行的预计批次数，未在上传时为 null。 */
@@ -262,11 +261,6 @@ export function ChapterUploadDialog({
               本地核对通过：全部原文已连续切分进章节，无未切分段落。
             </div>
           )}
-          {diff.stale ? (
-            <div className="shrink-0 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              准备上传后正文又有修改，当前计划已过期，请重新检查差异。
-            </div>
-          ) : null}
           <p className="shrink-0 text-xs text-muted-foreground">
             本地共 <strong>{diff.total}</strong> 个章节，本次上传{" "}
             <strong>{diff.toUpdate}</strong> 个（新增 {diff.added}，修改{" "}
@@ -348,7 +342,7 @@ export function ChapterUploadDialog({
                   : "稍后继续"}
             </Button>
             {!complete ? (
-              diff.stale || hasBlockingConflict ? (
+              hasBlockingConflict ? (
                 <Button size="sm" disabled={uploading} onClick={onReprepare}>
                   重新检查差异
                 </Button>

@@ -99,7 +99,6 @@ function createProps() {
       failed: 0,
       pending: 1,
       gaps: 0,
-      stale: false,
       batchCurrent: null,
       batchTotal: null,
       rows: [

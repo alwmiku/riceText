@@ -25,7 +25,6 @@ const uploadDiff: ChapterUploadDiff = {
   failed: 0,
   pending: 2,
   gaps: 2,
-  stale: false,
   batchCurrent: null,
   batchTotal: null,
   rows: [
