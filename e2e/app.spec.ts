@@ -21,10 +21,17 @@ test('三种编辑布局共用同一正文', async ({ page }) => {
 });
 
 test('阅读页是静态显示器并支持黑幕与间贴', async ({ page, isMobile }) => {
+  // 间贴/黑幕节点在「雾港来信 · 第一章」（demo-post）的文档正文里：占位目录行
+  // 没有正文，阅读页会回退到文档正文渲染。这里用 localStorage 预选文章，
+  // 移动端没有可见的文章选择器也能生效。
+  await page.addInitScript(() => {
+    localStorage.setItem('ricetext:selected-document', 'demo-post');
+  });
   await page.goto('/read');
   await expect(page.getByRole('link', { name: /阅读/ })).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('[contenteditable="true"]')).toHaveCount(0);
   await expect(page.getByRole('toolbar')).toHaveCount(0);
+  await expect(page.locator('.rt-inline-comment-anchor').first()).toBeVisible();
 
   // 间贴：第一章正文的评论计数气泡。
   await page.locator('.rt-inline-comment-anchor').first().click();
@@ -44,9 +51,16 @@ test('阅读页是静态显示器并支持黑幕与间贴', async ({ page, isMob
 test('作者编辑先自动保存本地，点击保存后才上传最小 revision', async ({ page, isMobile }) => {
   // 两个 worker 并行保存同一文档会产生 revision 竞争；流程与布局无关，仅桌面验证。
   test.skip(isMobile, '保存流程与布局无关，移动端跳过以避免并行保存竞争');
+  // 默认文章可能是分章上传的长文本（正文走章节缓存、无本地自动保存），
+  // 用「雾港来信 · 第一章」（demo-post）跑服务器最小 revision 的保存验收。
+  await page.addInitScript(() => {
+    localStorage.setItem('ricetext:selected-document', 'demo-post');
+  });
   await page.goto('/compose');
   const status = page.locator('.save-status');
   await expect(status).toContainText('已保存到服务器');
+  // 等待服务器真实 revision 渲染完成（占位文档也是 v0 起步，避免读数竞态）。
+  await expect(status).toHaveText(/已保存到服务器 · v[1-9]\d*/);
   const initialStatus = await status.textContent();
   const initialRevision = initialStatus?.match(/v\d+/)?.[0] ?? "";
   await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'true');
@@ -87,8 +101,7 @@ test('移动端向下阅读时收起页头，向上滚动时恢复', async ({ pa
   await expect(chapterRail).toBeVisible();
   await expect(creativeTools.getByText('创作工具')).toBeVisible();
   await expect(creativeTools.getByRole('button', { name: '校订' })).toBeVisible();
-  await expect(creativeTools.getByText('读者', { exact: true })).toBeVisible();
-  await expect(creativeTools.getByText('reader', { exact: true })).toHaveCount(0);
+  await expect(creativeTools.getByRole('tablist', { name: '校订状态' })).toBeVisible();
   const location = creativeTools.getByLabel('校订位置');
   await location.scrollIntoViewIfNeeded();
   const locationRows = location.locator('dd');
@@ -111,7 +124,10 @@ test('移动端向下阅读时收起页头，向上滚动时恢复', async ({ pa
       }),
     )
     .toBe(true);
-  await page.getByRole('button', { name: '关闭章节目录' }).last().click();
+  // 抽屉内容会因业务面板轮询而持续微动，关闭按钮的稳定性等待无法收敛；
+  // 点击抽屉右侧的遮罩关闭（不是关闭按钮本身）。
+  await page.mouse.click(370, 400);
+  await expect(page.getByRole('dialog', { name: '章节目录' })).toBeHidden();
   await expect
     .poll(() => header.evaluate((element) => element.getBoundingClientRect().bottom))
     .toBeLessThanOrEqual(1);
