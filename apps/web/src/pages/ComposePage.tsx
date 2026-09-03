@@ -164,8 +164,13 @@ export default function ComposePage() {
     () => splitDocumentByHeadings(compose.content),
     [compose.content],
   );
+  const isBlankDocumentShell = (compose.content.content ?? []).every(
+    (node) =>
+      node.type === "paragraph" &&
+      (!node.content || node.content.length === 0),
+  );
   const usesUploadedChapters =
-    (compose.content.content?.length ?? 0) === 0 &&
+    isBlankDocumentShell &&
     chapterDirectory.some((chapter) => chapter.revision > 0);
   const navigationChapters = usesUploadedChapters
     ? chapterDirectory.map((chapter) => ({

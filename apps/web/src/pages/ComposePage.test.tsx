@@ -476,7 +476,7 @@ describe('ComposePage', () => {
     };
     mocks.getDocument.mockResolvedValueOnce({
       ...defaultDocument,
-      content: { type: 'doc', content: [] },
+      content: { type: 'doc', content: [{ type: 'paragraph' }] },
       storage: 'server',
     });
     mocks.listForumChapters.mockResolvedValueOnce([
