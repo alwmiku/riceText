@@ -108,7 +108,7 @@ export function IdentitySwitcher() {
                 className="h-10 w-full rounded-md border border-input bg-white px-3 outline-none focus:ring-2 focus:ring-ring"
                 minLength={3}
                 maxLength={64}
-                pattern="[A-Za-z0-9._-]+"
+                pattern="[A-Za-z0-9_.-]+"
                 required
               />
             </label>

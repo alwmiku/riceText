@@ -160,7 +160,7 @@ describe("ChapterService batch upload", () => {
     expect(row.revision).toBe(1);
   });
 
-  it("跨文章 ID 与目标 order 被批外章节占用时整批 409", () => {
+  it("跨文章 ID 与批内重复 order 整批 409；目标 order 占用改为同事务自动腾位", () => {
     service.saveChaptersBatch("article-a", [
       { id: "shared", title: "共享章", order: 0, content: batchContent, hash: "hash-0", baseRevision: 0 },
     ]);
@@ -173,14 +173,31 @@ describe("ChapterService batch upload", () => {
       expect.objectContaining({ code: "CHAPTER_ID_CONFLICT", details: { chapterId: "shared" } }),
     );
 
-    expect(() =>
-      service.saveChaptersBatch("article-a", [
-        { id: "new-0", title: "新章", order: 0, content: batchContent, hash: "hash-n", baseRevision: 0 },
-      ]),
-    ).toThrowError(
-      expect.objectContaining({ code: "CHAPTER_ORDER_CONFLICT", details: { chapterId: "new-0" } }),
-    );
-    // 批内重复目标顺序同样冲突。
+    // 目标顺序被其他服务器行占用：同一事务先把占用行搬到更高的空闲顺序，
+    // 再写入新章（新文件上传模型下占用行通常是历史残留/占位行，不再整批 409）。
+    const saved = service.saveChaptersBatch("article-a", [
+      { id: "new-0", title: "新章", order: 0, content: batchContent, hash: "hash-n", baseRevision: 0 },
+    ]);
+    expect(saved).toEqual([
+      { id: "new-0", title: "新章", order: 0, revision: 1, status: "saved" },
+    ]);
+    const rows = db
+      .prepare(
+        "SELECT id, sort_order, revision, content_hash FROM chapters WHERE document_id = 'article-a' ORDER BY sort_order",
+      )
+      .all() as Array<{
+      id: string;
+      sort_order: number;
+      revision: number;
+      content_hash: string;
+    }>;
+    expect(rows.map((row) => [row.id, row.sort_order])).toEqual([
+      ["new-0", 0],
+      ["shared", 1],
+    ]);
+    // 被挪走的占用行正文保留、顺序变化递增版本。
+    expect(rows[1]).toMatchObject({ id: "shared", content_hash: "hash-0", revision: 2 });
+    // 批内重复目标顺序同样整批 409。
     expect(() =>
       service.saveChaptersBatch("article-a", [
         { id: "dup-0", title: "重复 0", order: 1, content: batchContent, hash: "hash-d", baseRevision: 0 },

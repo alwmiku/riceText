@@ -177,7 +177,7 @@ describe("Worker chapter batch", () => {
     expect(untouched?.content_hash).toBe("old-2");
   });
 
-  it("跨文章 ID、目标 order 占用和批内重复 order 均整批 409", async () => {
+  it("跨文章 ID 与批内重复 order 整批 409；目标 order 占用改为同事务自动腾位", async () => {
     await seedNovel("owner-a", 2);
     await seedNovel("owner-b", 1);
     const cross = await batchRequest("owner-b", [
@@ -198,6 +198,8 @@ describe("Worker chapter batch", () => {
       },
     });
 
+    // 目标顺序被其他服务器行占用：不再 409，同一事务里把占用行搬到更高
+    // 空闲顺序（内容保留、顺序变更递增版本），再写入新章。
     const occupied = await batchRequest("owner-a", [
       {
         id: chapterId("owner-a", 3),
@@ -208,23 +210,28 @@ describe("Worker chapter batch", () => {
         baseRevision: 0,
       },
     ]);
-    expect(occupied.status).toBe(409);
-    await expect(occupied.json()).resolves.toMatchObject({
-      error: {
-        code: "CHAPTER_ORDER_CONFLICT",
-        details: { chapterId: chapterId("owner-a", 3) },
-      },
-    });
+    expect(occupied.status, await occupied.clone().text()).toBe(200);
+    const after = await env.DB.prepare(
+      "SELECT id, sort_order, content_hash FROM chapters WHERE document_id = 'owner-a' ORDER BY sort_order",
+    ).all<{ id: string; sort_order: number; content_hash: string }>();
+    expect(after.results.map((row) => [row.id, row.sort_order])).toEqual([
+      [chapterId("owner-a", 0), 0],
+      [chapterId("owner-a", 3), 1],
+      [chapterId("owner-a", 1), 2],
+    ]);
+    // 原 order 1 的占用行（旧正文）被搬到下一空闲顺序，正文未被破坏。
+    expect(after.results[2]?.content_hash).toBe("old-1");
 
+    // 批内重复目标顺序仍是整批 409（用全新 id，避免与上一段已写行冲突）。
     const duplicate = await batchRequest("owner-a", [
-      { id: chapterId("owner-a", 3), title: "D0", order: 5, content: contentFor("D0"), hash: "d0", baseRevision: 0 },
-      { id: chapterId("owner-a", 4), title: "D1", order: 5, content: contentFor("D1"), hash: "d1", baseRevision: 0 },
+      { id: chapterId("owner-a", 8), title: "D0", order: 5, content: contentFor("D0"), hash: "d0", baseRevision: 0 },
+      { id: chapterId("owner-a", 9), title: "D1", order: 5, content: contentFor("D1"), hash: "d1", baseRevision: 0 },
     ]);
     expect(duplicate.status).toBe(409);
     await expect(duplicate.json()).resolves.toMatchObject({
       error: {
         code: "CHAPTER_ORDER_CONFLICT",
-        details: { chapterId: chapterId("owner-a", 4) },
+        details: { chapterId: chapterId("owner-a", 9) },
       },
     });
   });

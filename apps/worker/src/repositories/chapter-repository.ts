@@ -347,6 +347,17 @@ export class D1ChapterRepository {
       baseRevision: number;
     }> = [];
     const seenOrders = new Set<number>();
+    // 目标顺序被「其他服务器行」占用时不再整批 409：同一个 D1 batch（事务）
+    // 里先把它搬出目标顺序（搬到比本批所有请求顺序更高的空闲位，内容保留、
+    // 顺序变化递增版本），再写入新章——新文件上传模型下这类占用行基本是
+    // 历史残留或占位行。
+    const moves: Array<{ id: string; to: number }> = [];
+    let nextFree =
+      Math.max(
+        -1,
+        ...docOrders.map((row) => row.sort_order),
+        ...items.map((item) => item.order),
+      ) + 1;
     const now = new Date().toISOString();
     for (const item of items) {
       const existing = byId.get(item.id);
@@ -371,12 +382,8 @@ export class D1ChapterRepository {
         (row) => row.sort_order === item.order && row.id !== item.id,
       );
       if (occupied) {
-        throw new WorkerHttpError(
-          409,
-          "CHAPTER_ORDER_CONFLICT",
-          "该章节位置已被其他章节占用",
-          { chapterId: item.id },
-        );
+        moves.push({ id: occupied.id, to: nextFree });
+        nextFree += 1;
       }
       if (existing) {
         if (existing.content_hash === item.hash) {
@@ -413,42 +420,56 @@ export class D1ChapterRepository {
         baseRevision: item.baseRevision,
       });
     }
-    let executed: Array<{ meta: { changes: number } }> = [];
-    if (write.length > 0) {
-      try {
-        executed = (await this.db.batch(
-          write.map((item) =>
-            this.db
-              .prepare(
-                "INSERT INTO chapters(" +
-                  "id, title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden" +
-                  ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0) " +
-                  "ON CONFLICT(id) DO UPDATE SET " +
-                  "title = excluded.title, sort_order = excluded.sort_order, " +
-                  "revision = excluded.revision, content_json = excluded.content_json, " +
-                  "content_hash = excluded.content_hash, updated_at = excluded.updated_at " +
-                  "WHERE chapters.document_id = excluded.document_id AND chapters.revision = ?",
-              )
-              .bind(
-                item.id,
-                item.title,
-                item.order,
-                documentId,
-                item.revision,
-                JSON.stringify(item.content),
-                item.hash,
-                now,
-                item.baseRevision,
-              ),
+    // 占用行搬移与章节写入合并进同一个事务批：要么全部生效要么全部回滚。
+    const statements = [
+      ...moves.map((move) =>
+        this.db
+          .prepare(
+            "UPDATE chapters SET sort_order = ?, revision = revision + 1, updated_at = ? " +
+              "WHERE id = ? AND document_id = ?",
+          )
+          .bind(move.to, now, move.id, documentId),
+      ),
+      ...write.map((item) =>
+        this.db
+          .prepare(
+            "INSERT INTO chapters(" +
+              "id, title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden" +
+              ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0) " +
+              "ON CONFLICT(id) DO UPDATE SET " +
+              "title = excluded.title, sort_order = excluded.sort_order, " +
+              "revision = excluded.revision, content_json = excluded.content_json, " +
+              "content_hash = excluded.content_hash, updated_at = excluded.updated_at " +
+              "WHERE chapters.document_id = excluded.document_id AND chapters.revision = ?",
+          )
+          .bind(
+            item.id,
+            item.title,
+            item.order,
+            documentId,
+            item.revision,
+            JSON.stringify(item.content),
+            item.hash,
+            now,
+            item.baseRevision,
           ),
-        )) as unknown as Array<{ meta: { changes: number } }>;
+      ),
+    ];
+    let executed: Array<{ meta: { changes: number } }> = [];
+    if (statements.length > 0) {
+      try {
+        executed = (await this.db.batch(statements)) as unknown as Array<{
+          meta: { changes: number };
+        }>;
       } catch (error) {
         throw await this.resolveBatchConflict(documentId, items, error);
       }
     }
     for (const [index, item] of write.entries()) {
+      // 语句数组开头是占用行搬移，章节写入从 moves.length 开始。
       const changed =
-        executed[index] === undefined || executed[index]!.meta.changes > 0;
+        executed[moves.length + index] === undefined ||
+        executed[moves.length + index]!.meta.changes > 0;
       if (changed) {
         results.push({
           id: item.id,

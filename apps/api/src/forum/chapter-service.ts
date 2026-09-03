@@ -374,6 +374,15 @@ export class ChapterService {
       status: "saved" | "unchanged";
     }> = [];
     const seenOrders = new Set<number>();
+    // 目标顺序被「其他服务器行」占用时不再整批 409：同一事务里先把它搬出
+    // 目标顺序（搬到比本批所有请求顺序更高的空闲位，内容与版本保留），
+    // 再写入新章——新文件上传模型下这种占用行基本是历史残留/占位行。
+    const moves: Array<{ id: string; to: number }> = [];
+    let nextFree = Math.max(
+      -1,
+      ...docOrders.map((row) => row.sort_order),
+      ...items.map((item) => item.order),
+    ) + 1;
     for (const item of items) {
       const existing = byId.get(item.id);
       if (existing && existing.document_id !== documentId) {
@@ -397,12 +406,8 @@ export class ChapterService {
         (row) => row.sort_order === item.order && row.id !== item.id,
       );
       if (occupied) {
-        throw new HttpError(
-          409,
-          "CHAPTER_ORDER_CONFLICT",
-          "该章节位置已被其他章节占用",
-          { chapterId: item.id },
-        );
+        moves.push({ id: occupied.id, to: nextFree });
+        nextFree += 1;
       }
       if (existing) {
         if (existing.content_hash === item.hash) {
@@ -437,6 +442,16 @@ export class ChapterService {
       });
     }
     const now = new Date().toISOString();
+    // 占用行先在同一事务内搬出目标顺序（顺序变化同样递增版本，行为与换序暂存一致）。
+    if (moves.length > 0) {
+      const moveOccurred = this.#db.prepare(
+        "UPDATE chapters SET sort_order = ?, revision = revision + 1, updated_at = ? " +
+          "WHERE id = ? AND document_id = ?",
+      );
+      for (const move of moves) {
+        moveOccurred.run(move.to, now, move.id, documentId);
+      }
+    }
     const upsert = this.#db.prepare(
       `INSERT INTO chapters(id, title, sort_order, document_id, revision, content_json, content_hash, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
