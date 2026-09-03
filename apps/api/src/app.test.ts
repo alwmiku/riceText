@@ -715,4 +715,172 @@ describe("RiceText API", () => {
     });
     expect(conflict.statusCode).toBe(409);
   });
+
+  it("批量保存章节：200 保存 / unchanged 幂等 / 409 整批回滚 / 422 超限", async () => {
+    // 先注册一篇可编辑文章（作者首次保存会创建文章与首章目录行）。
+    await app.inject({
+      method: "PUT",
+      url: "/api/documents/batch-novel",
+      headers: { "x-user-id": "author" },
+      payload: {
+        title: "批量小说",
+        schemaVersion: 1,
+        baseRevision: 0,
+        clientMutationId: "create-batch-novel",
+        content: {
+          type: "doc",
+          content: [
+            { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "第一章" }] },
+            { type: "paragraph", content: [{ type: "text", text: "正文一" }] },
+          ],
+        },
+      },
+    });
+    const directory = await app.inject({
+      method: "GET",
+      url: "/api/forum/chapters?documentId=batch-novel",
+      headers: { "x-user-id": "author" },
+    });
+    const first = (directory.json().items as Array<{ id: string; revision: number }>)[0]!;
+    const batchItem = (id: string, title: string, order: number, hash: string, baseRevision = 0) => ({
+      id,
+      title,
+      order,
+      content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: title }] }] },
+      hash,
+      baseRevision,
+    });
+    const saved = await app.inject({
+      method: "POST",
+      url: "/api/forum/novels/batch-novel/chapters/batch",
+      headers: { "x-user-id": "author" },
+      payload: {
+        chapters: [
+          batchItem(first.id, "第一章", 0, "hash-1", first.revision),
+          batchItem("part-1", "第二章", 1, "hash-2"),
+        ],
+      },
+    });
+    expect(saved.statusCode, saved.body).toBe(200);
+    expect(saved.json()).toEqual({
+      chapters: [
+        { id: first.id, title: "第一章", order: 0, revision: first.revision + 1, status: "saved" },
+        { id: "part-1", title: "第二章", order: 1, revision: 1, status: "saved" },
+      ],
+    });
+    // 幂等重试：相同 hash 与 baseRevision 不再递增版本。
+    const replayed = await app.inject({
+      method: "POST",
+      url: "/api/forum/novels/batch-novel/chapters/batch",
+      headers: { "x-user-id": "author" },
+      payload: {
+        chapters: [batchItem(first.id, "第一章", 0, "hash-1", first.revision)],
+      },
+    });
+    expect(replayed.statusCode).toBe(200);
+    expect(replayed.json()).toEqual({
+      chapters: [{ id: first.id, title: "第一章", order: 0, revision: first.revision + 1, status: "unchanged" }],
+    });
+    // 整批 409：part-1 baseRevision 过期，part-2 不发生部分提交。
+    const conflict = await app.inject({
+      method: "POST",
+      url: "/api/forum/novels/batch-novel/chapters/batch",
+      headers: { "x-user-id": "author" },
+      payload: {
+        chapters: [
+          batchItem("part-1", "第二章", 1, "hash-2-new", 0),
+          batchItem("part-2", "第三章", 2, "hash-3"),
+        ],
+      },
+    });
+    expect(conflict.statusCode, conflict.body).toBe(409);
+    expect(conflict.json().error).toMatchObject({
+      code: "CHAPTER_REVISION_CONFLICT",
+      details: expect.objectContaining({ chapterId: "part-1" }),
+    });
+    const missing = await app.inject({
+      method: "POST",
+      url: "/api/forum/novels/batch-novel/chapters/batch",
+      headers: { "x-user-id": "author" },
+      payload: { chapters: Array.from({ length: 21 }, () => batchItem("x", "X", 90, "h")) },
+    });
+    expect(missing.statusCode).toBe(422);
+
+    // 路由 bodyLimit 5 MiB：超过后返回稳定 413 错误码，不进入业务处理。
+    const oversized = await app.inject({
+      method: "POST",
+      url: "/api/forum/novels/batch-novel/chapters/batch",
+      headers: { "x-user-id": "author" },
+      payload: {
+        chapters: [
+          {
+            ...batchItem("part-3", "超大章", 3, "hash-big"),
+            content: {
+              type: "doc",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "a".repeat(5.4 * 1024 * 1024) }],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    expect(oversized.statusCode).toBe(413);
+    expect(oversized.json().error.code).toBe("CHAPTER_BATCH_TOO_LARGE");
+  });
+
+  it("换序暂存：staged 后幂等 unchanged，冲突 409", async () => {
+    await app.inject({
+      method: "PUT",
+      url: "/api/documents/reorder-novel",
+      headers: { "x-user-id": "author" },
+      payload: {
+        title: "换序小说",
+        schemaVersion: 1,
+        baseRevision: 0,
+        clientMutationId: "create-reorder-novel",
+        content: { type: "doc", content: [{ type: "paragraph" }] },
+      },
+    });
+    const directory = await app.inject({
+      method: "GET",
+      url: "/api/forum/chapters?documentId=reorder-novel",
+      headers: { "x-user-id": "author" },
+    });
+    const first = (directory.json().items as Array<{ id: string; revision: number }>)[0]!;
+    const staged = await app.inject({
+      method: "POST",
+      url: "/api/forum/novels/reorder-novel/chapters/reorder-stage",
+      headers: { "x-user-id": "author" },
+      payload: { chapters: [{ id: first.id, temporaryOrder: 3, baseRevision: first.revision }] },
+    });
+    expect(staged.statusCode, staged.body).toBe(200);
+    expect(staged.json()).toEqual({
+      chapters: [{ id: first.id, revision: first.revision + 1, status: "staged" }],
+    });
+    const idempotent = await app.inject({
+      method: "POST",
+      url: "/api/forum/novels/reorder-novel/chapters/reorder-stage",
+      headers: { "x-user-id": "author" },
+      payload: { chapters: [{ id: first.id, temporaryOrder: 3, baseRevision: first.revision + 1 }] },
+    });
+    expect(idempotent.statusCode).toBe(200);
+    expect(idempotent.json()).toEqual({
+      chapters: [{ id: first.id, revision: first.revision + 1, status: "unchanged" }],
+    });
+    const conflict = await app.inject({
+      method: "POST",
+      url: "/api/forum/novels/reorder-novel/chapters/reorder-stage",
+      headers: { "x-user-id": "author" },
+      payload: { chapters: [{ id: first.id, temporaryOrder: 4, baseRevision: first.revision }] },
+    });
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json().error.details).toMatchObject({
+      chapterId: first.id,
+    });
+  });
+
 });

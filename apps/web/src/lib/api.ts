@@ -12,9 +12,13 @@ export {
   getLongTextChapter,
   listForumChapters,
   setDocumentChapterHidden,
+  stageLongTextChapterReorder,
   syncLongTextChapters,
   uploadLongTextChapter,
+  uploadLongTextChaptersBatch,
   type ChapterSyncItem,
+  type StageChapterReorderItem,
+  type UploadBatchChapterItem,
 } from "./api/chapters";
 export { getRevision, getRevisions, restoreRevision } from "./api/revisions";
 export { getCommentThread, voteComment } from "./api/comments";

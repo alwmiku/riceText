@@ -1,6 +1,6 @@
 import type { ChapterTitleStyle } from "@ricetext/editor-core";
 import { FileUp, Save, Trash2 } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { memo, useRef, useState, type ReactNode } from "react";
 import { Button } from "../../components/ui";
 import { ChapterRawPreview } from "../novel/ChapterRawPreview";
 import { ChapterSidebar, type ChapterSummary } from "../novel/ChapterSidebar";
@@ -23,6 +23,12 @@ const chapterStyleOptions: Array<{
   { value: "english", label: "English: Chapter X" },
   { value: "numeric", label: "数字：1. 标题" },
 ];
+
+// 上传进度按批发布时会触发整棵 LongTextWorkspace 的重渲染；两侧大列表
+// 的 props 在上传期间保持稳定，用 memo 跳过重绘，避免几千章时每批都
+// 重新 reconcile 数千行 DOM（这正是触发浏览器“页面无响应”的原因）。
+const MemoChapterSidebar = memo(ChapterSidebar);
+const MemoChapterRawPreview = memo(ChapterRawPreview);
 
 /** 长文本展示层：负责工具栏、三栏布局及其附属弹窗，不读写业务存储。 */
 export function LongTextWorkspace({
@@ -202,7 +208,7 @@ export function LongTextWorkspace({
           </div>
         </div>
         <div className="grid grid-cols-[340px_minmax(420px,1fr)_minmax(0,1.6fr)] items-start gap-3 p-3 max-[900px]:grid-cols-1">
-          <ChapterSidebar
+          <MemoChapterSidebar
             chapters={chapters}
             activeIndex={activeIndex}
             onSelect={onSelect}
@@ -210,7 +216,7 @@ export function LongTextWorkspace({
             onMerge={onMerge}
             onMove={onMove}
           />
-          <ChapterRawPreview
+          <MemoChapterRawPreview
             rawText={rawText}
             chapters={coverageChapters}
             activeIndex={activeIndex}

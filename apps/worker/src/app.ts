@@ -18,10 +18,14 @@ import {
   SyncNovelChaptersRequestSchema,
   UpdateDocumentChapterRequestSchema,
   RollbackDocumentRequestSchema,
+  SaveNovelChaptersBatchRequestSchema,
+  StageNovelChapterReorderRequestSchema,
   UpdateDocumentRequestSchema,
   UpdateDocumentStepsRequestSchema,
   VoteCommentRequestSchema,
   type DocumentEnvelope,
+  type SaveNovelChaptersBatchRequest,
+  type StageNovelChapterReorderRequest,
 } from "@ricetext/contracts";
 import { DomainError, projectDocumentForReader } from "@ricetext/server-core";
 import { Hono } from "hono";
@@ -51,6 +55,50 @@ import { D1WriteRepository } from "./repositories/write-repository";
 
 type AppBindings = { Bindings: WorkerEnv; Variables: WorkerVariables };
 type JsonObject = Record<string, unknown>;
+
+/** 批量请求体上限（与契约描述一致，约 5 MiB）；客户端按 4 MiB 切批。 */
+const MAX_BATCH_BODY_BYTES = 5 * 1024 * 1024;
+const batchEncoder = new TextEncoder();
+
+/** 读取批量请求体并同时校验 Content-Length 与实际序列化字节数。 */
+async function limitedBatchBody<T>(
+  _operationId: string,
+  context: {
+    req: {
+      header: (name: string) => string | undefined;
+      text: () => Promise<string>;
+    };
+  },
+  schema: { parse(value: unknown): T },
+): Promise<T> {
+  const contentLength = context.req.header("content-length");
+  if (
+    contentLength !== undefined &&
+    Number(contentLength) > MAX_BATCH_BODY_BYTES
+  ) {
+    throw new WorkerHttpError(
+      413,
+      "CHAPTER_BATCH_TOO_LARGE",
+      "批量请求体超过 5 MiB 上限，请缩小批次或拆分章节正文",
+    );
+  }
+  const text = await context.req.text();
+  if (batchEncoder.encode(text).byteLength > MAX_BATCH_BODY_BYTES) {
+    throw new WorkerHttpError(
+      413,
+      "CHAPTER_BATCH_TOO_LARGE",
+      "批量请求体超过 5 MiB 上限，请缩小批次或拆分章节正文",
+    );
+  }
+  try {
+    return schema.parse(JSON.parse(text));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new WorkerHttpError(422, "VALIDATION_ERROR", "请求体不是有效的 JSON");
+    }
+    throw error;
+  }
+}
 
 function params(operationId: string, value: Record<string, string>): Record<string, string> {
   const schema = getContractRoute(operationId).params;
@@ -432,6 +480,43 @@ export function createWorkerApp(): Hono<AppBindings> {
     const result = await repository.save(input.novelId, input.chapterId, request);
     return context.json(response("saveNovelChapter", 201, result), 201);
   });
+
+  app.post("/api/forum/novels/:novelId/chapters/batch", async (context) => {
+    const input = params("saveNovelChaptersBatch", context.req.param()) as {
+      novelId: string;
+    };
+    await requireDocumentEditor(context, input.novelId);
+    const request = await limitedBatchBody<SaveNovelChaptersBatchRequest>(
+      "saveNovelChaptersBatch",
+      context,
+      SaveNovelChaptersBatchRequestSchema,
+    );
+    const repository = new D1ChapterRepository(context.env.DB);
+    const result = await repository.saveBatch(input.novelId, request.chapters);
+    return context.json(
+      response("saveNovelChaptersBatch", 200, { chapters: result }),
+    );
+  });
+
+  app.post(
+    "/api/forum/novels/:novelId/chapters/reorder-stage",
+    async (context) => {
+      const input = params("stageNovelChapterReorder", context.req.param()) as {
+        novelId: string;
+      };
+      await requireDocumentEditor(context, input.novelId);
+      const request = await limitedBatchBody<StageNovelChapterReorderRequest>(
+        "stageNovelChapterReorder",
+        context,
+        StageNovelChapterReorderRequestSchema,
+      );
+      const repository = new D1ChapterRepository(context.env.DB);
+      const result = await repository.stageReorder(input.novelId, request.chapters);
+      return context.json(
+        response("stageNovelChapterReorder", 200, { chapters: result }),
+      );
+    },
+  );
 
   app.get("/api/documents/:documentId/comments/:anchorId", async (context) => {
     const input = params("getCommentThread", context.req.param()) as {

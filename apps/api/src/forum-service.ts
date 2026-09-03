@@ -131,6 +131,35 @@ export class ForumService {
     return this.#chapters.saveChapter(documentId, chapterId, input);
   }
 
+  /** 批量保存章节正文（每批最多 20 章；整批预校验，任一冲突整批 409）。 */
+  saveChaptersBatch(
+    documentId: string,
+    items: Array<{
+      id: string;
+      title: string;
+      order: number;
+      content: TiptapDocument;
+      hash: string;
+      baseRevision: number;
+    }>,
+  ): Array<{
+    id: string;
+    title: string;
+    order: number;
+    revision: number;
+    status: "saved" | "unchanged";
+  }> {
+    return this.#chapters.saveChaptersBatch(documentId, items);
+  }
+
+  /** 换序暂存（每批最多 40 项，不发送正文；已等于临时顺序时幂等返回）。 */
+  stageChapterReorder(
+    documentId: string,
+    items: Array<{ id: string; temporaryOrder: number; baseRevision: number }>,
+  ): Array<{ id: string; revision: number; status: "staged" | "unchanged" }> {
+    return this.#chapters.stageChapterReorder(documentId, items);
+  }
+
   suggestions(documentId: string, identity: RequestIdentity) {
     return this.#suggestions.suggestions(documentId, identity);
   }

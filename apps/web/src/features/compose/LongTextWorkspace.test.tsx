@@ -96,8 +96,12 @@ function createProps() {
       added: 1,
       modified: 0,
       uploaded: 0,
+      failed: 0,
+      pending: 1,
       gaps: 0,
       stale: false,
+      batchCurrent: null,
+      batchTotal: null,
       rows: [
         {
           id: "chapter-0",

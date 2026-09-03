@@ -22,8 +22,12 @@ const uploadDiff: ChapterUploadDiff = {
   added: 1,
   modified: 1,
   uploaded: 0,
+  failed: 0,
+  pending: 2,
   gaps: 2,
   stale: false,
+  batchCurrent: null,
+  batchTotal: null,
   rows: [
     { id: "one", title: "第一章", action: "新增", status: "待上传", attempts: 0 },
     { id: "two", title: "第二章", action: "修改", status: "待上传", attempts: 0 },
@@ -90,11 +94,11 @@ describe("ChapterUploadDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("覆盖无缺口、上传中和空差异分支", () => {
+  it("覆盖无缺口、上传中、批次进度与空差异分支", () => {
     const { rerender } = render(
       <ChapterUploadDialog
         open
-        diff={{ ...uploadDiff, gaps: 0 }}
+        diff={{ ...uploadDiff, gaps: 0, batchCurrent: 1, batchTotal: 3 }}
         uploading
         onOpenChange={vi.fn()}
         onConfirm={vi.fn()}
@@ -104,8 +108,11 @@ describe("ChapterUploadDialog", () => {
     expect(screen.getByText(/全部原文已连续切分/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上传中…" })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "本章完成后暂停" }),
+      screen.getByRole("button", { name: "当前批次完成后暂停" }),
     ).toBeEnabled();
+    expect(screen.getByText("分批上传：第 1 / 3 批")).toBeInTheDocument();
+    expect(screen.getByText(/成功 0/)).toBeInTheDocument();
+    expect(screen.getByText(/待上传 2/)).toBeInTheDocument();
 
     rerender(
       <ChapterUploadDialog
@@ -118,6 +125,42 @@ describe("ChapterUploadDialog", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "确认分章上传" })).not.toBeInTheDocument();
+  });
+
+  it("虚拟列表只显示可见行，并可筛选到失败章节", () => {
+    render(
+      <ChapterUploadDialog
+        open
+        diff={{
+          ...uploadDiff,
+          failed: 1,
+          rows: [
+            {
+              id: "broken",
+              title: "冲突章",
+              action: "修改",
+              status: "失败",
+              retryable: false,
+              attempts: 1,
+              error: "章节已被其他修改更新",
+            },
+            ...uploadDiff.rows,
+          ],
+        }}
+        uploading={false}
+        onOpenChange={vi.fn()}
+        onConfirm={vi.fn()}
+        onReprepare={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/全部（4）/)).toBeInTheDocument();
+    expect(screen.getByText(/仅失败（1）/)).toBeInTheDocument();
+    expect(screen.getByText(/冲突章/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: /仅失败/ }));
+    expect(screen.getByText(/冲突章/)).toBeInTheDocument();
+    expect(screen.queryByText(/第一章/)).not.toBeInTheDocument();
+    expect(screen.getByText(/1 行可见/)).toBeInTheDocument();
   });
 });
 

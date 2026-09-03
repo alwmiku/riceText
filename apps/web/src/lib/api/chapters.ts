@@ -90,3 +90,61 @@ export async function uploadLongTextChapter(
     rethrowClientError(error);
   }
 }
+
+/** 批量章节保存请求项（内容与单章 PUT 一致）。 */
+export interface UploadBatchChapterItem {
+  id: string;
+  title: string;
+  order: number;
+  content: RichTextNode;
+  hash: string;
+  baseRevision: number;
+}
+
+/** 批量保存章节正文：服务端整批预校验，同 hash 幂等返回 unchanged。 */
+export async function uploadLongTextChaptersBatch(
+  novelId: string,
+  chapters: readonly UploadBatchChapterItem[],
+): Promise<{
+  chapters: Array<{
+    id: string;
+    title: string;
+    order: number;
+    revision: number;
+    status: "saved" | "unchanged";
+  }>;
+}> {
+  try {
+    return await api().saveNovelChaptersBatch(novelId, {
+      chapters: chapters.map((chapter) => ({
+        ...chapter,
+        content: chapter.content as unknown as ContractDocumentEnvelope["content"],
+      })),
+    });
+  } catch (error) {
+    rethrowClientError(error);
+  }
+}
+
+/** 换序暂存项：仅携带轻量元数据。 */
+export interface StageChapterReorderItem {
+  id: string;
+  temporaryOrder: number;
+  baseRevision: number;
+}
+
+/** 换序暂存：先把移动章节放到全局唯一临时 order，再执行最终正文批次。 */
+export async function stageLongTextChapterReorder(
+  novelId: string,
+  chapters: readonly StageChapterReorderItem[],
+): Promise<{
+  chapters: Array<{ id: string; revision: number; status: "staged" | "unchanged" }>;
+}> {
+  try {
+    return await api().stageNovelChapterReorder(novelId, {
+      chapters: [...chapters],
+    });
+  } catch (error) {
+    rethrowClientError(error);
+  }
+}

@@ -89,11 +89,26 @@ describe("createApiClient", () => {
     await client.submitPollVote("poll-route", ["poll-option-tower"]);
     await client.listPollVotes("poll-route");
     await client.listPollVotes("poll-route", "vote-1");
+    await client.saveNovelChaptersBatch("demo-post", {
+      chapters: [
+        {
+          id: "chapter-0",
+          title: "楔子",
+          order: 0,
+          content,
+          hash: "hash-a",
+          baseRevision: 1,
+        },
+      ],
+    });
+    await client.stageNovelChapterReorder("demo-post", {
+      chapters: [{ id: "chapter-0", temporaryOrder: 99, baseRevision: 1 }],
+    });
 
     const calls = fetchMock.mock.calls as unknown as Array<
       [string, RequestInit]
     >;
-    expect(calls).toHaveLength(30);
+    expect(calls).toHaveLength(32);
     expect(calls[0]?.[0]).toBe(
       "https://forum.example.test/api/documents/forum post",
     );
@@ -169,6 +184,20 @@ describe("createApiClient", () => {
       "https://forum.example.test/api/forum/suggestion-batches/batch-1",
     );
     expect(calls[23]?.[1].method).toBe("PATCH");
+    expect(calls[30]?.[0]).toBe(
+      "https://forum.example.test/api/forum/novels/demo-post/chapters/batch",
+    );
+    expect(calls[30]?.[1].method).toBe("POST");
+    expect(JSON.parse(String(calls[30]?.[1].body))).toMatchObject({
+      chapters: [{ id: "chapter-0", hash: "hash-a", baseRevision: 1 }],
+    });
+    expect(calls[31]?.[0]).toBe(
+      "https://forum.example.test/api/forum/novels/demo-post/chapters/reorder-stage",
+    );
+    expect(calls[31]?.[1].method).toBe("POST");
+    expect(JSON.parse(String(calls[31]?.[1].body))).toMatchObject({
+      chapters: [{ id: "chapter-0", temporaryOrder: 99, baseRevision: 1 }],
+    });
   });
 
   it("把结构化失败响应转换为 ApiClientError", async () => {

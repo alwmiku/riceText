@@ -447,6 +447,122 @@ export const SaveNovelChapterRequestSchema = z
     baseRevision: z.number().int().nonnegative(),
   })
   .strict();
+
+/** 批量章节保存请求中的单个章节（正文与单章 PUT 完全一致）。 */
+export const BatchChapterItemSchema = z
+  .object({
+    id: EntityIdSchema,
+    title: z.string().min(1).max(500),
+    order: z.number().int().nonnegative(),
+    content: TiptapDocumentSchema,
+    /** 保存正文的 SHA-256 摘要；服务端以它识别“内容未变化”的幂等重试。 */
+    hash: z.string().min(1).max(128),
+    /** 该章节独立的保存版本号，整批任一过期时整批返回 409。 */
+    baseRevision: z.number().int().nonnegative(),
+  })
+  .strict();
+/** 批量章节保存请求项。 */
+export type BatchChapterItem = z.infer<typeof BatchChapterItemSchema>;
+
+/**
+ * 批量保存章节正文：每批最多 20 章（与 D1 Free 每次 Worker 调用 50 条查询
+ * 上限对齐：1 条文档查询 + 1 条元数据查询 + 最多 20 条 UPSERT）。
+ * 正文总序列化大小由客户端按 4 MiB 切批，路由另设约 5 MiB 上限。
+ */
+export const SaveNovelChaptersBatchRequestSchema = z
+  .object({ chapters: z.array(BatchChapterItemSchema).min(1).max(20) })
+  .strict();
+/** 批量章节保存请求。 */
+export type SaveNovelChaptersBatchRequest = z.infer<
+  typeof SaveNovelChaptersBatchRequestSchema
+>;
+
+/** 批量保存响应中的单个章节结果。 */
+export const SaveNovelChaptersBatchItemResponseSchema = z
+  .object({
+    id: EntityIdSchema,
+    title: z.string().min(1).max(500),
+    order: z.number().int().nonnegative(),
+    /** 保存后的章节独立版本号；unchanged 时返回服务端当前版本。 */
+    revision: z.number().int().nonnegative(),
+    /**
+     * saved = 本次实际写入；unchanged = 服务端 content_hash 与请求 hash
+     * 一致（含上次响应丢失后的幂等重试），未重复递增版本号。
+     */
+    status: z.enum(["saved", "unchanged"]),
+  })
+  .strict();
+/** 批量保存响应中的单个章节结果。 */
+export type SaveNovelChaptersBatchItemResponse = z.infer<
+  typeof SaveNovelChaptersBatchItemResponseSchema
+>;
+
+/** 批量章节保存响应：与请求顺序一致。 */
+export const SaveNovelChaptersBatchResponseSchema = z
+  .object({
+    chapters: z.array(SaveNovelChaptersBatchItemResponseSchema).min(1).max(20),
+  })
+  .strict();
+/** 批量章节保存响应。 */
+export type SaveNovelChaptersBatchResponse = z.infer<
+  typeof SaveNovelChaptersBatchResponseSchema
+>;
+
+/** 换序暂存请求中的单个章节（仅携带轻量元数据，不发送正文）。 */
+export const StageChapterReorderItemSchema = z
+  .object({
+    id: EntityIdSchema,
+    /** 全局唯一的临时 order；客户端取“当前最大服务器 order + 顺序号”。 */
+    temporaryOrder: z.number().int().nonnegative(),
+    /** 该章节独立的保存版本号；过期时整批返回 409。 */
+    baseRevision: z.number().int().nonnegative(),
+  })
+  .strict();
+/** 换序暂存请求项。 */
+export type StageChapterReorderItem = z.infer<
+  typeof StageChapterReorderItemSchema
+>;
+
+/**
+ * 换序暂存：每批最多 40 项（1 条文档查询 + 1 条元数据查询 + 最多 40 条
+ * UPDATE 仍在 D1 Free 50 条查询上限内）。仅在确有换序时调用。
+ */
+export const StageNovelChapterReorderRequestSchema = z
+  .object({ chapters: z.array(StageChapterReorderItemSchema).min(1).max(40) })
+  .strict();
+/** 换序暂存请求。 */
+export type StageNovelChapterReorderRequest = z.infer<
+  typeof StageNovelChapterReorderRequestSchema
+>;
+
+/** 换序暂存响应中的单个章节结果。 */
+export const StageNovelChapterReorderItemResponseSchema = z
+  .object({
+    id: EntityIdSchema,
+    /** 暂存后的章节独立版本号。 */
+    revision: z.number().int().nonnegative(),
+    /**
+     * staged = 本次把位置改到临时 order（含上次响应丢失后的幂等重试）；
+     * unchanged = 当前顺序已经等于临时顺序，未重复递增版本号。
+     */
+    status: z.enum(["staged", "unchanged"]),
+  })
+  .strict();
+/** 换序暂存响应中的单个章节结果。 */
+export type StageNovelChapterReorderItemResponse = z.infer<
+  typeof StageNovelChapterReorderItemResponseSchema
+>;
+
+/** 换序暂存响应：与请求顺序一致。 */
+export const StageNovelChapterReorderResponseSchema = z
+  .object({
+    chapters: z.array(StageNovelChapterReorderItemResponseSchema).min(1).max(40),
+  })
+  .strict();
+/** 换序暂存响应。 */
+export type StageNovelChapterReorderResponse = z.infer<
+  typeof StageNovelChapterReorderResponseSchema
+>;
 /** 新增章节请求：编辑器保存前把正文中已出现但服务器目录缺失的新章节注册进目录。 */
 export const CreateDocumentChapterRequestSchema = z
   .object({

@@ -294,4 +294,321 @@ export class ChapterService {
       );
     return { id: chapterId, title: input.title, order: input.order, revision };
   }
+
+  /**
+   * 批量保存章节正文（每批最多 20 章）。
+   *
+   * 与单章 saveChapter 语义一致，但把「预校验 → 写入」放进同一个事务：
+   * 读入本批涉及章节的 owner/revision/order/content_hash 与目标文档的
+   * order 占用情况，逐项校验跨文章 ID、目标 order 被批外章节占用、批内
+   * 目标 order 重复与 baseRevision 过期；任一项失败整批抛 409（具体
+   * chapterId 写入 details），不发生部分提交。
+   *
+   * 幂等语义：已存在记录 content_hash 与请求 hash 一致时返回 unchanged
+   * 与当前 revision（含上次响应丢失后的重试），不重复递增版本号；其余
+   * 项目在新事务内 UPSERT 并继续执行标准 Tiptap 清洗和 longTextBlock 转换。
+   */
+  saveChaptersBatch(
+    documentId: string,
+    items: Array<{
+      id: string;
+      title: string;
+      order: number;
+      content: TiptapDocument;
+      hash: string;
+      baseRevision: number;
+    }>,
+  ): Array<{ id: string; title: string; order: number; revision: number; status: "saved" | "unchanged" }> {
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = this.#applyChaptersBatch(documentId, items);
+      this.#db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  #applyChaptersBatch(
+    documentId: string,
+    items: Array<{
+      id: string;
+      title: string;
+      order: number;
+      content: TiptapDocument;
+      hash: string;
+      baseRevision: number;
+    }>,
+  ): Array<{ id: string; title: string; order: number; revision: number; status: "saved" | "unchanged" }> {
+    const placeholders = items.map(() => "?").join(", ");
+    const metadata = this.#db
+      .prepare(
+        "SELECT id, document_id, revision, sort_order, content_hash FROM chapters " +
+          "WHERE id IN (" + placeholders + ")",
+      )
+      .all(...items.map((item) => item.id)) as Array<{
+      id: string;
+      document_id: string;
+      revision: number;
+      sort_order: number;
+      content_hash: string | null;
+    }>;
+    const byId = new Map(metadata.map((row) => [row.id, row]));
+    const docOrders = this.#db
+      .prepare("SELECT id, sort_order FROM chapters WHERE document_id = ?")
+      .all(documentId) as Array<{ id: string; sort_order: number }>;
+    const write: Array<{
+      id: string;
+      title: string;
+      order: number;
+      content: TiptapDocument;
+      hash: string;
+      revision: number;
+    }> = [];
+    const results: Array<{
+      id: string;
+      title: string;
+      order: number;
+      revision: number;
+      status: "saved" | "unchanged";
+    }> = [];
+    const seenOrders = new Set<number>();
+    for (const item of items) {
+      const existing = byId.get(item.id);
+      if (existing && existing.document_id !== documentId) {
+        throw new HttpError(
+          409,
+          "CHAPTER_ID_CONFLICT",
+          "章节 ID 已属于另一篇文档",
+          { chapterId: item.id },
+        );
+      }
+      if (seenOrders.has(item.order)) {
+        throw new HttpError(
+          409,
+          "CHAPTER_ORDER_CONFLICT",
+          "批次内多个章节请求相同目标顺序",
+          { chapterId: item.id },
+        );
+      }
+      seenOrders.add(item.order);
+      const occupied = docOrders.find(
+        (row) => row.sort_order === item.order && row.id !== item.id,
+      );
+      if (occupied) {
+        throw new HttpError(
+          409,
+          "CHAPTER_ORDER_CONFLICT",
+          "该章节位置已被其他章节占用",
+          { chapterId: item.id },
+        );
+      }
+      if (existing) {
+        if (existing.content_hash === item.hash) {
+          results.push({
+            id: item.id,
+            title: item.title,
+            order: item.order,
+            revision: existing.revision,
+            status: "unchanged",
+          });
+          continue;
+        }
+        if (existing.revision !== item.baseRevision) {
+          throw new HttpError(
+            409,
+            "CHAPTER_REVISION_CONFLICT",
+            "章节已被其他修改更新，请重新对比差异",
+            { chapterId: item.id, currentRevision: existing.revision },
+          );
+        }
+      }
+      const content = convertLongTextBlocksToChapters(
+        item.content as unknown as JSONContent,
+      ) as TiptapDocument;
+      write.push({
+        id: item.id,
+        title: item.title,
+        order: item.order,
+        content,
+        hash: item.hash,
+        revision: (existing?.revision ?? 0) + 1,
+      });
+    }
+    const now = new Date().toISOString();
+    const upsert = this.#db.prepare(
+      `INSERT INTO chapters(id, title, sort_order, document_id, revision, content_json, content_hash, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title,
+         sort_order = excluded.sort_order,
+         revision = excluded.revision,
+         content_json = excluded.content_json,
+         content_hash = excluded.content_hash,
+         updated_at = excluded.updated_at
+       WHERE chapters.document_id = excluded.document_id`,
+    );
+    for (const item of write) {
+      upsert.run(
+        item.id,
+        item.title,
+        item.order,
+        documentId,
+        item.revision,
+        JSON.stringify(item.content),
+        item.hash,
+        now,
+      );
+      results.push({
+        id: item.id,
+        title: item.title,
+        order: item.order,
+        revision: item.revision,
+        status: "saved",
+      });
+    }
+    // 与请求顺序一致；unchanged 项已在前面按序填入。
+    return results;
+  }
+
+  /**
+   * 换序暂存：把移动章节放到全局唯一的临时 order，不发送正文。
+   *
+   * 幂等语义：当前顺序已经等于临时顺序且 revision 等于 baseRevision
+   * （上次已成功暂存）时返回 unchanged 与当前 revision，不重复递增；
+   * 上次响应丢失后的重试（revision = baseRevision + 1 且顺序一致）返回
+   * staged 与当前 revision。跨文章 ID、临时 order 被批外章节占用、批内
+   * 临时 order 重复或 baseRevision 过期时整批 409。
+   */
+  stageChapterReorder(
+    documentId: string,
+    items: Array<{ id: string; temporaryOrder: number; baseRevision: number }>,
+  ): Array<{ id: string; revision: number; status: "staged" | "unchanged" }> {
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const results = this.#applyChapterReorder(documentId, items);
+      this.#db.exec("COMMIT");
+      return results;
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  #applyChapterReorder(
+    documentId: string,
+    items: Array<{ id: string; temporaryOrder: number; baseRevision: number }>,
+  ): Array<{ id: string; revision: number; status: "staged" | "unchanged" }> {
+    const placeholders = items.map(() => "?").join(", ");
+    const metadata = this.#db
+      .prepare(
+        "SELECT id, document_id, revision, sort_order FROM chapters " +
+          "WHERE id IN (" + placeholders + ")",
+      )
+      .all(...items.map((item) => item.id)) as Array<{
+      id: string;
+      document_id: string;
+      revision: number;
+      sort_order: number;
+    }>;
+    const byId = new Map(metadata.map((row) => [row.id, row]));
+    const docOrders = this.#db
+      .prepare("SELECT id, sort_order FROM chapters WHERE document_id = ?")
+      .all(documentId) as Array<{ id: string; sort_order: number }>;
+    const results: Array<{ id: string; revision: number; status: "staged" | "unchanged" }> =
+      [];
+    const seenOrders = new Set<number>();
+    const update = this.#db.prepare(
+      "UPDATE chapters SET sort_order = ?, revision = ?, updated_at = ? " +
+        "WHERE id = ? AND document_id = ? AND revision = ?",
+    );
+    const now = new Date().toISOString();
+    for (const item of items) {
+      const existing = byId.get(item.id);
+      if (existing && existing.document_id !== documentId) {
+        throw new HttpError(
+          409,
+          "CHAPTER_ID_CONFLICT",
+          "章节 ID 已属于另一篇文档",
+          { chapterId: item.id },
+        );
+      }
+      if (seenOrders.has(item.temporaryOrder)) {
+        throw new HttpError(
+          409,
+          "CHAPTER_ORDER_CONFLICT",
+          "批次内多个章节请求相同临时顺序",
+          { chapterId: item.id },
+        );
+      }
+      seenOrders.add(item.temporaryOrder);
+      const occupied = docOrders.find(
+        (row) => row.sort_order === item.temporaryOrder && row.id !== item.id,
+      );
+      if (occupied) {
+        throw new HttpError(
+          409,
+          "CHAPTER_ORDER_CONFLICT",
+          "该临时顺序已被其他章节占用",
+          { chapterId: item.id },
+        );
+      }
+      if (!existing) {
+        throw new HttpError(404, "CHAPTER_NOT_FOUND", "章节目录中不存在该章节", {
+          chapterId: item.id,
+        });
+      }
+      if (existing.sort_order === item.temporaryOrder) {
+        if (
+          existing.revision === item.baseRevision ||
+          existing.revision === item.baseRevision + 1
+        ) {
+          results.push({
+            id: item.id,
+            revision: existing.revision,
+            status: existing.revision === item.baseRevision ? "unchanged" : "staged",
+          });
+          continue;
+        }
+        throw new HttpError(
+          409,
+          "CHAPTER_REVISION_CONFLICT",
+          "章节已被其他修改更新，请重新对比差异",
+          { chapterId: item.id, currentRevision: existing.revision },
+        );
+      }
+      if (existing.revision !== item.baseRevision) {
+        throw new HttpError(
+          409,
+          "CHAPTER_REVISION_CONFLICT",
+          "章节已被其他修改更新，请重新对比差异",
+          { chapterId: item.id, currentRevision: existing.revision },
+        );
+      }
+      const updated = update.run(
+        item.temporaryOrder,
+        item.baseRevision + 1,
+        now,
+        item.id,
+        documentId,
+        item.baseRevision,
+      );
+      if (updated.changes === 0) {
+        throw new HttpError(
+          409,
+          "CHAPTER_REVISION_CONFLICT",
+          "章节已被其他修改更新，请重新对比差异",
+          { chapterId: item.id, currentRevision: existing.revision },
+        );
+      }
+      results.push({
+        id: item.id,
+        revision: item.baseRevision + 1,
+        status: "staged",
+      });
+    }
+    return results;
+  }
+
 }

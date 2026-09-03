@@ -23,6 +23,16 @@ export function registerErrorHandlers(app: FastifyInstance): void {
         new HttpError(413, "ASSET_TOO_LARGE", "图片不能超过 8 MiB"),
       );
     }
+    if (candidate.code === "FST_ERR_CTP_BODY_TOO_LARGE") {
+      return sendHttpError(
+        reply,
+        new HttpError(
+          413,
+          "CHAPTER_BATCH_TOO_LARGE",
+          "批量请求体超过 5 MiB 上限，请缩小批次或拆分章节正文",
+        ),
+      );
+    }
     if (candidate.validation !== undefined || Array.isArray(candidate.issues)) {
       return sendHttpError(
         reply,

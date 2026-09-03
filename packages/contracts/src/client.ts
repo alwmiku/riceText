@@ -73,6 +73,10 @@ export interface RiceTextApiClient {
   /** 保存单个章节内容并递增该章节版本号。 */
   getNovelChapter(novelId: string, chapterId: string, signal?: AbortSignal): Promise<ChapterContent>;
   saveNovelChapter(novelId: string, chapterId: string, input: { title: string; order: number; content: DocumentEnvelope["content"]; hash: string; baseRevision: number }, signal?: AbortSignal): Promise<{ id: string; title: string; order: number; revision: number }>;
+  /** 批量保存章节正文（每批最多 20 章；content_hash 一致时返回 unchanged 不递增版本）。 */
+  saveNovelChaptersBatch(novelId: string, body: { chapters: Array<{ id: string; title: string; order: number; content: DocumentEnvelope["content"]; hash: string; baseRevision: number }> }, signal?: AbortSignal): Promise<{ chapters: Array<{ id: string; title: string; order: number; revision: number; status: "saved" | "unchanged" }> }>;
+  /** 换序暂存（每批最多 40 项，不发送正文；顺序已等于临时顺序时幂等返回）。 */
+  stageNovelChapterReorder(novelId: string, body: { chapters: Array<{ id: string; temporaryOrder: number; baseRevision: number }> }, signal?: AbortSignal): Promise<{ chapters: Array<{ id: string; revision: number; status: "staged" | "unchanged" }> }>;
   /** 游标分页读取不可变版本历史。 */
   listRevisions(documentId: string, cursor?: string, chapterId?: string, signal?: AbortSignal): Promise<RevisionPage>;
   /** 读取指定不可变 revision 的完整文档快照。 */
@@ -170,6 +174,8 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     syncNovelChapters: (novelId, chapters, signal) => request(`/api/forum/novels/${novelId}/chapters/sync`, { method: "POST", body: json({ chapters }), signal }),
     getNovelChapter: (novelId, chapterId, signal) => request(`/api/forum/novels/${novelId}/chapters/${chapterId}`, { signal }),
     saveNovelChapter: (novelId, chapterId, input, signal) => request(`/api/forum/novels/${novelId}/chapters/${chapterId}`, { method: "PUT", body: json(input), signal }),
+    saveNovelChaptersBatch: (novelId, body, signal) => request(`/api/forum/novels/${novelId}/chapters/batch`, { method: "POST", body: json(body), signal }),
+    stageNovelChapterReorder: (novelId, body, signal) => request(`/api/forum/novels/${novelId}/chapters/reorder-stage`, { method: "POST", body: json(body), signal }),
     listRevisions: (id, cursor, chapterId, signal) => request(`/api/documents/${id}/revisions${query({ cursor, chapterId })}`, { signal }),
     getRevision: (id, revision, signal) => request(`/api/documents/${id}/revisions/${revision}`, { signal }),
     rollbackDocument: (id, body, signal) => request(`/api/documents/${id}/rollback`, { method: "POST", body: json(body), signal }),
