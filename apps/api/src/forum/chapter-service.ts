@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { createHash, randomUUID } from "node:crypto";
 import type { TiptapDocument } from "@ricetext/contracts";
 import {
   convertLongTextBlocksToChapters,
@@ -160,12 +161,15 @@ export class ChapterService {
     documentId: string,
     chapterId: string,
   ): { id: string; deleted: boolean } {
-    const exists = this.#db
-      .prepare("SELECT 1 AS found FROM chapters WHERE id = ? AND document_id = ?")
-      .get(chapterId, documentId) as { found: number } | undefined;
-    if (!exists) return { id: chapterId, deleted: false };
+    const existing = this.#db
+      .prepare(
+        "SELECT sort_order FROM chapters WHERE id = ? AND document_id = ?",
+      )
+      .get(chapterId, documentId) as { sort_order: number } | undefined;
+    if (!existing) return { id: chapterId, deleted: false };
     this.#db.exec("BEGIN IMMEDIATE");
     try {
+      const now = new Date().toISOString();
       this.#db
         .prepare(
           "UPDATE suggestions SET chapter_id = NULL " +
@@ -175,6 +179,20 @@ export class ChapterService {
       this.#db
         .prepare("DELETE FROM chapters WHERE id = ? AND document_id = ?")
         .run(chapterId, documentId);
+      // 两阶段换序避开 UNIQUE(document_id, sort_order) 的瞬时占用冲突。
+      this.#db
+        .prepare(
+          "UPDATE chapters SET sort_order = -sort_order - 1 " +
+            "WHERE document_id = ? AND sort_order > ?",
+        )
+        .run(documentId, existing.sort_order);
+      this.#db
+        .prepare(
+          "UPDATE chapters SET sort_order = -sort_order - 2, " +
+            "revision = revision + 1, updated_at = ? " +
+            "WHERE document_id = ? AND sort_order < ?",
+        )
+        .run(now, documentId, -existing.sort_order - 1);
       this.#db.exec("COMMIT");
       return { id: chapterId, deleted: true };
     } catch (error) {
@@ -286,6 +304,158 @@ export class ChapterService {
     return { id: chapterId, title: input.title, order: input.order, revision };
   }
 
+  createUpload(
+    documentId: string,
+    manifestHash: string,
+    totalChapters: number,
+  ) {
+    const document = this.#db
+      .prepare("SELECT 1 AS found FROM documents WHERE id = ?")
+      .get(documentId);
+    if (!document) throw new HttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
+    const existing = this.#db
+      .prepare(
+        "SELECT id, status FROM chapter_uploads " +
+          "WHERE document_id = ? AND manifest_hash = ? AND status = 'uploading' " +
+          "ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(documentId, manifestHash) as
+      | { id: string; status: "uploading" }
+      | undefined;
+    const uploadId = existing?.id ?? `upload_${randomUUID()}`;
+    if (!existing) {
+      this.#db
+        .prepare(
+          "INSERT INTO chapter_uploads(document_id, id, manifest_hash, total_chapters, status, created_at) " +
+            "VALUES (?, ?, ?, ?, 'uploading', ?)",
+        )
+        .run(documentId, uploadId, manifestHash, totalChapters, new Date().toISOString());
+    }
+    const staged = this.#db
+      .prepare(
+        "SELECT chapter_id FROM chapter_upload_items " +
+          "WHERE document_id = ? AND upload_id = ? ORDER BY sort_order",
+      )
+      .all(documentId, uploadId) as Array<{ chapter_id: string }>;
+    return {
+      uploadId,
+      manifestHash,
+      totalChapters,
+      status: "uploading" as const,
+      staged: staged.map((row) => row.chapter_id),
+    };
+  }
+
+  stageUploadBatch(
+    documentId: string,
+    uploadId: string,
+    items: Array<{
+      id: string;
+      title: string;
+      order: number;
+      content: TiptapDocument;
+      hash: string;
+      baseRevision: number;
+    }>,
+  ) {
+    const upload = this.#db
+      .prepare(
+        "SELECT total_chapters FROM chapter_uploads " +
+          "WHERE document_id = ? AND id = ? AND status = 'uploading'",
+      )
+      .get(documentId, uploadId) as { total_chapters: number } | undefined;
+    if (!upload) throw new HttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话不存在或已结束");
+    const seenIds = new Set<string>();
+    const seenOrders = new Set<number>();
+    for (const item of items) {
+      if (item.order >= upload.total_chapters || seenIds.has(item.id) || seenOrders.has(item.order)) {
+        throw new HttpError(409, "CHAPTER_UPLOAD_MANIFEST_CONFLICT", "批次章节 ID 或顺序与上传清单冲突", { chapterId: item.id, order: item.order });
+      }
+      seenIds.add(item.id);
+      seenOrders.add(item.order);
+      const active = this.#db
+        .prepare("SELECT revision FROM chapters WHERE document_id = ? AND id = ?")
+        .get(documentId, item.id) as { revision: number } | undefined;
+      if ((active?.revision ?? 0) !== item.baseRevision) {
+        throw new HttpError(409, "CHAPTER_REVISION_CONFLICT", "章节已被其他修改更新", { chapterId: item.id, currentRevision: active?.revision ?? 0 });
+      }
+    }
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const insert = this.#db.prepare(
+        "INSERT INTO chapter_upload_items(document_id, upload_id, chapter_id, title, sort_order, content_hash, base_revision, revision, content_json, hidden) " +
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+          "ON CONFLICT(document_id, upload_id, chapter_id) DO UPDATE SET " +
+          "title=excluded.title, sort_order=excluded.sort_order, content_hash=excluded.content_hash, " +
+          "base_revision=excluded.base_revision, revision=excluded.revision, content_json=excluded.content_json, hidden=excluded.hidden",
+      );
+      const results = [];
+      for (const item of items) {
+        const active = this.#db
+          .prepare("SELECT revision, content_hash, hidden FROM chapters WHERE document_id = ? AND id = ?")
+          .get(documentId, item.id) as { revision: number; content_hash: string | null; hidden: number } | undefined;
+        const unchanged = active?.content_hash === item.hash;
+        const revision = unchanged ? active.revision : item.baseRevision + 1;
+        insert.run(documentId, uploadId, item.id, item.title, item.order, item.hash, item.baseRevision, revision, JSON.stringify(item.content), active?.hidden ?? 0);
+        results.push({ id: item.id, title: item.title, order: item.order, revision, status: unchanged ? "unchanged" as const : "saved" as const });
+      }
+      this.#db.exec("COMMIT");
+      return results;
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(409, "CHAPTER_UPLOAD_MANIFEST_CONFLICT", "批次与已暂存章节冲突");
+    }
+  }
+
+  completeUpload(documentId: string, uploadId: string) {
+    const upload = this.#db
+      .prepare("SELECT manifest_hash, total_chapters, status, published_at FROM chapter_uploads WHERE document_id = ? AND id = ?")
+      .get(documentId, uploadId) as { manifest_hash: string; total_chapters: number; status: string; published_at: string | null } | undefined;
+    if (!upload) throw new HttpError(404, "CHAPTER_UPLOAD_NOT_FOUND", "上传会话不存在");
+    if (upload.status === "published") return { uploadId, manifestHash: upload.manifest_hash, totalChapters: upload.total_chapters, publishedAt: upload.published_at! };
+    if (upload.status !== "uploading") throw new HttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话正在由其他请求发布");
+    this.#db.prepare("UPDATE chapter_uploads SET status='aborted' WHERE document_id=? AND id=? AND status='uploading'").run(documentId, uploadId);
+    const reopen = () => this.#db.prepare("UPDATE chapter_uploads SET status='uploading' WHERE document_id=? AND id=? AND status='aborted'").run(documentId, uploadId);
+    const items = this.#db
+      .prepare("SELECT chapter_id, title, sort_order, content_hash, base_revision FROM chapter_upload_items WHERE document_id = ? AND upload_id = ? ORDER BY sort_order")
+      .all(documentId, uploadId) as Array<{ chapter_id: string; title: string; sort_order: number; content_hash: string; base_revision: number }>;
+    const invalidOrder = items.findIndex((item, index) => item.sort_order !== index);
+    const manifestHash = createHash("sha256")
+      .update(JSON.stringify(items.map((item) => ({ id: item.chapter_id, title: item.title, order: item.sort_order, hash: item.content_hash }))))
+      .digest("hex");
+    if (items.length !== upload.total_chapters || invalidOrder >= 0 || manifestHash !== upload.manifest_hash) {
+      reopen();
+      throw new HttpError(409, "CHAPTER_UPLOAD_INCOMPLETE", "上传章节数量、顺序或清单哈希不完整", { staged: items.length, expected: upload.total_chapters, invalidOrder });
+    }
+    for (const item of items) {
+      const active = this.#db.prepare("SELECT revision FROM chapters WHERE document_id = ? AND id = ?").get(documentId, item.chapter_id) as { revision: number } | undefined;
+      if ((active?.revision ?? 0) !== item.base_revision) {
+        reopen();
+        throw new HttpError(409, "CHAPTER_REVISION_CONFLICT", "发布前章节基线发生变化", { chapterId: item.chapter_id });
+      }
+    }
+    const publishedAt = new Date().toISOString();
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      this.#db.prepare("UPDATE chapters SET sort_order = -sort_order - 1 WHERE document_id = ?").run(documentId);
+      this.#db.prepare(
+        "INSERT INTO chapters(id, title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden) " +
+          "SELECT chapter_id, title, sort_order, document_id, revision, content_json, content_hash, ?, hidden " +
+          "FROM chapter_upload_items WHERE document_id = ? AND upload_id = ? " +
+          "ON CONFLICT(document_id, id) DO UPDATE SET title=excluded.title, sort_order=excluded.sort_order, revision=excluded.revision, content_json=excluded.content_json, content_hash=excluded.content_hash, updated_at=excluded.updated_at, hidden=excluded.hidden",
+      ).run(publishedAt, documentId, uploadId);
+      this.#db.prepare("DELETE FROM chapters WHERE document_id = ? AND id NOT IN (SELECT chapter_id FROM chapter_upload_items WHERE document_id = ? AND upload_id = ?)").run(documentId, documentId, uploadId);
+      this.#db.prepare("UPDATE chapter_uploads SET status='published', published_at=? WHERE document_id=? AND id=? AND status='aborted'").run(publishedAt, documentId, uploadId);
+      this.#db.exec("COMMIT");
+      return { uploadId, manifestHash, totalChapters: items.length, publishedAt };
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      reopen();
+      throw error;
+    }
+  }
+
   /**
    * 批量保存章节正文（每批最多 20 章）。
    *
@@ -365,15 +535,6 @@ export class ChapterService {
       status: "saved" | "unchanged";
     }> = [];
     const seenOrders = new Set<number>();
-    // 目标顺序被「其他服务器行」占用时不再整批 409：同一事务里先把它搬出
-    // 目标顺序（搬到比本批所有请求顺序更高的空闲位，内容与版本保留），
-    // 再写入新章——新文件上传模型下这种占用行基本是历史残留/占位行。
-    const moves: Array<{ id: string; to: number }> = [];
-    let nextFree = Math.max(
-      -1,
-      ...docOrders.map((row) => row.sort_order),
-      ...items.map((item) => item.order),
-    ) + 1;
     for (const item of items) {
       const existing = byId.get(item.id);
       if (seenOrders.has(item.order)) {
@@ -389,8 +550,7 @@ export class ChapterService {
         (row) => row.sort_order === item.order && row.id !== item.id,
       );
       if (occupied) {
-        moves.push({ id: occupied.id, to: nextFree });
-        nextFree += 1;
+        throw new HttpError(409, "CHAPTER_ORDER_CONFLICT", "目标顺序已被其他章节占用，禁止自动搬移线上章节", { chapterId: item.id, occupiedBy: occupied.id });
       }
       if (existing) {
         if (existing.content_hash === item.hash) {
@@ -425,16 +585,6 @@ export class ChapterService {
       });
     }
     const now = new Date().toISOString();
-    // 占用行先在同一事务内搬出目标顺序（顺序变化同样递增版本，行为与换序暂存一致）。
-    if (moves.length > 0) {
-      const moveOccurred = this.#db.prepare(
-        "UPDATE chapters SET sort_order = ?, revision = revision + 1, updated_at = ? " +
-          "WHERE id = ? AND document_id = ?",
-      );
-      for (const move of moves) {
-        moveOccurred.run(move.to, now, move.id, documentId);
-      }
-    }
     const upsert = this.#db.prepare(
       `INSERT INTO chapters(id, title, sort_order, document_id, revision, content_json, content_hash, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)

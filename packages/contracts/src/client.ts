@@ -75,6 +75,12 @@ export interface RiceTextApiClient {
   saveNovelChapter(novelId: string, chapterId: string, input: { title: string; order: number; content: DocumentEnvelope["content"]; hash: string; baseRevision: number }, signal?: AbortSignal): Promise<{ id: string; title: string; order: number; revision: number }>;
   /** 批量保存章节正文（每批最多 20 章；content_hash 一致时返回 unchanged 不递增版本）。 */
   saveNovelChaptersBatch(novelId: string, body: { chapters: Array<{ id: string; title: string; order: number; content: DocumentEnvelope["content"]; hash: string; baseRevision: number }> }, signal?: AbortSignal): Promise<{ chapters: Array<{ id: string; title: string; order: number; revision: number; status: "saved" | "unchanged" }> }>;
+  /** 创建或恢复一个不影响线上目录的整本上传会话。 */
+  createChapterUpload(novelId: string, body: { manifestHash: string; totalChapters: number }, signal?: AbortSignal): Promise<{ uploadId: string; manifestHash: string; totalChapters: number; status: "uploading" | "published"; staged: string[] }>;
+  /** 把一个正文批次写入上传会话暂存区。 */
+  stageChapterUploadBatch(novelId: string, uploadId: string, body: { chapters: Array<{ id: string; title: string; order: number; content: DocumentEnvelope["content"]; hash: string; baseRevision: number }> }, signal?: AbortSignal): Promise<{ chapters: Array<{ id: string; title: string; order: number; revision: number; status: "saved" | "unchanged" }> }>;
+  /** 完整验收后原子替换线上章节。 */
+  completeChapterUpload(novelId: string, uploadId: string, signal?: AbortSignal): Promise<{ uploadId: string; manifestHash: string; totalChapters: number; publishedAt: string }>;
   /** 换序暂存（每批最多 40 项，不发送正文；顺序已等于临时顺序时幂等返回）。 */
   stageNovelChapterReorder(novelId: string, body: { chapters: Array<{ id: string; temporaryOrder: number; baseRevision: number }> }, signal?: AbortSignal): Promise<{ chapters: Array<{ id: string; revision: number; status: "staged" | "unchanged" }> }>;
   /** 游标分页读取不可变版本历史。 */
@@ -175,6 +181,9 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
     getNovelChapter: (novelId, chapterId, signal) => request(`/api/forum/novels/${novelId}/chapters/${chapterId}`, { signal }),
     saveNovelChapter: (novelId, chapterId, input, signal) => request(`/api/forum/novels/${novelId}/chapters/${chapterId}`, { method: "PUT", body: json(input), signal }),
     saveNovelChaptersBatch: (novelId, body, signal) => request(`/api/forum/novels/${novelId}/chapters/batch`, { method: "POST", body: json(body), signal }),
+    createChapterUpload: (novelId, body, signal) => request(`/api/forum/novels/${novelId}/chapter-uploads`, { method: "POST", body: json(body), signal }),
+    stageChapterUploadBatch: (novelId, uploadId, body, signal) => request(`/api/forum/novels/${novelId}/chapter-uploads/${uploadId}/batch`, { method: "PUT", body: json(body), signal }),
+    completeChapterUpload: (novelId, uploadId, signal) => request(`/api/forum/novels/${novelId}/chapter-uploads/${uploadId}/complete`, { method: "POST", signal }),
     stageNovelChapterReorder: (novelId, body, signal) => request(`/api/forum/novels/${novelId}/chapters/reorder-stage`, { method: "POST", body: json(body), signal }),
     listRevisions: (id, cursor, chapterId, signal) => request(`/api/documents/${id}/revisions${query({ cursor, chapterId })}`, { signal }),
     getRevision: (id, revision, signal) => request(`/api/documents/${id}/revisions/${revision}`, { signal }),

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 import { createDatabase } from "../db.js";
 import { ChapterService } from "./chapter-service.js";
 
@@ -142,6 +143,23 @@ describe("ChapterService batch upload", () => {
     service = new ChapterService(db);
   });
 
+  it("删除中间章节后压紧后续顺序并递增其版本", () => {
+    service.saveChaptersBatch("article-a", [
+      { id: "a", title: "A", order: 0, content: batchContent, hash: "a", baseRevision: 0 },
+      { id: "b", title: "B", order: 1, content: batchContent, hash: "b", baseRevision: 0 },
+      { id: "c", title: "C", order: 2, content: batchContent, hash: "c", baseRevision: 0 },
+    ]);
+
+    expect(service.deleteChapter("article-a", "b")).toEqual({
+      id: "b",
+      deleted: true,
+    });
+    expect(service.chapters("article-a")).toMatchObject([
+      { id: "a", order: 0, revision: 1 },
+      { id: "c", order: 1, revision: 2 },
+    ]);
+  });
+
   afterEach(() => db.close());
 
   it("整批预校验：baseRevision 过期时整批 409 且不发生部分提交", () => {
@@ -188,7 +206,7 @@ describe("ChapterService batch upload", () => {
     expect(row.revision).toBe(1);
   });
 
-  it("跨文章复用 ID，并拒绝批内重复 order；目标占用自动腾位", () => {
+  it("跨文章复用 ID，但目标 order 占用时拒绝自动搬移", () => {
     service.saveChaptersBatch("article-a", [
       { id: "shared", title: "共享章", order: 0, content: batchContent, hash: "hash-0", baseRevision: 0 },
     ]);
@@ -201,30 +219,12 @@ describe("ChapterService batch upload", () => {
     expect(service.chapterContent("article-a", "shared").title).toBe("共享章");
     expect(service.chapterContent("article-b", "shared").title).toBe("B 的共享章");
 
-    // 目标顺序被其他服务器行占用：同一事务先把占用行搬到更高的空闲顺序，
-    // 再写入新章（新文件上传模型下占用行通常是历史残留/占位行，不再整批 409）。
-    const saved = service.saveChaptersBatch("article-a", [
+    expect(() => service.saveChaptersBatch("article-a", [
       { id: "new-0", title: "新章", order: 0, content: batchContent, hash: "hash-n", baseRevision: 0 },
+    ])).toThrowError(expect.objectContaining({ code: "CHAPTER_ORDER_CONFLICT" }));
+    expect(service.chapters("article-a")).toMatchObject([
+      { id: "shared", order: 0, revision: 1 },
     ]);
-    expect(saved).toEqual([
-      { id: "new-0", title: "新章", order: 0, revision: 1, status: "saved" },
-    ]);
-    const rows = db
-      .prepare(
-        "SELECT id, sort_order, revision, content_hash FROM chapters WHERE document_id = 'article-a' ORDER BY sort_order",
-      )
-      .all() as Array<{
-      id: string;
-      sort_order: number;
-      revision: number;
-      content_hash: string;
-    }>;
-    expect(rows.map((row) => [row.id, row.sort_order])).toEqual([
-      ["new-0", 0],
-      ["shared", 1],
-    ]);
-    // 被挪走的占用行正文保留、顺序变化递增版本。
-    expect(rows[1]).toMatchObject({ id: "shared", content_hash: "hash-0", revision: 2 });
     // 批内重复目标顺序同样整批 409。
     expect(() =>
       service.saveChaptersBatch("article-a", [
@@ -234,6 +234,34 @@ describe("ChapterService batch upload", () => {
     ).toThrowError(
       expect.objectContaining({ code: "CHAPTER_ORDER_CONFLICT", details: { chapterId: "dup-1" } }),
     );
+  });
+
+  it("乱序到达的上传批次只在完整验收后原子发布", () => {
+    const manifest = [
+      { id: "a", title: "A", order: 0, hash: "ha" },
+      { id: "b", title: "B", order: 1, hash: "hb" },
+      { id: "c", title: "C", order: 2, hash: "hc" },
+    ];
+    const hash = createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
+    const upload = service.createUpload("article-a", hash, manifest.length);
+    service.stageUploadBatch("article-a", upload.uploadId, [
+      { ...manifest[2]!, content: batchContent, baseRevision: 0 },
+    ]);
+    expect(() => service.completeUpload("article-a", upload.uploadId)).toThrowError(
+      expect.objectContaining({ code: "CHAPTER_UPLOAD_INCOMPLETE" }),
+    );
+    expect(service.chapters("article-a")).toEqual([]);
+    service.stageUploadBatch("article-a", upload.uploadId, [
+      { ...manifest[0]!, content: batchContent, baseRevision: 0 },
+      { ...manifest[1]!, content: batchContent, baseRevision: 0 },
+    ]);
+    expect(service.chapters("article-a")).toEqual([]);
+    service.completeUpload("article-a", upload.uploadId);
+    expect(service.chapters("article-a")).toMatchObject([
+      { id: "a", order: 0 },
+      { id: "b", order: 1 },
+      { id: "c", order: 2 },
+    ]);
   });
 
   it("保留空行和标准节点（longTextBlock 转换保护）", () => {

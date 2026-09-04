@@ -399,6 +399,34 @@ describe("RichTextEditor presets", () => {
     expect(screen.getByLabelText("选区文字颜色")).toBeInTheDocument();
   });
 
+  it("章节从空壳异步装载正文时不误弹选区格式菜单", async () => {
+    const editorRef: { current: Editor | null } = { current: null };
+    const props = {
+      mode: "mobile" as const,
+      onChange: vi.fn(),
+      onReady: (value: Editor | null) => {
+        editorRef.current = value;
+      },
+    };
+    const { rerender } = render(
+      <RichTextEditor
+        {...props}
+        content={{ type: "doc", content: [] }}
+      />,
+    );
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+
+    rerender(
+      <RichTextEditor {...props} content={defaultDocument.content} />,
+    );
+    await screen.findByText(/潮声越过旧防波堤/);
+
+    expect(editorRef.current?.state.selection.empty).toBe(true);
+    expect(
+      screen.queryByRole("toolbar", { name: "选区格式菜单" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("移动端长按不会打开右键菜单并保留选区工具栏", async () => {
     const editorRef: { current: Editor | null } = { current: null };
     render(

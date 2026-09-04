@@ -4,6 +4,7 @@ import {
   PasswordLoginRequestSchema,
   CreateDiceRollRequestSchema,
   CreateDocumentChapterRequestSchema,
+  CreateChapterUploadRequestSchema,
   CreateSuggestionBatchRequestSchema,
   CursorQuerySchema,
   ResolveMentionRequestSchema,
@@ -20,6 +21,7 @@ import {
   RollbackDocumentRequestSchema,
   SaveNovelChaptersBatchRequestSchema,
   StageNovelChapterReorderRequestSchema,
+  StageChapterUploadBatchRequestSchema,
   UpdateDocumentRequestSchema,
   UpdateDocumentStepsRequestSchema,
   VoteCommentRequestSchema,
@@ -496,6 +498,36 @@ export function createWorkerApp(): Hono<AppBindings> {
     return context.json(
       response("saveNovelChaptersBatch", 200, { chapters: result }),
     );
+  });
+
+  app.post("/api/forum/novels/:novelId/chapter-uploads", async (context) => {
+    const input = params("createChapterUpload", context.req.param()) as { novelId: string };
+    await requireDocumentEditor(context, input.novelId);
+    const request = CreateChapterUploadRequestSchema.parse(await body("createChapterUpload", context));
+    const repository = new D1ChapterRepository(context.env.DB);
+    const result = await repository.createUpload(input.novelId, request.manifestHash, request.totalChapters);
+    return context.json(response("createChapterUpload", 200, result));
+  });
+
+  app.put("/api/forum/novels/:novelId/chapter-uploads/:uploadId/batch", async (context) => {
+    const input = params("stageChapterUploadBatch", context.req.param()) as { novelId: string; uploadId: string };
+    await requireDocumentEditor(context, input.novelId);
+    const request = await limitedBatchBody<SaveNovelChaptersBatchRequest>(
+      "stageChapterUploadBatch",
+      context,
+      StageChapterUploadBatchRequestSchema,
+    );
+    const repository = new D1ChapterRepository(context.env.DB);
+    const result = await repository.stageUploadBatch(input.novelId, input.uploadId, request.chapters);
+    return context.json(response("stageChapterUploadBatch", 200, { chapters: result }));
+  });
+
+  app.post("/api/forum/novels/:novelId/chapter-uploads/:uploadId/complete", async (context) => {
+    const input = params("completeChapterUpload", context.req.param()) as { novelId: string; uploadId: string };
+    await requireDocumentEditor(context, input.novelId);
+    const repository = new D1ChapterRepository(context.env.DB);
+    const result = await repository.completeUpload(input.novelId, input.uploadId);
+    return context.json(response("completeChapterUpload", 200, result));
   });
 
   app.post(

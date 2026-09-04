@@ -126,6 +126,34 @@ export async function uploadLongTextChaptersBatch(
   }
 }
 
+export async function createLongTextChapterUpload(
+  novelId: string,
+  manifestHash: string,
+  totalChapters: number,
+) {
+  return api().createChapterUpload(novelId, { manifestHash, totalChapters });
+}
+
+export async function stageLongTextChapterUploadBatch(
+  novelId: string,
+  uploadId: string,
+  chapters: readonly UploadBatchChapterItem[],
+) {
+  return api().stageChapterUploadBatch(novelId, uploadId, {
+    chapters: chapters.map((chapter) => ({
+      ...chapter,
+      content: chapter.content as unknown as ContractDocumentEnvelope["content"],
+    })),
+  });
+}
+
+export async function completeLongTextChapterUpload(
+  novelId: string,
+  uploadId: string,
+) {
+  return api().completeChapterUpload(novelId, uploadId);
+}
+
 /** 换序暂存项：仅携带轻量元数据。 */
 export interface StageChapterReorderItem {
   id: string;

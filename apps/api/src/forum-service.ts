@@ -131,6 +131,22 @@ export class ForumService {
     return this.#chapters.saveChapter(documentId, chapterId, input);
   }
 
+  createChapterUpload(documentId: string, manifestHash: string, totalChapters: number) {
+    return this.#chapters.createUpload(documentId, manifestHash, totalChapters);
+  }
+
+  stageChapterUploadBatch(
+    documentId: string,
+    uploadId: string,
+    items: Array<{ id: string; title: string; order: number; content: TiptapDocument; hash: string; baseRevision: number }>,
+  ) {
+    return this.#chapters.stageUploadBatch(documentId, uploadId, items);
+  }
+
+  completeChapterUpload(documentId: string, uploadId: string) {
+    return this.#chapters.completeUpload(documentId, uploadId);
+  }
+
   /** 批量保存章节正文（每批最多 20 章；整批预校验，任一冲突整批 409）。 */
   saveChaptersBatch(
     documentId: string,

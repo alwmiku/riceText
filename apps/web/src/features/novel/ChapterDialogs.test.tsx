@@ -127,7 +127,7 @@ describe("ChapterUploadDialog", () => {
     expect(screen.queryByRole("button", { name: "确认分章上传" })).not.toBeInTheDocument();
   });
 
-  it("提示服务器额外章节只能从目录人工删除", () => {
+  it("提示服务器额外章节会在完整验收后整套替换", () => {
     render(
       <ChapterUploadDialog
         open
@@ -140,7 +140,7 @@ describe("ChapterUploadDialog", () => {
               id: "remote-only",
               title: "错乱章节",
               action: "服务器额外",
-              status: "待人工删除",
+              status: "待整套替换",
               attempts: 0,
             },
           ],
@@ -151,8 +151,8 @@ describe("ChapterUploadDialog", () => {
         onReprepare={vi.fn()}
       />,
     );
-    expect(screen.getByText(/服务器额外章节不会自动删除/)).toBeInTheDocument();
-    expect(screen.getByText("待人工删除")).toBeInTheDocument();
+    expect(screen.getByText(/原子替换整套目录/)).toBeInTheDocument();
+    expect(screen.getByText("待整套替换")).toBeInTheDocument();
   });
 
   it("虚拟列表只显示可见行，并可筛选到失败章节", () => {

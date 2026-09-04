@@ -8,11 +8,14 @@ export {
 } from "./api/documents";
 export {
   createDocumentChapter,
+  completeLongTextChapterUpload,
+  createLongTextChapterUpload,
   deleteDocumentChapter,
   getLongTextChapter,
   listForumChapters,
   setDocumentChapterHidden,
   stageLongTextChapterReorder,
+  stageLongTextChapterUploadBatch,
   syncLongTextChapters,
   uploadLongTextChapter,
   uploadLongTextChaptersBatch,

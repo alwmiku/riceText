@@ -9,7 +9,7 @@ import {
   type ChapterContent,
   type TiptapDocument,
 } from "@ricetext/contracts";
-import { chapterStorageId, sanitizeDocumentForWrite } from "@ricetext/server-core";
+import { chapterStorageId, sanitizeDocumentForWrite, sha256Hex } from "@ricetext/server-core";
 import { WorkerHttpError } from "../http-error";
 
 type ChapterRow = {
@@ -141,6 +141,9 @@ export class D1ChapterRepository {
     chapterId: string,
   ): Promise<{ id: string; deleted: boolean }> {
     await this.requireDocument(documentId);
+    const existing = await this.row(documentId, chapterId);
+    if (!existing) return { id: chapterId, deleted: false };
+    const now = new Date().toISOString();
     const results = await this.db.batch([
       this.db
         .prepare(
@@ -151,6 +154,19 @@ export class D1ChapterRepository {
       this.db
         .prepare("DELETE FROM chapters WHERE id = ? AND document_id = ?")
         .bind(chapterId, documentId),
+      this.db
+        .prepare(
+          "UPDATE chapters SET sort_order = -sort_order - 1 " +
+            "WHERE document_id = ? AND sort_order > ?",
+        )
+        .bind(documentId, existing.sort_order),
+      this.db
+        .prepare(
+          "UPDATE chapters SET sort_order = -sort_order - 2, " +
+            "revision = revision + 1, updated_at = ? " +
+            "WHERE document_id = ? AND sort_order < ?",
+        )
+        .bind(now, documentId, -existing.sort_order - 1),
     ]);
     return { id: chapterId, deleted: results[1]!.meta.changes > 0 };
   }
@@ -251,6 +267,100 @@ export class D1ChapterRepository {
     );
   }
 
+  async createUpload(documentId: string, manifestHash: string, totalChapters: number) {
+    await this.requireDocument(documentId);
+    const existing = await this.db
+      .prepare("SELECT id FROM chapter_uploads WHERE document_id=? AND manifest_hash=? AND status='uploading' ORDER BY created_at DESC LIMIT 1")
+      .bind(documentId, manifestHash)
+      .first<{ id: string }>();
+    const uploadId = existing?.id ?? `upload_${crypto.randomUUID()}`;
+    if (!existing) {
+      await this.db.prepare("INSERT INTO chapter_uploads(document_id,id,manifest_hash,total_chapters,status,created_at) VALUES(?,?,?,?,'uploading',?)")
+        .bind(documentId, uploadId, manifestHash, totalChapters, new Date().toISOString()).run();
+    }
+    const staged = await this.db.prepare("SELECT chapter_id FROM chapter_upload_items WHERE document_id=? AND upload_id=? ORDER BY sort_order")
+      .bind(documentId, uploadId).all<{ chapter_id: string }>();
+    return { uploadId, manifestHash, totalChapters, status: "uploading" as const, staged: staged.results.map((row) => row.chapter_id) };
+  }
+
+  async stageUploadBatch(
+    documentId: string,
+    uploadId: string,
+    items: Array<{ id: string; title: string; order: number; content: TiptapDocument; hash: string; baseRevision: number }>,
+  ) {
+    const upload = await this.db.prepare("SELECT total_chapters FROM chapter_uploads WHERE document_id=? AND id=? AND status='uploading'")
+      .bind(documentId, uploadId).first<{ total_chapters: number }>();
+    if (!upload) throw new WorkerHttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话不存在或已结束");
+    const byId = new Map((await this.metadata(documentId, items.map((item) => item.id))).map((row) => [row.id, row]));
+    const seenIds = new Set<string>();
+    const seenOrders = new Set<number>();
+    const prepared = [];
+    for (const item of items) {
+      if (item.order >= upload.total_chapters || seenIds.has(item.id) || seenOrders.has(item.order)) {
+        throw new WorkerHttpError(409, "CHAPTER_UPLOAD_MANIFEST_CONFLICT", "批次章节 ID 或顺序与上传清单冲突", { chapterId: item.id, order: item.order });
+      }
+      seenIds.add(item.id);
+      seenOrders.add(item.order);
+      const active = byId.get(item.id);
+      if ((active?.revision ?? 0) !== item.baseRevision) throw new WorkerHttpError(409, "CHAPTER_REVISION_CONFLICT", "章节已被其他修改更新", { chapterId: item.id, currentRevision: active?.revision ?? 0 });
+      const content = sanitizeDocumentForWrite(convertLongTextBlocksToChapters(item.content as unknown as JSONContent));
+      const unchanged = active?.content_hash === item.hash;
+      prepared.push({ ...item, content, revision: unchanged ? active.revision : item.baseRevision + 1, unchanged });
+    }
+    try {
+      await this.db.batch(prepared.map((item) => this.db.prepare(
+        "INSERT INTO chapter_upload_items(document_id,upload_id,chapter_id,title,sort_order,content_hash,base_revision,revision,content_json,hidden) " +
+        "VALUES(?,?,?,?,?,?,?,?,?,COALESCE((SELECT hidden FROM chapters WHERE document_id=? AND id=?),0)) " +
+        "ON CONFLICT(document_id,upload_id,chapter_id) DO UPDATE SET title=excluded.title,sort_order=excluded.sort_order,content_hash=excluded.content_hash,base_revision=excluded.base_revision,revision=excluded.revision,content_json=excluded.content_json,hidden=excluded.hidden"
+      ).bind(documentId, uploadId, item.id, item.title, item.order, item.hash, item.baseRevision, item.revision, JSON.stringify(item.content), documentId, item.id)));
+    } catch {
+      throw new WorkerHttpError(409, "CHAPTER_UPLOAD_MANIFEST_CONFLICT", "批次与已暂存章节冲突");
+    }
+    return prepared.map((item) => ({ id: item.id, title: item.title, order: item.order, revision: item.revision, status: item.unchanged ? "unchanged" as const : "saved" as const }));
+  }
+
+  async completeUpload(documentId: string, uploadId: string) {
+    const upload = await this.db.prepare("SELECT manifest_hash,total_chapters,status,published_at FROM chapter_uploads WHERE document_id=? AND id=?")
+      .bind(documentId, uploadId).first<{ manifest_hash: string; total_chapters: number; status: string; published_at: string | null }>();
+    if (!upload) throw new WorkerHttpError(404, "CHAPTER_UPLOAD_NOT_FOUND", "上传会话不存在");
+    if (upload.status === "published") return { uploadId, manifestHash: upload.manifest_hash, totalChapters: upload.total_chapters, publishedAt: upload.published_at! };
+    if (upload.status !== "uploading") throw new WorkerHttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话正在由其他请求发布");
+    const frozen = await this.db.prepare("UPDATE chapter_uploads SET status='aborted' WHERE document_id=? AND id=? AND status='uploading'").bind(documentId, uploadId).run();
+    if (frozen.meta.changes !== 1) throw new WorkerHttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话正在由其他请求发布");
+    const reopen = () => this.db.prepare("UPDATE chapter_uploads SET status='uploading' WHERE document_id=? AND id=? AND status='aborted'").bind(documentId, uploadId).run();
+    const result = await this.db.prepare("SELECT chapter_id,title,sort_order,content_hash,base_revision FROM chapter_upload_items WHERE document_id=? AND upload_id=? ORDER BY sort_order")
+      .bind(documentId, uploadId).all<{ chapter_id: string; title: string; sort_order: number; content_hash: string; base_revision: number }>();
+    const items = result.results;
+    const invalidOrder = items.findIndex((item, index) => item.sort_order !== index);
+    const manifestHash = await sha256Hex(new TextEncoder().encode(JSON.stringify(items.map((item) => ({ id: item.chapter_id, title: item.title, order: item.sort_order, hash: item.content_hash })))));
+    if (items.length !== upload.total_chapters || invalidOrder >= 0 || manifestHash !== upload.manifest_hash) {
+      await reopen();
+      throw new WorkerHttpError(409, "CHAPTER_UPLOAD_INCOMPLETE", "上传章节数量、顺序或清单哈希不完整", { staged: items.length, expected: upload.total_chapters, invalidOrder });
+    }
+    const active = new Map((await this.metadata(documentId, items.map((item) => item.chapter_id))).map((row) => [row.id, row]));
+    for (const item of items) if ((active.get(item.chapter_id)?.revision ?? 0) !== item.base_revision) {
+      await reopen();
+      throw new WorkerHttpError(409, "CHAPTER_REVISION_CONFLICT", "发布前章节基线发生变化", { chapterId: item.chapter_id });
+    }
+    const publishedAt = new Date().toISOString();
+    try {
+      await this.db.batch([
+        this.db.prepare("UPDATE chapters SET sort_order=-sort_order-1 WHERE document_id=?").bind(documentId),
+        this.db.prepare(
+          "INSERT INTO chapters(id,title,sort_order,document_id,revision,content_json,content_hash,updated_at,hidden) " +
+          "SELECT chapter_id,title,sort_order,document_id,revision,content_json,content_hash,?,hidden FROM chapter_upload_items WHERE document_id=? AND upload_id=? " +
+          "ON CONFLICT(document_id,id) DO UPDATE SET title=excluded.title,sort_order=excluded.sort_order,revision=excluded.revision,content_json=excluded.content_json,content_hash=excluded.content_hash,updated_at=excluded.updated_at,hidden=excluded.hidden"
+        ).bind(publishedAt, documentId, uploadId),
+        this.db.prepare("DELETE FROM chapters WHERE document_id=? AND id NOT IN (SELECT chapter_id FROM chapter_upload_items WHERE document_id=? AND upload_id=?)").bind(documentId, documentId, uploadId),
+        this.db.prepare("UPDATE chapter_uploads SET status='published',published_at=? WHERE document_id=? AND id=? AND status='aborted'").bind(publishedAt, documentId, uploadId),
+      ]);
+    } catch (error) {
+      await reopen();
+      throw new WorkerHttpError(409, "CHAPTER_UPLOAD_PUBLISH_CONFLICT", "原子发布章节失败", { detail: error instanceof Error ? error.message : String(error) });
+    }
+    return { uploadId, manifestHash, totalChapters: items.length, publishedAt };
+  }
+
   private async metadata(
     documentId: string,
     ids: readonly string[],
@@ -344,17 +454,6 @@ export class D1ChapterRepository {
       baseRevision: number;
     }> = [];
     const seenOrders = new Set<number>();
-    // 目标顺序被「其他服务器行」占用时不再整批 409：同一个 D1 batch（事务）
-    // 里先把它搬出目标顺序（搬到比本批所有请求顺序更高的空闲位，内容保留、
-    // 顺序变化递增版本），再写入新章——新文件上传模型下这类占用行基本是
-    // 历史残留或占位行。
-    const moves: Array<{ id: string; to: number }> = [];
-    let nextFree =
-      Math.max(
-        -1,
-        ...docOrders.map((row) => row.sort_order),
-        ...items.map((item) => item.order),
-      ) + 1;
     const now = new Date().toISOString();
     for (const item of items) {
       const existing = byId.get(item.id);
@@ -371,8 +470,7 @@ export class D1ChapterRepository {
         (row) => row.sort_order === item.order && row.id !== item.id,
       );
       if (occupied) {
-        moves.push({ id: occupied.id, to: nextFree });
-        nextFree += 1;
+        throw new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "目标顺序已被其他章节占用，禁止自动搬移线上章节", { chapterId: item.id, occupiedBy: occupied.id });
       }
       if (existing) {
         if (existing.content_hash === item.hash) {
@@ -411,14 +509,6 @@ export class D1ChapterRepository {
     }
     // 占用行搬移与章节写入合并进同一个事务批：要么全部生效要么全部回滚。
     const statements = [
-      ...moves.map((move) =>
-        this.db
-          .prepare(
-            "UPDATE chapters SET sort_order = ?, revision = revision + 1, updated_at = ? " +
-              "WHERE id = ? AND document_id = ?",
-          )
-          .bind(move.to, now, move.id, documentId),
-      ),
       ...write.map((item) =>
         this.db
           .prepare(
@@ -455,10 +545,9 @@ export class D1ChapterRepository {
       }
     }
     for (const [index, item] of write.entries()) {
-      // 语句数组开头是占用行搬移，章节写入从 moves.length 开始。
       const changed =
-        executed[moves.length + index] === undefined ||
-        executed[moves.length + index]!.meta.changes > 0;
+        executed[index] === undefined ||
+        executed[index]!.meta.changes > 0;
       if (changed) {
         results.push({
           id: item.id,

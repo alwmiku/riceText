@@ -75,7 +75,14 @@ OIDC 是可选功能，不使用时无需配置 `OIDC_ISSUER`、`OIDC_CLIENT_ID`
 pnpm db:reset-articles -- --env production --confirm ricetext-production
 ```
 
-本地环境使用 `--local --confirm ricetext-development`。命令会删除文章、章节、修订、校订和评论，并在结束后检查文章计数与数据库外键；不会删除用户、登录凭据、身份映射、钱包、附件或投票资源。
+本地 Node API 使用 `--sqlite .data/ricetext.sqlite --confirm ricetext-development`；本地 D1 使用 `--local --confirm ricetext-development`。命令会删除文章、章节、修订、校订和评论，并在结束后检查文章计数与数据库外键；不会删除用户、登录凭据、身份映射、钱包、附件或投票资源。
+
+检查本地 Node API 的章节主键、数量和顺序连续性：
+
+```bash
+pnpm db:inspect-chapters
+pnpm db:inspect-chapters -- --document <文章ID> --from 50 --limit 30
+```
 
 ## 可选数据导入
 

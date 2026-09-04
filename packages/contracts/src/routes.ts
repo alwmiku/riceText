@@ -8,6 +8,8 @@ import {
   CommentReplySchema,
   CommentSortSchema,
   CommentThreadSchema,
+  CompleteChapterUploadResponseSchema,
+  CreateChapterUploadRequestSchema,
   CreateCommentReplyRequestSchema,
   CreateDiceRollRequestSchema,
   CreateDocumentChapterRequestSchema,
@@ -39,6 +41,9 @@ import {
   SaveNovelChaptersBatchResponseSchema,
   StageNovelChapterReorderRequestSchema,
   StageNovelChapterReorderResponseSchema,
+  StageChapterUploadBatchRequestSchema,
+  StageChapterUploadBatchResponseSchema,
+  ChapterUploadSessionSchema,
   SubmitPollVoteRequestSchema,
   SuggestionBatchSchema,
   SuggestionSchema,
@@ -105,6 +110,7 @@ const attachmentParams = z.object({ attachmentId: EntityIdSchema }).strict();
 const pollParams = z.object({ pollId: EntityIdSchema }).strict();
 const novelParams = z.object({ novelId: EntityIdSchema.describe("章节所属的文档/小说 ID") }).strict();
 const novelChapterParams = z.object({ novelId: EntityIdSchema, chapterId: EntityIdSchema }).strict();
+const novelUploadParams = z.object({ novelId: EntityIdSchema, uploadId: EntityIdSchema }).strict();
 const documentChapterParams = z.object({ documentId: EntityIdSchema, chapterId: EntityIdSchema }).strict();
 const documentQuery = z.object({ documentId: EntityIdSchema }).strict();
 
@@ -180,6 +186,24 @@ export const contractRoutes: readonly ContractRoute[] = [
       413: { description: "序列化请求体超过约 5 MiB 上限。", schema: ApiErrorSchema },
       422: { description: "章节数超过 20 或章节字段非法。", schema: ApiErrorSchema },
     },
+  },
+  {
+    operationId: "createChapterUpload", method: "POST", path: "/api/forum/novels/:novelId/chapter-uploads", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "创建或恢复整本章节上传会话", description: "冻结章节总数与有序清单哈希；相同文章和清单的未完成会话幂等复用。暂存期间不修改线上章节。",
+    params: novelParams, body: CreateChapterUploadRequestSchema,
+    responses: { 200: { description: "可续传的上传会话。", schema: ChapterUploadSessionSchema }, 403: { description: "无编辑权限。", schema: ApiErrorSchema }, 409: { description: "上传清单与既有会话冲突。", schema: ApiErrorSchema } },
+  },
+  {
+    operationId: "stageChapterUploadBatch", method: "PUT", path: "/api/forum/novels/:novelId/chapter-uploads/:uploadId/batch", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "暂存整本上传的一个正文批次", description: "每批最多 20 章，只写上传会话暂存区；ID、order、hash 或基线版本冲突时整批拒绝，线上目录不变。",
+    params: novelUploadParams, body: StageChapterUploadBatchRequestSchema,
+    responses: { 200: { description: "暂存结果。", schema: StageChapterUploadBatchResponseSchema }, 403: { description: "无编辑权限。", schema: ApiErrorSchema }, 409: { description: "会话、顺序或版本冲突。", schema: ApiErrorSchema }, 413: { description: "批次过大。", schema: ApiErrorSchema } },
+  },
+  {
+    operationId: "completeChapterUpload", method: "POST", path: "/api/forum/novels/:novelId/chapter-uploads/:uploadId/complete", tags: ["论坛业务"], implementationStatus: "implemented",
+    summary: "验收并原子发布完整章节集", description: "服务端复算有序清单哈希并校验 0..N-1、数量、正文和基线版本；全部通过后才在一个事务内替换线上章节。",
+    params: novelUploadParams,
+    responses: { 200: { description: "原子发布结果。", schema: CompleteChapterUploadResponseSchema }, 403: { description: "无编辑权限。", schema: ApiErrorSchema }, 409: { description: "清单不完整、顺序错误或基线版本变化。", schema: ApiErrorSchema } },
   },
   {
     operationId: "stageNovelChapterReorder", method: "POST", path: "/api/forum/novels/:novelId/chapters/reorder-stage", tags: ["论坛业务"], implementationStatus: "implemented",

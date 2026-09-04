@@ -22,6 +22,7 @@
     "cf:verify": "node tools/cloudflare/verify-target.mjs",
     "auth:create-user": "tsx tools/cloudflare/create-password-user.ts",
     "db:reset-articles": "tsx tools/cloudflare/reset-article-data.ts",
+    "db:inspect-chapters": "tsx tools/cloudflare/inspect-chapter-data.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
   "devDependencies": {

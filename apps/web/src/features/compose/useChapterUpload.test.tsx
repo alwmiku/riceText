@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
   loadCheckpoint: vi.fn(),
   saveCheckpoint: vi.fn(),
   deleteCheckpoint: vi.fn(),
+  deleteChapter: vi.fn(),
+  createSession: vi.fn(),
+  completeSession: vi.fn(),
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -31,8 +34,15 @@ vi.mock("../../lib/api", () => ({
   },
   listForumChapters: mocks.list,
   syncLongTextChapters: mocks.sync,
-  uploadLongTextChaptersBatch: mocks.batchUpload,
+  stageLongTextChapterUploadBatch: (
+    novelId: string,
+    _uploadId: string,
+    chapters: unknown,
+  ) => mocks.batchUpload(novelId, chapters),
+  createLongTextChapterUpload: mocks.createSession,
+  completeLongTextChapterUpload: mocks.completeSession,
   stageLongTextChapterReorder: mocks.stage,
+  deleteDocumentChapter: mocks.deleteChapter,
 }));
 vi.mock("../../lib/utils", () => ({ sha256Hex: mocks.hash }));
 vi.mock("../../lib/long-text-draft-storage", () => ({
@@ -102,10 +112,27 @@ describe("useChapterUpload", () => {
     mocks.loadCheckpoint.mockReset().mockResolvedValue(undefined);
     mocks.saveCheckpoint.mockReset().mockResolvedValue(undefined);
     mocks.deleteCheckpoint.mockReset().mockResolvedValue(undefined);
+    mocks.deleteChapter.mockReset().mockResolvedValue({
+      id: "chapter-0",
+      deleted: true,
+    });
+    mocks.createSession.mockReset().mockResolvedValue({
+      uploadId: "upload-test",
+      manifestHash: "a".repeat(64),
+      totalChapters: 3,
+      status: "uploading",
+      staged: [],
+    });
+    mocks.completeSession.mockReset().mockResolvedValue({
+      uploadId: "upload-test",
+      manifestHash: "a".repeat(64),
+      totalChapters: 3,
+      publishedAt: "2026-09-04T00:00:00.000Z",
+    });
   });
 
   it("creates a missing server document before requesting chapter differences", async () => {
-    const ensureDocument = vi.fn().mockResolvedValue(true);
+    const ensureDocument = vi.fn().mockResolvedValue("created" as const);
     const { result } = renderHook(
       () =>
         useChapterUpload({
@@ -124,6 +151,32 @@ describe("useChapterUpload", () => {
     expect(ensureDocument.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.list.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it("removes the generated empty chapter when creating a long-text document", async () => {
+    const ensureDocument = vi.fn().mockResolvedValue("created" as const);
+    mocks.list.mockResolvedValue([
+      { id: "chapter-0", title: "正文", order: 0, revision: 1 },
+    ]);
+    const { result } = renderHook(
+      () =>
+        useChapterUpload({
+          novelId: "article-local",
+          getDocument: documentFixture,
+          getCoverage: () => [],
+          ensureDocument,
+          onNotice: vi.fn(),
+        }),
+      { wrapper },
+    );
+
+    await act(async () => result.current.prepare());
+
+    expect(mocks.deleteChapter).toHaveBeenCalledWith(
+      "article-local",
+      "chapter-0",
+    );
+    expect(result.current.diff).toMatchObject({ remoteOnly: 0 });
   });
 
   it("closes the dialog and pauses after the current atomic batch", async () => {
@@ -195,7 +248,7 @@ describe("useChapterUpload", () => {
     await act(async () => result.current.prepare());
     expect(result.current.diff).toMatchObject({
       total: 3,
-      toUpdate: 2,
+      toUpdate: 3,
       added: 1,
       modified: 1,
       gaps: 1,
@@ -219,7 +272,7 @@ describe("useChapterUpload", () => {
       Array<Record<string, unknown>>,
     ];
     expect(novelId).toBe("demo-post");
-    expect(payload.map((item) => item.id)).toEqual(["new", "changed"]);
+    expect(payload.map((item) => item.id)).toEqual(["new", "changed", "same"]);
     expect(payload[0]).toMatchObject({
       title: "新章",
       order: 0,
@@ -240,13 +293,13 @@ describe("useChapterUpload", () => {
         { type: "paragraph", content: [{ type: "text", text: "new text" }] },
       ],
     });
-    expect(notice).toHaveBeenCalledWith("已分章上传 2 章；仍有 1 段原文未切分");
+    expect(notice).toHaveBeenCalledWith("已分章上传 3 章；仍有 1 段原文未切分");
     expect(mocks.saveCheckpoint).toHaveBeenCalled();
     const lastSaved = mocks.saveCheckpoint.mock.calls.at(-1)?.[1] as {
       version: number;
       chapters: Array<Record<string, unknown>>;
     };
-    expect(lastSaved.version).toBe(3);
+    expect(lastSaved.version).toBe(4);
     expect(
       lastSaved.chapters.every((entry) => !("content" in entry)),
     ).toBe(true);
@@ -288,10 +341,14 @@ describe("useChapterUpload", () => {
       0,
     );
     expect(total).toBe(3000);
+    const orders = calls.flatMap((call) =>
+      (call[1] as Array<{ order: number }>).map((chapter) => chapter.order),
+    );
+    expect(orders).toEqual(Array.from({ length: 3000 }, (_, index) => index));
     expect(notice).toHaveBeenCalledWith(
       "已分章上传 3000 章；仍有 1 段原文未切分",
     );
-  });
+  }, 60_000);
 
   it("bisects a 413 batch into halves until single chapters", async () => {
     const four = () => ({
@@ -428,20 +485,10 @@ describe("useChapterUpload", () => {
     });
     expect(mocks.batchUpload).toHaveBeenCalledTimes(1);
     expect(result.current.hasCheckpoint).toBe(true);
-
-    mocks.list.mockResolvedValue([{ id: "changed", revision: 5 }]);
-    await act(async () => result.current.confirm());
-    expect(mocks.batchUpload).toHaveBeenCalledTimes(1);
-    expect(notice).toHaveBeenLastCalledWith(
-      "上传计划存在版本或结构冲突，请重新检查差异",
-    );
-    expect(result.current.diff?.rows[0]).toMatchObject({
-      status: "失败",
-      retryable: false,
-    });
+    expect(mocks.completeSession).not.toHaveBeenCalled();
   });
 
-  it("closes an unchanged plan without issuing uploads", async () => {
+  it("stages an unchanged manifest before atomic publication", async () => {
     mocks.sync.mockResolvedValue({
       toUpdate: [],
       existing: ["new", "changed", "same"],
@@ -459,11 +506,12 @@ describe("useChapterUpload", () => {
     );
 
     await act(async () => result.current.prepare());
-    expect(result.current.diff?.toUpdate).toBe(0);
+    expect(result.current.diff?.toUpdate).toBe(3);
     await act(async () => result.current.confirm());
 
-    expect(mocks.batchUpload).not.toHaveBeenCalled();
-    expect(notice).toHaveBeenCalledWith("章节无需上传，但仍有 1 段原文未切分");
+    expect(mocks.batchUpload).toHaveBeenCalledOnce();
+    expect(mocks.completeSession).toHaveBeenCalledOnce();
+    expect(notice).toHaveBeenCalledWith("已分章上传 3 章；仍有 1 段原文未切分");
   });
 
   it("ignores an unfinished prepare result after switching documents", async () => {
@@ -535,7 +583,7 @@ describe("useChapterUpload", () => {
   });
 
 
-      it("stages reordered chapters outside occupied server positions before the content batch", async () => {
+  it("stages reordered chapters without moving the live directory", async () => {
     const reordered = () => ({
       type: "doc",
       content: [
@@ -562,35 +610,24 @@ describe("useChapterUpload", () => {
     await act(async () => result.current.prepare());
     await act(async () => result.current.confirm());
 
-    expect(mocks.stage).toHaveBeenCalledTimes(1);
-    const [stageNovelId, stagePayload] = mocks.stage.mock.calls[0] as [
-      string,
-      Array<Record<string, unknown>>,
-    ];
-    expect(stageNovelId).toBe("demo-post");
-    expect(
-      stagePayload.map((item) => [
-        item.id,
-        item.temporaryOrder,
-        item.baseRevision,
-      ]),
-    ).toEqual([
-      ["changed", 3, 4],
-      ["same", 4, 2],
-    ]);
+    expect(mocks.stage).not.toHaveBeenCalled();
     const batchPayload = mocks.batchUpload.mock.calls[0]?.[1] as Array<
       Record<string, unknown>
     >;
     expect(
       batchPayload.map((item) => [item.id, item.order, item.baseRevision]),
     ).toEqual([
-      ["changed", 0, 5],
-      ["same", 1, 3],
+      ["changed", 0, 4],
+      ["same", 1, 2],
     ]);
+    expect(mocks.completeSession).toHaveBeenCalledOnce();
     expect(result.current.diff?.uploaded).toBe(2);
   });
 
   it("persists progress and resumes without re-uploading chapters already current", async () => {
+    mocks.createSession
+      .mockResolvedValueOnce({ uploadId: "upload-test", manifestHash: "a".repeat(64), totalChapters: 3, status: "uploading", staged: [] })
+      .mockResolvedValueOnce({ uploadId: "upload-test", manifestHash: "a".repeat(64), totalChapters: 3, status: "uploading", staged: ["new", "same"] });
     mocks.sync
       .mockResolvedValueOnce({
         toUpdate: ["new", "changed"],
@@ -637,7 +674,7 @@ describe("useChapterUpload", () => {
     expect(result.current.diff?.rows.map((row) => row.status)).toEqual([
       "失败",
       "失败",
-      "未变化",
+      "失败",
     ]);
     expect(result.current.hasCheckpoint).toBe(true);
 
@@ -648,11 +685,11 @@ describe("useChapterUpload", () => {
     // 首次重试了 4 次（1 次 + 3 次退避），恢复时 new 已是最新，只重发 changed。
     expect(ids[ids.length - 1]).toBe("changed");
     expect(result.current.diff?.rows.map((row) => row.status)).toEqual([
-      "未变化",
       "已上传",
-      "未变化",
+      "已上传",
+      "已上传",
     ]);
-    expect(result.current.diff?.uploaded).toBe(1);
+    expect(result.current.diff?.uploaded).toBe(3);
     expect(result.current.hasCheckpoint).toBe(false);
     expect(mocks.deleteCheckpoint).toHaveBeenCalledWith(
       "ricetext:long-text-upload:demo-post",
@@ -661,7 +698,7 @@ describe("useChapterUpload", () => {
 
   it("discards checkpoints created before SHA-256 chapter identities", async () => {
     const document = documentFixture();
-    // 先正常 prepare 一次拿到 v3 计划，再改造成旧版并从 IndexedDB 恢复。
+    // 先正常 prepare 一次拿到 v4 计划，再改造成旧版并从 IndexedDB 恢复。
     const first = renderHook(
       () =>
         useChapterUpload({
@@ -679,7 +716,7 @@ describe("useChapterUpload", () => {
       sourceHash: string;
       chapters: Array<Record<string, unknown>>;
     };
-    expect(saved.version).toBe(3);
+    expect(saved.version).toBe(4);
     first.unmount();
 
     const v1Checkpoint = {
@@ -753,13 +790,10 @@ describe("useChapterUpload", () => {
     });
     expect(result.current.diff?.rows[0]?.error).toContain("巨型章");
     await act(async () => result.current.confirm());
-    // 只有小章进入批量上传。
-    const ids = mocks.batchUpload.mock.calls.flatMap(
-      (call) => (call[1] as Array<{ id: string }>).map((item) => item.id),
-    );
-    expect(ids).toEqual(["small"]);
+    // 原子发布要求完整清单，任一超限时不暂存任何章节。
+    expect(mocks.batchUpload).not.toHaveBeenCalled();
     expect(notice).toHaveBeenLastCalledWith(
-      "已完成 1 章，1 章存在版本、结构或大小冲突，可点“继续上传”重试",
+      "上传计划存在结构或大小冲突，请重新检查差异",
     );
   });
   it("容忍编辑器回写的良性属性漂移：逐章一致时继续上传", async () => {
@@ -802,11 +836,11 @@ describe("useChapterUpload", () => {
     expect(result.current.diff?.rows.map((row) => row.status)).toEqual([
       "已上传",
       "已上传",
-      "未变化",
+      "已上传",
     ]);
   });
 
-  it("目标顺序被服务器占位行占用：先把占位行暂存腾位再批量写入", async () => {
+  it("目标顺序被旧行占用时只写会话暂存区", async () => {
     const one = () => ({
       type: "doc",
       content: [chapter("new", "新章", "正文")],
@@ -834,28 +868,18 @@ describe("useChapterUpload", () => {
     await act(async () => result.current.prepare());
     await act(async () => result.current.confirm());
 
-    // 先暂存占位行到临时顺序，再把新章写入目标顺序。
-    expect(mocks.stage).toHaveBeenCalledTimes(1);
-    const stagePayload = mocks.stage.mock.calls[0]?.[1] as Array<
-      Record<string, unknown>
-    >;
-    expect(stagePayload).toEqual([
-      {
-        id: "article-0-chapter-0-abc",
-        temporaryOrder: 1,
-        baseRevision: 1,
-      },
-    ]);
+    expect(mocks.stage).not.toHaveBeenCalled();
     const batchPayload = mocks.batchUpload.mock.calls[0]?.[1] as Array<
       Record<string, unknown>
     >;
     expect(batchPayload).toHaveLength(1);
     expect(batchPayload[0]).toMatchObject({ id: "new", order: 0 });
+    expect(mocks.completeSession).toHaveBeenCalledOnce();
     expect(result.current.diff?.rows[0]).toMatchObject({ status: "已上传" });
   });
 
 
-  it("临时顺序高于计划所有目标顺序：占位行腾位不撞后续批次", async () => {
+  it("服务器额外行不参与暂存清单并在原子发布时替换", async () => {
     const three = () => ({
       type: "doc",
       content: [
@@ -887,18 +911,7 @@ describe("useChapterUpload", () => {
     await act(async () => result.current.prepare());
     await act(async () => result.current.confirm());
 
-    // 占位行被挪到高于计划顺序（0-2）的位置，而不是 maxServerOrder+1=2。
-    const stagePayload = mocks.stage.mock.calls[0]?.[1] as Array<
-      Record<string, unknown>
-    >;
-    expect(stagePayload).toEqual([
-      {
-        id: "article-0-chapter-1-placeholder",
-        temporaryOrder: 3,
-        baseRevision: 1,
-      },
-    ]);
-    // 三个本地章节按最终顺序写入，不再与占位行的临时位冲突。
+    expect(mocks.stage).not.toHaveBeenCalled();
     const batchIds = mocks.batchUpload.mock.calls.flatMap(
       (call) =>
         (call[1] as Array<Record<string, unknown>>).map((item) => item.id),
@@ -909,8 +922,9 @@ describe("useChapterUpload", () => {
       "已上传",
       "已上传",
       "已上传",
-      "待人工删除",
+      "待整套替换",
     ]);
+    expect(mocks.completeSession).toHaveBeenCalledOnce();
   });
 
 

@@ -43,6 +43,11 @@ const stageRequest = (
     ),
   );
 
+async function manifestHash(chapters: Array<{ id: string; title: string; order: number; hash: string }>) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(chapters)));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 /** 章节 ID 可跨文章复用；order 从 0 连续。 */
 function chapterId(_novelId: string, index: number): string {
   return "chapter-" + index;
@@ -155,6 +160,28 @@ describe("Worker chapter batch", () => {
     ]);
   });
 
+  it("删除中间章节后压紧后续顺序", async () => {
+    await seedNovel("owner-a", 3);
+    const response = await exports.default.fetch(
+      new Request(
+        "http://example.com/api/documents/owner-a/chapters/" +
+          chapterId("owner-a", 1),
+        { method: "DELETE", headers: { "x-user-id": "author" } },
+      ),
+    );
+    expect(response.status).toBe(200);
+    const chapters = await env.DB.prepare(
+      "SELECT id, sort_order, revision FROM chapters " +
+        "WHERE document_id = ? ORDER BY sort_order",
+    )
+      .bind("owner-a")
+      .all<{ id: string; sort_order: number; revision: number }>();
+    expect(chapters.results).toEqual([
+      { id: chapterId("owner-a", 0), sort_order: 0, revision: 1 },
+      { id: chapterId("owner-a", 2), sort_order: 1, revision: 2 },
+    ]);
+  });
+
   it("批量保存：200 保存、同 hash 幂等、整批 409 且不发生部分提交", async () => {
     await seedNovel("batch-novel", 3);
     const item = (
@@ -216,7 +243,7 @@ describe("Worker chapter batch", () => {
     expect(untouched?.content_hash).toBe("old-2");
   });
 
-  it("跨文章复用 ID；批内重复 order 仍 409，目标占用自动腾位", async () => {
+  it("跨文章复用 ID；批内重复或目标 order 占用都 fail-closed", async () => {
     await seedNovel("owner-a", 2);
     await seedNovel("owner-b", 1);
     const cross = await batchRequest("owner-b", [
@@ -240,8 +267,7 @@ describe("Worker chapter batch", () => {
       .first<{ content_hash: string }>();
     expect(ownerA?.content_hash).toBe("old-0");
 
-    // 目标顺序被其他服务器行占用：不再 409，同一事务里把占用行搬到更高
-    // 空闲顺序（内容保留、顺序变更递增版本），再写入新章。
+    // 旧直写接口不得自动搬移线上章节。
     const occupied = await batchRequest("owner-a", [
       {
         id: chapterId("owner-a", 3),
@@ -252,17 +278,15 @@ describe("Worker chapter batch", () => {
         baseRevision: 0,
       },
     ]);
-    expect(occupied.status, await occupied.clone().text()).toBe(200);
+    expect(occupied.status).toBe(409);
     const after = await env.DB.prepare(
       "SELECT id, sort_order, content_hash FROM chapters WHERE document_id = 'owner-a' ORDER BY sort_order",
     ).all<{ id: string; sort_order: number; content_hash: string }>();
     expect(after.results.map((row) => [row.id, row.sort_order])).toEqual([
       [chapterId("owner-a", 0), 0],
-      [chapterId("owner-a", 3), 1],
-      [chapterId("owner-a", 1), 2],
+      [chapterId("owner-a", 1), 1],
     ]);
-    // 原 order 1 的占用行（旧正文）被搬到下一空闲顺序，正文未被破坏。
-    expect(after.results[2]?.content_hash).toBe("old-1");
+    expect(after.results[1]?.content_hash).toBe("old-1");
 
     // 批内重复目标顺序仍是整批 409（用全新 id，避免与上一段已写行冲突）。
     const duplicate = await batchRequest("owner-a", [
@@ -276,6 +300,45 @@ describe("Worker chapter batch", () => {
         details: { chapterId: chapterId("owner-a", 9) },
       },
     });
+  });
+
+  it("上传批次可乱序到达，完整验收前不改变线上目录", async () => {
+    await seedNovel("atomic-novel", 1);
+    const manifest = [
+      { id: "new-a", title: "A", order: 0, hash: "ha" },
+      { id: "new-b", title: "B", order: 1, hash: "hb" },
+      { id: "new-c", title: "C", order: 2, hash: "hc" },
+    ];
+    const create = await exports.default.fetch(new Request(
+      "http://example.com/api/forum/novels/atomic-novel/chapter-uploads",
+      { method: "POST", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ manifestHash: await manifestHash(manifest), totalChapters: 3 }) },
+    ));
+    expect(create.status, await create.clone().text()).toBe(200);
+    const uploadId = ((await create.json()) as { uploadId: string }).uploadId;
+    const stage = (items: typeof manifest) => exports.default.fetch(new Request(
+      `http://example.com/api/forum/novels/atomic-novel/chapter-uploads/${uploadId}/batch`,
+      { method: "PUT", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ chapters: items.map((item) => ({ ...item, content: contentFor(item.title), baseRevision: 0 })) }) },
+    ));
+    expect((await stage([manifest[2]!])).status).toBe(200);
+    const incomplete = await exports.default.fetch(new Request(
+      `http://example.com/api/forum/novels/atomic-novel/chapter-uploads/${uploadId}/complete`,
+      { method: "POST", headers: { "x-user-id": "author" } },
+    ));
+    expect(incomplete.status).toBe(409);
+    const before = await env.DB.prepare("SELECT id,sort_order FROM chapters WHERE document_id=? ORDER BY sort_order").bind("atomic-novel").all();
+    expect(before.results).toEqual([{ id: "chapter-0", sort_order: 0 }]);
+    expect((await stage([manifest[0]!, manifest[1]!])).status).toBe(200);
+    const complete = await exports.default.fetch(new Request(
+      `http://example.com/api/forum/novels/atomic-novel/chapter-uploads/${uploadId}/complete`,
+      { method: "POST", headers: { "x-user-id": "author" } },
+    ));
+    expect(complete.status, await complete.clone().text()).toBe(200);
+    const after = await env.DB.prepare("SELECT id,sort_order FROM chapters WHERE document_id=? ORDER BY sort_order").bind("atomic-novel").all();
+    expect(after.results).toEqual([
+      { id: "new-a", sort_order: 0 },
+      { id: "new-b", sort_order: 1 },
+      { id: "new-c", sort_order: 2 },
+    ]);
   });
 
   it("换序暂存：staged 后幂等 unchanged、重试不重复递增、冲突 409", async () => {

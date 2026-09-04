@@ -41,7 +41,9 @@ export interface ComposeDocumentController {
   setAutosaveEnabled: (enabled: boolean) => void;
   replaceContent: (next: RichTextNode) => void;
   createLocalArticle: () => void;
-  ensureServerDocument: (baseContent: RichTextNode) => Promise<boolean>;
+  ensureServerDocument: (
+    baseContent: RichTextNode,
+  ) => Promise<"created" | "existing" | false>;
   updateChapter: (chapterIndex: number, chapter: RichTextNode) => void;
   publishChapter: (
     chapterIndex: number,
@@ -313,7 +315,7 @@ export function useComposeDocument(
 
   const ensureServerDocument = useCallback(
     async (baseContent: RichTextNode) => {
-      if (localOnly || document.storage !== "missing") return true;
+      if (localOnly || document.storage !== "missing") return "existing";
       if (isDocumentLoading || !articleStarted) return false;
       const saved = await saveDocument(documentId, {
         title: document.title,
@@ -329,7 +331,7 @@ export function useComposeDocument(
       void queryClient.invalidateQueries({
         queryKey: ["forum", "chapters", documentId],
       });
-      return true;
+      return "created";
     },
     [
       articleStarted,

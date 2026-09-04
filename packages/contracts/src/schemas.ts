@@ -508,6 +508,36 @@ export type SaveNovelChaptersBatchResponse = z.infer<
   typeof SaveNovelChaptersBatchResponseSchema
 >;
 
+/** 创建整本上传会话；manifestHash 覆盖有序的 id/title/order/hash 清单。 */
+export const CreateChapterUploadRequestSchema = z
+  .object({
+    manifestHash: z.string().regex(/^[0-9a-f]{64}$/),
+    totalChapters: z.number().int().min(1).max(10_000),
+  })
+  .strict();
+export const ChapterUploadSessionSchema = z
+  .object({
+    uploadId: EntityIdSchema,
+    manifestHash: z.string().regex(/^[0-9a-f]{64}$/),
+    totalChapters: z.number().int().min(1).max(10_000),
+    status: z.enum(["uploading", "published"]),
+    staged: z.array(EntityIdSchema),
+  })
+  .strict();
+export const StageChapterUploadBatchRequestSchema = z
+  .object({ chapters: z.array(BatchChapterItemSchema).min(1).max(20) })
+  .strict();
+export const StageChapterUploadBatchResponseSchema =
+  SaveNovelChaptersBatchResponseSchema;
+export const CompleteChapterUploadResponseSchema = z
+  .object({
+    uploadId: EntityIdSchema,
+    manifestHash: z.string().regex(/^[0-9a-f]{64}$/),
+    totalChapters: z.number().int().min(1).max(10_000),
+    publishedAt: DateTimeSchema,
+  })
+  .strict();
+
 /** 换序暂存请求中的单个章节（仅携带轻量元数据，不发送正文）。 */
 export const StageChapterReorderItemSchema = z
   .object({

@@ -1,5 +1,6 @@
 import Placeholder from "@tiptap/extension-placeholder";
 import { editorExtensions, NodeSelection } from "@ricetext/editor-core";
+import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import {
   ChevronDown,
@@ -229,6 +230,9 @@ export function RichTextEditor({
     tr.setMeta("hostContentReplace", true);
     const nodes = editor.schema.nodeFromJSON(content);
     tr.replaceWith(0, editor.state.doc.content.size, nodes.content);
+    // 新章节异步装载前编辑器可能只有空壳文档，其 AllSelection 会随整篇替换
+    // 映射成整章选区并误触发浮动格式菜单；宿主替换后统一收起到章首光标。
+    tr.setSelection(TextSelection.atStart(tr.doc));
     editor.view.dispatch(tr);
   }, [content, editor, longTextMode]);
   // 显式销毁 EditorView，避免路由切换后残留 DOM 监听器。

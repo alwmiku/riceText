@@ -3,10 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
+  completeLongTextChapterUpload,
+  createLongTextChapterUpload,
+  deleteDocumentChapter,
   listForumChapters,
-  stageLongTextChapterReorder,
+  stageLongTextChapterUploadBatch,
   syncLongTextChapters,
-  uploadLongTextChaptersBatch,
 } from "../../lib/api";
 import {
   deleteLongTextValue,
@@ -31,15 +33,12 @@ import {
   isTooLargeBatchError,
   MAX_BATCH_RETRIES,
   MAX_CHAPTER_CONTENT_BYTES,
-  MAX_REORDER_PER_BATCH,
-  splitByCount,
   splitUploadBatches,
   utf8ByteLength,
-  type StageChapterReorderItem,
   type UploadBatchChapterItem,
 } from "./chapter-upload-batches";
 
-/** v3 检查点使用 SHA-256 章节身份，只保存元数据。 */
+/** v4 检查点使用服务端上传会话，只保存元数据和逐批状态。 */
 interface UploadCheckpointChapter extends ChapterUploadRow {
   order: number;
   hash: string;
@@ -47,13 +46,9 @@ interface UploadCheckpointChapter extends ChapterUploadRow {
 }
 
 interface UploadCheckpointV3 {
-  version: 3;
+  version: 4;
   novelId: string;
   gaps: number;
-  /** 换序阶段：staging = 移动章节尚未全部暂存；content = 已可发送正文批次。 */
-  reorderPhase: "staging" | "content";
-  /** id -> 全局唯一临时 order；从首个运行开始稳定，跨刷新保持不变。 */
-  temporaryOrders: Record<string, number>;
   chapters: UploadCheckpointChapter[];
 }
 
@@ -61,7 +56,7 @@ interface ChapterUploadOptions {
   novelId: string;
   getDocument: () => RichTextNode;
   getCoverage: () => readonly CoverageChapter[];
-  ensureDocument?: () => Promise<boolean>;
+  ensureDocument?: () => Promise<"created" | "existing" | false>;
   onNotice: (notice: string) => void;
 }
 
@@ -121,9 +116,6 @@ async function buildCheckpoint(
   const directoryById = new Map(
     directory.map((chapter) => [chapter.id, chapter]),
   );
-  const directoryByOrder = new Map(
-    directory.map((chapter) => [chapter.order, chapter]),
-  );
   const nodes = document.content ?? [];
   const chapters: UploadCheckpointChapter[] = [];
   const contentByChapter = new Map<
@@ -134,7 +126,8 @@ async function buildCheckpoint(
   for (let offset = 0; offset < nodes.length; offset += 64) {
     const converted = await Promise.all(
       nodes.slice(offset, offset + 64).map(
-        async (node, order): Promise<UploadCheckpointChapter> => {
+        async (node, index): Promise<UploadCheckpointChapter> => {
+          const order = offset + index;
           const id = resolveChapterId(node, order, capturedNovelId);
           const title = String(node.attrs?.title ?? "未命名章节");
           const normalizedNode: RichTextNode = {
@@ -175,27 +168,24 @@ async function buildCheckpoint(
     chapters.push(...converted);
     await yieldToUI();
   }
+  const invalidOrder = chapters.findIndex(
+    (chapter, expectedOrder) => chapter.order !== expectedOrder,
+  );
+  if (invalidOrder >= 0) {
+    throw new Error(
+      `本地章节顺序计算异常：第 ${invalidOrder + 1} 章得到 order ${chapters[invalidOrder]!.order}`,
+    );
+  }
   const sync = await syncLongTextChapters(
     capturedNovelId,
     chapters.map(({ id, title, order, hash }) => ({ id, title, order, hash })),
   );
   const toUpdate = new Set(sync.toUpdate);
   const existing = new Set(sync.existing);
-  // 需要暂存的场景：本地章节已存在但服务器顺序不同，或目标顺序被其他
-  // 服务器章节（如「正文」占位行）占用——先统一挪到全局唯一临时顺序。
-  const hasMoves = chapters.some((chapter) => {
-    const remote = directoryById.get(chapter.id);
-    if (remote) return remote.order !== chapter.order;
-    const occupant = directoryByOrder.get(chapter.order);
-    return occupant !== undefined && occupant.id !== chapter.id;
-  });
   const checkpoint: UploadCheckpointV3 = {
-    version: 3,
+    version: 4,
     novelId: capturedNovelId,
     gaps,
-    /** 确有换序时先进入 staging 阶段，否则直接进入正文批次。 */
-    reorderPhase: hasMoves ? "staging" : "content",
-    temporaryOrders: {},
     chapters: [
       ...chapters.map((chapter) => ({
         ...chapter,
@@ -223,7 +213,7 @@ async function buildCheckpoint(
           hash: "",
           baseRevision: remote.revision,
           action: "服务器额外" as const,
-          status: "待人工删除" as const,
+          status: "待整套替换" as const,
           attempts: 0,
         })),
     ],
@@ -263,9 +253,7 @@ function toDiff(
   );
   return {
     total: rows.filter((row) => row.action !== "服务器额外").length,
-    toUpdate: rows.filter(
-      (row) => row.action === "新增" || row.action === "修改",
-    ).length,
+    toUpdate: rows.filter((row) => row.action !== "服务器额外").length,
     added: rows.filter((row) => row.action === "新增").length,
     modified: rows.filter((row) => row.action === "修改").length,
     remoteOnly: rows.filter((row) => row.action === "服务器额外").length,
@@ -399,7 +387,7 @@ export function useChapterUpload({
           stored.novelId !== novelId
         )
           return;
-        if (stored.version !== 3) {
+        if (stored.version !== 4) {
           await deleteLongTextValue(checkpointKey(novelId));
           return;
         }
@@ -455,6 +443,7 @@ export function useChapterUpload({
     const capturedNovelId = novelId;
     setPreparing(true);
     try {
+      let documentState: "created" | "existing" = "existing";
       if (ensureDocumentRef.current) {
         const ready = await ensureDocumentRef.current();
         if (operation !== operationRef.current) return;
@@ -462,11 +451,27 @@ export function useChapterUpload({
           onNoticeRef.current("无法创建服务器文章，请检查网络后重试");
           return;
         }
+        documentState = ready;
       }
-      const directory = await listForumChapters(capturedNovelId, {
+      let directory = await listForumChapters(capturedNovelId, {
         strict: true,
       });
       if (operation !== operationRef.current) return;
+      // 首次创建服务器文章时，普通正文模型会生成唯一的空“正文”目录占位。
+      // 它不是用户章节，长文本上传前应清掉，避免被暂存到正文中间或末尾。
+      const placeholder =
+        documentState === "created" &&
+        directory.length === 1 &&
+        directory[0]?.id === "chapter-0" &&
+        directory[0]?.title === "正文" &&
+        directory[0]?.revision === 1
+          ? directory[0]
+          : undefined;
+      if (placeholder) {
+        await deleteDocumentChapter(capturedNovelId, placeholder.id);
+        if (operation !== operationRef.current) return;
+        directory = [];
+      }
       const { checkpoint } = await buildCheckpoint(
         capturedNovelId,
         document,
@@ -499,6 +504,7 @@ export function useChapterUpload({
     async (
       checkpoint: UploadCheckpointV3,
       operation: number,
+      uploadId: string,
       chapters: UploadCheckpointChapter[],
       contentByChapter: Map<
         string,
@@ -546,7 +552,11 @@ export function useChapterUpload({
         while (queue.length > 0) {
           const currentBatch = queue.shift()!;
           const outcome = await sendWithRetry(() =>
-            uploadLongTextChaptersBatch(checkpoint.novelId, currentBatch),
+            stageLongTextChapterUploadBatch(
+              checkpoint.novelId,
+              uploadId,
+              currentBatch,
+            ),
           );
           if (outcome.ok) {
             const completed = new Map(
@@ -618,56 +628,6 @@ export function useChapterUpload({
     [afterBatch, persistCheckpoint],
   );
 
-  const uploadStaging = useCallback(
-    async (
-      checkpoint: UploadCheckpointV3,
-      operation: number,
-      stagedItems: StageChapterReorderItem[],
-    ): Promise<boolean> => {
-      const stateById = new Map(
-        checkpoint.chapters.map((chapter) => [chapter.id, chapter]),
-      );
-      for (const batch of splitByCount(stagedItems, MAX_REORDER_PER_BATCH)) {
-        const outcome = await sendWithRetry(() =>
-          stageLongTextChapterReorder(checkpoint.novelId, batch),
-        );
-        if (!outcome.ok) {
-          for (const item of batch) {
-            const state = stateById.get(item.id)!;
-            state.status = "失败";
-            state.error =
-              outcome.error instanceof Error
-                ? outcome.error.message
-                : "换序暂存失败";
-            state.retryable = outcome.retryable;
-          }
-          await persistCheckpoint({ ...checkpoint });
-          setHasCheckpoint(true);
-          onNoticeRef.current(
-            isBlockingUploadError(outcome.error)
-              ? "换序时发生版本或顺序冲突，请重新检查差异"
-              : "换序暂存中断，可点击继续上传重试",
-          );
-          return true;
-        }
-        for (const item of batch) {
-          const state = stateById.get(item.id);
-          const result = outcome.value.chapters.find(
-            (entry) => entry.id === item.id,
-          );
-          // 暂存项可能是计划外的占位行（为目标顺序腾位），只更新计划内章节。
-          if (state) state.baseRevision = result?.revision ?? state.baseRevision;
-        }
-        if (await afterBatch({ ...checkpoint }, operation)) return true;
-        await yieldToUI();
-      }
-      checkpoint.reorderPhase = "content";
-      await persistCheckpoint({ ...checkpoint });
-      return false;
-    },
-    [afterBatch, persistCheckpoint],
-  );
-
   const confirm = useCallback(async () => {
     const checkpoint = checkpointRef.current;
     if (!checkpoint || runnerRef.current) return;
@@ -700,150 +660,50 @@ export function useChapterUpload({
       );
       if (operation !== operationRef.current) return;
       const contentByChapter = fresh.contentByChapter;
-      // 合并旧计划的进度：已完成章节保持完成状态；失败/重试记录与尝试次数
-      // 沿用，便于续传与展示；其余按最新对比结果重新判定。
-      const previousById = new Map(
-        checkpoint.chapters.map((chapter) => [chapter.id, chapter]),
-      );
-      for (const state of fresh.checkpoint.chapters) {
-        const previous = previousById.get(state.id);
-        if (!previous) continue;
-        state.attempts = previous.attempts;
-        if (previous.status === "已上传" && state.status !== "失败") {
-          state.status = "已上传";
-          state.baseRevision = previous.baseRevision;
-        } else if (
-          previous.status === "失败" &&
-          state.status === "待上传"
-        ) {
-          // 不可重试冲突保持失败态（不重复进入上传队列）；
-          // 可重试失败保留原错误与标记，便于界面定位与后续续传。
-          if (previous.retryable === false) state.status = "失败";
-          if (previous.error) state.error = previous.error;
-          if (previous.retryable !== undefined)
-            state.retryable = previous.retryable;
-        }
-      }
       checkpoint.chapters = fresh.checkpoint.chapters;
       checkpoint.gaps = fresh.checkpoint.gaps;
-      checkpoint.reorderPhase = fresh.checkpoint.reorderPhase;
-      checkpoint.temporaryOrders = fresh.checkpoint.temporaryOrders;
-      await persistCheckpoint({ ...checkpoint });
-
-      const freshDirectory = directory;
-      const revisionById = new Map(
-        freshDirectory.map((chapter) => [chapter.id, chapter.revision]),
-      );
-      const active = checkpoint.chapters.filter(
-        (chapter) =>
-          chapter.status === "待上传" ||
-          (chapter.status === "失败" && chapter.retryable !== false),
+      const local = checkpoint.chapters.filter(
+        (chapter) => chapter.action !== "服务器额外",
       );
       const blocked = checkpoint.chapters.some(
         (chapter) => chapter.status === "失败" && chapter.retryable === false,
       );
-      if (active.length === 0) {
-        if (blocked) {
-          setHasCheckpoint(true);
-          onNoticeRef.current("上传计划存在版本或结构冲突，请重新检查差异");
-          return;
-        }
-        setOpen(false);
-        setHasCheckpoint(false);
-        checkpointRef.current = null;
-        await deleteLongTextValue(checkpointKey(checkpoint.novelId));
-        const remoteOnly = checkpoint.chapters.filter(
-          (chapter) => chapter.action === "服务器额外",
-        ).length;
-        onNoticeRef.current(
-          remoteOnly > 0
-            ? `本地章节无需上传；服务器仍有 ${remoteOnly} 个额外章节，请到目录确认删除`
-            : checkpoint.gaps > 0
-              ? `章节无需上传，但仍有 ${checkpoint.gaps} 段原文未切分`
-              : "服务器章节与本地长文本完全一致",
-        );
+      if (blocked) {
+        setHasCheckpoint(true);
+        onNoticeRef.current("上传计划存在结构或大小冲突，请重新检查差异");
         return;
       }
-      const freshOrderById = new Map(
-        freshDirectory.map((chapter) => [chapter.id, chapter]),
+      const manifestHash = await sha256Hex(
+        JSON.stringify(
+          local.map((chapter) => ({
+            id: chapter.id,
+            title: chapter.title,
+            order: chapter.order,
+            hash: chapter.hash,
+          })),
+        ),
       );
-      const occupiedByOrder = new Map(
-        freshDirectory.map((chapter) => [chapter.order, chapter]),
+      const session = await createLongTextChapterUpload(
+        checkpoint.novelId,
+        manifestHash,
+        local.length,
       );
-      const maxServerOrder = Math.max(
-        -1,
-        ...freshDirectory.map((chapter) => chapter.order),
-      );
-      // 需要暂存的服务器章节：本地章节已存在但服务器顺序不同，或目标顺序
-      // 被其他服务器章节（占位行/旧行）占用——用 Map 降低扫描成本。
-      // key = 被挪动的服务器行 id；value = 需要腾出的目标顺序（用于派生临时顺序）。
-      const stagePlan = new Map<string, number>();
-      for (const chapter of active) {
-        const owned = freshOrderById.get(chapter.id);
-        if (owned && owned.order !== chapter.order) {
-          stagePlan.set(owned.id, chapter.order);
-          continue;
-        }
-        if (owned) continue;
-        const occupant = occupiedByOrder.get(chapter.order);
-        if (occupant && occupant.id !== chapter.id) {
-          stagePlan.set(occupant.id, chapter.order);
-        }
+      const staged = new Set(session.staged);
+      for (const chapter of local) {
+        chapter.status = staged.has(chapter.id) ? "已上传" : "待上传";
       }
-      if (stagePlan.size > 0 && checkpoint.reorderPhase === "staging") {
-        // 临时顺序必须高于「服务器最大顺序」与「本计划所有目标顺序」的更高者，
-        // 否则暂存的占位行会占据后续批次的最终目标顺序（几千章时服务器通常
-        // 只有少量章节，maxServerOrder + i 必然与计划内的顺序撞车）。
-        const orderCeiling = Math.max(
-          maxServerOrder,
-          ...active.map((chapter) => chapter.order),
-          0,
-        );
-        const tempBase = orderCeiling + 1;
-        let next = 0;
-        for (const rowId of stagePlan.keys()) {
-          const existing = checkpoint.temporaryOrders[rowId];
-          // 已持久化的安全临时位继续复用，避免跨恢复漂移；不安全的重新分配。
-          if (existing !== undefined && existing > orderCeiling) continue;
-          checkpoint.temporaryOrders[rowId] = tempBase + next;
-          next += 1;
-        }
-        const stagedItems = [...stagePlan.keys()].map(
-          (rowId): StageChapterReorderItem => ({
-            id: rowId,
-            temporaryOrder: checkpoint.temporaryOrders[rowId]!,
-            baseRevision:
-              revisionById.get(rowId) ??
-              freshOrderById.get(rowId)?.revision ??
-              0,
-          }),
-        );
-        progressRef.current = {
-          current: progressRef.current.current ?? 0,
-          total: Math.ceil(stagedItems.length / MAX_REORDER_PER_BATCH),
-        };
-        if (await uploadStaging(checkpoint, operation, stagedItems)) return;
-      }
-      // 被暂存挪动的行不在上传范围内；其余章节以最新目录版本为准。
-      const stagedRowIds = new Set(stagePlan.keys());
-      for (const chapter of active) {
-        if (stagedRowIds.has(chapter.id)) continue;
-        const refreshed = revisionById.get(chapter.id);
-        if (refreshed !== undefined) chapter.baseRevision = refreshed;
-      }
-      const pending = checkpoint.chapters.filter(
-        (chapter) =>
-          chapter.status === "待上传" ||
-          (chapter.status === "失败" && chapter.retryable !== false),
-      );
-      if (pending.length === 0) {
-        setHasCheckpoint(false);
-        checkpointRef.current = null;
-        await deleteLongTextValue(checkpointKey(checkpoint.novelId));
-        onNoticeRef.current("服务器章节已是最新版本，无需重复上传");
-        return;
-      }
-      if (await uploadBatch(checkpoint, operation, pending, contentByChapter))
+      await persistCheckpoint({ ...checkpoint });
+      const pending = local.filter((chapter) => !staged.has(chapter.id));
+      if (
+        pending.length > 0 &&
+        (await uploadBatch(
+          checkpoint,
+          operation,
+          session.uploadId,
+          pending,
+          contentByChapter,
+        ))
+      )
         return;
 
       // 单批失败不再中断整次上传；只要还有失败章节就保留检查点（含重试
@@ -868,18 +728,17 @@ export function useChapterUpload({
         );
         return;
       }
+      await completeLongTextChapterUpload(
+        checkpoint.novelId,
+        session.uploadId,
+      );
       setHasCheckpoint(false);
       checkpointRef.current = null;
       await deleteLongTextValue(checkpointKey(checkpoint.novelId));
-      const remoteOnly = checkpoint.chapters.filter(
-        (chapter) => chapter.action === "服务器额外",
-      ).length;
       onNoticeRef.current(
-        remoteOnly > 0
-          ? `已分章上传 ${uploadedCount} 章；服务器仍有 ${remoteOnly} 个额外章节，请到目录确认删除`
-          : checkpoint.gaps > 0
+        checkpoint.gaps > 0
             ? `已分章上传 ${uploadedCount} 章；仍有 ${checkpoint.gaps} 段原文未切分`
-            : `已分章上传 ${uploadedCount} 章，服务器与本地长文本完全一致`,
+            : `已原子发布 ${uploadedCount} 章，服务器与本地长文本完全一致`,
       );
       void queryClient.invalidateQueries({
         queryKey: ["forum", "chapters", capturedNovelId],
@@ -900,7 +759,6 @@ export function useChapterUpload({
     publishCheckpoint,
     queryClient,
     uploadBatch,
-    uploadStaging,
   ]);
 
   return {

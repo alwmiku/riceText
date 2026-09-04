@@ -22,7 +22,7 @@ export type ChapterUploadStatus =
   | "上传中"
   | "已上传"
   | "未变化"
-  | "待人工删除"
+  | "待整套替换"
   | "失败";
 
 export interface ChapterUploadRow {
@@ -67,7 +67,7 @@ function StatusMarker({ row }: { row: ChapterUploadRow }) {
       <CheckCircle2 />
     ) : row.status === "上传中" ? (
       <LoaderCircle className="animate-spin" />
-    ) : row.status === "失败" || row.status === "待人工删除" ? (
+    ) : row.status === "失败" || row.status === "待整套替换" ? (
       <AlertCircle />
     ) : (
       <CircleDashed />
@@ -76,7 +76,7 @@ function StatusMarker({ row }: { row: ChapterUploadRow }) {
     <Marker
       className={cn(
         "w-auto shrink-0 normal-case tracking-normal",
-        (row.status === "失败" || row.status === "待人工删除") &&
+        (row.status === "失败" || row.status === "待整套替换") &&
           "text-destructive",
         row.status === "上传中" && "text-primary",
         (row.status === "已上传" || row.status === "未变化") &&
@@ -253,7 +253,7 @@ export function ChapterUploadDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="确定并分章上传"
-      description="章节按 20 章一批顺序上传；中断后会从当前批次继续。"
+      description="章节按 20 章一批写入暂存区；完整验收后一次发布，中断不会影响线上目录。"
       className="max-w-2xl"
     >
       {diff ? (
@@ -279,7 +279,7 @@ export function ChapterUploadDialog({
           </p>
           {diff.remoteOnly > 0 ? (
             <p className="shrink-0 text-xs text-destructive">
-              服务器额外章节不会自动删除；请退出长文本工作台后在章节目录中逐章确认删除。
+              这些章节属于当前线上旧版本。只有新清单完整验收通过后，服务器才会原子替换整套目录；上传中断时旧版本保持不变。
             </p>
           ) : null}
           {fullyConsistent ? (

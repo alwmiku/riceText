@@ -5,9 +5,11 @@ import {
 } from "@ricetext/document-core";
 import {
   EntityIdSchema,
+  CreateChapterUploadRequestSchema,
   SaveNovelChapterRequestSchema,
   SaveNovelChaptersBatchRequestSchema,
   StageNovelChapterReorderRequestSchema,
+  StageChapterUploadBatchRequestSchema,
   SyncNovelChaptersRequestSchema,
 } from "@ricetext/contracts";
 import { sanitizeDocument } from "../../document-service.js";
@@ -104,6 +106,52 @@ export const forumChapterRoutes: FastifyPluginAsync<RouteDependencies> = async (
         },
       );
       return reply.status(201).send(saved);
+    },
+  );
+
+  app.post(
+    "/api/forum/novels/:novelId/chapter-uploads",
+    { schema: getFastifySchema("createChapterUpload") },
+    async (request) => {
+      requireEditor(dependencies, request, params(request).novelId!);
+      const body = CreateChapterUploadRequestSchema.parse(request.body);
+      return dependencies.forum.createChapterUpload(
+        params(request).novelId!,
+        body.manifestHash,
+        body.totalChapters,
+      );
+    },
+  );
+
+  app.put(
+    "/api/forum/novels/:novelId/chapter-uploads/:uploadId/batch",
+    { schema: getFastifySchema("stageChapterUploadBatch"), bodyLimit: BATCH_BODY_LIMIT },
+    async (request) => {
+      requireEditor(dependencies, request, params(request).novelId!);
+      const body = StageChapterUploadBatchRequestSchema.parse(request.body);
+      assertBatchSize(request);
+      return {
+        chapters: dependencies.forum.stageChapterUploadBatch(
+          params(request).novelId!,
+          params(request).uploadId!,
+          body.chapters.map((chapter) => ({
+            ...chapter,
+            content: sanitizeDocument(convertLongTextBlocksToChapters(chapter.content as unknown as JSONContent)),
+          })),
+        ),
+      };
+    },
+  );
+
+  app.post(
+    "/api/forum/novels/:novelId/chapter-uploads/:uploadId/complete",
+    { schema: getFastifySchema("completeChapterUpload") },
+    async (request) => {
+      requireEditor(dependencies, request, params(request).novelId!);
+      return dependencies.forum.completeChapterUpload(
+        params(request).novelId!,
+        params(request).uploadId!,
+      );
     },
   );
 
