@@ -244,6 +244,11 @@ describe("ChapterService batch upload", () => {
     ];
     const hash = createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
     const upload = service.createUpload("article-a", hash, manifest.length);
+    db.prepare("UPDATE chapter_uploads SET status='aborted' WHERE document_id=? AND id=?")
+      .run("article-a", upload.uploadId);
+    expect(service.createUpload("article-a", hash, manifest.length).uploadId).toBe(
+      upload.uploadId,
+    );
     service.stageUploadBatch("article-a", upload.uploadId, [
       { ...manifest[2]!, content: batchContent, baseRevision: 0 },
     ]);

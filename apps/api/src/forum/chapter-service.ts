@@ -318,7 +318,7 @@ export class ChapterService {
       .prepare("SELECT 1 AS found FROM documents WHERE id = ?")
       .get(documentId);
     if (!document) throw new HttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
-    const existing = this.#db
+    let existing = this.#db
       .prepare(
         "SELECT id, status FROM chapter_uploads " +
           "WHERE document_id = ? AND manifest_hash = ? AND status = 'uploading' " +
@@ -327,6 +327,19 @@ export class ChapterService {
       .get(documentId, manifestHash) as
       | { id: string; status: "uploading" }
       | undefined;
+    if (!existing) {
+      const recoverable = this.#db
+        .prepare(
+          "SELECT id FROM chapter_uploads WHERE document_id=? AND manifest_hash=? AND status='aborted' ORDER BY created_at DESC LIMIT 1",
+        )
+        .get(documentId, manifestHash) as { id: string } | undefined;
+      if (recoverable) {
+        const reopened = this.#db
+          .prepare("UPDATE chapter_uploads SET status='uploading' WHERE document_id=? AND id=? AND status='aborted'")
+          .run(documentId, recoverable.id);
+        if (reopened.changes === 1) existing = { ...recoverable, status: "uploading" };
+      }
+    }
     const uploadId = existing?.id ?? `upload_${randomUUID()}`;
     if (!existing) {
       this.#db
@@ -434,12 +447,16 @@ export class ChapterService {
       reopen();
       throw new HttpError(409, "CHAPTER_UPLOAD_INCOMPLETE", "上传章节数量、顺序或清单哈希不完整", { staged: items.length, expected: upload.total_chapters, invalidOrder });
     }
-    for (const item of items) {
-      const active = this.#db.prepare("SELECT revision FROM chapters WHERE document_id = ? AND id = ?").get(documentId, item.chapter_id) as { revision: number } | undefined;
-      if ((active?.revision ?? 0) !== item.base_revision) {
-        reopen();
-        throw new HttpError(409, "CHAPTER_REVISION_CONFLICT", "发布前章节基线发生变化", { chapterId: item.chapter_id });
-      }
+    const conflict = this.#db.prepare(
+      "SELECT item.chapter_id, item.base_revision, COALESCE(chapter.revision, 0) AS current_revision " +
+      "FROM chapter_upload_items item LEFT JOIN chapters chapter " +
+      "ON chapter.document_id=item.document_id AND chapter.id=item.chapter_id " +
+      "WHERE item.document_id=? AND item.upload_id=? " +
+      "AND COALESCE(chapter.revision, 0)<>item.base_revision LIMIT 1",
+    ).get(documentId, uploadId) as { chapter_id: string; base_revision: number; current_revision: number } | undefined;
+    if (conflict) {
+      reopen();
+      throw new HttpError(409, "CHAPTER_REVISION_CONFLICT", "发布前章节基线发生变化", { chapterId: conflict.chapter_id, baseRevision: conflict.base_revision, currentRevision: conflict.current_revision });
     }
     const publishedAt = new Date().toISOString();
     this.#db.exec("BEGIN IMMEDIATE");

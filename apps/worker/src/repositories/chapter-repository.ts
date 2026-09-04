@@ -271,10 +271,23 @@ export class D1ChapterRepository {
 
   async createUpload(documentId: string, manifestHash: string, totalChapters: number) {
     await this.requireDocument(documentId);
-    const existing = await this.db
+    let existing = await this.db
       .prepare("SELECT id FROM chapter_uploads WHERE document_id=? AND manifest_hash=? AND status='uploading' ORDER BY created_at DESC LIMIT 1")
       .bind(documentId, manifestHash)
       .first<{ id: string }>();
+    if (!existing) {
+      const recoverable = await this.db
+        .prepare("SELECT id FROM chapter_uploads WHERE document_id=? AND manifest_hash=? AND status='aborted' ORDER BY created_at DESC LIMIT 1")
+        .bind(documentId, manifestHash)
+        .first<{ id: string }>();
+      if (recoverable) {
+        const reopened = await this.db
+          .prepare("UPDATE chapter_uploads SET status='uploading' WHERE document_id=? AND id=? AND status='aborted'")
+          .bind(documentId, recoverable.id)
+          .run();
+        if (reopened.meta.changes === 1) existing = recoverable;
+      }
+    }
     const uploadId = existing?.id ?? `upload_${crypto.randomUUID()}`;
     if (!existing) {
       await this.db.prepare("INSERT INTO chapter_uploads(document_id,id,manifest_hash,total_chapters,status,created_at) VALUES(?,?,?,?,'uploading',?)")
@@ -339,10 +352,16 @@ export class D1ChapterRepository {
       await reopen();
       throw new WorkerHttpError(409, "CHAPTER_UPLOAD_INCOMPLETE", "上传章节数量、顺序或清单哈希不完整", { staged: items.length, expected: upload.total_chapters, invalidOrder });
     }
-    const active = new Map((await this.metadata(documentId, items.map((item) => item.chapter_id))).map((row) => [row.id, row]));
-    for (const item of items) if ((active.get(item.chapter_id)?.revision ?? 0) !== item.base_revision) {
+    const conflict = await this.db.prepare(
+      "SELECT item.chapter_id, item.base_revision, COALESCE(chapter.revision, 0) AS current_revision " +
+      "FROM chapter_upload_items item LEFT JOIN chapters chapter " +
+      "ON chapter.document_id=item.document_id AND chapter.id=item.chapter_id " +
+      "WHERE item.document_id=? AND item.upload_id=? " +
+      "AND COALESCE(chapter.revision, 0)<>item.base_revision LIMIT 1",
+    ).bind(documentId, uploadId).first<{ chapter_id: string; base_revision: number; current_revision: number }>();
+    if (conflict) {
       await reopen();
-      throw new WorkerHttpError(409, "CHAPTER_REVISION_CONFLICT", "发布前章节基线发生变化", { chapterId: item.chapter_id });
+      throw new WorkerHttpError(409, "CHAPTER_REVISION_CONFLICT", "发布前章节基线发生变化", { chapterId: conflict.chapter_id, baseRevision: conflict.base_revision, currentRevision: conflict.current_revision });
     }
     const publishedAt = new Date().toISOString();
     try {

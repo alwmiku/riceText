@@ -121,6 +121,56 @@ beforeEach(async () => {
 });
 
 describe("Worker chapter batch", () => {
+  it("恢复异常冻结会话并发布超过 D1 变量上限的完整清单", async () => {
+    await seedNovel("large-atomic", 1);
+    const manifest = Array.from({ length: 1100 }, (_, order) => ({
+      id: `large-${order}`,
+      title: `第${order + 1}章`,
+      volumeTitle: order < 550 ? "第一卷" : "第二卷",
+      order,
+      hash: `hash-${order}`,
+    }));
+    const hash = await manifestHash(manifest);
+    await env.DB.prepare(
+      "INSERT INTO chapter_uploads(document_id,id,manifest_hash,total_chapters,status,created_at) VALUES(?,?,?,?,? ,?)",
+    ).bind("large-atomic", "upload-large", hash, manifest.length, "aborted", now).run();
+    for (let offset = 0; offset < manifest.length; offset += 20) {
+      await env.DB.batch(
+        manifest.slice(offset, offset + 20).map((item) =>
+          env.DB.prepare(
+            "INSERT INTO chapter_upload_items(document_id,upload_id,chapter_id,title,volume_title,sort_order,content_hash,base_revision,revision,content_json,hidden) VALUES(?,?,?,?,?,?,?,?,?,?,0)",
+          ).bind(
+            "large-atomic",
+            "upload-large",
+            item.id,
+            item.title,
+            item.volumeTitle,
+            item.order,
+            item.hash,
+            0,
+            1,
+            JSON.stringify(contentFor(item.title)),
+          ),
+        ),
+      );
+    }
+    const resumed = await exports.default.fetch(new Request(
+      "http://example.com/api/forum/novels/large-atomic/chapter-uploads",
+      { method: "POST", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ manifestHash: hash, totalChapters: manifest.length }) },
+    ));
+    expect(resumed.status, await resumed.clone().text()).toBe(200);
+    expect((await resumed.json()) as { uploadId: string }).toMatchObject({ uploadId: "upload-large" });
+    const completed = await exports.default.fetch(new Request(
+      "http://example.com/api/forum/novels/large-atomic/chapter-uploads/upload-large/complete",
+      { method: "POST", headers: { "x-user-id": "author" } },
+    ));
+    expect(completed.status, await completed.clone().text()).toBe(200);
+    const stored = await env.DB.prepare(
+      "SELECT COUNT(*) count,MIN(sort_order) min_order,MAX(sort_order) max_order FROM chapters WHERE document_id=?",
+    ).bind("large-atomic").first<{ count: number; min_order: number; max_order: number }>();
+    expect(stored).toEqual({ count: 1100, min_order: 0, max_order: 1099 });
+  }, 30_000);
+
   it("删除同 ID 章节只影响目标文章及其校订关联", async () => {
     await seedNovel("owner-a", 1);
     await seedNovel("owner-b", 1);
