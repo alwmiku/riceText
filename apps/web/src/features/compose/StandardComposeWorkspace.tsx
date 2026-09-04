@@ -1,7 +1,14 @@
 import { Maximize2, PanelLeftOpen, Save, X } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Button } from "../../components/ui";
 import type { EditorMode, RichTextNode, SeedIdentity } from "../../lib/types";
+import { cn } from "../../lib/utils";
 import { ChapterRail, ForumBusinessPanel } from "../forum/ForumPanels";
 
 /** 普通创作展示层：统一完整、极简和移动布局，并封装移动目录抽屉。 */
@@ -79,11 +86,99 @@ export function StandardComposeWorkspace({
   onExpand: () => void;
 }) {
   const [mobileChapterRailOpen, setMobileChapterRailOpen] = useState(false);
+  const [mobileChapterTriggerVisible, setMobileChapterTriggerVisible] =
+    useState(false);
+  const triggerHideTimerRef = useRef<number | null>(null);
+  const selectionActiveRef = useRef(false);
+  const railOpenRef = useRef(false);
+  railOpenRef.current = mobileChapterRailOpen;
+
+  const clearTriggerHideTimer = useCallback(() => {
+    if (triggerHideTimerRef.current === null) return;
+    window.clearTimeout(triggerHideTimerRef.current);
+    triggerHideTimerRef.current = null;
+  }, []);
+
+  const tuckChapterTriggerLater = useCallback(() => {
+    clearTriggerHideTimer();
+    triggerHideTimerRef.current = window.setTimeout(() => {
+      if (!selectionActiveRef.current && !railOpenRef.current) {
+        setMobileChapterTriggerVisible(false);
+      }
+    }, 1_800);
+  }, [clearTriggerHideTimer]);
+
+  const revealChapterTrigger = useCallback(() => {
+    setMobileChapterTriggerVisible(true);
+    tuckChapterTriggerLater();
+  }, [tuckChapterTriggerLater]);
 
   // 离开移动模式时关闭抽屉，防止切回后残留遮罩和焦点状态。
   useEffect(() => {
-    if (mode !== "mobile") setMobileChapterRailOpen(false);
-  }, [mode]);
+    if (mode !== "mobile") {
+      setMobileChapterRailOpen(false);
+      setMobileChapterTriggerVisible(false);
+      clearTriggerHideTimer();
+    }
+  }, [clearTriggerHideTimer, mode]);
+
+  useEffect(() => {
+    if (mode !== "mobile") return undefined;
+    let lastScrollY = window.scrollY;
+    const onScroll = () => {
+      const nextScrollY = window.scrollY;
+      const delta = nextScrollY - lastScrollY;
+      lastScrollY = nextScrollY;
+      if (Math.abs(delta) < 10) return;
+      // 移动端按手势语义：手指上滑时 scrollY 增加，按钮完整出现；
+      // 手指下滑时 scrollY 减少，按钮立即收回页面边缘。
+      if (delta > 0) revealChapterTrigger();
+      else if (!selectionActiveRef.current && !railOpenRef.current) {
+        clearTriggerHideTimer();
+        setMobileChapterTriggerVisible(false);
+      }
+    };
+    const onSelectionChange = () => {
+      const selection = window.getSelection();
+      const anchor = selection?.anchorNode;
+      const element =
+        anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
+      const insideEditor = Boolean(
+        element?.closest('[aria-label="正文编辑区"]'),
+      );
+      const active = Boolean(selection && !selection.isCollapsed && insideEditor);
+      selectionActiveRef.current = active;
+      if (active) {
+        clearTriggerHideTimer();
+        setMobileChapterTriggerVisible(true);
+      } else {
+        tuckChapterTriggerLater();
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      document.removeEventListener("selectionchange", onSelectionChange);
+      clearTriggerHideTimer();
+      selectionActiveRef.current = false;
+    };
+  }, [clearTriggerHideTimer, mode, revealChapterTrigger, tuckChapterTriggerLater]);
+
+  useEffect(() => {
+    if (mode !== "mobile") return;
+    if (mobileChapterRailOpen) {
+      clearTriggerHideTimer();
+      setMobileChapterTriggerVisible(true);
+    } else {
+      tuckChapterTriggerLater();
+    }
+  }, [
+    clearTriggerHideTimer,
+    mobileChapterRailOpen,
+    mode,
+    tuckChapterTriggerLater,
+  ]);
 
   if (mode === "full") {
     return (
@@ -141,8 +236,22 @@ export function StandardComposeWorkspace({
             size="icon"
             aria-label="打开章节目录"
             aria-expanded={mobileChapterRailOpen}
-            className="fixed left-2 top-[76px] z-30 h-11 w-11 shadow-panel"
-            onClick={() => setMobileChapterRailOpen(true)}
+            data-revealed={
+              mobileChapterRailOpen || mobileChapterTriggerVisible
+            }
+            className={cn(
+              "fixed top-[76px] z-30 size-11 shadow-panel transition-[left,transform,opacity] duration-200 ease-out",
+              mobileChapterRailOpen || mobileChapterTriggerVisible
+                ? "left-2 translate-x-0 opacity-100"
+                : "left-0 -translate-x-[58%] opacity-70 hover:translate-x-0 hover:opacity-100 focus-visible:translate-x-0 focus-visible:opacity-100",
+            )}
+            onFocus={revealChapterTrigger}
+            onPointerDown={revealChapterTrigger}
+            onClick={() => {
+              clearTriggerHideTimer();
+              setMobileChapterTriggerVisible(true);
+              setMobileChapterRailOpen(true);
+            }}
           >
             <PanelLeftOpen size={20} />
           </Button>

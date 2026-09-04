@@ -61,7 +61,7 @@ vi.mock('../features/editor/RichTextEditor', () => ({
     onReady?: (editor: null) => void;
     onExpand?: () => void;
     onCommentAnchorOpen?: (id: string) => void;
-  }) => <section data-testid="editor" data-mode={props.mode} data-editable={String(props.editable)} data-content={JSON.stringify(props.content)}>
+  }) => <section aria-label="正文编辑区" data-testid="editor" data-mode={props.mode} data-editable={String(props.editable)} data-content={JSON.stringify(props.content)}>
     <button type="button" onClick={() => props.onChange({ type: 'doc', content: [{ type: 'paragraph' }] })}>模拟编辑</button>
     <button type="button" onClick={() => props.onSubmit?.({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'submitted' }] }] })}>模拟发布</button>
     <button type="button" onClick={props.onExpand}>模拟展开</button>
@@ -521,6 +521,36 @@ describe('ComposePage', () => {
       ),
     );
     expect(await screen.findByText('章节已保存为版本 2')).toBeInTheDocument();
+  });
+
+  it('移动章节按钮默认收边，上滑或选中文字时展开，下滑时收起', async () => {
+    Object.defineProperty(window, 'scrollY', {
+      configurable: true,
+      writable: true,
+      value: 100,
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: '移动' }));
+    const trigger = screen.getByRole('button', { name: '打开章节目录' });
+    expect(trigger).toHaveAttribute('data-revealed', 'false');
+
+    window.scrollY = 160;
+    fireEvent.scroll(window);
+    expect(trigger).toHaveAttribute('data-revealed', 'true');
+
+    window.scrollY = 100;
+    fireEvent.scroll(window);
+    expect(trigger).toHaveAttribute('data-revealed', 'false');
+
+    const editor = screen.getByLabelText('正文编辑区');
+    const anchorNode = editor.querySelector('button')?.firstChild ?? editor;
+    const selection = vi.spyOn(window, 'getSelection').mockReturnValue({
+      anchorNode,
+      isCollapsed: false,
+    } as unknown as Selection);
+    fireEvent(document, new Event('selectionchange'));
+    expect(trigger).toHaveAttribute('data-revealed', 'true');
+    selection.mockRestore();
   });
 
   it('从发布章节目录直接删除服务器章节', async () => {
