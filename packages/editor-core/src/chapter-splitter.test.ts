@@ -15,6 +15,22 @@ describe("splitChapters", () => {
     expect(chapters[1]).toMatchObject({ title: "第二章 离别", text: "正文二" });
   });
 
+  it("recognizes compact chapter titles and groups them under volumes", () => {
+    const chapters = splitChapters(
+      "第一卷 幼儿园卷\n第1章从20年前开始重生?\n正文一\n第2章新生活\n正文二\n第二卷 小学卷\n第3章入学\n正文三",
+    );
+    expect(chapters).toMatchObject([
+      { title: "第1章从20年前开始重生?", volumeTitle: "第一卷 幼儿园卷" },
+      { title: "第2章新生活", volumeTitle: "第一卷 幼儿园卷" },
+      { title: "第3章入学", volumeTitle: "第二卷 小学卷" },
+    ]);
+    expect(chapters.map((chapter) => chapter.text)).toEqual([
+      "正文一",
+      "正文二",
+      "正文三",
+    ]);
+  });
+
   it("returns a single unnamed chapter when no heading is found", () => {
     const chapters = splitChapters("只是一段没有章节标题的文字");
     expect(chapters).toHaveLength(1);
@@ -50,6 +66,26 @@ describe("splitChapters", () => {
     );
     expect(chapters).toHaveLength(1);
     expect(chapters[0]!.text).toContain("番外：相遇之后");
+  });
+
+  it("keeps numbered lists inside chapters in automatic mode", () => {
+    const chapters = splitChapters(
+      "第223章 录制宣传视频\n1、宣传视频预计有4分钟\n2、穿着服饰要青春靓丽\n3、采取不露脸宣传的方式\n第224章 我今天就火了？\n正文",
+    );
+    expect(chapters).toHaveLength(2);
+    expect(chapters[0]?.text).toContain("1、宣传视频预计有4分钟");
+    expect(chapters[0]?.text).toContain("3、采取不露脸宣传的方式");
+  });
+
+  it("still recognizes numeric headings when numeric mode is selected", () => {
+    const chapters = splitChaptersByStyle(
+      "1. 第一节\n正文一\n2、第二节\n正文二",
+      "numeric",
+    );
+    expect(chapters).toMatchObject([
+      { title: "1. 第一节", text: "正文一" },
+      { title: "2、第二节", text: "正文二" },
+    ]);
   });
 
   it("splits chapter headings with leading whitespace", () => {

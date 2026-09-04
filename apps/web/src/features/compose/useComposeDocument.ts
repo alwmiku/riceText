@@ -199,6 +199,7 @@ export function useComposeDocument(
               {
                 id: savedChapterId,
                 title: chapterTitle,
+                volumeTitle: "",
                 order: chapterIndex,
                 documentId: next.id,
                 revision: 1,

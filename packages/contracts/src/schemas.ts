@@ -398,6 +398,7 @@ export const ChapterSchema = z
   .object({
     id: EntityIdSchema,
     title: z.string(),
+    volumeTitle: z.string().max(500).optional(),
     order: z.number().int().nonnegative(),
     documentId: EntityIdSchema,
     /** 该章节独立的保存版本号。 */
@@ -418,6 +419,7 @@ export const ChapterSyncItemSchema = z
   .object({
     id: EntityIdSchema,
     title: z.string().min(1).max(500),
+    volumeTitle: z.string().max(500).optional(),
     order: z.number().int().nonnegative(),
     /** 章节正文的 SHA-256 十六进制摘要。 */
     hash: z.string().min(1).max(128),
@@ -439,6 +441,7 @@ export const SyncNovelChaptersResponseSchema = z
 export const SaveNovelChapterRequestSchema = z
   .object({
     title: z.string().min(1).max(500),
+    volumeTitle: z.string().max(500).optional(),
     order: z.number().int().nonnegative(),
     content: TiptapDocumentSchema,
     /** 保存正文的 SHA-256 摘要，用于后续差异对比。 */
@@ -453,6 +456,7 @@ export const BatchChapterItemSchema = z
   .object({
     id: EntityIdSchema,
     title: z.string().min(1).max(500),
+    volumeTitle: z.string().max(500).optional(),
     order: z.number().int().nonnegative(),
     content: TiptapDocumentSchema,
     /** 保存正文的 SHA-256 摘要；服务端以它识别“内容未变化”的幂等重试。 */

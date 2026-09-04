@@ -1,11 +1,18 @@
 import { MAX_CHAPTER_LENGTH } from "@ricetext/editor-core";
-import { ArrowDown, ArrowUp, Combine, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { ArrowDown, ArrowUp, ChevronRight, Combine, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../../components/ui/collapsible";
+import { cn } from "../../lib/utils";
 
 /** 目录中的单个章节摘要。 */
 export interface ChapterSummary {
   id: string;
   title: string;
+  volumeTitle?: string;
   charCount: number;
 }
 
@@ -33,6 +40,36 @@ export function ChapterSidebar({
   onMove,
 }: ChapterSidebarProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const groups = useMemo(() => {
+    const result: Array<{
+      title: string;
+      items: Array<{ chapter: ChapterSummary; index: number }>;
+    }> = [];
+    chapters.forEach((chapter, index) => {
+      const title = chapter.volumeTitle?.trim() ?? "";
+      const previous = result.at(-1);
+      if (!previous || previous.title !== title) {
+        result.push({ title, items: [{ chapter, index }] });
+      } else {
+        previous.items.push({ chapter, index });
+      }
+    });
+    return result;
+  }, [chapters]);
+
+  useEffect(() => {
+    const activeVolume = chapters[activeIndex]?.volumeTitle?.trim();
+    if (!activeVolume) return;
+    setCollapsedVolumes((current) => {
+      if (!current.has(activeVolume)) return current;
+      const next = new Set(current);
+      next.delete(activeVolume);
+      return next;
+    });
+  }, [activeIndex, chapters]);
 
   const canMergeChapter = (index: number) => {
     if (index <= 0) return false;
@@ -60,11 +97,19 @@ export function ChapterSidebar({
       {chapters.length === 0 ? (
         <p className="px-1 text-xs text-muted-foreground">暂无章节</p>
       ) : (
-        <div className="space-y-1">
-          {chapters.map((chapter, index) => (
+        <div className="flex flex-col gap-1">
+          {groups.map((group, groupIndex) => {
+            const rows = group.items.map(({ chapter, index }) => (
             <div
               key={chapter.id || index}
-              className={`flex cursor-pointer items-center gap-1.5 rounded-md p-1.5 hover:bg-[#edf7f5] ${index === activeIndex ? "bg-[#e2efec] outline outline-1 outline-[#9ccfc6]" : ""} ${dragIndex === index ? "opacity-50 outline-dashed outline-1 outline-[#197c73]" : ""}`}
+              className={cn(
+                "flex cursor-pointer items-center gap-1.5 rounded-md p-1.5 hover:bg-[#edf7f5]",
+                group.title && "ml-3",
+                index === activeIndex &&
+                  "bg-[#e2efec] outline outline-1 outline-[#9ccfc6]",
+                dragIndex === index &&
+                  "opacity-50 outline-dashed outline-1 outline-[#197c73]",
+              )}
               role="button"
               tabIndex={0}
               draggable
@@ -156,7 +201,44 @@ export function ChapterSidebar({
                 </button>
               </div>
             </div>
-          ))}
+            ));
+            if (!group.title) return <div key={`plain-${groupIndex}`}>{rows}</div>;
+            const open = !collapsedVolumes.has(group.title);
+            return (
+              <Collapsible
+                key={`${group.title}-${groupIndex}`}
+                open={open}
+                onOpenChange={(nextOpen) =>
+                  setCollapsedVolumes((current) => {
+                    const next = new Set(current);
+                    if (nextOpen) next.delete(group.title);
+                    else next.add(group.title);
+                    return next;
+                  })
+                }
+              >
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs font-bold text-foreground hover:bg-muted"
+                    aria-label={`${open ? "收起" : "展开"}卷 ${group.title}`}
+                  >
+                    <ChevronRight
+                      data-icon="inline-start"
+                      className={cn("transition-transform", open && "rotate-90")}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{group.title}</span>
+                    <span className="font-normal text-muted-foreground">
+                      {group.items.length} 章
+                    </span>
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="flex flex-col gap-1">
+                  {rows}
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })}
         </div>
       )}
     </aside>

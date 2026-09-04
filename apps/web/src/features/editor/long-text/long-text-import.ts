@@ -28,6 +28,7 @@ export async function createLongTextDocument(
           duplicateOrdinal,
         ),
         title: chapter.title,
+        volumeTitle: chapter.volumeTitle ?? "",
         text: chapter.text,
         order: content.length,
         start: chapter.start,

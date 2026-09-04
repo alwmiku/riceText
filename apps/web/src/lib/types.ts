@@ -116,4 +116,6 @@ export type ForumAttachment = Attachment;
 export type ForumPoll = Poll;
 
 /** 章节目录项（复用共享契约类型）。 */
-export type ForumChapterItem = Chapter;
+export type ForumChapterItem = Omit<Chapter, "volumeTitle"> & {
+  volumeTitle?: string | undefined;
+};

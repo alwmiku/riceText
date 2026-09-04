@@ -10,6 +10,8 @@ export interface ChapterSplit {
   end: number;
   /** 标题行（含行首空白）在原文本中的结束偏移。 */
   titleEnd?: number;
+  /** 所属卷标题；空字符串表示文章没有卷层级。 */
+  volumeTitle?: string;
 }
 
 /** 章节切分选项。 */
@@ -46,13 +48,18 @@ export const chapterTitlePatterns: Record<
   RegExp[]
 > = {
   chinese: [
-    /^\s*第[0-9一二三四五六七八九十百千万零两]+[章节回卷](?:\s|[：:、.．《（(]|$).*$/gm,
+    /^\s*第(?:[0-9]+[章节回卷].*|[一二三四五六七八九十百千万零两]+[章节回卷](?:\s|[：:、.．《（(]|$).*)$/gm,
   ],
   english: [/^\s*Chapter\s+\d+.*$/gim],
   numeric: [/^\s*\d+\s*[、.．]\s*\S.*$/gm],
 };
 
-const defaultPatterns = Object.values(chapterTitlePatterns).flat();
+// 纯数字标题与正文有序列表无法仅凭单行可靠区分；自动模式只启用具有
+// 明确“第…章/卷”或 Chapter 前缀的规则，数字模式必须由用户主动选择。
+const defaultPatterns = [
+  ...chapterTitlePatterns.chinese,
+  ...chapterTitlePatterns.english,
+];
 
 /** 按自然换行优先切开超长正文，避免一章超过上传限制；区间基于原文偏移。 */
 function splitOversizedChapter(
@@ -81,6 +88,7 @@ function splitOversizedChapter(
       text: remaining.slice(0, cutAt).trim(),
       start: continuation === 1 ? chapter.start : offset,
       end: offset + cutAt,
+      ...(chapter.volumeTitle ? { volumeTitle: chapter.volumeTitle } : {}),
     });
     offset += cutAt;
     remaining = remaining.slice(cutAt);
@@ -95,6 +103,7 @@ function splitOversizedChapter(
     text: remaining.trim(),
     start: offset,
     end: chapter.end,
+    ...(chapter.volumeTitle ? { volumeTitle: chapter.volumeTitle } : {}),
   });
   return parts;
 }
@@ -167,13 +176,46 @@ export function splitChapters(
     }
   }
 
+  let volumeTitle = "";
+  let pendingVolumeStart: number | null = null;
   for (let i = 0; i < matches.length; i += 1) {
-    const start = matches[i]!.index;
+    const current = matches[i]!;
+    const isVolume = /^第[0-9一二三四五六七八九十百千万零两]+卷/u.test(
+      current.title,
+    );
+    if (isVolume) {
+      volumeTitle = current.title;
+      pendingVolumeStart = current.index;
+      const next = matches[i + 1];
+      const introEnd = next?.index ?? text.length;
+      const intro = text.slice(current.titleEnd, introEnd).trim();
+      if (intro) {
+        result.push({
+          title: "卷首",
+          text: intro,
+          start: current.index,
+          end: introEnd,
+          titleEnd: current.titleEnd,
+          volumeTitle,
+        });
+        pendingVolumeStart = null;
+      }
+      continue;
+    }
+    const start = pendingVolumeStart ?? current.index;
+    pendingVolumeStart = null;
     const end = i + 1 < matches.length ? matches[i + 1]!.index : text.length;
-    const title = matches[i]!.title;
-    const titleEnd = matches[i]!.titleEnd;
+    const title = current.title;
+    const titleEnd = current.titleEnd;
     const body = text.slice(titleEnd, end).trim();
-    result.push({ title, text: body, start, end, titleEnd });
+    result.push({
+      title,
+      text: body,
+      start,
+      end,
+      titleEnd,
+      ...(volumeTitle ? { volumeTitle } : {}),
+    });
   }
 
   if (result.length === 0 && text.trim()) {

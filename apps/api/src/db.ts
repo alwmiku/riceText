@@ -436,6 +436,12 @@ CREATE TABLE chapter_upload_items (
 CREATE INDEX chapter_upload_items_order_idx ON chapter_upload_items(document_id, upload_id, sort_order);
 `;
 
+/** 章节卷层级；无卷文章使用空字符串。 */
+const migrationV14 = `
+ALTER TABLE chapters ADD COLUMN volume_title TEXT NOT NULL DEFAULT '';
+ALTER TABLE chapter_upload_items ADD COLUMN volume_title TEXT NOT NULL DEFAULT '';
+`;
+
 const migrationV6 = `
 CREATE TABLE suggestion_batches (
   id TEXT PRIMARY KEY,
@@ -604,6 +610,7 @@ export function createDatabase(options: DatabaseOptions): DatabaseSync {
   runMigration(db, 12, migrationV12);
   db.exec("PRAGMA foreign_keys = ON");
   runMigration(db, 13, migrationV13);
+  runMigration(db, 14, migrationV14);
   if (options.seed !== false) seed(db);
   return db;
 }

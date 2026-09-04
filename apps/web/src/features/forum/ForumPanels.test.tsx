@@ -129,6 +129,29 @@ const freeAttachment = {
 };
 
 describe("ForumPanels", () => {
+  it("正式目录按卷分组并支持收起展开", () => {
+    renderWithQuery(
+      <ChapterRail
+        chapters={[
+          { id: "a", title: "第1章开始", volumeTitle: "第一卷 幼儿园卷" },
+          { id: "b", title: "第2章成长", volumeTitle: "第一卷 幼儿园卷" },
+          { id: "c", title: "第3章入学", volumeTitle: "第二卷 小学卷" },
+        ]}
+        currentIndex={2}
+        onSelect={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "收起卷 第一卷 幼儿园卷" }),
+    );
+    expect(screen.queryByText("第1章开始")).not.toBeInTheDocument();
+    expect(screen.getByText("第3章入学")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "展开卷 第一卷 幼儿园卷" }),
+    );
+    expect(screen.getByText("第2章成长")).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     mocks.getRevisionsMock.mockReset();
     mocks.getRevisionsMock.mockResolvedValue(seedRevisions);

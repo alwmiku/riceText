@@ -37,7 +37,7 @@ export function StandardComposeWorkspace({
   onExpand,
 }: {
   mode: EditorMode;
-  chapters: readonly { id: string; title: string }[];
+  chapters: readonly { id: string; title: string; volumeTitle?: string }[];
   activeIndex: number;
   title: string;
   saveStatus: ReactNode;

@@ -15,6 +15,7 @@ import { WorkerHttpError } from "../http-error";
 type ChapterRow = {
   id: string;
   title: string;
+  volume_title: string;
   sort_order: number;
   document_id: string;
   revision: number;
@@ -30,6 +31,7 @@ function chapter(row: ChapterRow): Chapter {
   return ChapterSchema.parse({
     id: row.id,
     title: row.title,
+    volumeTitle: row.volume_title,
     order: row.sort_order,
     documentId: row.document_id,
     revision: row.revision,
@@ -53,7 +55,7 @@ export class D1ChapterRepository {
   private async row(documentId: string, chapterId: string): Promise<ChapterRow | null> {
     return this.db
       .prepare(
-        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden " +
+        "SELECT id, title, volume_title, sort_order, document_id, revision, updated_at, hidden " +
           "FROM chapters WHERE id = ? AND document_id = ?",
       )
       .bind(chapterId, documentId)
@@ -63,7 +65,7 @@ export class D1ChapterRepository {
   async content(documentId: string, chapterId: string): Promise<ChapterContent> {
     const row = await this.db
       .prepare(
-        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden, content_json " +
+        "SELECT id, title, volume_title, sort_order, document_id, revision, updated_at, hidden, content_json " +
           "FROM chapters WHERE id = ? AND document_id = ?",
       )
       .bind(chapterId, documentId)
@@ -286,7 +288,7 @@ export class D1ChapterRepository {
   async stageUploadBatch(
     documentId: string,
     uploadId: string,
-    items: Array<{ id: string; title: string; order: number; content: TiptapDocument; hash: string; baseRevision: number }>,
+    items: Array<{ id: string; title: string; volumeTitle: string; order: number; content: TiptapDocument; hash: string; baseRevision: number }>,
   ) {
     const upload = await this.db.prepare("SELECT total_chapters FROM chapter_uploads WHERE document_id=? AND id=? AND status='uploading'")
       .bind(documentId, uploadId).first<{ total_chapters: number }>();
@@ -309,10 +311,10 @@ export class D1ChapterRepository {
     }
     try {
       await this.db.batch(prepared.map((item) => this.db.prepare(
-        "INSERT INTO chapter_upload_items(document_id,upload_id,chapter_id,title,sort_order,content_hash,base_revision,revision,content_json,hidden) " +
-        "VALUES(?,?,?,?,?,?,?,?,?,COALESCE((SELECT hidden FROM chapters WHERE document_id=? AND id=?),0)) " +
-        "ON CONFLICT(document_id,upload_id,chapter_id) DO UPDATE SET title=excluded.title,sort_order=excluded.sort_order,content_hash=excluded.content_hash,base_revision=excluded.base_revision,revision=excluded.revision,content_json=excluded.content_json,hidden=excluded.hidden"
-      ).bind(documentId, uploadId, item.id, item.title, item.order, item.hash, item.baseRevision, item.revision, JSON.stringify(item.content), documentId, item.id)));
+        "INSERT INTO chapter_upload_items(document_id,upload_id,chapter_id,title,volume_title,sort_order,content_hash,base_revision,revision,content_json,hidden) " +
+        "VALUES(?,?,?,?,?,?,?,?,?,?,COALESCE((SELECT hidden FROM chapters WHERE document_id=? AND id=?),0)) " +
+        "ON CONFLICT(document_id,upload_id,chapter_id) DO UPDATE SET title=excluded.title,volume_title=excluded.volume_title,sort_order=excluded.sort_order,content_hash=excluded.content_hash,base_revision=excluded.base_revision,revision=excluded.revision,content_json=excluded.content_json,hidden=excluded.hidden"
+      ).bind(documentId, uploadId, item.id, item.title, item.volumeTitle, item.order, item.hash, item.baseRevision, item.revision, JSON.stringify(item.content), documentId, item.id)));
     } catch {
       throw new WorkerHttpError(409, "CHAPTER_UPLOAD_MANIFEST_CONFLICT", "批次与已暂存章节冲突");
     }
@@ -328,11 +330,11 @@ export class D1ChapterRepository {
     const frozen = await this.db.prepare("UPDATE chapter_uploads SET status='aborted' WHERE document_id=? AND id=? AND status='uploading'").bind(documentId, uploadId).run();
     if (frozen.meta.changes !== 1) throw new WorkerHttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话正在由其他请求发布");
     const reopen = () => this.db.prepare("UPDATE chapter_uploads SET status='uploading' WHERE document_id=? AND id=? AND status='aborted'").bind(documentId, uploadId).run();
-    const result = await this.db.prepare("SELECT chapter_id,title,sort_order,content_hash,base_revision FROM chapter_upload_items WHERE document_id=? AND upload_id=? ORDER BY sort_order")
-      .bind(documentId, uploadId).all<{ chapter_id: string; title: string; sort_order: number; content_hash: string; base_revision: number }>();
+    const result = await this.db.prepare("SELECT chapter_id,title,volume_title,sort_order,content_hash,base_revision FROM chapter_upload_items WHERE document_id=? AND upload_id=? ORDER BY sort_order")
+      .bind(documentId, uploadId).all<{ chapter_id: string; title: string; volume_title: string; sort_order: number; content_hash: string; base_revision: number }>();
     const items = result.results;
     const invalidOrder = items.findIndex((item, index) => item.sort_order !== index);
-    const manifestHash = await sha256Hex(new TextEncoder().encode(JSON.stringify(items.map((item) => ({ id: item.chapter_id, title: item.title, order: item.sort_order, hash: item.content_hash })))));
+    const manifestHash = await sha256Hex(new TextEncoder().encode(JSON.stringify(items.map((item) => ({ id: item.chapter_id, title: item.title, volumeTitle: item.volume_title, order: item.sort_order, hash: item.content_hash })))));
     if (items.length !== upload.total_chapters || invalidOrder >= 0 || manifestHash !== upload.manifest_hash) {
       await reopen();
       throw new WorkerHttpError(409, "CHAPTER_UPLOAD_INCOMPLETE", "上传章节数量、顺序或清单哈希不完整", { staged: items.length, expected: upload.total_chapters, invalidOrder });
@@ -347,9 +349,9 @@ export class D1ChapterRepository {
       await this.db.batch([
         this.db.prepare("UPDATE chapters SET sort_order=-sort_order-1 WHERE document_id=?").bind(documentId),
         this.db.prepare(
-          "INSERT INTO chapters(id,title,sort_order,document_id,revision,content_json,content_hash,updated_at,hidden) " +
-          "SELECT chapter_id,title,sort_order,document_id,revision,content_json,content_hash,?,hidden FROM chapter_upload_items WHERE document_id=? AND upload_id=? " +
-          "ON CONFLICT(document_id,id) DO UPDATE SET title=excluded.title,sort_order=excluded.sort_order,revision=excluded.revision,content_json=excluded.content_json,content_hash=excluded.content_hash,updated_at=excluded.updated_at,hidden=excluded.hidden"
+          "INSERT INTO chapters(id,title,volume_title,sort_order,document_id,revision,content_json,content_hash,updated_at,hidden) " +
+          "SELECT chapter_id,title,volume_title,sort_order,document_id,revision,content_json,content_hash,?,hidden FROM chapter_upload_items WHERE document_id=? AND upload_id=? " +
+          "ON CONFLICT(document_id,id) DO UPDATE SET title=excluded.title,volume_title=excluded.volume_title,sort_order=excluded.sort_order,revision=excluded.revision,content_json=excluded.content_json,content_hash=excluded.content_hash,updated_at=excluded.updated_at,hidden=excluded.hidden"
         ).bind(publishedAt, documentId, uploadId),
         this.db.prepare("DELETE FROM chapters WHERE document_id=? AND id NOT IN (SELECT chapter_id FROM chapter_upload_items WHERE document_id=? AND upload_id=?)").bind(documentId, documentId, uploadId),
         this.db.prepare("UPDATE chapter_uploads SET status='published',published_at=? WHERE document_id=? AND id=? AND status='aborted'").bind(publishedAt, documentId, uploadId),

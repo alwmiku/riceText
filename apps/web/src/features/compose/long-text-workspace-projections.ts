@@ -10,6 +10,7 @@ export function summarizeLongTextChapters(
   return (document.content ?? []).map((node, index) => ({
     id: String(node.attrs?.chapterId ?? `chapter-${index}`),
     title: String(node.attrs?.title ?? "未命名章节"),
+    volumeTitle: String(node.attrs?.volumeTitle ?? ""),
     charCount: String(node.attrs?.text ?? "").length,
   }));
 }

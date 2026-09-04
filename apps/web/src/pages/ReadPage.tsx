@@ -92,6 +92,7 @@ export default function ReadPage() {
       ? chapterDirectory.map((chapter) => ({
           id: chapter.id,
           title: chapter.title,
+          volumeTitle: chapter.volumeTitle ?? "",
           blocks: [] as JSONContent[],
         }))
       : (document.content.content?.length ?? 0) === 0

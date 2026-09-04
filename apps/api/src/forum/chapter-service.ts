@@ -19,6 +19,7 @@ export class ChapterService {
   chapters(documentId: string): Array<{
     id: string;
     title: string;
+    volumeTitle: string;
     order: number;
     documentId: string;
     revision: number;
@@ -27,12 +28,13 @@ export class ChapterService {
   }> {
     const rows = this.#db
       .prepare(
-        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden " +
+        "SELECT id, title, volume_title, sort_order, document_id, revision, updated_at, hidden " +
           "FROM chapters WHERE document_id = ? ORDER BY sort_order",
       )
       .all(documentId) as Array<{
       id: string;
       title: string;
+      volume_title: string;
       sort_order: number;
       document_id: string;
       revision: number;
@@ -42,6 +44,7 @@ export class ChapterService {
     return rows.map((row) => ({
       id: row.id,
       title: row.title,
+      volumeTitle: row.volume_title,
       order: row.sort_order,
       documentId: row.document_id,
       revision: row.revision,
@@ -54,13 +57,14 @@ export class ChapterService {
   chapterContent(documentId: string, chapterId: string) {
     const row = this.#db
       .prepare(
-        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden, content_json " +
+        "SELECT id, title, volume_title, sort_order, document_id, revision, updated_at, hidden, content_json " +
           "FROM chapters WHERE id = ? AND document_id = ?",
       )
       .get(chapterId, documentId) as
       | {
           id: string;
           title: string;
+          volume_title: string;
           sort_order: number;
           document_id: string;
           revision: number;
@@ -74,6 +78,7 @@ export class ChapterService {
     return {
       id: row.id,
       title: row.title,
+      volumeTitle: row.volume_title,
       order: row.sort_order,
       documentId: row.document_id,
       revision: row.revision,
@@ -352,6 +357,7 @@ export class ChapterService {
     items: Array<{
       id: string;
       title: string;
+      volumeTitle: string;
       order: number;
       content: TiptapDocument;
       hash: string;
@@ -383,10 +389,10 @@ export class ChapterService {
     this.#db.exec("BEGIN IMMEDIATE");
     try {
       const insert = this.#db.prepare(
-        "INSERT INTO chapter_upload_items(document_id, upload_id, chapter_id, title, sort_order, content_hash, base_revision, revision, content_json, hidden) " +
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+        "INSERT INTO chapter_upload_items(document_id, upload_id, chapter_id, title, volume_title, sort_order, content_hash, base_revision, revision, content_json, hidden) " +
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
           "ON CONFLICT(document_id, upload_id, chapter_id) DO UPDATE SET " +
-          "title=excluded.title, sort_order=excluded.sort_order, content_hash=excluded.content_hash, " +
+          "title=excluded.title, volume_title=excluded.volume_title, sort_order=excluded.sort_order, content_hash=excluded.content_hash, " +
           "base_revision=excluded.base_revision, revision=excluded.revision, content_json=excluded.content_json, hidden=excluded.hidden",
       );
       const results = [];
@@ -396,7 +402,7 @@ export class ChapterService {
           .get(documentId, item.id) as { revision: number; content_hash: string | null; hidden: number } | undefined;
         const unchanged = active?.content_hash === item.hash;
         const revision = unchanged ? active.revision : item.baseRevision + 1;
-        insert.run(documentId, uploadId, item.id, item.title, item.order, item.hash, item.baseRevision, revision, JSON.stringify(item.content), active?.hidden ?? 0);
+        insert.run(documentId, uploadId, item.id, item.title, item.volumeTitle, item.order, item.hash, item.baseRevision, revision, JSON.stringify(item.content), active?.hidden ?? 0);
         results.push({ id: item.id, title: item.title, order: item.order, revision, status: unchanged ? "unchanged" as const : "saved" as const });
       }
       this.#db.exec("COMMIT");
@@ -418,11 +424,11 @@ export class ChapterService {
     this.#db.prepare("UPDATE chapter_uploads SET status='aborted' WHERE document_id=? AND id=? AND status='uploading'").run(documentId, uploadId);
     const reopen = () => this.#db.prepare("UPDATE chapter_uploads SET status='uploading' WHERE document_id=? AND id=? AND status='aborted'").run(documentId, uploadId);
     const items = this.#db
-      .prepare("SELECT chapter_id, title, sort_order, content_hash, base_revision FROM chapter_upload_items WHERE document_id = ? AND upload_id = ? ORDER BY sort_order")
-      .all(documentId, uploadId) as Array<{ chapter_id: string; title: string; sort_order: number; content_hash: string; base_revision: number }>;
+      .prepare("SELECT chapter_id, title, volume_title, sort_order, content_hash, base_revision FROM chapter_upload_items WHERE document_id = ? AND upload_id = ? ORDER BY sort_order")
+      .all(documentId, uploadId) as Array<{ chapter_id: string; title: string; volume_title: string; sort_order: number; content_hash: string; base_revision: number }>;
     const invalidOrder = items.findIndex((item, index) => item.sort_order !== index);
     const manifestHash = createHash("sha256")
-      .update(JSON.stringify(items.map((item) => ({ id: item.chapter_id, title: item.title, order: item.sort_order, hash: item.content_hash }))))
+      .update(JSON.stringify(items.map((item) => ({ id: item.chapter_id, title: item.title, volumeTitle: item.volume_title, order: item.sort_order, hash: item.content_hash }))))
       .digest("hex");
     if (items.length !== upload.total_chapters || invalidOrder >= 0 || manifestHash !== upload.manifest_hash) {
       reopen();
@@ -440,10 +446,10 @@ export class ChapterService {
     try {
       this.#db.prepare("UPDATE chapters SET sort_order = -sort_order - 1 WHERE document_id = ?").run(documentId);
       this.#db.prepare(
-        "INSERT INTO chapters(id, title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden) " +
-          "SELECT chapter_id, title, sort_order, document_id, revision, content_json, content_hash, ?, hidden " +
+        "INSERT INTO chapters(id, title, volume_title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden) " +
+          "SELECT chapter_id, title, volume_title, sort_order, document_id, revision, content_json, content_hash, ?, hidden " +
           "FROM chapter_upload_items WHERE document_id = ? AND upload_id = ? " +
-          "ON CONFLICT(document_id, id) DO UPDATE SET title=excluded.title, sort_order=excluded.sort_order, revision=excluded.revision, content_json=excluded.content_json, content_hash=excluded.content_hash, updated_at=excluded.updated_at, hidden=excluded.hidden",
+          "ON CONFLICT(document_id, id) DO UPDATE SET title=excluded.title, volume_title=excluded.volume_title, sort_order=excluded.sort_order, revision=excluded.revision, content_json=excluded.content_json, content_hash=excluded.content_hash, updated_at=excluded.updated_at, hidden=excluded.hidden",
       ).run(publishedAt, documentId, uploadId);
       this.#db.prepare("DELETE FROM chapters WHERE document_id = ? AND id NOT IN (SELECT chapter_id FROM chapter_upload_items WHERE document_id = ? AND upload_id = ?)").run(documentId, documentId, uploadId);
       this.#db.prepare("UPDATE chapter_uploads SET status='published', published_at=? WHERE document_id=? AND id=? AND status='aborted'").run(publishedAt, documentId, uploadId);

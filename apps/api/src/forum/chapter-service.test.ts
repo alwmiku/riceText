@@ -238,9 +238,9 @@ describe("ChapterService batch upload", () => {
 
   it("乱序到达的上传批次只在完整验收后原子发布", () => {
     const manifest = [
-      { id: "a", title: "A", order: 0, hash: "ha" },
-      { id: "b", title: "B", order: 1, hash: "hb" },
-      { id: "c", title: "C", order: 2, hash: "hc" },
+      { id: "a", title: "A", volumeTitle: "第一卷", order: 0, hash: "ha" },
+      { id: "b", title: "B", volumeTitle: "第一卷", order: 1, hash: "hb" },
+      { id: "c", title: "C", volumeTitle: "第二卷", order: 2, hash: "hc" },
     ];
     const hash = createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
     const upload = service.createUpload("article-a", hash, manifest.length);
@@ -258,9 +258,9 @@ describe("ChapterService batch upload", () => {
     expect(service.chapters("article-a")).toEqual([]);
     service.completeUpload("article-a", upload.uploadId);
     expect(service.chapters("article-a")).toMatchObject([
-      { id: "a", order: 0 },
-      { id: "b", order: 1 },
-      { id: "c", order: 2 },
+      { id: "a", volumeTitle: "第一卷", order: 0 },
+      { id: "b", volumeTitle: "第一卷", order: 1 },
+      { id: "c", volumeTitle: "第二卷", order: 2 },
     ]);
   });
 

@@ -28,6 +28,7 @@ export type ChapterUploadStatus =
 export interface ChapterUploadRow {
   id: string;
   title: string;
+  volumeTitle?: string;
   action: ChapterUploadAction;
   status: ChapterUploadStatus;
   attempts: number;

@@ -38,7 +38,7 @@ import {
   type UploadBatchChapterItem,
 } from "./chapter-upload-batches";
 
-/** v4 检查点使用服务端上传会话，只保存元数据和逐批状态。 */
+/** v5 检查点把卷层级纳入上传清单，只保存元数据和逐批状态。 */
 interface UploadCheckpointChapter extends ChapterUploadRow {
   order: number;
   hash: string;
@@ -46,7 +46,7 @@ interface UploadCheckpointChapter extends ChapterUploadRow {
 }
 
 interface UploadCheckpointV3 {
-  version: 4;
+  version: 5;
   novelId: string;
   gaps: number;
   chapters: UploadCheckpointChapter[];
@@ -130,6 +130,7 @@ async function buildCheckpoint(
           const order = offset + index;
           const id = resolveChapterId(node, order, capturedNovelId);
           const title = String(node.attrs?.title ?? "未命名章节");
+          const volumeTitle = String(node.attrs?.volumeTitle ?? "");
           const normalizedNode: RichTextNode = {
             ...node,
             attrs: { ...node.attrs, chapterId: id, order },
@@ -139,7 +140,7 @@ async function buildCheckpoint(
             content: [normalizedNode],
           }) as RichTextNode;
           const hash = await sha256Hex(
-            JSON.stringify({ title, order, content }),
+            JSON.stringify({ title, volumeTitle, order, content }),
           );
           const oversized =
             utf8ByteLength(JSON.stringify(content)) > MAX_CHAPTER_CONTENT_BYTES;
@@ -148,6 +149,7 @@ async function buildCheckpoint(
           return {
             id,
             title,
+            volumeTitle,
             order,
             hash,
             baseRevision,
@@ -178,12 +180,18 @@ async function buildCheckpoint(
   }
   const sync = await syncLongTextChapters(
     capturedNovelId,
-    chapters.map(({ id, title, order, hash }) => ({ id, title, order, hash })),
+    chapters.map(({ id, title, volumeTitle, order, hash }) => ({
+      id,
+      title,
+      volumeTitle: volumeTitle ?? "",
+      order,
+      hash,
+    })),
   );
   const toUpdate = new Set(sync.toUpdate);
   const existing = new Set(sync.existing);
   const checkpoint: UploadCheckpointV3 = {
-    version: 4,
+    version: 5,
     novelId: capturedNovelId,
     gaps,
     chapters: [
@@ -209,6 +217,7 @@ async function buildCheckpoint(
         .map((remote) => ({
           id: remote.id,
           title: remote.title ?? remote.id,
+          volumeTitle: "",
           order: remote.order,
           hash: "",
           baseRevision: remote.revision,
@@ -387,7 +396,7 @@ export function useChapterUpload({
           stored.novelId !== novelId
         )
           return;
-        if (stored.version !== 4) {
+        if (stored.version !== 5) {
           await deleteLongTextValue(checkpointKey(novelId));
           return;
         }
@@ -515,6 +524,7 @@ export function useChapterUpload({
         (chapter): UploadBatchChapterItem => ({
           id: chapter.id,
           title: chapter.title,
+          volumeTitle: chapter.volumeTitle ?? "",
           order: chapter.order,
           content: contentByChapter.get(chapter.id)!.content,
           hash: contentByChapter.get(chapter.id)!.hash,
@@ -678,6 +688,7 @@ export function useChapterUpload({
           local.map((chapter) => ({
             id: chapter.id,
             title: chapter.title,
+            volumeTitle: chapter.volumeTitle ?? "",
             order: chapter.order,
             hash: chapter.hash,
           })),

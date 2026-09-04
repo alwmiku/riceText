@@ -8,6 +8,29 @@ const chapters = [
 ];
 
 describe("TocSidebar", () => {
+  it("阅读目录按卷收起和展开", () => {
+    render(
+      <TocSidebar
+        chapters={[
+          { id: "a", title: "第1章开始", volumeTitle: "第一卷" },
+          { id: "b", title: "第2章成长", volumeTitle: "第一卷" },
+          { id: "c", title: "第3章入学", volumeTitle: "第二卷" },
+        ]}
+        currentIndex={2}
+        onSelect={vi.fn()}
+      />,
+    );
+    const desktop = screen.getByRole("navigation", { name: "章节目录" });
+    fireEvent.click(
+      within(desktop).getByRole("button", { name: "收起卷 第一卷" }),
+    );
+    expect(within(desktop).queryByText("第1章开始")).not.toBeInTheDocument();
+    fireEvent.click(
+      within(desktop).getByRole("button", { name: "展开卷 第一卷" }),
+    );
+    expect(within(desktop).getByText("第2章成长")).toBeInTheDocument();
+  });
+
   it("移动端目录抽屉切换章节后自动关闭", () => {
     const onSelect = vi.fn();
     render(

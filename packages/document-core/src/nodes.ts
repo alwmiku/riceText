@@ -429,6 +429,11 @@ export const longTextBlockNodeSpec = {
         parseHTML: (element: HTMLElement) =>
           element.getAttribute("data-title")?.slice(0, 500) ?? "",
       },
+      volumeTitle: {
+        default: "",
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("data-volume-title")?.slice(0, 500) ?? "",
+      },
       text: {
         default: "",
         parseHTML: (element: HTMLElement) =>
@@ -469,6 +474,7 @@ export const longTextBlockNodeSpec = {
         "data-node-type": "long-text-block",
         "data-chapter-id": String(node.attrs.chapterId ?? ""),
         "data-title": String(node.attrs.title ?? ""),
+        "data-volume-title": String(node.attrs.volumeTitle ?? ""),
         "data-order": String(node.attrs.order ?? 0),
         ...(start === null ? {} : { "data-start": String(start) }),
         ...(end === null ? {} : { "data-end": String(end) }),

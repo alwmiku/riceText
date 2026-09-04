@@ -299,7 +299,7 @@ describe("useChapterUpload", () => {
       version: number;
       chapters: Array<Record<string, unknown>>;
     };
-    expect(lastSaved.version).toBe(4);
+    expect(lastSaved.version).toBe(5);
     expect(
       lastSaved.chapters.every((entry) => !("content" in entry)),
     ).toBe(true);
@@ -698,7 +698,7 @@ describe("useChapterUpload", () => {
 
   it("discards checkpoints created before SHA-256 chapter identities", async () => {
     const document = documentFixture();
-    // 先正常 prepare 一次拿到 v4 计划，再改造成旧版并从 IndexedDB 恢复。
+    // 先正常 prepare 一次拿到 v5 计划，再改造成旧版并从 IndexedDB 恢复。
     const first = renderHook(
       () =>
         useChapterUpload({
@@ -716,7 +716,7 @@ describe("useChapterUpload", () => {
       sourceHash: string;
       chapters: Array<Record<string, unknown>>;
     };
-    expect(saved.version).toBe(4);
+    expect(saved.version).toBe(5);
     first.unmount();
 
     const v1Checkpoint = {

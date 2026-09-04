@@ -177,6 +177,7 @@ export default function ComposePage() {
     ? chapterDirectory.map((chapter) => ({
         id: chapter.id,
         title: chapter.title,
+        volumeTitle: chapter.volumeTitle ?? "",
         blocks: [],
         start: chapter.order,
         end: chapter.order + 1,

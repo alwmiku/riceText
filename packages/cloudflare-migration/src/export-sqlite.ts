@@ -104,7 +104,7 @@ const directTables: Array<{ table: string; columns: readonly string[] }> = [
   { table: "documents", columns: ["id", "title", "schema_version", "current_revision", "created_by", "created_at", "updated_at"] },
   { table: "document_revisions", columns: ["document_id", "revision", "schema_version", "content_json", "steps_json", "author_id", "operation", "target_revision", "created_at"] },
   { table: "document_mutations", columns: ["document_id", "client_mutation_id", "request_json", "revision"] },
-  { table: "chapters", columns: ["id", "title", "sort_order", "document_id", "revision", "content_json", "content_hash", "updated_at", "hidden"] },
+  { table: "chapters", columns: ["id", "title", "volume_title", "sort_order", "document_id", "revision", "content_json", "content_hash", "updated_at", "hidden"] },
   { table: "comment_threads", columns: ["document_id", "anchor_id", "archived", "created_at"] },
   { table: "comment_replies", columns: ["id", "document_id", "anchor_id", "parent_id", "author_id", "body", "created_at"] },
   { table: "comment_votes", columns: ["reply_id", "user_id", "value", "created_at"] },

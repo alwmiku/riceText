@@ -23,6 +23,27 @@ function renderSidebar(overrides: Partial<Parameters<typeof ChapterSidebar>[0]> 
 }
 
 describe("ChapterSidebar", () => {
+  it("按卷分组并支持展开收起", () => {
+    renderSidebar({
+      chapters: [
+        { id: "a", title: "第1章开始", volumeTitle: "第一卷 幼儿园卷", charCount: 10 },
+        { id: "b", title: "第2章成长", volumeTitle: "第一卷 幼儿园卷", charCount: 20 },
+        { id: "c", title: "第3章入学", volumeTitle: "第二卷 小学卷", charCount: 30 },
+      ],
+      activeIndex: 2,
+    });
+    expect(screen.getByText("第一卷 幼儿园卷")).toBeInTheDocument();
+    expect(screen.getByText("第1章开始")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "收起卷 第一卷 幼儿园卷" }),
+    );
+    expect(screen.queryByText("第1章开始")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "展开卷 第一卷 幼儿园卷" }),
+    );
+    expect(screen.getByText("第2章成长")).toBeInTheDocument();
+  });
+
   it("支持点击和键盘切换章节，并展示空目录", () => {
     const { props, rerender } = renderSidebar();
     const first = screen.getByText("楔子").closest('[role="button"]') as HTMLElement;

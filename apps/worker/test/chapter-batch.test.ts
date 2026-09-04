@@ -305,9 +305,9 @@ describe("Worker chapter batch", () => {
   it("上传批次可乱序到达，完整验收前不改变线上目录", async () => {
     await seedNovel("atomic-novel", 1);
     const manifest = [
-      { id: "new-a", title: "A", order: 0, hash: "ha" },
-      { id: "new-b", title: "B", order: 1, hash: "hb" },
-      { id: "new-c", title: "C", order: 2, hash: "hc" },
+      { id: "new-a", title: "A", volumeTitle: "第一卷", order: 0, hash: "ha" },
+      { id: "new-b", title: "B", volumeTitle: "第一卷", order: 1, hash: "hb" },
+      { id: "new-c", title: "C", volumeTitle: "第二卷", order: 2, hash: "hc" },
     ];
     const create = await exports.default.fetch(new Request(
       "http://example.com/api/forum/novels/atomic-novel/chapter-uploads",
@@ -333,11 +333,11 @@ describe("Worker chapter batch", () => {
       { method: "POST", headers: { "x-user-id": "author" } },
     ));
     expect(complete.status, await complete.clone().text()).toBe(200);
-    const after = await env.DB.prepare("SELECT id,sort_order FROM chapters WHERE document_id=? ORDER BY sort_order").bind("atomic-novel").all();
+    const after = await env.DB.prepare("SELECT id,volume_title,sort_order FROM chapters WHERE document_id=? ORDER BY sort_order").bind("atomic-novel").all();
     expect(after.results).toEqual([
-      { id: "new-a", sort_order: 0 },
-      { id: "new-b", sort_order: 1 },
-      { id: "new-c", sort_order: 2 },
+      { id: "new-a", volume_title: "第一卷", sort_order: 0 },
+      { id: "new-b", volume_title: "第一卷", sort_order: 1 },
+      { id: "new-c", volume_title: "第二卷", sort_order: 2 },
     ]);
   });
 

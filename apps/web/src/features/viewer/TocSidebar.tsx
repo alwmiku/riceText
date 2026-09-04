@@ -1,5 +1,5 @@
-import { Menu, PanelLeftOpen, X } from "lucide-react";
-import { useState } from "react";
+import { ChevronRight, Menu, PanelLeftOpen, X } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
 import { Button } from "../../components/ui";
 import { TextMarquee } from "../../components/ui/text-marquee";
 
@@ -8,6 +8,7 @@ export interface TocChapter {
   id: string;
   /** 章节完整标题，按 " · " 拆分为主标题与副标题。 */
   title: string;
+  volumeTitle?: string;
 }
 
 function TocItems({
@@ -19,18 +20,59 @@ function TocItems({
   currentIndex: number;
   onSelect: (index: number) => void;
 }) {
+  const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(
+    () => new Set(),
+  );
+  useEffect(() => {
+    const volume = chapters[currentIndex]?.volumeTitle?.trim();
+    if (!volume) return;
+    setCollapsedVolumes((current) => {
+      if (!current.has(volume)) return current;
+      const next = new Set(current);
+      next.delete(volume);
+      return next;
+    });
+  }, [chapters, currentIndex]);
   return (
     <ol className="m-0 grid list-none gap-0.5 p-0">
       {chapters.map((chapter, index) => {
         const [main = "", sub] = chapter.title.split(" · ");
         const active = index === currentIndex;
+        const volume = chapter.volumeTitle?.trim() ?? "";
+        const startsVolume =
+          Boolean(volume) &&
+          chapters[index - 1]?.volumeTitle?.trim() !== volume;
+        const volumeOpen = !collapsedVolumes.has(volume);
         return (
+          <Fragment key={chapter.id}>
+          {startsVolume ? (
+            <li>
+              <button
+                type="button"
+                className="mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs font-bold text-foreground hover:bg-muted"
+                aria-label={`${volumeOpen ? "收起" : "展开"}卷 ${volume}`}
+                onClick={() =>
+                  setCollapsedVolumes((current) => {
+                    const next = new Set(current);
+                    if (volumeOpen) next.add(volume);
+                    else next.delete(volume);
+                    return next;
+                  })
+                }
+              >
+                <ChevronRight
+                  className={volumeOpen ? "rotate-90 transition-transform" : "transition-transform"}
+                />
+                <span className="truncate">{volume}</span>
+              </button>
+            </li>
+          ) : null}
+          {!volume || volumeOpen ? (
           <li
-            key={chapter.id}
             className={
-              active
+              `${volume ? "ml-3 " : ""}${active
                 ? "[&_button]:!bg-[#e7f5f2] [&_button]:!font-bold [&_button]:!text-[#14766d]"
-                : ""
+                : ""}`
             }
           >
             <button
@@ -49,6 +91,8 @@ function TocItems({
               ) : null}
             </button>
           </li>
+          ) : null}
+          </Fragment>
         );
       })}
     </ol>

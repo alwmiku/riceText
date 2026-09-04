@@ -25,6 +25,7 @@ export async function getLongTextChapter(
 export interface ChapterSyncItem {
   id: string;
   title: string;
+  volumeTitle?: string;
   order: number;
   /** SHA-256 hash of the chapter body. */
   hash: string;
@@ -95,6 +96,7 @@ export async function uploadLongTextChapter(
 export interface UploadBatchChapterItem {
   id: string;
   title: string;
+  volumeTitle?: string;
   order: number;
   content: RichTextNode;
   hash: string;
@@ -142,6 +144,7 @@ export async function stageLongTextChapterUploadBatch(
   return api().stageChapterUploadBatch(novelId, uploadId, {
     chapters: chapters.map((chapter) => ({
       ...chapter,
+      volumeTitle: chapter.volumeTitle ?? "",
       content: chapter.content as unknown as ContractDocumentEnvelope["content"],
     })),
   });

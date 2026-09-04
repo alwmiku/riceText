@@ -518,7 +518,14 @@ export function createWorkerApp(): Hono<AppBindings> {
       StageChapterUploadBatchRequestSchema,
     );
     const repository = new D1ChapterRepository(context.env.DB);
-    const result = await repository.stageUploadBatch(input.novelId, input.uploadId, request.chapters);
+    const result = await repository.stageUploadBatch(
+      input.novelId,
+      input.uploadId,
+      request.chapters.map((chapter) => ({
+        ...chapter,
+        volumeTitle: chapter.volumeTitle ?? "",
+      })),
+    );
     return context.json(response("stageChapterUploadBatch", 200, { chapters: result }));
   });
 

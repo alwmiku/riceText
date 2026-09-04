@@ -8,7 +8,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Badge, Button } from "../../components/ui";
 import {
   AlertDialog,
@@ -44,7 +44,7 @@ export function ChapterRail({
   activeRevision,
   className,
 }: {
-  chapters: readonly { id: string; title: string }[];
+  chapters: readonly { id: string; title: string; volumeTitle?: string }[];
   currentIndex: number;
   onSelect: (index: number) => void;
   /** 目录底部「新增章节」入口；不提供时隐藏。 */
@@ -69,8 +69,21 @@ export function ChapterRail({
 }) {
   const [pendingDelete, setPendingDelete] = useState<number | null>(null);
   const [menuIndex, setMenuIndex] = useState<number | null>(null);
+  const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(
+    () => new Set(),
+  );
   const pendingChapter =
     pendingDelete !== null ? chapters[pendingDelete] : undefined;
+  useEffect(() => {
+    const volume = chapters[currentIndex]?.volumeTitle?.trim();
+    if (!volume) return;
+    setCollapsedVolumes((current) => {
+      if (!current.has(volume)) return current;
+      const next = new Set(current);
+      next.delete(volume);
+      return next;
+    });
+  }, [chapters, currentIndex]);
 
   return (
     <aside
@@ -93,8 +106,38 @@ export function ChapterRail({
             const [main, sub] = chapter.title.split(" · ");
             const active = order === currentIndex;
             const hidden = hiddenChapters?.[order] ?? false;
+            const volume = chapter.volumeTitle?.trim() ?? "";
+            const startsVolume =
+              Boolean(volume) &&
+              chapters[order - 1]?.volumeTitle?.trim() !== volume;
+            const volumeOpen = !collapsedVolumes.has(volume);
             return (
-              <div key={chapter.id} className="group relative">
+              <Fragment key={chapter.id}>
+                {startsVolume ? (
+                  <button
+                    type="button"
+                    className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs font-bold text-foreground hover:bg-muted"
+                    aria-label={`${volumeOpen ? "收起" : "展开"}卷 ${volume}`}
+                    onClick={() =>
+                      setCollapsedVolumes((current) => {
+                        const next = new Set(current);
+                        if (volumeOpen) next.add(volume);
+                        else next.delete(volume);
+                        return next;
+                      })
+                    }
+                  >
+                    <ChevronRight
+                      className={cn(
+                        "transition-transform",
+                        volumeOpen && "rotate-90",
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{volume}</span>
+                  </button>
+                ) : null}
+                {!volume || volumeOpen ? (
+              <div className={cn("group relative", volume && "ml-3")}>
                 <button
                   type="button"
                   className="flex w-full cursor-pointer items-center gap-[9px] rounded-[5px] px-2.5 py-[9px] pr-9 text-left text-[13px] text-[#4c5761] hover:bg-[#edf7f5] hover:text-[#176e66] data-[active=true]:bg-[#edf7f5] data-[active=true]:text-[#176e66]"
@@ -173,6 +216,8 @@ export function ChapterRail({
                   </PopoverContent>
                 </Popover>
               </div>
+                ) : null}
+              </Fragment>
             );
           })}
         </nav>

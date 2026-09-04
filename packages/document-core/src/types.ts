@@ -154,6 +154,8 @@ export interface LongTextBlockAttributes {
   chapterId: string;
   /** 章节标题。 */
   title: string;
+  /** 所属卷标题；空字符串表示没有卷层级。 */
+  volumeTitle: string;
   /** 完整章节文本。 */
   text: string;
   /** 小说内部的展示顺序。 */

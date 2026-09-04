@@ -58,6 +58,7 @@ export class ForumService {
   chapters(documentId: string): Array<{
     id: string;
     title: string;
+    volumeTitle: string;
     order: number;
     documentId: string;
     revision: number;
@@ -138,7 +139,7 @@ export class ForumService {
   stageChapterUploadBatch(
     documentId: string,
     uploadId: string,
-    items: Array<{ id: string; title: string; order: number; content: TiptapDocument; hash: string; baseRevision: number }>,
+    items: Array<{ id: string; title: string; volumeTitle: string; order: number; content: TiptapDocument; hash: string; baseRevision: number }>,
   ) {
     return this.#chapters.stageUploadBatch(documentId, uploadId, items);
   }

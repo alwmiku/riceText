@@ -315,6 +315,7 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
       const attrs: LongTextBlockAttributes = {
         chapterId: stringValue(raw.chapterId, 128),
         title: stringValue(raw.title, 500),
+        volumeTitle: stringValue(raw.volumeTitle, 500),
         text: stringValue(raw.text, 100_000_000),
         order: finiteInteger(raw.order, 0, 0, 1_000_000),
         start:

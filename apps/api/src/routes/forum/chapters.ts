@@ -136,6 +136,7 @@ export const forumChapterRoutes: FastifyPluginAsync<RouteDependencies> = async (
           params(request).uploadId!,
           body.chapters.map((chapter) => ({
             ...chapter,
+            volumeTitle: chapter.volumeTitle ?? "",
             content: sanitizeDocument(convertLongTextBlocksToChapters(chapter.content as unknown as JSONContent)),
           })),
         ),
