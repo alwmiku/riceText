@@ -132,12 +132,12 @@ export function TocSidebar({
       <Button
         variant="outline"
         size="icon"
-        aria-label="打开阅读目录"
+        aria-label="打开章节目录"
         aria-expanded={mobileOpen}
-        className="fixed top-[76px] left-2 z-30 hidden h-11 w-11 bg-white shadow-panel max-[840px]:inline-flex"
+        className="fixed top-[76px] left-2 z-40 hidden size-11 bg-white shadow-panel max-[840px]:inline-flex"
         onClick={() => setMobileOpen(true)}
       >
-        <PanelLeftOpen size={20} />
+        <PanelLeftOpen data-icon="inline-start" />
       </Button>
 
       {mobileOpen ? (

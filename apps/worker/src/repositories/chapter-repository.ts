@@ -319,7 +319,8 @@ export class D1ChapterRepository {
       const active = byId.get(item.id);
       if ((active?.revision ?? 0) !== item.baseRevision) throw new WorkerHttpError(409, "CHAPTER_REVISION_CONFLICT", "章节已被其他修改更新", { chapterId: item.id, currentRevision: active?.revision ?? 0 });
       const content = sanitizeDocumentForWrite(convertLongTextBlocksToChapters(item.content as unknown as JSONContent));
-      const unchanged = active?.content_hash === item.hash;
+      const unchanged =
+        (active?.revision ?? 0) > 0 && active?.content_hash === item.hash;
       prepared.push({ ...item, content, revision: unchanged ? active.revision : item.baseRevision + 1, unchanged });
     }
     try {
@@ -494,7 +495,7 @@ export class D1ChapterRepository {
         throw new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "目标顺序已被其他章节占用，禁止自动搬移线上章节", { chapterId: item.id, occupiedBy: occupied.id });
       }
       if (existing) {
-        if (existing.content_hash === item.hash) {
+        if (existing.revision > 0 && existing.content_hash === item.hash) {
           results.push({
             id: item.id,
             title: item.title,
@@ -581,7 +582,7 @@ export class D1ChapterRepository {
       }
       const current = await this.metadata(documentId, [item.id]);
       const row = current[0];
-      if (row && row.content_hash === item.hash) {
+      if (row && row.revision > 0 && row.content_hash === item.hash) {
         results.push({
           id: item.id,
           title: item.title,

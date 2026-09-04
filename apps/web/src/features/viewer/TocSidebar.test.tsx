@@ -37,7 +37,7 @@ describe("TocSidebar", () => {
       <TocSidebar chapters={chapters} currentIndex={0} onSelect={onSelect} />,
     );
 
-    const trigger = screen.getByRole("button", { name: "打开阅读目录" });
+    const trigger = screen.getByRole("button", { name: "打开章节目录" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(trigger);
     expect(
@@ -58,7 +58,7 @@ describe("TocSidebar", () => {
   it("没有章节时不渲染目录入口", () => {
     render(<TocSidebar chapters={[]} currentIndex={0} onSelect={vi.fn()} />);
     expect(
-      screen.queryByRole("button", { name: "打开阅读目录" }),
+      screen.queryByRole("button", { name: "打开章节目录" }),
     ).not.toBeInTheDocument();
   });
 });

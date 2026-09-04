@@ -56,6 +56,9 @@ describe("ChapterService chapter ownership", () => {
       documentId: "article-b",
       title: "文章 B",
     });
+    expect(service.chapters("article-a")).toMatchObject([
+      { id: "shared-chapter", hasContent: true },
+    ]);
     db.prepare(
       "INSERT INTO suggestions(" +
         "id, document_id, chapter_id, chapter_title, line_no, line_text, " +
@@ -204,6 +207,39 @@ describe("ChapterService batch upload", () => {
       .prepare("SELECT revision FROM chapters WHERE id = ?")
       .get("b1") as { revision: number };
     expect(row.revision).toBe(1);
+  });
+
+  it("重新上传时把同 hash 的版本 0 占位章节修复为版本 1", () => {
+    const now = new Date(0).toISOString();
+    db.prepare(
+      "INSERT INTO chapters(id, title, sort_order, document_id, revision, content_hash, updated_at) " +
+        "VALUES (?, ?, 0, ?, 0, ?, ?)",
+    ).run("legacy", "遗留章节", "article-a", "same-hash", now);
+    const manifest = [
+      {
+        id: "legacy",
+        title: "遗留章节",
+        volumeTitle: "",
+        order: 0,
+        hash: "same-hash",
+      },
+    ];
+    const manifestHash = createHash("sha256")
+      .update(JSON.stringify(manifest))
+      .digest("hex");
+    const upload = service.createUpload("article-a", manifestHash, 1);
+
+    expect(
+      service.stageUploadBatch("article-a", upload.uploadId, [
+        { ...manifest[0]!, content: batchContent, baseRevision: 0 },
+      ]),
+    ).toMatchObject([{ id: "legacy", revision: 1, status: "saved" }]);
+    service.completeUpload("article-a", upload.uploadId);
+
+    expect(service.chapterContent("article-a", "legacy")).toMatchObject({
+      revision: 1,
+      content: batchContent,
+    });
   });
 
   it("跨文章复用 ID，但目标 order 占用时拒绝自动搬移", () => {

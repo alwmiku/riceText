@@ -265,7 +265,7 @@ describe('ReadPage', () => {
         hidden: false,
       },
     ]);
-    renderPage(identities[1]!, '/read?chapter=0');
+    renderPage(identities[1]!);
     // 章节标题由正文自带（H2），头部不再重复。
     expect(
       await screen.findByRole('heading', { name: '第一章 潮汐表', level: 2 }),
@@ -277,7 +277,7 @@ describe('ReadPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('主文档为空时按目录读取并展示分章上传的正文', async () => {
+  it('主文档为空时按正文存在标记读取版本 0 的分章正文和目录', async () => {
     mocks.getDocument.mockResolvedValueOnce({
       ...interactiveDocument,
       content: { type: 'doc', content: [] },
@@ -288,7 +288,8 @@ describe('ReadPage', () => {
         title: '上传章节',
         order: 0,
         documentId: 'demo-post',
-        revision: 2,
+        revision: 0,
+        hasContent: true,
         savedAt: '2026-09-03T09:00:00.000Z',
         hidden: false,
       },
@@ -298,7 +299,7 @@ describe('ReadPage', () => {
       title: '上传章节',
       order: 0,
       documentId: 'demo-post',
-      revision: 2,
+      revision: 0,
       savedAt: '2026-09-03T09:00:00.000Z',
       hidden: false,
       content: {
@@ -321,6 +322,9 @@ describe('ReadPage', () => {
 
     expect(
       await screen.findByText('这是已经分章上传的正文。'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '打开章节目录' }),
     ).toBeInTheDocument();
     expect(mocks.getLongTextChapter).toHaveBeenCalledWith(
       'demo-post',

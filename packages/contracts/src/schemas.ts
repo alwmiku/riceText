@@ -403,6 +403,8 @@ export const ChapterSchema = z
     documentId: EntityIdSchema,
     /** 该章节独立的保存版本号。 */
     revision: z.number().int().nonnegative(),
+    /** 独立章节存储中是否已有可读取的正文。 */
+    hasContent: z.boolean().optional(),
     /** 该章节最近一次由服务器确认的保存时间。 */
     savedAt: DateTimeSchema,
     /** 隐藏章节：读者不可读，作者写完取消隐藏后恢复可读。 */

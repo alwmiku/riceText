@@ -391,6 +391,46 @@ describe("Worker chapter batch", () => {
     ]);
   });
 
+  it("重新上传时把同 hash 的版本 0 占位章节修复为版本 1", async () => {
+    await seedNovel("repair-novel", 0);
+    await env.DB.prepare(
+      "INSERT INTO chapters(id,title,sort_order,document_id,revision,content_hash,updated_at,hidden) " +
+        "VALUES('legacy','遗留章节',0,'repair-novel',0,'same-hash',?,0)",
+    ).bind(now).run();
+    const manifest = [
+      { id: "legacy", title: "遗留章节", volumeTitle: "", order: 0, hash: "same-hash" },
+    ];
+    const create = await exports.default.fetch(new Request(
+      "http://example.com/api/forum/novels/repair-novel/chapter-uploads",
+      { method: "POST", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ manifestHash: await manifestHash(manifest), totalChapters: 1 }) },
+    ));
+    const uploadId = ((await create.json()) as { uploadId: string }).uploadId;
+    const staged = await exports.default.fetch(new Request(
+      `http://example.com/api/forum/novels/repair-novel/chapter-uploads/${uploadId}/batch`,
+      { method: "PUT", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ chapters: [{ ...manifest[0]!, content: contentFor("已恢复正文"), baseRevision: 0 }] }) },
+    ));
+    await expect(staged.json()).resolves.toMatchObject({
+      chapters: [{ id: "legacy", revision: 1, status: "saved" }],
+    });
+    const complete = await exports.default.fetch(new Request(
+      `http://example.com/api/forum/novels/repair-novel/chapter-uploads/${uploadId}/complete`,
+      { method: "POST", headers: { "x-user-id": "author" } },
+    ));
+    expect(complete.status, await complete.clone().text()).toBe(200);
+    const repaired = await env.DB.prepare(
+      "SELECT revision,content_json FROM chapters WHERE document_id='repair-novel' AND id='legacy'",
+    ).first<{ revision: number; content_json: string | null }>();
+    expect(repaired?.revision).toBe(1);
+    expect(repaired?.content_json).toContain("已恢复正文");
+    const directory = await exports.default.fetch(new Request(
+      "http://example.com/api/forum/chapters?documentId=repair-novel",
+      { headers: { "x-user-id": "author" } },
+    ));
+    await expect(directory.json()).resolves.toMatchObject({
+      items: [{ id: "legacy", volumeTitle: "", revision: 1, hasContent: true }],
+    });
+  });
+
   it("换序暂存：staged 后幂等 unchanged、重试不重复递增、冲突 409", async () => {
     await seedNovel("reorder-novel", 3);
     const id0 = chapterId("reorder-novel", 0);

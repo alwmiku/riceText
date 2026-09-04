@@ -149,7 +149,7 @@ describe("RiceText Worker", () => {
     );
     expect(chapterResponse.status).toBe(200);
     await expect(chapterResponse.json()).resolves.toMatchObject({
-      items: [{ id: "chapter-0", hidden: false }],
+      items: [{ id: "chapter-0", hasContent: true, hidden: false }],
     });
   });
 

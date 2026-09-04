@@ -23,12 +23,13 @@ export class ChapterService {
     order: number;
     documentId: string;
     revision: number;
+    hasContent: boolean;
     savedAt: string;
     hidden: boolean;
   }> {
     const rows = this.#db
       .prepare(
-        "SELECT id, title, volume_title, sort_order, document_id, revision, updated_at, hidden " +
+        "SELECT id, title, volume_title, sort_order, document_id, revision, content_json, updated_at, hidden " +
           "FROM chapters WHERE document_id = ? ORDER BY sort_order",
       )
       .all(documentId) as Array<{
@@ -38,6 +39,7 @@ export class ChapterService {
       sort_order: number;
       document_id: string;
       revision: number;
+      content_json: string | null;
       updated_at: string;
       hidden: number;
     }>;
@@ -48,6 +50,7 @@ export class ChapterService {
       order: row.sort_order,
       documentId: row.document_id,
       revision: row.revision,
+      hasContent: row.content_json !== null,
       savedAt: row.updated_at,
       hidden: row.hidden === 1,
     }));
@@ -413,7 +416,8 @@ export class ChapterService {
         const active = this.#db
           .prepare("SELECT revision, content_hash, hidden FROM chapters WHERE document_id = ? AND id = ?")
           .get(documentId, item.id) as { revision: number; content_hash: string | null; hidden: number } | undefined;
-        const unchanged = active?.content_hash === item.hash;
+        const unchanged =
+          (active?.revision ?? 0) > 0 && active?.content_hash === item.hash;
         const revision = unchanged ? active.revision : item.baseRevision + 1;
         insert.run(documentId, uploadId, item.id, item.title, item.volumeTitle, item.order, item.hash, item.baseRevision, revision, JSON.stringify(item.content), active?.hidden ?? 0);
         results.push({ id: item.id, title: item.title, order: item.order, revision, status: unchanged ? "unchanged" as const : "saved" as const });
@@ -576,7 +580,7 @@ export class ChapterService {
         throw new HttpError(409, "CHAPTER_ORDER_CONFLICT", "目标顺序已被其他章节占用，禁止自动搬移线上章节", { chapterId: item.id, occupiedBy: occupied.id });
       }
       if (existing) {
-        if (existing.content_hash === item.hash) {
+        if (existing.revision > 0 && existing.content_hash === item.hash) {
           results.push({
             id: item.id,
             title: item.title,

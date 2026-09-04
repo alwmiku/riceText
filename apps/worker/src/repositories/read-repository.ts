@@ -38,9 +38,11 @@ type RevisionRow = {
 type ChapterRow = {
   id: string;
   title: string;
+  volume_title: string;
   sort_order: number;
   document_id: string;
   revision: number;
+  content_json: string | null;
   updated_at: string;
   hidden: number;
 };
@@ -184,7 +186,7 @@ export class D1ReadRepository {
   async chapters(documentId: string): Promise<Chapter[]> {
     const result = await this.db
       .prepare(
-        "SELECT id, title, sort_order, document_id, revision, updated_at, hidden " +
+        "SELECT id, title, volume_title, sort_order, document_id, revision, content_json, updated_at, hidden " +
           "FROM chapters WHERE document_id = ? ORDER BY sort_order",
       )
       .bind(documentId)
@@ -193,9 +195,11 @@ export class D1ReadRepository {
       ChapterSchema.parse({
         id: row.id,
         title: row.title,
+        volumeTitle: row.volume_title,
         order: row.sort_order,
         documentId: row.document_id,
         revision: row.revision,
+        hasContent: row.content_json !== null,
         savedAt: row.updated_at,
         hidden: row.hidden === 1,
       }),

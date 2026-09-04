@@ -63,7 +63,7 @@ export default function ReadPage() {
     10,
   );
   const [chapterIndex, setChapterIndex] = useState(() =>
-    Number.isFinite(initialChapter) && initialChapter >= 0 ? initialChapter : 1,
+    Number.isFinite(initialChapter) && initialChapter >= 0 ? initialChapter : 0,
   );
   const placeholder = useMemo(
     () => missingDocument(documentId || "pending-selection"),
@@ -118,7 +118,7 @@ export default function ReadPage() {
     enabled:
       Boolean(documentId) &&
       Boolean(activeChapterStatus?.id) &&
-      activeChapterStatus!.revision > 0,
+      activeChapterStatus?.hasContent !== false,
   });
   const headerSavedAt = activeChapterStatus?.savedAt ?? document.savedAt;
   const headerRevision = activeChapterStatus?.revision ?? document.revision;

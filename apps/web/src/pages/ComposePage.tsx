@@ -98,9 +98,9 @@ export default function ComposePage() {
         window.localStorage.getItem(ACTIVE_CHAPTER_STORAGE_KEY) ?? "",
         10,
       );
-      return Number.isFinite(stored) && stored >= 0 ? stored : 1;
+      return Number.isFinite(stored) && stored >= 0 ? stored : 0;
     } catch {
-      return 1;
+      return 0;
     }
   });
   useEffect(() => {
@@ -172,7 +172,11 @@ export default function ComposePage() {
   );
   const usesUploadedChapters =
     isBlankDocumentShell &&
-    chapterDirectory.some((chapter) => chapter.revision > 0);
+    chapterDirectory.some(
+      (chapter) =>
+        chapter.hasContent === true ||
+        (chapter.hasContent === undefined && chapter.revision > 0),
+    );
   const navigationChapters = usesUploadedChapters
     ? chapterDirectory.map((chapter) => ({
         id: chapter.id,
@@ -201,7 +205,10 @@ export default function ComposePage() {
     queryKey: uploadedChapterKey,
     queryFn: ({ signal }) =>
       getLongTextChapter(activeDocumentId, activeChapterStatus!.id, signal),
-    enabled: usesUploadedChapters && Boolean(activeChapterStatus?.id),
+    enabled:
+      usesUploadedChapters &&
+      Boolean(activeChapterStatus?.id) &&
+      activeChapterStatus?.hasContent !== false,
   });
   const activeCharCount = useMemo(() => {
     const blocks = usesUploadedChapters

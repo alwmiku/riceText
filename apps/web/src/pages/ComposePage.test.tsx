@@ -452,7 +452,7 @@ describe('ComposePage', () => {
     expect(await screen.findByText('目标版本不存在')).toBeInTheDocument();
   });
 
-  it('按章加载并保存长文本上传后的标准正文', async () => {
+  it('按正文存在标记加载并保存版本 0 的标准正文', async () => {
     const uploadedContent: RichTextNode = {
       type: 'doc',
       content: [
@@ -485,7 +485,8 @@ describe('ComposePage', () => {
         title: '上传章节',
         order: 0,
         documentId: 'demo-post',
-        revision: 1,
+        revision: 0,
+        hasContent: true,
         savedAt: defaultDocument.savedAt,
         hidden: false,
       },
@@ -495,11 +496,12 @@ describe('ComposePage', () => {
       title: '上传章节',
       order: 0,
       documentId: 'demo-post',
-      revision: 1,
+      revision: 0,
       savedAt: defaultDocument.savedAt,
       hidden: false,
       content: uploadedContent,
     });
+    mocks.uploadLongTextChapter.mockResolvedValueOnce({ revision: 1 });
     renderPage();
 
     await waitFor(() =>
@@ -515,12 +517,12 @@ describe('ComposePage', () => {
         'uploaded-chapter',
         expect.objectContaining({
           order: 0,
-          baseRevision: 1,
+          baseRevision: 0,
           content: expect.objectContaining({ type: 'doc' }),
         }),
       ),
     );
-    expect(await screen.findByText('章节已保存为版本 2')).toBeInTheDocument();
+    expect(await screen.findByText('章节已保存为版本 1')).toBeInTheDocument();
   });
 
   it('移动章节按钮默认收边，上滑或选中文字时展开，下滑时收起', async () => {
