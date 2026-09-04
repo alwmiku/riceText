@@ -114,12 +114,6 @@ export class ChapterService {
   } {
     const id = chapterStorageId(documentId, input.order);
     const now = new Date().toISOString();
-    const existing = this.#db
-      .prepare("SELECT document_id FROM chapters WHERE id = ?")
-      .get(id) as { document_id: string } | undefined;
-    if (existing && existing.document_id !== documentId) {
-      throw new HttpError(409, "CHAPTER_ID_CONFLICT", "章节 ID 已属于另一篇文档");
-    }
     const result = this.#db
       .prepare(
         `INSERT OR IGNORE INTO chapters(id, title, sort_order, document_id, revision, updated_at)
@@ -174,9 +168,10 @@ export class ChapterService {
     try {
       this.#db
         .prepare(
-          "UPDATE suggestions SET chapter_id = NULL WHERE chapter_id = ?",
+          "UPDATE suggestions SET chapter_id = NULL " +
+            "WHERE document_id = ? AND chapter_id = ?",
         )
-        .run(chapterId);
+        .run(documentId, chapterId);
       this.#db
         .prepare("DELETE FROM chapters WHERE id = ? AND document_id = ?")
         .run(chapterId, documentId);
@@ -248,13 +243,9 @@ export class ChapterService {
       baseRevision: number;
     },
   ): { id: string; title: string; order: number; revision: number } {
-    const owner = this.#db
-      .prepare("SELECT document_id, revision FROM chapters WHERE id = ?")
-      .get(chapterId) as { document_id: string; revision: number } | undefined;
-    if (owner && owner.document_id !== documentId) {
-      throw new HttpError(409, "CHAPTER_ID_CONFLICT", "章节 ID 已属于另一篇文档");
-    }
-    const existing = owner;
+    const existing = this.#db
+      .prepare("SELECT revision FROM chapters WHERE document_id = ? AND id = ?")
+      .get(documentId, chapterId) as { revision: number } | undefined;
     if (existing && existing.revision !== input.baseRevision)
       throw new HttpError(
         409,
@@ -273,14 +264,14 @@ export class ChapterService {
       .prepare(
         `INSERT INTO chapters(id, title, sort_order, document_id, revision, content_json, content_hash, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
+         ON CONFLICT(document_id, id) DO UPDATE SET
            title = excluded.title,
            sort_order = excluded.sort_order,
            revision = excluded.revision,
            content_json = excluded.content_json,
            content_hash = excluded.content_hash,
            updated_at = excluded.updated_at
-         WHERE chapters.document_id = excluded.document_id`,
+         `,
       )
       .run(
         chapterId,
@@ -300,7 +291,7 @@ export class ChapterService {
    *
    * 与单章 saveChapter 语义一致，但把「预校验 → 写入」放进同一个事务：
    * 读入本批涉及章节的 owner/revision/order/content_hash 与目标文档的
-   * order 占用情况，逐项校验跨文章 ID、目标 order 被批外章节占用、批内
+   * order 占用情况，逐项校验目标 order 被批外章节占用、批内
    * 目标 order 重复与 baseRevision 过期；任一项失败整批抛 409（具体
    * chapterId 写入 details），不发生部分提交。
    *
@@ -345,9 +336,9 @@ export class ChapterService {
     const metadata = this.#db
       .prepare(
         "SELECT id, document_id, revision, sort_order, content_hash FROM chapters " +
-          "WHERE id IN (" + placeholders + ")",
+          "WHERE document_id = ? AND id IN (" + placeholders + ")",
       )
-      .all(...items.map((item) => item.id)) as Array<{
+      .all(documentId, ...items.map((item) => item.id)) as Array<{
       id: string;
       document_id: string;
       revision: number;
@@ -385,14 +376,6 @@ export class ChapterService {
     ) + 1;
     for (const item of items) {
       const existing = byId.get(item.id);
-      if (existing && existing.document_id !== documentId) {
-        throw new HttpError(
-          409,
-          "CHAPTER_ID_CONFLICT",
-          "章节 ID 已属于另一篇文档",
-          { chapterId: item.id },
-        );
-      }
       if (seenOrders.has(item.order)) {
         throw new HttpError(
           409,
@@ -455,14 +438,14 @@ export class ChapterService {
     const upsert = this.#db.prepare(
       `INSERT INTO chapters(id, title, sort_order, document_id, revision, content_json, content_hash, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
+       ON CONFLICT(document_id, id) DO UPDATE SET
          title = excluded.title,
          sort_order = excluded.sort_order,
          revision = excluded.revision,
          content_json = excluded.content_json,
          content_hash = excluded.content_hash,
          updated_at = excluded.updated_at
-       WHERE chapters.document_id = excluded.document_id`,
+       `,
     );
     for (const item of write) {
       upsert.run(
@@ -493,7 +476,7 @@ export class ChapterService {
    * 幂等语义：当前顺序已经等于临时顺序且 revision 等于 baseRevision
    * （上次已成功暂存）时返回 unchanged 与当前 revision，不重复递增；
    * 上次响应丢失后的重试（revision = baseRevision + 1 且顺序一致）返回
-   * staged 与当前 revision。跨文章 ID、临时 order 被批外章节占用、批内
+   * staged 与当前 revision。临时 order 被批外章节占用、批内
    * 临时 order 重复或 baseRevision 过期时整批 409。
    */
   stageChapterReorder(
@@ -519,9 +502,9 @@ export class ChapterService {
     const metadata = this.#db
       .prepare(
         "SELECT id, document_id, revision, sort_order FROM chapters " +
-          "WHERE id IN (" + placeholders + ")",
+          "WHERE document_id = ? AND id IN (" + placeholders + ")",
       )
-      .all(...items.map((item) => item.id)) as Array<{
+      .all(documentId, ...items.map((item) => item.id)) as Array<{
       id: string;
       document_id: string;
       revision: number;
@@ -541,14 +524,6 @@ export class ChapterService {
     const now = new Date().toISOString();
     for (const item of items) {
       const existing = byId.get(item.id);
-      if (existing && existing.document_id !== documentId) {
-        throw new HttpError(
-          409,
-          "CHAPTER_ID_CONFLICT",
-          "章节 ID 已属于另一篇文档",
-          { chapterId: item.id },
-        );
-      }
       if (seenOrders.has(item.temporaryOrder)) {
         throw new HttpError(
           409,

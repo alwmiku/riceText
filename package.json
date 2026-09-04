@@ -21,6 +21,7 @@
     "cf:smoke": "node tools/cloudflare/smoke.mjs",
     "cf:verify": "node tools/cloudflare/verify-target.mjs",
     "auth:create-user": "tsx tools/cloudflare/create-password-user.ts",
+    "db:reset-articles": "tsx tools/cloudflare/reset-article-data.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
   "devDependencies": {

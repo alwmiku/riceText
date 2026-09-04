@@ -3,18 +3,15 @@ import { EntityIdSchema } from "@ricetext/contracts";
 import { chapterStorageId, scopedLongTextChapterId } from "./chapter-identity";
 
 describe("chapter identity", () => {
-  it("keeps legacy demo IDs and existing ordinary chapter IDs stable", () => {
+  it("keeps chapter IDs independent from their document", () => {
     expect(chapterStorageId("demo-post", 0)).toBe("chapter-0");
+    expect(chapterStorageId("article-a", 0)).toBe("chapter-0");
     expect(scopedLongTextChapterId("demo-post", "local-chapter-1")).toBe(
       "local-chapter-1",
     );
-  });
-
-  it("scopes the same long-text chapter to different documents", () => {
-    const first = scopedLongTextChapterId("article-a", "local-chapter-1");
-    const second = scopedLongTextChapterId("article-b", "local-chapter-1");
-    expect(first).not.toBe(second);
-    expect(scopedLongTextChapterId("article-a", first)).toBe(first);
+    expect(scopedLongTextChapterId("article-a", "local-chapter-1")).toBe(
+      scopedLongTextChapterId("article-b", "local-chapter-1"),
+    );
   });
 
   it("always emits a valid ID within the shared length limit", () => {

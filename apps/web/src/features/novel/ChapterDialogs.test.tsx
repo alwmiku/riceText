@@ -21,6 +21,7 @@ const uploadDiff: ChapterUploadDiff = {
   toUpdate: 2,
   added: 1,
   modified: 1,
+  remoteOnly: 0,
   uploaded: 0,
   failed: 0,
   pending: 2,
@@ -124,6 +125,34 @@ describe("ChapterUploadDialog", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "确认分章上传" })).not.toBeInTheDocument();
+  });
+
+  it("提示服务器额外章节只能从目录人工删除", () => {
+    render(
+      <ChapterUploadDialog
+        open
+        diff={{
+          ...uploadDiff,
+          remoteOnly: 1,
+          rows: [
+            ...uploadDiff.rows,
+            {
+              id: "remote-only",
+              title: "错乱章节",
+              action: "服务器额外",
+              status: "待人工删除",
+              attempts: 0,
+            },
+          ],
+        }}
+        uploading={false}
+        onOpenChange={vi.fn()}
+        onConfirm={vi.fn()}
+        onReprepare={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/服务器额外章节不会自动删除/)).toBeInTheDocument();
+    expect(screen.getByText("待人工删除")).toBeInTheDocument();
   });
 
   it("虚拟列表只显示可见行，并可筛选到失败章节", () => {

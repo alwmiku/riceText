@@ -10,22 +10,33 @@ export function AddChapterDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (title: string, text: string) => boolean;
+  onSubmit: (title: string, text: string) => boolean | Promise<boolean>;
 }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   // 弹窗关闭即丢弃未提交表单，重新打开时始终从空白状态开始。
   useEffect(() => {
     if (!open) {
       setTitle("");
       setText("");
+      setSubmitting(false);
     }
   }, [open]);
 
   const submit = () => {
-    if (!onSubmit(title, text)) return;
-    onOpenChange(false);
+    const result = onSubmit(title, text);
+    if (typeof result === "boolean") {
+      if (result) onOpenChange(false);
+      return;
+    }
+    setSubmitting(true);
+    void result
+      .then((accepted) => {
+        if (accepted) onOpenChange(false);
+      })
+      .finally(() => setSubmitting(false));
   };
 
   return (
@@ -62,11 +73,16 @@ export function AddChapterDialog({
           placeholder="粘贴或输入章节内容…"
         />
         <div className="flex justify-end gap-2">
-          <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={submitting}
+            onClick={() => onOpenChange(false)}
+          >
             取消
           </Button>
-          <Button size="sm" onClick={submit}>
-            添加并编辑
+          <Button size="sm" disabled={submitting} onClick={submit}>
+            {submitting ? "正在添加…" : "添加并编辑"}
           </Button>
         </div>
       </div>

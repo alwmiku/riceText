@@ -36,6 +36,7 @@ export function ChapterRail({
   onAddChapter,
   createArticle,
   onDelete,
+  deleteMode = "draft",
   hiddenChapters,
   onToggleHidden,
   onProofread,
@@ -51,7 +52,9 @@ export function ChapterRail({
   /** 空库尚无本地文章时，将同一入口强调为红色「创建文章」。 */
   createArticle?: boolean;
   /** 章节操作弹窗中的删除入口；不提供时隐藏。删除只改本地草稿，保存后才同步服务器。 */
-  onDelete?: (index: number) => void;
+  onDelete?: (index: number) => void | Promise<void>;
+  /** 发布分章直接删除服务器行；普通正文只修改本地草稿。 */
+  deleteMode?: "draft" | "server";
   /** 各章节的服务器隐藏状态（按目录顺序对齐）；未提供时视为全部可读。 */
   hiddenChapters?: ReadonlyArray<boolean>;
   /** 章节操作弹窗中的隐藏/恢复入口；不提供时隐藏。 */
@@ -226,8 +229,9 @@ export function ChapterRail({
             </AlertDialogMedia>
             <AlertDialogTitle>删除章节</AlertDialogTitle>
             <AlertDialogDescription>
-              将删除「{pendingChapter?.title ?? ""}」及其正文。此操作只修改
-              本地草稿，点击「保存」后才会同步到服务器。
+              {deleteMode === "server"
+                ? `将立即从服务器删除「${pendingChapter?.title ?? ""}」及其正文，历史校订记录会保留。此操作无法撤销。`
+                : `将删除「${pendingChapter?.title ?? ""}」及其正文。此操作只修改本地草稿，点击「保存」后才会同步到服务器。`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -235,7 +239,7 @@ export function ChapterRail({
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
-                if (pendingDelete !== null) onDelete?.(pendingDelete);
+                if (pendingDelete !== null) void onDelete?.(pendingDelete);
                 setPendingDelete(null);
               }}
             >

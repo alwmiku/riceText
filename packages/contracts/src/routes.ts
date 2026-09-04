@@ -171,24 +171,24 @@ export const contractRoutes: readonly ContractRoute[] = [
   },
   {
     operationId: "saveNovelChaptersBatch", method: "POST", path: "/api/forum/novels/:novelId/chapters/batch", tags: ["论坛业务"], implementationStatus: "implemented",
-    summary: "批量保存章节正文（每批最多 20 章）", description: "需要 author 或 moderator。整批先读取该批涉及章节的 owner、revision、order 与 content_hash 完成预校验：跨文章 ID、目标 order 被批外章节占用、批内目标 order 重复或任一 baseRevision 过期时整批返回 409（details.chapterId 指出具体章节），正文不发生部分提交。已存在记录 content_hash 与请求 hash 一致时返回 unchanged 与当前 revision，因此上次响应丢失后重试不会再次递增版本。正文继续执行标准 Tiptap 清洗与 longTextBlock 转换保护。路由 body 上限约 5 MiB，超出返回 413。",
+    summary: "批量保存章节正文（每批最多 20 章）", description: "需要 author 或 moderator。章节身份由文章 ID 与章节 ID 共同确定。整批先读取当前文章内相关章节的 revision、order 与 content_hash 完成预校验：目标 order 被批外章节占用、批内目标 order 重复或任一 baseRevision 过期时整批返回 409（details.chapterId 指出具体章节），正文不发生部分提交。已存在记录 content_hash 与请求 hash 一致时返回 unchanged 与当前 revision，因此上次响应丢失后重试不会再次递增版本。正文继续执行标准 Tiptap 清洗与 longTextBlock 转换保护。路由 body 上限约 5 MiB，超出返回 413。",
     params: novelParams, body: SaveNovelChaptersBatchRequestSchema,
     responses: {
       200: { description: "与请求顺序一致的单章保存结果。", schema: SaveNovelChaptersBatchResponseSchema },
       403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema },
-      409: { description: "批内任一章节存在跨文章 ID、order 或 baseRevision 冲突；未发生部分提交。", schema: ApiErrorSchema },
+      409: { description: "批内任一章节存在 order 或 baseRevision 冲突；未发生部分提交。", schema: ApiErrorSchema },
       413: { description: "序列化请求体超过约 5 MiB 上限。", schema: ApiErrorSchema },
       422: { description: "章节数超过 20 或章节字段非法。", schema: ApiErrorSchema },
     },
   },
   {
     operationId: "stageNovelChapterReorder", method: "POST", path: "/api/forum/novels/:novelId/chapters/reorder-stage", tags: ["论坛业务"], implementationStatus: "implemented",
-    summary: "换序暂存（每批最多 40 项，不发送正文）", description: "需要 author 或 moderator。先把所有移动章节按批放到全局唯一临时 order，再执行最终正文批次，避免中途占用其他章节的目标位置。当前顺序已经等于临时顺序时幂等返回 unchanged，不重复递增 revision；上次响应丢失后的重试同样返回当前 revision。跨文章 ID、目标临时 order 被批外章节占用、批内临时 order 重复或 baseRevision 过期时整批返回 409（details.chapterId 指出具体章节）。",
+    summary: "换序暂存（每批最多 40 项，不发送正文）", description: "需要 author 或 moderator。先把当前文章的所有移动章节按批放到文章内唯一临时 order，再执行最终正文批次，避免中途占用其他章节的目标位置。当前顺序已经等于临时顺序时幂等返回 unchanged，不重复递增 revision；上次响应丢失后的重试同样返回当前 revision。目标临时 order 被批外章节占用、批内临时 order 重复或 baseRevision 过期时整批返回 409（details.chapterId 指出具体章节）。",
     params: novelParams, body: StageNovelChapterReorderRequestSchema,
     responses: {
       200: { description: "与请求顺序一致的单章暂存结果。", schema: StageNovelChapterReorderResponseSchema },
       403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema },
-      409: { description: "批内任一章节存在跨文章 ID、临时 order 或 baseRevision 冲突；未发生部分提交。", schema: ApiErrorSchema },
+      409: { description: "批内任一章节存在临时 order 或 baseRevision 冲突；未发生部分提交。", schema: ApiErrorSchema },
       413: { description: "序列化请求体超过约 5 MiB 上限。", schema: ApiErrorSchema },
       422: { description: "章节数超过 40 或字段非法。", schema: ApiErrorSchema },
     },

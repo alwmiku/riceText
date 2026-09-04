@@ -16,12 +16,13 @@ import { ScrollArea } from "../../components/ui/scroll-area";
 import { TextMarquee } from "../../components/ui/text-marquee";
 import { cn } from "../../lib/utils";
 
-export type ChapterUploadAction = "新增" | "修改" | "未变化";
+export type ChapterUploadAction = "新增" | "修改" | "未变化" | "服务器额外";
 export type ChapterUploadStatus =
   | "待上传"
   | "上传中"
   | "已上传"
   | "未变化"
+  | "待人工删除"
   | "失败";
 
 export interface ChapterUploadRow {
@@ -40,6 +41,8 @@ export interface ChapterUploadDiff {
   toUpdate: number;
   added: number;
   modified: number;
+  /** 服务器存在、当前本地长文本中不存在，必须由用户从目录删除的章节数。 */
+  remoteOnly: number;
   uploaded: number;
   /** 失败（含不可重试冲突）章节数。 */
   failed: number;
@@ -64,7 +67,7 @@ function StatusMarker({ row }: { row: ChapterUploadRow }) {
       <CheckCircle2 />
     ) : row.status === "上传中" ? (
       <LoaderCircle className="animate-spin" />
-    ) : row.status === "失败" ? (
+    ) : row.status === "失败" || row.status === "待人工删除" ? (
       <AlertCircle />
     ) : (
       <CircleDashed />
@@ -73,7 +76,8 @@ function StatusMarker({ row }: { row: ChapterUploadRow }) {
     <Marker
       className={cn(
         "w-auto shrink-0 normal-case tracking-normal",
-        row.status === "失败" && "text-destructive",
+        (row.status === "失败" || row.status === "待人工删除") &&
+          "text-destructive",
         row.status === "上传中" && "text-primary",
         (row.status === "已上传" || row.status === "未变化") &&
           "text-foreground",
@@ -229,7 +233,13 @@ export function ChapterUploadDialog({
     diff?.rows.some((row) => row.status === "失败" && row.retryable === false) ??
     false;
   const complete = Boolean(
-    diff && diff.toUpdate > 0 && diff.uploaded === diff.toUpdate,
+    diff &&
+      diff.uploaded === diff.toUpdate &&
+      diff.pending === 0 &&
+      diff.failed === 0,
+  );
+  const fullyConsistent = Boolean(
+    complete && diff?.remoteOnly === 0 && diff.gaps === 0,
   );
   const failedRows = useMemo(
     () => diff?.rows.filter((row) => row.status === "失败") ?? [],
@@ -264,8 +274,19 @@ export function ChapterUploadDialog({
           <p className="shrink-0 text-xs text-muted-foreground">
             本地共 <strong>{diff.total}</strong> 个章节，本次上传{" "}
             <strong>{diff.toUpdate}</strong> 个（新增 {diff.added}，修改{" "}
-            {diff.modified}）。未变化的章节不会重复上传。
+            {diff.modified}）。服务器额外 <strong>{diff.remoteOnly}</strong> 个。
+            未变化的章节不会重复上传。
           </p>
+          {diff.remoteOnly > 0 ? (
+            <p className="shrink-0 text-xs text-destructive">
+              服务器额外章节不会自动删除；请退出长文本工作台后在章节目录中逐章确认删除。
+            </p>
+          ) : null}
+          {fullyConsistent ? (
+            <p className="shrink-0 text-xs font-medium text-foreground">
+              服务器章节与本地长文本完全一致。
+            </p>
+          ) : null}
           <div className="shrink-0 flex flex-col gap-1" aria-live="polite">
             <div className="flex items-center justify-between gap-3 text-xs">
               <span className="font-medium text-foreground">总上传进度</span>

@@ -43,9 +43,9 @@ const stageRequest = (
     ),
   );
 
-/** 章节 id 为全局主键，按文章前缀隔离；order 从 0 连续。 */
-function chapterId(novelId: string, index: number): string {
-  return novelId + "-" + index;
+/** 章节 ID 可跨文章复用；order 从 0 连续。 */
+function chapterId(_novelId: string, index: number): string {
+  return "chapter-" + index;
 }
 
 async function seedNovel(novelId: string, count: number): Promise<void> {
@@ -116,6 +116,45 @@ beforeEach(async () => {
 });
 
 describe("Worker chapter batch", () => {
+  it("删除同 ID 章节只影响目标文章及其校订关联", async () => {
+    await seedNovel("owner-a", 1);
+    await seedNovel("owner-b", 1);
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO suggestions(id, document_id, chapter_id, chapter_title, line_no, line_text, from_text, to_text, reason, status, author_id, created_at) " +
+          "VALUES (?, ?, ?, '', 0, '', '', '', '', 'pending', 'author', ?)",
+      ).bind("suggestion-a", "owner-a", chapterId("owner-a", 0), now),
+      env.DB.prepare(
+        "INSERT INTO suggestions(id, document_id, chapter_id, chapter_title, line_no, line_text, from_text, to_text, reason, status, author_id, created_at) " +
+          "VALUES (?, ?, ?, '', 0, '', '', '', '', 'pending', 'author', ?)",
+      ).bind("suggestion-b", "owner-b", chapterId("owner-b", 0), now),
+    ]);
+
+    const response = await exports.default.fetch(
+      new Request(
+        "http://example.com/api/documents/owner-a/chapters/" +
+          chapterId("owner-a", 0),
+        { method: "DELETE", headers: { "x-user-id": "author" } },
+      ),
+    );
+    expect(response.status).toBe(200);
+    const chapters = await env.DB.prepare(
+      "SELECT document_id FROM chapters WHERE id = ? ORDER BY document_id",
+    )
+      .bind(chapterId("owner-a", 0))
+      .all<{ document_id: string }>();
+    expect(chapters.results).toEqual([{ document_id: "owner-b" }]);
+    const suggestions = await env.DB.prepare(
+      "SELECT id, chapter_id FROM suggestions WHERE id IN (?, ?) ORDER BY id",
+    )
+      .bind("suggestion-a", "suggestion-b")
+      .all<{ id: string; chapter_id: string | null }>();
+    expect(suggestions.results).toEqual([
+      { id: "suggestion-a", chapter_id: null },
+      { id: "suggestion-b", chapter_id: chapterId("owner-b", 0) },
+    ]);
+  });
+
   it("批量保存：200 保存、同 hash 幂等、整批 409 且不发生部分提交", async () => {
     await seedNovel("batch-novel", 3);
     const item = (
@@ -177,7 +216,7 @@ describe("Worker chapter batch", () => {
     expect(untouched?.content_hash).toBe("old-2");
   });
 
-  it("跨文章 ID 与批内重复 order 整批 409；目标 order 占用改为同事务自动腾位", async () => {
+  it("跨文章复用 ID；批内重复 order 仍 409，目标占用自动腾位", async () => {
     await seedNovel("owner-a", 2);
     await seedNovel("owner-b", 1);
     const cross = await batchRequest("owner-b", [
@@ -190,13 +229,16 @@ describe("Worker chapter batch", () => {
         baseRevision: 1,
       },
     ]);
-    expect(cross.status).toBe(409);
+    expect(cross.status).toBe(200);
     await expect(cross.json()).resolves.toMatchObject({
-      error: {
-        code: "CHAPTER_ID_CONFLICT",
-        details: { chapterId: chapterId("owner-a", 0) },
-      },
+      chapters: [{ id: chapterId("owner-a", 0), status: "saved" }],
     });
+    const ownerA = await env.DB.prepare(
+      "SELECT content_hash FROM chapters WHERE document_id = ? AND id = ?",
+    )
+      .bind("owner-a", chapterId("owner-a", 0))
+      .first<{ content_hash: string }>();
+    expect(ownerA?.content_hash).toBe("old-0");
 
     // 目标顺序被其他服务器行占用：不再 409，同一事务里把占用行搬到更高
     // 空闲顺序（内容保留、顺序变更递增版本），再写入新章。

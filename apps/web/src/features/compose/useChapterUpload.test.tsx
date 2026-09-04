@@ -240,13 +240,13 @@ describe("useChapterUpload", () => {
         { type: "paragraph", content: [{ type: "text", text: "new text" }] },
       ],
     });
-    expect(notice).toHaveBeenCalledWith("已分章上传 2 章");
+    expect(notice).toHaveBeenCalledWith("已分章上传 2 章；仍有 1 段原文未切分");
     expect(mocks.saveCheckpoint).toHaveBeenCalled();
     const lastSaved = mocks.saveCheckpoint.mock.calls.at(-1)?.[1] as {
       version: number;
       chapters: Array<Record<string, unknown>>;
     };
-    expect(lastSaved.version).toBe(2);
+    expect(lastSaved.version).toBe(3);
     expect(
       lastSaved.chapters.every((entry) => !("content" in entry)),
     ).toBe(true);
@@ -288,7 +288,9 @@ describe("useChapterUpload", () => {
       0,
     );
     expect(total).toBe(3000);
-    expect(notice).toHaveBeenCalledWith("已分章上传 3000 章");
+    expect(notice).toHaveBeenCalledWith(
+      "已分章上传 3000 章；仍有 1 段原文未切分",
+    );
   });
 
   it("bisects a 413 batch into halves until single chapters", async () => {
@@ -386,7 +388,7 @@ describe("useChapterUpload", () => {
 
     expect(mocks.batchUpload).toHaveBeenCalledTimes(3);
     expect(result.current.diff?.rows[0]).toMatchObject({ status: "已上传" });
-    expect(notice).toHaveBeenCalledWith("已分章上传 1 章");
+    expect(notice).toHaveBeenCalledWith("已分章上传 1 章；仍有 1 段原文未切分");
   });
 
   it("does not retry a 409 conflict and keeps the checkpoint", async () => {
@@ -461,7 +463,7 @@ describe("useChapterUpload", () => {
     await act(async () => result.current.confirm());
 
     expect(mocks.batchUpload).not.toHaveBeenCalled();
-    expect(notice).toHaveBeenCalledWith("服务器章节已是最新版本，无需重复上传");
+    expect(notice).toHaveBeenCalledWith("章节无需上传，但仍有 1 段原文未切分");
   });
 
   it("ignores an unfinished prepare result after switching documents", async () => {
@@ -657,9 +659,9 @@ describe("useChapterUpload", () => {
     );
   });
 
-  it("migrates a v1 checkpoint to v2 and removes embedded content", async () => {
+  it("discards checkpoints created before SHA-256 chapter identities", async () => {
     const document = documentFixture();
-    // 先正常 prepare 一次拿到 v2 计划，再改造成 v1 并从 IndexedDB 恢复。
+    // 先正常 prepare 一次拿到 v3 计划，再改造成旧版并从 IndexedDB 恢复。
     const first = renderHook(
       () =>
         useChapterUpload({
@@ -677,7 +679,7 @@ describe("useChapterUpload", () => {
       sourceHash: string;
       chapters: Array<Record<string, unknown>>;
     };
-    expect(saved.version).toBe(2);
+    expect(saved.version).toBe(3);
     first.unmount();
 
     const v1Checkpoint = {
@@ -693,39 +695,30 @@ describe("useChapterUpload", () => {
         },
       })),
     };
+    mocks.deleteCheckpoint.mockClear();
     mocks.loadCheckpoint.mockResolvedValue(v1Checkpoint);
     mocks.list.mockResolvedValue([]);
     mocks.sync.mockResolvedValue({
       toUpdate: ["new", "changed"],
       existing: [],
     });
-    const notice = vi.fn();
     const { result } = renderHook(
       () =>
         useChapterUpload({
           novelId: "demo-post",
           getDocument: () => document,
           getCoverage: () => [],
-          onNotice: notice,
+          onNotice: vi.fn(),
         }),
       { wrapper },
     );
 
-    await waitFor(() => expect(result.current.hasCheckpoint).toBe(true));
-    const migratedSave = mocks.saveCheckpoint.mock.calls.at(-1)?.[1] as {
-      version: number;
-      chapters: Array<Record<string, unknown>>;
-    };
-    expect(migratedSave.version).toBe(2);
-    expect(
-      migratedSave.chapters.every((entry) => !("content" in entry)),
-    ).toBe(true);
-
-    await act(async () => result.current.confirm());
-    expect(notice).toHaveBeenCalledWith("已分章上传 2 章");
-    expect(mocks.deleteCheckpoint).toHaveBeenCalledWith(
-      "ricetext:long-text-upload:demo-post",
+    await waitFor(() =>
+      expect(mocks.deleteCheckpoint).toHaveBeenCalledWith(
+        "ricetext:long-text-upload:demo-post",
+      ),
     );
+    expect(result.current.hasCheckpoint).toBe(false);
   });
 
   it("flags a chapter over 1.8 MiB at prepare and skips uploading it", async () => {
@@ -766,7 +759,7 @@ describe("useChapterUpload", () => {
     );
     expect(ids).toEqual(["small"]);
     expect(notice).toHaveBeenLastCalledWith(
-      "其余章节存在版本、结构或大小冲突，需要重新检查差异",
+      "已完成 1 章，1 章存在版本、结构或大小冲突，可点“继续上传”重试",
     );
   });
   it("容忍编辑器回写的良性属性漂移：逐章一致时继续上传", async () => {
@@ -911,10 +904,12 @@ describe("useChapterUpload", () => {
         (call[1] as Array<Record<string, unknown>>).map((item) => item.id),
     );
     expect(batchIds).toEqual(["a", "b", "c"]);
+    expect(result.current.diff).toMatchObject({ remoteOnly: 1, toUpdate: 3 });
     expect(result.current.diff?.rows.map((row) => row.status)).toEqual([
       "已上传",
       "已上传",
       "已上传",
+      "待人工删除",
     ]);
   });
 

@@ -27,6 +27,7 @@ export function StandardComposeWorkspace({
   createArticle,
   showServerTools,
   onDeleteChapter,
+  deleteMode,
   hiddenChapters,
   onToggleHidden,
   onProofread,
@@ -70,7 +71,8 @@ export function StandardComposeWorkspace({
   /** 只有已登录且文章已上传服务器时才挂载校订、历史等远端面板。 */
   showServerTools: boolean;
   /** 章节行内「删除章节」入口（带确认，仅改本地草稿）。 */
-  onDeleteChapter?: (index: number) => void;
+  onDeleteChapter?: (index: number) => void | Promise<void>;
+  deleteMode?: "draft" | "server";
   onSelectChapter: (index: number) => void;
   onSave: () => void;
   onRestore: (revision: number) => void;
@@ -93,6 +95,7 @@ export function StandardComposeWorkspace({
           {...(onAddChapter ? { onAddChapter } : {})}
           {...(createArticle !== undefined ? { createArticle } : {})}
           {...(onDeleteChapter ? { onDelete: onDeleteChapter } : {})}
+          {...(deleteMode ? { deleteMode } : {})}
           {...(hiddenChapters ? { hiddenChapters } : {})}
           {...(onToggleHidden ? { onToggleHidden } : {})}
           {...(onProofread ? { onProofread } : {})}
@@ -178,6 +181,7 @@ export function StandardComposeWorkspace({
                   {...(onAddChapter ? { onAddChapter } : {})}
                   {...(createArticle !== undefined ? { createArticle } : {})}
                   {...(onDeleteChapter ? { onDelete: onDeleteChapter } : {})}
+                  {...(deleteMode ? { deleteMode } : {})}
                   {...(hiddenChapters ? { hiddenChapters } : {})}
                   {...(onToggleHidden ? { onToggleHidden } : {})}
                   {...(onProofread ? { onProofread } : {})}

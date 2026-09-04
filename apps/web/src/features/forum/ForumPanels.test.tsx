@@ -335,6 +335,23 @@ describe("ForumPanels", () => {
     expect(onDelete).not.toHaveBeenCalled();
   });
 
+  it("发布章节删除确认明确提示立即删除服务器正文", () => {
+    renderWithQuery(
+      <ChapterRail
+        chapters={chaptersFixture}
+        currentIndex={0}
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+        deleteMode="server"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /打开章节操作 楔子/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /删除章节/ }));
+    expect(screen.getByText(/立即从服务器删除/)).toBeInTheDocument();
+  });
+
   it("未提供 onDelete 时操作弹窗不渲染删除按钮", () => {
     renderWithQuery(
       <ChapterRail

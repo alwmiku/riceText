@@ -10,7 +10,6 @@ import {
   type MutableRefObject,
 } from "react";
 import type { RichTextNode } from "../../lib/types";
-import { createId } from "../../lib/utils";
 import {
   deleteLongTextValue,
   loadLongTextDraft,
@@ -20,8 +19,8 @@ import {
 } from "../../lib/long-text-draft-storage";
 import { createLongTextDocument } from "../editor/long-text/long-text-import";
 import {
-  longTextChapterId,
-  scopeLongTextChapterIds,
+  createLongTextChapterIdInDocument,
+  migrateLongTextChapterIds,
 } from "../editor/long-text/long-text-ids";
 import {
   appendGapLongTextChapter,
@@ -229,7 +228,12 @@ export function useLongTextWorkspace({
       }
       activeIndexRef.current = 0;
       setActiveIndex(0);
-      replaceContent(scopeLongTextChapterIds(stored, documentId));
+      const migrated = await migrateLongTextChapterIds(stored);
+      if (operation !== operationRef.current) return;
+      if (JSON.stringify(migrated) !== JSON.stringify(stored)) {
+        await saveLongTextDraft(longTextDraftKey(documentId), migrated);
+      }
+      replaceContent(migrated);
       setDocumentVersion((version) => version + 1);
       setHasLocalDraft(false);
       setHasStoredDraft(true);
@@ -253,7 +257,7 @@ export function useLongTextWorkspace({
           setNotice("未导入空白文本");
           return;
         }
-        const imported = createLongTextDocument(
+        const imported = await createLongTextDocument(
           text,
           capturedDocumentId,
           chapterTitleStyle,
@@ -394,32 +398,45 @@ export function useLongTextWorkspace({
   );
 
   const addChapter = useCallback(
-    (titleInput: string, textInput: string) => {
+    async (titleInput: string, textInput: string) => {
       const title = titleInput.trim();
       const text = textInput.slice(0, MAX_CHAPTER_LENGTH);
       if (!title && !text) return false;
       flushEdits();
+      const snapshot = contentRef.current;
+      const chapterTitle = title || "未命名章节";
+      const chapterId = await createLongTextChapterIdInDocument(
+        snapshot,
+        chapterTitle,
+        text,
+      );
       applyOperation(
-        appendLongTextChapter(contentRef.current, {
-          chapterId: longTextChapterId(documentId, createId("chapter")),
-          title,
+        appendLongTextChapter(snapshot, {
+          chapterId,
+          title: chapterTitle,
           text,
         }),
       );
-      setNotice(`已添加章节“${title || "未命名章节"}”`);
+      setNotice(`已添加章节“${chapterTitle}”`);
       return true;
     },
-    [applyOperation, contentRef, documentId, flushEdits, setNotice],
+    [applyOperation, contentRef, flushEdits, setNotice],
   );
 
   const createChapterFromGap = useCallback(
-    (text: string, start: number, end: number) => {
+    async (text: string, start: number, end: number) => {
       if (!text.trim()) return;
       flushEdits();
+      const snapshot = contentRef.current;
+      const chapterId = await createLongTextChapterIdInDocument(
+        snapshot,
+        "未命名章节",
+        text,
+      );
       if (
         applyOperation(
-          appendGapLongTextChapter(contentRef.current, {
-            chapterId: longTextChapterId(documentId, createId("chapter")),
+          appendGapLongTextChapter(snapshot, {
+            chapterId,
             text,
             start,
             end,
@@ -429,19 +446,26 @@ export function useLongTextWorkspace({
         setNotice("已把未切分段落创建为新章节，请补充标题并核对内容");
       }
     },
-    [applyOperation, contentRef, documentId, flushEdits, setNotice],
+    [applyOperation, contentRef, flushEdits, setNotice],
   );
 
   const splitChapter = useCallback(
-    (before: string, after: string) => {
+    async (before: string, after: string) => {
       flushEdits();
       const index = activeIndexRef.current;
-      const current = contentRef.current.content?.[index];
+      const snapshot = contentRef.current;
+      const current = snapshot.content?.[index];
+      const splitTitle = `第 ${index + 2} 章`;
+      const chapterId = await createLongTextChapterIdInDocument(
+        snapshot,
+        splitTitle,
+        after,
+      );
       if (
         current &&
         applyOperation(
-          splitLongTextChapter(contentRef.current, index, {
-            chapterId: longTextChapterId(documentId, createId("chapter")),
+          splitLongTextChapter(snapshot, index, {
+            chapterId,
             before,
             after,
           }),
@@ -452,7 +476,7 @@ export function useLongTextWorkspace({
         );
       }
     },
-    [applyOperation, contentRef, documentId, flushEdits, setNotice],
+    [applyOperation, contentRef, flushEdits, setNotice],
   );
 
   return {

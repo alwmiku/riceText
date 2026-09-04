@@ -44,6 +44,7 @@ import type {
   CommentReply,
   DocumentEnvelope,
   EditorMode,
+  ForumChapterItem,
   RichTextNode,
 } from "../lib/types";
 import { cn, sha256Hex } from "../lib/utils";
@@ -326,6 +327,31 @@ export default function ComposePage() {
   // 删除章节：正文先移除（自动保存只写浏览器草稿，点保存生效），
   // 同时调用删除章节接口清理服务器目录行（幂等；离线时留给保存对账清理）。
   const deleteChapter = async (index: number) => {
+    if (usesUploadedChapters) {
+      const row = chapterDirectory[index];
+      if (!row) return;
+      try {
+        const outcome = await deleteDocumentChapter(activeDocumentId, row.id);
+        if (!outcome.deleted) {
+          setNotice("该服务器章节已经不存在，目录即将刷新");
+        } else {
+          setNotice(`已从服务器删除章节「${row.title}」`);
+        }
+        queryClient.setQueryData<ForumChapterItem[]>(
+          ["forum", "chapters", activeDocumentId],
+          (current = []) => current.filter((chapter) => chapter.id !== row.id),
+        );
+        setChapterIndex(
+          Math.min(index, Math.max(0, chapterDirectory.length - 2)),
+        );
+        void queryClient.invalidateQueries({
+          queryKey: ["forum", "chapters", activeDocumentId],
+        });
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "服务器章节删除失败");
+      }
+      return;
+    }
     const result = removeChapter(compose.contentRef.current, index);
     if (!result.removed) return;
     const next = result.document as RichTextNode;
@@ -346,7 +372,9 @@ export default function ComposePage() {
         });
       }
     } catch {
-      // 目录行清理失败（如离线）：保存时 prepareChapterForSave 会对账重试。
+      setNotice(
+        `已从本地草稿删除「${result.removed.title}」，服务器目录将在下次保存时重新对账`,
+      );
     }
   };
 
@@ -705,10 +733,18 @@ export default function ComposePage() {
           showServerTools={
             articleSelection.authenticated && compose.document.storage === "server"
           }
-          onDeleteChapter={deleteChapter}
+          {...(canEditSelected
+            ? {
+                onDeleteChapter: deleteChapter,
+                deleteMode: usesUploadedChapters
+                  ? ("server" as const)
+                  : ("draft" as const),
+                onToggleHidden: (index: number, hidden: boolean) =>
+                  void toggleChapterHidden(index, hidden),
+                onProofread: proofreadChapter,
+              }
+            : {})}
           hiddenChapters={chapterDirectory.map((chapter) => chapter.hidden)}
-          onToggleHidden={(index, hidden) => void toggleChapterHidden(index, hidden)}
-          onProofread={proofreadChapter}
           onSelectChapter={setChapterIndex}
           onSave={() => void publish()}
           onRestore={(revision) => void rollback(revision)}

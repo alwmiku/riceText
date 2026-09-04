@@ -28,7 +28,7 @@ describe("ChapterService chapter ownership", () => {
 
   afterEach(() => db.close());
 
-  it("rejects a chapter ID owned by another document without overwriting it", () => {
+  it("stores the same chapter ID independently in different documents", () => {
     service.saveChapter("article-a", "shared-chapter", {
       title: "文章 A",
       order: 0,
@@ -37,21 +37,49 @@ describe("ChapterService chapter ownership", () => {
       baseRevision: 0,
     });
 
-    expect(() =>
-      service.saveChapter("article-b", "shared-chapter", {
-        title: "文章 B",
-        order: 0,
-        content,
-        hash: "hash-b",
-        baseRevision: 0,
-      }),
-    ).toThrowError(expect.objectContaining({ code: "CHAPTER_ID_CONFLICT", status: 409 }));
+    service.saveChapter("article-b", "shared-chapter", {
+      title: "文章 B",
+      order: 0,
+      content,
+      hash: "hash-b",
+      baseRevision: 0,
+    });
 
     expect(service.chapterContent("article-a", "shared-chapter")).toMatchObject({
       id: "shared-chapter",
       documentId: "article-a",
       content,
     });
+    expect(service.chapterContent("article-b", "shared-chapter")).toMatchObject({
+      id: "shared-chapter",
+      documentId: "article-b",
+      title: "文章 B",
+    });
+    db.prepare(
+      "INSERT INTO suggestions(" +
+        "id, document_id, chapter_id, chapter_title, line_no, line_text, " +
+        "from_text, to_text, reason, status, author_id, created_at" +
+        ") VALUES (?, ?, ?, ?, 1, '', '', '', '', 'pending', ?, ?)",
+    ).run(
+      "suggestion-b",
+      "article-b",
+      "shared-chapter",
+      "文章 B",
+      "author",
+      new Date(0).toISOString(),
+    );
+    expect(service.deleteChapter("article-a", "shared-chapter")).toEqual({
+      id: "shared-chapter",
+      deleted: true,
+    });
+    expect(service.chapterContent("article-b", "shared-chapter")).toMatchObject({
+      documentId: "article-b",
+    });
+    expect(
+      db
+        .prepare("SELECT chapter_id FROM suggestions WHERE id = ?")
+        .get("suggestion-b"),
+    ).toEqual({ chapter_id: "shared-chapter" });
     service.saveChapter("article-a", "converted-chapter", {
       title: "转换章节",
       order: 1,
@@ -78,12 +106,12 @@ describe("ChapterService chapter ownership", () => {
 
     expect(
       db.prepare(
-        "SELECT document_id, title, content_hash, revision FROM chapters WHERE id = ?",
-      ).get("shared-chapter"),
+        "SELECT document_id, title, content_hash, revision FROM chapters WHERE document_id = ? AND id = ?",
+      ).get("article-b", "shared-chapter"),
     ).toMatchObject({
-      document_id: "article-a",
-      title: "文章 A",
-      content_hash: "hash-a",
+      document_id: "article-b",
+      title: "文章 B",
+      content_hash: "hash-b",
       revision: 1,
     });
   });
@@ -160,18 +188,18 @@ describe("ChapterService batch upload", () => {
     expect(row.revision).toBe(1);
   });
 
-  it("跨文章 ID 与批内重复 order 整批 409；目标 order 占用改为同事务自动腾位", () => {
+  it("跨文章复用 ID，并拒绝批内重复 order；目标占用自动腾位", () => {
     service.saveChaptersBatch("article-a", [
       { id: "shared", title: "共享章", order: 0, content: batchContent, hash: "hash-0", baseRevision: 0 },
     ]);
-    expect(() =>
+    expect(
       service.saveChaptersBatch("article-b", [
         { id: "shared", title: "B 的共享章", order: 0, content: batchContent, hash: "hash-b", baseRevision: 0 },
         { id: "b-other", title: "B 其他章", order: 1, content: batchContent, hash: "hash-o", baseRevision: 0 },
       ]),
-    ).toThrowError(
-      expect.objectContaining({ code: "CHAPTER_ID_CONFLICT", details: { chapterId: "shared" } }),
-    );
+    ).toHaveLength(2);
+    expect(service.chapterContent("article-a", "shared").title).toBe("共享章");
+    expect(service.chapterContent("article-b", "shared").title).toBe("B 的共享章");
 
     // 目标顺序被其他服务器行占用：同一事务先把占用行搬到更高的空闲顺序，
     // 再写入新章（新文件上传模型下占用行通常是历史残留/占位行，不再整批 409）。
@@ -281,7 +309,7 @@ describe("ChapterService batch upload", () => {
     ]);
   });
 
-  it("换序暂存：冲突（跨文档/临时顺序占用/版本过期）整批 409", () => {
+  it("换序暂存：按文章隔离，并拒绝临时顺序占用与版本过期", () => {
     service.saveChaptersBatch("article-a", [
       { id: "a", title: "A", order: 0, content: batchContent, hash: "hash-a", baseRevision: 0 },
       { id: "b", title: "B", order: 1, content: batchContent, hash: "hash-b", baseRevision: 0 },
@@ -303,13 +331,14 @@ describe("ChapterService batch upload", () => {
         details: expect.objectContaining({ chapterId: "b" }),
       }),
     );
-    expect(() =>
+    service.saveChaptersBatch("article-b", [
+      { id: "a", title: "B-A", order: 0, content: batchContent, hash: "hash-ba", baseRevision: 0 },
+    ]);
+    expect(
       service.stageChapterReorder("article-b", [
         { id: "a", temporaryOrder: 5, baseRevision: 1 },
       ]),
-    ).toThrowError(
-      expect.objectContaining({ code: "CHAPTER_ID_CONFLICT", details: { chapterId: "a" } }),
-    );
+    ).toEqual([{ id: "a", revision: 2, status: "staged" }]);
     expect(() =>
       service.stageChapterReorder("article-a", [
         { id: "a", temporaryOrder: 2, baseRevision: 1 },

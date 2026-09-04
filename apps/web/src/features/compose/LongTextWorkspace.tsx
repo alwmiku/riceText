@@ -87,12 +87,16 @@ export function LongTextWorkspace({
   onCancelUpload: () => void;
   onConfirmUpload: () => Promise<void>;
   onExit: () => boolean | Promise<boolean>;
-  onAddChapter: (title: string, text: string) => boolean;
+  onAddChapter: (title: string, text: string) => boolean | Promise<boolean>;
   onSelect: (index: number) => void;
   onDelete: (index: number) => void;
   onMerge: (index: number) => void;
   onMove: (from: number, to: number) => void;
-  onCreateFromGap: (text: string, start: number, end: number) => void;
+  onCreateFromGap: (
+    text: string,
+    start: number,
+    end: number,
+  ) => void | Promise<void>;
 }) {
   // 文件选择器、弹窗开关属于展示层瞬时状态，不进入长文本领域 Hook。
   const fileInputRef = useRef<HTMLInputElement | null>(null);

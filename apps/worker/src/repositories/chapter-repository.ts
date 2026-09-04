@@ -38,7 +38,7 @@ function chapter(row: ChapterRow): Chapter {
   });
 }
 
-/** 章节目录仓储；所有写入同时校验 document_id，禁止跨文档复用章节 ID。 */
+/** 章节目录仓储；文章 ID 与章节 ID 共同确定唯一章节。 */
 export class D1ChapterRepository {
   constructor(private readonly db: D1Database) {}
 
@@ -143,8 +143,11 @@ export class D1ChapterRepository {
     await this.requireDocument(documentId);
     const results = await this.db.batch([
       this.db
-        .prepare("UPDATE suggestions SET chapter_id = NULL WHERE chapter_id = ?")
-        .bind(chapterId),
+        .prepare(
+          "UPDATE suggestions SET chapter_id = NULL " +
+            "WHERE document_id = ? AND chapter_id = ?",
+        )
+        .bind(documentId, chapterId),
       this.db
         .prepare("DELETE FROM chapters WHERE id = ? AND document_id = ?")
         .bind(chapterId, documentId),
@@ -180,13 +183,6 @@ export class D1ChapterRepository {
     },
   ): Promise<{ id: string; title: string; order: number; revision: number }> {
     await this.requireDocument(documentId);
-    const owner = await this.db
-      .prepare("SELECT document_id FROM chapters WHERE id = ?")
-      .bind(chapterId)
-      .first<{ document_id: string }>();
-    if (owner && owner.document_id !== documentId) {
-      throw new WorkerHttpError(409, "CHAPTER_ID_CONFLICT", "章节 ID 已属于另一篇文档");
-    }
     const content = sanitizeDocumentForWrite(
       convertLongTextBlocksToChapters(input.content as unknown as JSONContent),
     );
@@ -198,11 +194,11 @@ export class D1ChapterRepository {
           "INSERT INTO chapters(" +
             "id, title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden" +
             ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0) " +
-            "ON CONFLICT(id) DO UPDATE SET " +
+            "ON CONFLICT(document_id, id) DO UPDATE SET " +
             "title = excluded.title, sort_order = excluded.sort_order, " +
             "revision = excluded.revision, content_json = excluded.content_json, " +
             "content_hash = excluded.content_hash, updated_at = excluded.updated_at " +
-            "WHERE chapters.document_id = excluded.document_id AND chapters.revision = ? " +
+            "WHERE chapters.revision = ? " +
             "RETURNING id, title, sort_order, revision",
         )
         .bind(
@@ -256,6 +252,7 @@ export class D1ChapterRepository {
   }
 
   private async metadata(
+    documentId: string,
     ids: readonly string[],
   ): Promise<Array<{
     id: string;
@@ -268,9 +265,9 @@ export class D1ChapterRepository {
     const result = await this.db
       .prepare(
         "SELECT id, document_id, revision, sort_order, content_hash FROM chapters " +
-          "WHERE id IN (" + placeholders + ")",
+          "WHERE document_id = ? AND id IN (" + placeholders + ")",
       )
-      .bind(...ids)
+      .bind(documentId, ...ids)
       .all<{
         id: string;
         document_id: string;
@@ -295,7 +292,7 @@ export class D1ChapterRepository {
    * 批量保存章节正文（每批最多 20 章；D1 查询预算：文档校验 1 + 元数据
    * 1 + 目标 order 占用 1 + 最多 20 条 UPSERT = 23，低于 Free 50 上限）。
    *
-   * 与单章 save 相同的语义：先整批预校验（跨文章 ID、order 冲突、
+   * 与单章 save 相同的语义：先整批预校验（order 冲突、
    * baseRevision 过期），任一失败整批 409 且正文不发生部分提交；
    * content_hash 已一致时返回 unchanged 与当前 revision（响应丢失后的
    * 重试不会再次递增版本）。
@@ -324,7 +321,7 @@ export class D1ChapterRepository {
   }>> {
     await this.requireDocument(documentId);
     const byId = new Map(
-      (await this.metadata(items.map((item) => item.id))).map((row) => [
+      (await this.metadata(documentId, items.map((item) => item.id))).map((row) => [
         row.id,
         row,
       ]),
@@ -361,14 +358,6 @@ export class D1ChapterRepository {
     const now = new Date().toISOString();
     for (const item of items) {
       const existing = byId.get(item.id);
-      if (existing && existing.document_id !== documentId) {
-        throw new WorkerHttpError(
-          409,
-          "CHAPTER_ID_CONFLICT",
-          "章节 ID 已属于另一篇文档",
-          { chapterId: item.id },
-        );
-      }
       if (seenOrders.has(item.order)) {
         throw new WorkerHttpError(
           409,
@@ -436,11 +425,11 @@ export class D1ChapterRepository {
             "INSERT INTO chapters(" +
               "id, title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden" +
               ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0) " +
-              "ON CONFLICT(id) DO UPDATE SET " +
+              "ON CONFLICT(document_id, id) DO UPDATE SET " +
               "title = excluded.title, sort_order = excluded.sort_order, " +
               "revision = excluded.revision, content_json = excluded.content_json, " +
               "content_hash = excluded.content_hash, updated_at = excluded.updated_at " +
-              "WHERE chapters.document_id = excluded.document_id AND chapters.revision = ?",
+              "WHERE chapters.revision = ?",
           )
           .bind(
             item.id,
@@ -480,16 +469,8 @@ export class D1ChapterRepository {
         });
         continue;
       }
-      const current = await this.metadata([item.id]);
+      const current = await this.metadata(documentId, [item.id]);
       const row = current[0];
-      if (row && row.document_id !== documentId) {
-        throw new WorkerHttpError(
-          409,
-          "CHAPTER_ID_CONFLICT",
-          "章节 ID 已属于另一篇文档",
-          { chapterId: item.id },
-        );
-      }
       if (row && row.content_hash === item.hash) {
         results.push({
           id: item.id,
@@ -532,7 +513,7 @@ export class D1ChapterRepository {
   > {
     await this.requireDocument(documentId);
     const byId = new Map(
-      (await this.metadata(items.map((item) => item.id))).map((row) => [
+      (await this.metadata(documentId, items.map((item) => item.id))).map((row) => [
         row.id,
         row,
       ]),
@@ -553,14 +534,6 @@ export class D1ChapterRepository {
     const now = new Date().toISOString();
     for (const item of items) {
       const existing = byId.get(item.id);
-      if (existing && existing.document_id !== documentId) {
-        throw new WorkerHttpError(
-          409,
-          "CHAPTER_ID_CONFLICT",
-          "章节 ID 已属于另一篇文档",
-          { chapterId: item.id },
-        );
-      }
       if (seenOrders.has(item.temporaryOrder)) {
         throw new WorkerHttpError(
           409,
@@ -655,7 +628,7 @@ export class D1ChapterRepository {
         results.push({ id: item.id, revision: item.revision, status: "staged" });
         continue;
       }
-      const current = await this.metadata([item.id]);
+      const current = await this.metadata(documentId, [item.id]);
       const row = current[0];
       if (row && row.sort_order === item.temporaryOrder) {
         results.push({ id: item.id, revision: row.revision, status: "staged" });
@@ -687,7 +660,7 @@ export class D1ChapterRepository {
     error: unknown,
   ): Promise<WorkerHttpError> {
     const byId = new Map(
-      (await this.metadata(items.map((item) => item.id))).map((row) => [
+      (await this.metadata(documentId, items.map((item) => item.id))).map((row) => [
         row.id,
         row,
       ]),
@@ -695,14 +668,6 @@ export class D1ChapterRepository {
     const docOrders = await this.documentOrders(documentId);
     for (const item of items) {
       const existing = byId.get(item.id);
-      if (existing && existing.document_id !== documentId) {
-        return new WorkerHttpError(
-          409,
-          "CHAPTER_ID_CONFLICT",
-          "章节 ID 已属于另一篇文档",
-          { chapterId: item.id },
-        );
-      }
       const occupied = docOrders.find(
         (row) => row.sort_order === item.order && row.id !== item.id,
       );
@@ -738,7 +703,7 @@ export class D1ChapterRepository {
     error: unknown,
   ): Promise<WorkerHttpError> {
     const byId = new Map(
-      (await this.metadata(items.map((item) => item.id))).map((row) => [
+      (await this.metadata(documentId, items.map((item) => item.id))).map((row) => [
         row.id,
         row,
       ]),
@@ -746,14 +711,6 @@ export class D1ChapterRepository {
     const docOrders = await this.documentOrders(documentId);
     for (const item of items) {
       const existing = byId.get(item.id);
-      if (existing && existing.document_id !== documentId) {
-        return new WorkerHttpError(
-          409,
-          "CHAPTER_ID_CONFLICT",
-          "章节 ID 已属于另一篇文档",
-          { chapterId: item.id },
-        );
-      }
       const occupied = docOrders.find(
         (row) => row.sort_order === item.temporaryOrder && row.id !== item.id,
       );

@@ -67,6 +67,16 @@ pnpm auth:create-user -- --env production --username writer --user-id author --n
 
 OIDC 是可选功能，不使用时无需配置 `OIDC_ISSUER`、`OIDC_CLIENT_ID` 和 `OIDC_CLIENT_SECRET`。
 
+## 重置测试文章数据
+
+章节主键或测试导入数据需要从零验证时，只重置文章域并保留账号、认证和钱包：
+
+```bash
+pnpm db:reset-articles -- --env production --confirm ricetext-production
+```
+
+本地环境使用 `--local --confirm ricetext-development`。命令会删除文章、章节、修订、校订和评论，并在结束后检查文章计数与数据库外键；不会删除用户、登录凭据、身份映射、钱包、附件或投票资源。
+
 ## 可选数据导入
 
 需要把旧 SQLite 数据导入 D1 时：

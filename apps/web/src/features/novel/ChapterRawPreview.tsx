@@ -34,7 +34,11 @@ export function ChapterRawPreview({
   rawText: string | null;
   chapters: readonly CoverageChapter[];
   activeIndex: number;
-  onCreateFromGap?: (text: string, start: number, end: number) => void;
+  onCreateFromGap?: (
+    text: string,
+    start: number,
+    end: number,
+  ) => void | Promise<void>;
 }) {
   const [containerWidth, setContainerWidth] = useState(
     FALLBACK_CONTAINER_WIDTH,
@@ -224,7 +228,7 @@ export function ChapterRawPreview({
                   className="mr-1 cursor-pointer rounded border-0 bg-[#e2efec] px-1.5 py-[3px] text-[10px] font-semibold whitespace-nowrap text-[#176e66] hover:bg-[#cfe6df]"
                   title="把这 1 段未切分文字创建为新章节"
                   onClick={() =>
-                    onCreateFromGap(
+                    void onCreateFromGap(
                       rawText?.slice(gap.start, gap.end) ?? "",
                       gap.start,
                       gap.end,

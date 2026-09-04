@@ -95,6 +95,7 @@ function createProps() {
       toUpdate: 1,
       added: 1,
       modified: 0,
+      remoteOnly: 0,
       uploaded: 0,
       failed: 0,
       pending: 1,

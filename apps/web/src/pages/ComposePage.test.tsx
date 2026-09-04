@@ -69,12 +69,12 @@ vi.mock('../features/editor/RichTextEditor', () => ({
   </section>,
 }));
 vi.mock('../features/forum/ForumPanels', () => ({
-  ChapterRail: (props: { chapters?: readonly unknown[]; currentIndex?: number; onSelect: (index: number) => void; onAddChapter?: () => void; createArticle?: boolean; onDelete?: (index: number) => void; className?: string }) => (
+  ChapterRail: (props: { chapters?: readonly unknown[]; currentIndex?: number; onSelect: (index: number) => void; onAddChapter?: () => void; createArticle?: boolean; onDelete?: (index: number) => void | Promise<void>; className?: string }) => (
     <aside className={props.className} aria-label="章节目录" data-chapters={String(props.chapters?.length ?? 0)} data-active-index={String(props.currentIndex ?? 0)}>
       <span>模拟章节目录</span>
       <button type="button" onClick={() => props.onSelect(0)}>模拟章节 1</button>
       <button type="button" onClick={() => props.onAddChapter?.()}>{props.createArticle ? '创建文章' : '模拟新增章节'}</button>
-      <button type="button" onClick={() => props.onDelete?.(0)}>模拟删除章节</button>
+      {props.onDelete ? <button type="button" onClick={() => void props.onDelete?.(0)}>模拟删除章节</button> : null}
     </aside>
   ),
   ForumBusinessPanel: (props: { onRestore: (revision: number) => void; onCompare?: (revision: number) => void }) => <aside><span>模拟创作工具</span><button type="button" onClick={() => props.onCompare?.(17)}>模拟比较</button><button type="button" onClick={() => props.onRestore(17)}>模拟回退</button></aside>,
@@ -521,6 +521,103 @@ describe('ComposePage', () => {
       ),
     );
     expect(await screen.findByText('章节已保存为版本 2')).toBeInTheDocument();
+  });
+
+  it('从发布章节目录直接删除服务器章节', async () => {
+    mocks.getDocument.mockResolvedValueOnce({
+      ...defaultDocument,
+      content: { type: 'doc', content: [{ type: 'paragraph' }] },
+      storage: 'server',
+    });
+    mocks.listForumChapters.mockResolvedValueOnce([
+      {
+        id: 'uploaded-chapter',
+        title: '错乱章节',
+        order: 0,
+        documentId: 'demo-post',
+        revision: 1,
+        savedAt: defaultDocument.savedAt,
+        hidden: false,
+      },
+    ]);
+    mocks.getLongTextChapter.mockResolvedValue({
+      id: 'uploaded-chapter',
+      title: '错乱章节',
+      order: 0,
+      documentId: 'demo-post',
+      revision: 1,
+      savedAt: defaultDocument.savedAt,
+      hidden: false,
+      content: { type: 'doc', content: [{ type: 'paragraph' }] },
+    });
+    renderPage();
+
+    await waitFor(() =>
+      expect(mocks.getLongTextChapter).toHaveBeenCalledWith(
+        'demo-post',
+        'uploaded-chapter',
+        expect.any(AbortSignal),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '模拟删除章节' }));
+
+    await waitFor(() =>
+      expect(mocks.deleteDocumentChapter).toHaveBeenCalledWith(
+        'demo-post',
+        'uploaded-chapter',
+      ),
+    );
+    expect(await screen.findByText('已从服务器删除章节「错乱章节」')).toBeInTheDocument();
+  });
+
+  it('发布章节删除失败时保留目录行并显示错误', async () => {
+    mocks.deleteDocumentChapter.mockRejectedValueOnce(new Error('删除被服务器拒绝'));
+    mocks.getDocument.mockResolvedValueOnce({
+      ...defaultDocument,
+      content: { type: 'doc', content: [{ type: 'paragraph' }] },
+      storage: 'server',
+    });
+    mocks.listForumChapters.mockResolvedValueOnce([
+      {
+        id: 'uploaded-chapter',
+        title: '保留章节',
+        order: 0,
+        documentId: 'demo-post',
+        revision: 1,
+        savedAt: defaultDocument.savedAt,
+        hidden: false,
+      },
+    ]);
+    mocks.getLongTextChapter.mockResolvedValue({
+      id: 'uploaded-chapter',
+      title: '保留章节',
+      order: 0,
+      documentId: 'demo-post',
+      revision: 1,
+      savedAt: defaultDocument.savedAt,
+      hidden: false,
+      content: { type: 'doc', content: [{ type: 'paragraph' }] },
+    });
+    renderPage();
+
+    await waitFor(() =>
+      expect(mocks.getLongTextChapter).toHaveBeenCalled(),
+    );
+    const rail = screen.getByRole('complementary', { name: '章节目录' });
+    fireEvent.click(screen.getByRole('button', { name: '模拟删除章节' }));
+
+    expect(await screen.findByText('删除被服务器拒绝')).toBeInTheDocument();
+    expect(rail).toHaveAttribute('data-chapters', '1');
+  });
+
+  it('没有编辑权限时不提供章节删除入口', async () => {
+    renderPage(identities[1]!);
+    await waitFor(() =>
+      expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'false'),
+    );
+    expect(
+      screen.queryByRole('button', { name: '模拟删除章节' }),
+    ).not.toBeInTheDocument();
   });
 
   it('冲突时允许复制本地正文', async () => {
