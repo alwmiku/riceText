@@ -15,6 +15,7 @@ import type {
   ForumChapterItem,
   RichTextNode,
 } from "../../lib/types";
+import { ApiError } from "../../lib/api";
 import { useComposeDocument } from "./useComposeDocument";
 
 const mocks = vi.hoisted(() => ({
@@ -28,6 +29,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../lib/api", () => ({
+  ApiError: class ApiError extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+      readonly details?: unknown,
+      readonly code = "UNKNOWN_ERROR",
+    ) {
+      super(message);
+    }
+  },
   createDocumentChapter: mocks.createDocumentChapter,
   deleteDocumentChapter: mocks.deleteDocumentChapter,
   getDocument: mocks.getDocument,
@@ -188,6 +199,35 @@ describe("useComposeDocument hydration", () => {
     await waitFor(() =>
       expect(result.current.content).toBe(serverDocument.content),
     );
+  });
+
+  it("创建请求发现服务器已有同 ID 文档时恢复服务器版本", async () => {
+    const missing = {
+      id: "demo-post",
+      title: "本地文章",
+      schemaVersion: 1,
+      revision: 0,
+      savedAt: new Date(0).toISOString(),
+      content: { type: "doc" as const, content: [] },
+      storage: "missing" as const,
+    };
+    mocks.getDocument
+      .mockResolvedValueOnce(missing)
+      .mockResolvedValueOnce({ ...serverDocument, storage: "server" });
+    mocks.saveDocument.mockRejectedValueOnce(
+      new ApiError("文档已被其他修订更新", 409, { currentRevision: 1 }, "REVISION_CONFLICT"),
+    );
+    const { result } = renderHook(() => useComposeDocument("demo-post", 0), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
+    act(() => result.current.createLocalArticle());
+
+    await expect(
+      act(() => result.current.ensureServerDocument({ type: "doc", content: [] })),
+    ).resolves.toBe("existing");
+    await waitFor(() => expect(result.current.document.revision).toBe(1));
+    expect(mocks.getDocument).toHaveBeenCalledTimes(2);
   });
 
   it("水合落地前保持加载态并忽略编辑器的占位规范化上报", async () => {

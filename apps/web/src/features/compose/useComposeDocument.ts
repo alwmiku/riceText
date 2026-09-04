@@ -318,21 +318,38 @@ export function useComposeDocument(
     async (baseContent: RichTextNode) => {
       if (localOnly || document.storage !== "missing") return "existing";
       if (isDocumentLoading || !articleStarted) return false;
-      const saved = await saveDocument(documentId, {
-        title: document.title,
-        schemaVersion: document.schemaVersion,
-        baseRevision: 0,
-        clientMutationId: createId("create"),
-        content: baseContent,
-      });
+      let saved: DocumentEnvelope;
+      let created = true;
+      try {
+        saved = await saveDocument(documentId, {
+          title: document.title,
+          schemaVersion: document.schemaVersion,
+          baseRevision: 0,
+          clientMutationId: createId("create"),
+          content: baseContent,
+        });
+      } catch (error) {
+        const conflict = error as { status?: unknown; code?: unknown };
+        if (
+          conflict.status !== 409 ||
+          conflict.code !== "REVISION_CONFLICT"
+        ) {
+          throw error;
+        }
+        const existing = await getDocument(documentId);
+        if (existing.storage !== "server") throw error;
+        saved = existing;
+        created = false;
+      }
       if (saved.storage !== "server") return false;
       setDocument(saved);
+      queryClient.setQueryData<DocumentEnvelope>(["document", documentId], saved);
       autosave.acceptSaved(saved, baseContent, generationRef.current);
       void queryClient.invalidateQueries({ queryKey: ["documents"] });
       void queryClient.invalidateQueries({
         queryKey: ["forum", "chapters", documentId],
       });
-      return "created";
+      return created ? "created" : "existing";
     },
     [
       articleStarted,
