@@ -41,7 +41,7 @@ export function AppHeader() {
     >
       <div className="mx-auto flex h-full max-w-[1600px] items-center gap-[18px] px-5 max-[840px]:gap-3 max-[840px]:px-3 max-[430px]:gap-2 max-[430px]:px-2">
         <div className="flex shrink-0 items-center gap-2">
-          <span className="grid h-[30px] w-[30px] place-items-center rounded-[7px] bg-[#197c73] font-extrabold text-white shadow-[inset_0_-3px_0_rgb(0_0_0/0.1)]">稻</span>
+          <img src="/brand/favicon.png?v=lily48" alt="" className="size-[30px]" />
           <strong className="text-sm max-[430px]:hidden">RiceText</strong>
         </div>
 
