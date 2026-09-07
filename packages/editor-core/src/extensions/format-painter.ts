@@ -117,7 +117,7 @@ export const FormatPainter = Extension.create({
           if (!targets.length) return false;
           if (dispatch) {
             closeHistory(tr);
-            // The command chain shares this transaction, including every target range.
+            // 所有目标选区共用同一个命令链事务，保证整次格式应用可以一次撤销。
             const commands = chain();
             for (const target of targets) {
               commands.setTextSelection({ from: target.from, to: target.to });
@@ -211,7 +211,7 @@ export const FormatPainter = Extension.create({
             if (!pointerActive || event.pointerType === "touch") return;
             pointerActive = false;
             clearTimeout(applyTimer);
-            // Allow ProseMirror to finish syncing the browser selection first.
+            // 等待 ProseMirror 完成浏览器选区同步后再应用格式。
             applyTimer = setTimeout(() => {
               if (editor.isDestroyed || !editor.view.hasFocus()) return;
               const { from, to } = editor.state.selection;

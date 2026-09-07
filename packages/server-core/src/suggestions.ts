@@ -61,7 +61,7 @@ export function mergeSuggestionBatch(
     type: "doc" as const,
     content: current.content.slice(range.start, range.end),
   };
-  // Historical snapshots may predate newly added default attributes.
+  // 历史快照可能缺少后来新增的默认属性，比较前需先统一补齐。
   if (
     canonicalJson(sanitizeDocumentForWrite(existing)) !==
     canonicalJson(sanitizeDocumentForWrite(before))

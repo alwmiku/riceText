@@ -126,7 +126,7 @@ test("mobile explicit painter application and compact indentation", async ({
     .filter({ hasText: /^target$/u })
     .tap();
   await page.keyboard.press("Home");
-  // Native selection can be adjusted without triggering the desktop pointer handler.
+  // 调整原生选区时，不应触发桌面端的指针处理逻辑。
   await page.keyboard.down("Shift");
   await page.keyboard.press("End");
   await textMenu.tap();
