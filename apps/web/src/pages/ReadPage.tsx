@@ -255,6 +255,11 @@ export default function ReadPage() {
         />
       </div>
       <div className="mx-auto grid max-w-[1320px] grid-cols-[200px_minmax(0,1fr)_280px] items-start gap-8 [&>nav]:order-1 [&>article]:order-2 [&>aside]:order-3 max-[1180px]:grid-cols-[minmax(0,1fr)_280px] max-[1180px]:[&>nav]:hidden max-[840px]:block max-[840px]:[&>nav]:hidden max-[840px]:[&>aside]:hidden">
+        <TocSidebar
+          chapters={visibleChapters}
+          currentIndex={activeIndex}
+          onSelect={setChapterIndex}
+        />
         <article className="min-w-0 border border-border bg-white p-[clamp(28px,6vw,72px)] shadow-[0_8px_32px_rgb(25_36_45/0.05)] max-[840px]:p-[30px_22px] max-[430px]:border-x-0 max-[430px]:p-[28px_18px] max-[430px]:[&_.rt-viewer]:text-base max-[430px]:[&_.rt-viewer]:leading-[1.85] max-[430px]:[&_.rt-viewer_h1]:text-[25px]">
           <header className="mb-8 border-b border-border pb-4 font-sans">
             {/* 元信息匹配当前章节（时间/版本为目录真实数据）；章节标题由正文自带。 */}
@@ -341,11 +346,6 @@ export default function ReadPage() {
             />
           )}
         </article>
-        <TocSidebar
-          chapters={visibleChapters}
-          currentIndex={activeIndex}
-          onSelect={setChapterIndex}
-        />
         <aside className="sticky top-20">
           <div className="rounded-lg border border-border bg-white p-4 shadow-panel">
             <p className="text-xs font-semibold tracking-normal text-muted-foreground uppercase">阅读位置</p>

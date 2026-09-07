@@ -36,6 +36,9 @@ import {
 } from "../dialogs";
 import type { InsertTool } from "../editor-tool-definitions";
 
+import { excerptAttributes, excerptParagraphs } from "../dialogs/excerpt-values";
+import { getExcerptEditTarget, updateExcerptMetadata, type ExcerptEditTarget } from "./excerpt-editing";
+
 type InsertRequest = (tool: InsertTool) => void;
 
 const InsertRequestContext = createContext<InsertRequest | undefined>(
@@ -85,6 +88,7 @@ export function ToolbarDialogs({
   const [imageInitial, setImageInitial] = useState<ImageInitial | null>(null);
   const [imageAssetId, setImageAssetId] = useState<string | null>(null);
   const [excerptOpen, setExcerptOpen] = useState(false);
+  const [excerptTarget, setExcerptTarget] = useState<ExcerptEditTarget | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [attachmentOpen, setAttachmentOpen] = useState(false);
   const [attachmentInitial, setAttachmentInitial] =
@@ -206,6 +210,7 @@ export function ToolbarDialogs({
           break;
         }
         case "excerpt":
+          setExcerptTarget(getExcerptEditTarget(editor));
           setExcerptOpen(true);
           break;
         case "horizontalRule":
@@ -318,24 +323,16 @@ export function ToolbarDialogs({
           <ExcerptDialog
             open={excerptOpen}
             onOpenChange={setExcerptOpen}
-            onInsert={(values) =>
-              insertNode(editor, {
+            {...(excerptTarget ? { initial: excerptTarget.initial, existingContent: excerptTarget.content } : {})}
+            onInsert={(values) => {
+              const attrs = excerptAttributes(values);
+              if (excerptTarget) return updateExcerptMetadata(editor, excerptTarget, attrs);
+              return insertNode(editor, {
                 type: "novelExcerpt",
-                attrs: {
-                  bookTitle: values.bookTitle,
-                  chapterTitle: values.chapterTitle,
-                  author: values.author,
-                  sourceUrl: values.sourceUrl || null,
-                  variant: values.variant,
-                },
-                content: [
-                  {
-                    type: "paragraph",
-                    content: [{ type: "text", text: values.text }],
-                  },
-                ],
-              })
-            }
+                attrs,
+                content: excerptParagraphs(values.text),
+              });
+            }}
           />
           <MentionDialog
             open={mentionOpen}

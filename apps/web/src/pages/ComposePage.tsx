@@ -529,7 +529,7 @@ export default function ComposePage() {
             · {identity.name}
           </p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
           {articleSelection.authenticated ? (
             <ArticleSelector
               articles={articleSelection.articles}

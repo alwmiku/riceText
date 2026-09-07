@@ -1,4 +1,9 @@
 import { type Extensions } from "@tiptap/core";
+import { ReactNodeViewRenderer } from "@tiptap/react";
+import { createElement } from "react";
+import { NovelExcerptNodeView } from "../novel-excerpt-node-view.js";
+import type { NovelExcerptAttributes } from "../types.js";
+import { NovelExcerpt } from "./novel-excerpt.js";
 
 import { InlineCommentAnchor } from "./inline-comment-anchor.js";
 import { LongTextBlock } from "./long-text-block.js";
@@ -21,6 +26,12 @@ export function createEditorExtensions(
 ): Extensions {
   return schemaExtensions().map((extension) => {
     switch (extension.name) {
+      case "novelExcerpt":
+        return NovelExcerpt.extend({
+          addNodeView: () => ReactNodeViewRenderer(({ node }) =>
+            createElement(NovelExcerptNodeView, { attrs: node.attrs as unknown as NovelExcerptAttributes }),
+          ),
+        });
       case "paragraphIndent":
         return ParagraphIndent;
       case "inlineCommentAnchor":

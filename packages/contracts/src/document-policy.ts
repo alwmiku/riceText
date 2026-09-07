@@ -15,7 +15,7 @@ export const DOCUMENT_NODE_ATTRIBUTES = {
   inlineCommentAnchor: ["threadId", "count", "placement"],
   richImage: ["assetId", "src", "alt", "caption", "align", "width"],
   diceRoll: ["rollId", "expression", "rolls", "total", "rerollOf"],
-  novelExcerpt: ["bookTitle", "chapterTitle", "author", "sourceUrl", "variant"],
+  novelExcerpt: ["bookTitle", "chapterTitle", "author", "sourceUrl", "variant", "readerTime", "batteryLevel", "pageLabel", "progressLabel", "headerLabel"],
   mention: ["userId", "name", "resolved", "avatarUrl"],
   replyGate: ["gateId", "prompt"],
   attachmentRef: ["attachmentId", "name", "mimeType", "size", "priceCoins"],

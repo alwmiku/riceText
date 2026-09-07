@@ -39,6 +39,8 @@ export function addMissingParagraphAnchors(doc: JSONContent): JSONContent {
     path: string,
     insideReplyGate = false,
   ): void => {
+    // Excerpts have no source-platform thread data. Their empty markers are decorative CSS.
+    if (node.type === "novelExcerpt" && (node.attrs?.variant === "fanqie" || node.attrs?.variant === "qidian")) return;
     const nextInsideReplyGate = insideReplyGate || node.type === "replyGate";
     if (node.type === "paragraph" && !insideReplyGate) {
       const hasEndAnchor =

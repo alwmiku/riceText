@@ -10,6 +10,7 @@ import { AttachmentRef } from "../extensions/attachment-ref.js";
 import { DiceRoll } from "../extensions/dice-roll.js";
 import { InlineCommentAnchorSchema } from "../extensions/inline-comment-anchor-schema.js";
 import { Mention } from "../extensions/mention.js";
+import { NovelExcerptNodeView } from "../novel-excerpt-node-view.js";
 import { NovelExcerpt } from "../extensions/novel-excerpt.js";
 import { PollRefSchema } from "../extensions/poll-ref-schema.js";
 import { ReplyGate } from "../extensions/reply-gate.js";
@@ -289,33 +290,9 @@ function ReplyGateNodeView({ node, viewerRef }: ViewerNodeProps) {
   );
 }
 
-function NovelExcerptNodeView({ node, viewerRef }: ViewerNodeProps) {
+function ViewerNovelExcerptNodeView({ node, viewerRef }: ViewerNodeProps) {
   const viewer = useViewerContext(viewerRef);
-  const attrs = node.attrs as unknown as NovelExcerptAttributes;
-  return (
-    <NodeViewWrapper
-      as="aside"
-      className={`rt-novel-excerpt rt-novel-excerpt--${attrs.variant}`}
-    >
-      <header>
-        <strong>{attrs.bookTitle}</strong>
-        <span>{attrs.chapterTitle}</span>
-        <small>{attrs.author}</small>
-      </header>
-      <div className="rt-novel-excerpt__content">
-        <NodeViewContent />
-      </div>
-      {attrs.sourceUrl ? (
-        <a
-          href={attrs.sourceUrl}
-          target="_blank"
-          rel="noopener noreferrer nofollow"
-        >
-          {viewer.labels.source}
-        </a>
-      ) : null}
-    </NodeViewWrapper>
-  );
+  return <NovelExcerptNodeView attrs={node.attrs as unknown as NovelExcerptAttributes} sourceLabel={viewer.labels.source} />;
 }
 
 /** Adds read-only React NodeViews and spoiler rendering to a schema composition. */
@@ -386,7 +363,7 @@ export function addViewerNodeViews(
         return NovelExcerpt.extend({
           addNodeView: () =>
             ReactNodeViewRenderer(({ node }) => (
-              <NovelExcerptNodeView node={node} viewerRef={viewerRef} />
+              <ViewerNovelExcerptNodeView node={node} viewerRef={viewerRef} />
             )),
         });
       case "spoiler":

@@ -1,93 +1,148 @@
-import { useState, type ChangeEvent } from "react";
+import { useId, useState, type ChangeEvent } from "react";
+import { RichTextViewer, type JSONContent } from "@ricetext/editor-core";
 import { Button, Dialog } from "../../../components/ui";
+import { Input } from "../../../components/ui/input";
+import { Separator } from "../../../components/ui/separator";
+import {
+  emptyExcerptValues, excerptAttributes, excerptParagraphs,
+  isExcerptSourceUrlValid, isExcerptBatteryValid, readerDisplayDefaults, type ExcerptValues,
+} from "./excerpt-values";
 
-/** 收集可检索小说摘录的来源元数据、展示 preset 和正文。 */
-export function ExcerptDialog({
-  open,
-  onOpenChange,
-  onInsert,
-}: {
+interface ExcerptDialogProps {
   open: boolean;
   onOpenChange: (value: boolean) => void;
-  onInsert: (values: Record<string, string>) => void;
-}) {
-  const [values, setValues] = useState({
-    bookTitle: "雾港来信",
-    chapterTitle: "第三章",
-    author: "林稻",
-    sourceUrl: "",
-    variant: "desktop-book",
-    text: "",
-  });
-  const field = (key: keyof typeof values) => ({
+  onInsert: (values: ExcerptValues) => boolean | void;
+  initial?: ExcerptValues;
+  existingContent?: JSONContent[];
+}
+
+/** Each opening starts a fresh draft, including after cancel. */
+export function ExcerptDialog(props: ExcerptDialogProps) {
+  return props.open ? <ExcerptDialogForm {...props} /> : null;
+}
+
+function ExcerptDialogForm({ open, onOpenChange, onInsert, initial, existingContent }: ExcerptDialogProps) {
+  const [values, setValues] = useState<ExcerptValues>(() => ({ ...emptyExcerptValues, ...initial }));
+  const [saveError, setSaveError] = useState(false);
+  const id = useId();
+  const editing = initial !== undefined;
+  const validUrl = isExcerptSourceUrlValid(values.sourceUrl);
+  const readerTemplate = values.variant === "fanqie" || values.variant === "qidian";
+  const validBattery = !readerTemplate || isExcerptBatteryValid(values.batteryLevel);
+  const canSubmit = validUrl && validBattery && (editing || Boolean(values.bookTitle.trim() && values.text.trim()));
+  const field = (key: keyof ExcerptValues) => ({
     value: values[key],
-    onChange: (
-      event: ChangeEvent<
-        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-      >,
-    ) => setValues((current) => ({ ...current, [key]: event.target.value })),
+    onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      setValues((current) => {
+        const next = { ...current, [key]: event.target.value };
+        if (key === "variant" && !editing) {
+          const previousDefaults = readerDisplayDefaults(current.variant);
+          const nextDefaults = readerDisplayDefaults(event.target.value);
+          for (const displayKey of Object.keys(nextDefaults) as Array<keyof typeof nextDefaults>) {
+            if (current[displayKey] === previousDefaults[displayKey]) next[displayKey] = nextDefaults[displayKey];
+          }
+        }
+        return next;
+      }),
   });
+  const preview: JSONContent = {
+    type: "doc",
+    content: [{
+      type: "novelExcerpt",
+      attrs: { ...excerptAttributes(values), sourceUrl: validUrl ? values.sourceUrl.trim() || null : null },
+      content: editing ? existingContent ?? [] : excerptParagraphs(values.text),
+    }],
+  };
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="插入小说摘录"
-      description="使用可检索文字替代截图证据，并保留作品和章节来源。"
-      className="max-w-xl"
-      footer={
-        <>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            取消
-          </Button>
-          <Button
-            disabled={!values.text.trim()}
-            onClick={() => {
-              onInsert(values);
-              onOpenChange(false);
-            }}
-          >
-            插入摘录
-          </Button>
-        </>
-      }
+      title={editing ? "编辑小说摘录" : "插入小说摘录"}
+      className="max-w-4xl"
+      footer={<>
+        <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+        <Button disabled={!canSubmit} onClick={() => {
+          if (!canSubmit) return;
+          const result = onInsert({
+            ...values,
+            bookTitle: values.bookTitle.trim(), chapterTitle: values.chapterTitle.trim(),
+            author: values.author.trim(), sourceUrl: values.sourceUrl.trim(),
+          });
+          if (result === false) setSaveError(true);
+          else onOpenChange(false);
+        }}>{editing ? "保存修改" : "插入摘录"}</Button>
+      </>}
     >
-      <div className="grid gap-3">
-        <div className="grid grid-cols-2 gap-3">
-          <label className="grid gap-1.5 text-xs font-semibold">
-            书名
-            <input className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15" {...field("bookTitle")} />
+      <div className="grid min-w-0 gap-6 md:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
+              书名
+              <Input required={!editing} maxLength={300} placeholder="作品名称" {...field("bookTitle")} />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
+              章节
+              <Input maxLength={300} placeholder="第三章" {...field("chapterTitle")} />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
+              作者
+              <Input maxLength={200} placeholder="作者名称" {...field("author")} />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
+              排版
+              <select aria-label="排版" className="h-8 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" {...field("variant")}>
+                <option value="fanqie">番茄轻小说</option>
+                <option value="qidian">起点读书</option>
+                <option value="desktop-book">通用书站 · 桌面</option>
+                <option value="mobile-book">通用书站 · 手机</option>
+                <option value="forum-evidence">论坛证据</option>
+              </select>
+            </label>
+          </div>
+          {readerTemplate && <fieldset className="flex min-w-0 flex-col gap-3">
+            <legend className="mb-2 text-xs font-semibold">阅读页信息</legend>
+            <div className="grid min-w-0 grid-cols-2 gap-3">
+              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
+                时间
+                <Input maxLength={16} placeholder="13:59" {...field("readerTime")} />
+              </label>
+              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold" data-invalid={!validBattery || undefined}>
+                电量（%）
+                <Input type="number" min={0} max={100} step={1} inputMode="numeric" {...field("batteryLevel")} aria-invalid={!validBattery} aria-describedby={!validBattery ? id + "-battery-error" : undefined} />
+              </label>
+              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
+                页码
+                <Input maxLength={40} placeholder="16/843" {...field("pageLabel")} />
+              </label>
+              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
+                阅读进度
+                <Input maxLength={24} placeholder="1.0%" {...field("progressLabel")} />
+              </label>
+            </div>
+            {!validBattery && <p id={id + "-battery-error"} role="alert" className="text-xs text-destructive">电量应为 0 至 100 的整数。</p>}
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
+              顶部信息
+              <Input maxLength={80} placeholder={values.variant === "fanqie" ? "00:24得991金币" : "起点热评"} {...field("headerLabel")} />
+            </label>
+          </fieldset>}
+          <label className="flex flex-col gap-1.5 text-xs font-semibold" data-invalid={!validUrl || undefined}>
+            来源链接（可选）
+            <Input type="url" maxLength={2048} placeholder="https://example.com/chapter" {...field("sourceUrl")} aria-invalid={!validUrl} aria-describedby={!validUrl ? id + "-url-error" : undefined} />
           </label>
-          <label className="grid gap-1.5 text-xs font-semibold">
-            章节
-            <input className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15" {...field("chapterTitle")} />
-          </label>
+          {!validUrl && <p id={id + "-url-error"} role="alert" className="text-xs text-destructive">请输入有效的 HTTP 或 HTTPS 链接。</p>}
+          {!editing && <label className="flex flex-col gap-1.5 text-xs font-semibold">
+            摘录正文
+            <textarea required className="max-h-96 min-h-48 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" {...field("text")} />
+          </label>}
+          {saveError && <p role="alert" className="text-xs text-destructive">摘录已发生变化，请关闭后重新打开。</p>}
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="grid gap-1.5 text-xs font-semibold">
-            作者
-            <input className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15" {...field("author")} />
-          </label>
-          <label className="grid gap-1.5 text-xs font-semibold">
-            排版
-            <select className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15" {...field("variant")}>
-              <option value="desktop-book">通用书站 · 桌面</option>
-              <option value="mobile-book">通用书站 · 手机</option>
-              <option value="forum-evidence">论坛证据</option>
-            </select>
-          </label>
-        </div>
-        <label className="grid gap-1.5 text-xs font-semibold">
-          来源链接（可选）
-          <input
-            className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
-            {...field("sourceUrl")}
-            placeholder="https://example.com/chapter"
-          />
-        </label>
-        <label className="grid gap-1.5 text-xs font-semibold">
-          摘录正文
-          <textarea className="h-auto min-h-36 w-full resize-y rounded-md border border-input bg-white px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15" {...field("text")} />
-        </label>
+        <section aria-label="摘录预览" className="flex min-w-0 flex-col gap-3">
+          <h3 className="text-sm font-semibold">预览</h3>
+          <Separator />
+          <div className="max-h-96 min-w-0 overflow-auto break-words">
+            <RichTextViewer content={preview} />
+          </div>
+        </section>
       </div>
     </Dialog>
   );

@@ -38,7 +38,7 @@ export function ArticleSelector({
   };
   return (
     <>
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 max-w-full items-center gap-2">
       <label className="sr-only" htmlFor="article-selector">选择文章</label>
       <select
         id="article-selector"

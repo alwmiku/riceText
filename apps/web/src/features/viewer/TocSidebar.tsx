@@ -134,7 +134,7 @@ export function TocSidebar({
         size="icon"
         aria-label="打开章节目录"
         aria-expanded={mobileOpen}
-        className="fixed top-[76px] left-2 z-40 hidden size-11 bg-white shadow-panel max-[840px]:inline-flex"
+        className="mb-3 ml-2 hidden size-11 max-[840px]:inline-flex"
         onClick={() => setMobileOpen(true)}
       >
         <PanelLeftOpen data-icon="inline-start" />

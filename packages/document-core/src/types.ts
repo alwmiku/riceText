@@ -48,6 +48,8 @@ export interface DiceRollAttributes {
 
 /** 用于可搜索小说摘录的视觉模板。 */
 export type NovelExcerptVariant =
+  | "fanqie"
+  | "qidian"
   | "mobile-book"
   | "desktop-book"
   | "forum-evidence";
@@ -64,6 +66,16 @@ export interface NovelExcerptAttributes {
   sourceUrl: string | null;
   /** 摘录的视觉模板。 */
   variant: NovelExcerptVariant;
+  /** 阅读页显示时间；未设置时为 13:59。 */
+  readerTime?: string;
+  /** 阅读页电量百分比。 */
+  batteryLevel?: number;
+  /** 页码文本，例如 16/843。 */
+  pageLabel?: string;
+  /** 可选阅读进度文本。 */
+  progressLabel?: string;
+  /** 顶部奖励或热评文本覆盖；空值采用平台模板。 */
+  headerLabel?: string;
 }
 
 /** 由行内 `mention` 节点持久化的属性。 */

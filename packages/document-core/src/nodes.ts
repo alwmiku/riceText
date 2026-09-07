@@ -1,6 +1,7 @@
 import type { MarkConfig, NodeConfig } from "@tiptap/core";
 import { sanitizeUrl } from "./sanitize.js";
 import { parseInteger, parseJsonArray } from "./helpers.js";
+import { isReaderPlatform, readerTop, readerBottom, readerAttribution, READER_PLATFORM_POLICY } from "./reader-excerpt.js";
 
 /**
  * 共享的节点/标记规格（单一权威来源）。
@@ -176,10 +177,30 @@ export const novelExcerptNodeSpec = {
         parseHTML: (element: HTMLElement) =>
           sanitizeUrl(element.getAttribute("data-source-url"), "link"),
       },
+      readerTime: {
+        default: "13:59",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-reader-time")?.slice(0, 16) ?? "13:59",
+      },
+      batteryLevel: {
+        default: 100,
+        parseHTML: (element: HTMLElement) => parseInteger(element.getAttribute("data-battery-level"), 100, 0, 100),
+      },
+      pageLabel: {
+        default: "16/843",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-page-label")?.slice(0, 40) ?? "16/843",
+      },
+      progressLabel: {
+        default: "",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-progress-label")?.slice(0, 24) ?? "",
+      },
+      headerLabel: {
+        default: "",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-header-label")?.slice(0, 80) ?? "",
+      },
       variant: {
         default: "desktop-book",
         parseHTML: (element: HTMLElement) =>
-          ["mobile-book", "forum-evidence"].includes(
+          ["fanqie", "qidian", "mobile-book", "forum-evidence"].includes(
             element.getAttribute("data-variant") ?? "",
           )
             ? element.getAttribute("data-variant")
@@ -188,7 +209,11 @@ export const novelExcerptNodeSpec = {
     };
   },
   parseHTML() {
-    return [{ tag: 'aside[data-node-type="novel-excerpt"]' }];
+    return [{
+      tag: 'aside[data-node-type="novel-excerpt"]',
+      contentElement: (element: HTMLElement) =>
+        element.querySelector<HTMLElement>(":scope > .rt-reader-page > .rt-novel-excerpt__content, :scope > .rt-novel-excerpt__content") ?? element,
+    }];
   },
   renderHTML({ node }: { node: { attrs: Record<string, unknown> } }) {
     return [
@@ -201,8 +226,26 @@ export const novelExcerptNodeSpec = {
         "data-author": String(node.attrs.author),
         "data-source-url": sanitizeUrl(node.attrs.sourceUrl, "link") ?? "",
         "data-variant": String(node.attrs.variant),
+        "data-reader-time": String(node.attrs.readerTime ?? "13:59"),
+        "data-battery-level": String(node.attrs.batteryLevel ?? 100),
+        "data-page-label": String(node.attrs.pageLabel ?? "16/843"),
+        "data-progress-label": String(node.attrs.progressLabel ?? ""),
+        "data-header-label": String(node.attrs.headerLabel ?? ""),
+        "data-empty-bubble": isReaderPlatform(node.attrs.variant) ? String(READER_PLATFORM_POLICY[node.attrs.variant].emptyBubble) : null,
       },
-      0,
+      ...(isReaderPlatform(node.attrs.variant) ? [
+        ["div", { class: "rt-reader-page" }, ...readerTop(node.attrs), ["div", { class: "rt-novel-excerpt__content" }, 0], readerBottom(node.attrs)],
+        readerAttribution(node.attrs),
+      ] : [["header", { contenteditable: "false" },
+        ...(node.attrs.bookTitle ? [["strong", {}, String(node.attrs.bookTitle)]] : []),
+        ...(node.attrs.chapterTitle ? [["span", {}, String(node.attrs.chapterTitle)]] : []),
+        ...(node.attrs.author ? [["small", {}, String(node.attrs.author)]] : []),
+      ],
+      ["div", { class: "rt-novel-excerpt__content" }, 0],
+      ...(sanitizeUrl(node.attrs.sourceUrl, "link") ? [["footer", { contenteditable: "false" },
+        ["a", { href: sanitizeUrl(node.attrs.sourceUrl, "link"), target: "_blank", rel: "noopener noreferrer nofollow" }, "查看来源"],
+      ]] : []),
+      ]),
     ];
   },
 } satisfies NodeConfig;

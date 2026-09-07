@@ -557,6 +557,149 @@
   border-left-color: #536579;
 }
 
+/* Screenshot reader sheets: chrome and paragraph rhythm belong to the platform. */
+.rt-novel-excerpt:is(.rt-novel-excerpt--fanqie, .rt-novel-excerpt--qidian) {
+  --reader-paper: #e9e3cd;
+  --reader-ink: #17150e;
+  --reader-muted: #928e7e;
+  --reader-title-color: #615e52;
+  --reader-heading-size: 15px;
+  --reader-heading-font: "Noto Serif SC Variable", "Songti SC", SimSun, serif;
+  --reader-leading: 2.04;
+  --reader-gap: 1.16em;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 430px;
+  margin: 20px auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--reader-ink);
+  font-family: "Noto Serif SC Variable", "Songti SC", SimSun, serif;
+  font-size: 20px;
+  line-height: var(--reader-leading);
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.rt-novel-excerpt.rt-novel-excerpt--qidian {
+  --reader-paper: #f4f4f4;
+  --reader-ink: #262626;
+  --reader-muted: #939393;
+  --reader-title-color: #606060;
+  --reader-heading-size: 13px;
+  --reader-heading-font: system-ui, sans-serif;
+  --reader-leading: 1.48;
+  --reader-gap: .68em;
+  font-family: KaiTi, STKaiti, "Kaiti SC", "Noto Serif SC Variable", serif;
+}
+.rt-reader-page {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 0;
+  aspect-ratio: 16 / 35;
+  padding: 20px 6.25% 12px;
+  background: var(--reader-paper);
+}
+.rt-reader-page > .rt-reader-book-title {
+  min-width: 0;
+  margin: 0 0 18px;
+  color: var(--reader-title-color);
+  font-family: var(--reader-heading-font);
+  font-size: var(--reader-heading-size);
+  font-weight: 400;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.rt-reader-book-title:empty { display: none; }
+.rt-reader-page > header.rt-reader-topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  margin: 0 0 22px;
+  border: 0;
+  color: var(--reader-muted);
+  font-family: var(--reader-heading-font);
+  font-size: var(--reader-heading-size);
+  line-height: 1.5;
+}
+.rt-reader-topline .rt-reader-chapter {
+  display: block;
+  min-width: 0;
+  color: inherit;
+  font: inherit;
+}
+.rt-reader-back, .rt-reader-next { display: inline-block; width: .55em; height: .55em; border-left: 1px solid; border-bottom: 1px solid; transform: rotate(45deg); vertical-align: .08em; margin-right: .35em; }
+.rt-reader-next { transform: rotate(225deg); margin: 0 0 0 .5em; color: #84957d; }
+.rt-reader-topline .rt-reader-header-label {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 35%;
+  max-width: 46%;
+  text-align: center;
+  border-radius: 20px;
+  padding: 2px 9px;
+  background: #dcd7c2;
+  color: #242218;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.rt-novel-excerpt--qidian .rt-reader-page > header.rt-reader-topline {
+  margin-bottom: 23px;
+}
+.rt-novel-excerpt--qidian .rt-reader-topline .rt-reader-header-label { width: auto; background: #ededed; color: #8d8d8d; border-radius: 5px; padding: 2px 5px; }
+.rt-reader-page > .rt-novel-excerpt__content { flex: 1; min-width: 0; }
+.rt-reader-page > .rt-novel-excerpt__content > p,
+.rt-reader-page > .rt-novel-excerpt__content > [data-node-view-content-react] > p {
+  margin: 0 0 var(--reader-gap);
+  font-size: inherit;
+  line-height: inherit;
+  text-indent: 2em;
+}
+.rt-reader-page .rt-novel-excerpt__content :is(.rt-inline-comment-anchor, .rt-inline-comment-anchor-wrap) { display: none; }
+/* Empty source-platform bubbles are not links or live forum comment widgets. */
+.rt-novel-excerpt[data-empty-bubble="true"] .rt-reader-page > .rt-novel-excerpt__content > p:not(:empty):not(:has(> br:only-child))::after,
+.rt-novel-excerpt[data-empty-bubble="true"] .rt-reader-page > .rt-novel-excerpt__content > [data-node-view-content-react] > p:not(:empty):not(:has(> br:only-child))::after {
+  content: "";
+  display: inline-block;
+  width: 1.42em;
+  height: 1.08em;
+  margin-left: .45em;
+  vertical-align: -.14em;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 70'%3E%3Cpath d='M30 3H78Q87 3 87 12V58Q87 67 78 67H30Q20 67 20 57V48Q20 43 14 40L3 34Q0 32 3 30L14 24Q20 21 20 15V12Q20 3 30 3Z' fill='none' stroke='%239b9b9b' stroke-width='1.4'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
+.rt-reader-page > footer.rt-reader-bottomline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+  color: var(--reader-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.rt-reader-progress, .rt-reader-clock { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.rt-novel-excerpt--qidian .rt-reader-bottomline { font-family: system-ui, sans-serif; font-size: 12px; }
+.rt-reader-battery { display: inline-flex; position: relative; flex: none; width: 25px; height: 13px; }
+.rt-reader-battery svg { display: block; width: 100%; height: 100%; }
+.rt-reader-attribution { margin-top: 8px; color: var(--rt-muted); font: 11px/1.6 system-ui, sans-serif; overflow-wrap: anywhere; }
+.rt-reader-attribution a { color: inherit; text-decoration: none; }
+.rt-reader-attribution a:hover { text-decoration: underline; }
+@media (max-width: 360px) {
+  .rt-novel-excerpt:is(.rt-novel-excerpt--fanqie, .rt-novel-excerpt--qidian) { font-size: 18px; --reader-heading-size: 12px; }
+  .rt-reader-page > header.rt-reader-topline { gap: 6px; }
+  .rt-reader-topline .rt-reader-header-label { font-size: 9px; padding-inline: 5px; }
+}
+
+
 .rt-mention {
   position: relative;
   color: inherit;

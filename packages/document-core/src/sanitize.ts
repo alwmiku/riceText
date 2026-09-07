@@ -281,7 +281,12 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
       const attrs: NovelExcerptAttributes = {
         bookTitle: stringValue(raw.bookTitle, 300), chapterTitle: stringValue(raw.chapterTitle, 300), author: stringValue(raw.author, 200),
         sourceUrl: safeLinkUrl(raw.sourceUrl, `${path}.attrs.sourceUrl`),
-        variant: raw.variant === 'mobile-book' || raw.variant === 'forum-evidence' ? raw.variant : 'desktop-book',
+        variant: raw.variant === 'fanqie' || raw.variant === 'qidian' || raw.variant === 'mobile-book' || raw.variant === 'forum-evidence' ? raw.variant : 'desktop-book',
+        readerTime: stringValue(raw.readerTime, 16, '13:59'),
+        batteryLevel: finiteInteger(raw.batteryLevel, 100, 0, 100),
+        pageLabel: stringValue(raw.pageLabel, 40, '16/843'),
+        progressLabel: stringValue(raw.progressLabel, 24),
+        headerLabel: stringValue(raw.headerLabel, 80),
       }
       return attrs as unknown as Record<string, unknown>
     }
