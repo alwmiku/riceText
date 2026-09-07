@@ -1,10 +1,23 @@
 import { expect, test, type Page } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 
 async function prepare(page: Page, mobile: boolean) {
   await page.goto("/compose");
+  // 不覆盖默认文章：前序用例可能留下摘录、列表或带保护锚点的正文。
+  const previousId = await page.evaluate(() => localStorage.getItem("ricetext:selected-document"));
+  await page.getByRole("button", { name: "新文章", exact: true }).click();
+  const create = page.getByRole("dialog", { name: "新建文章", exact: true });
+  await create.getByLabel("文章名称").fill("Formatting " + randomUUID());
+  await create.getByRole("button", { name: "创建", exact: true }).click();
+  await expect(create).not.toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("ricetext:selected-document"))).not.toBe(previousId);
+  const documentId = await page.evaluate(() => localStorage.getItem("ricetext:selected-document"));
+  expect(documentId).toMatch(/^article_/);
   const editor = page.locator(".ProseMirror[contenteditable=true]");
   await expect(editor).toBeVisible({ timeout: 20_000 });
   if (!mobile) await page.getByRole("button", { name: /完整/ }).click();
+  await expect(editor).toHaveText("");
+  await expect(editor.locator(":scope > p")).toHaveCount(1);
   await editor.click();
   await page.keyboard.press("Control+a");
   await page.keyboard.insertText("source");
@@ -12,11 +25,11 @@ async function prepare(page: Page, mobile: boolean) {
   await page.keyboard.insertText("target");
   await page.keyboard.press("Enter");
   await page.keyboard.insertText("third");
-  await expect(editor.getByText("target", { exact: true })).toBeVisible();
-  await expect(editor.getByText("third", { exact: true })).toBeVisible();
+  await expect(editor.locator(":scope > p")).toHaveText(["source", "target", "third"]);
   await page.keyboard.press("Control+Home");
   await page.keyboard.press("Shift+End");
   await page.keyboard.press("Control+b");
+  await expect(editor.locator(":scope > p").first().locator("strong")).toHaveText("source");
   return editor;
 }
 
