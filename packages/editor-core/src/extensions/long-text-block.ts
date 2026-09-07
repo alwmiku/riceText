@@ -3,7 +3,7 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import { LongTextView } from "../long-text-node-view.js";
 import { LongTextBlockSchema } from "./long-text-block-schema.js";
 
-/** Editable long-text block with editor storage and its React NodeView. */
+/** 包含编辑器存储和 React NodeView 的可编辑长文本块。 */
 export const LongTextBlock = LongTextBlockSchema.extend({
   addStorage() {
     return {

@@ -1,4 +1,4 @@
-/** Rich text document policy shared by the editor sanitizer and API validator. */
+/** 编辑器净化器与 API 校验器共用的富文本文档规则。 */
 
 export const DOCUMENT_NODE_ATTRIBUTES = {
   doc: [],

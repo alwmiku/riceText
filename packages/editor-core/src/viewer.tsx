@@ -138,7 +138,7 @@ export function RichTextViewer({ content, className = '', additionalExtensions, 
         }
         current.interactions.onLinkActivate?.(href, event as unknown as ReactMouseEvent<HTMLAnchorElement>)
         // 宿主没有接管链接时放行浏览器原生跳转（renderHTML 已输出
-        // target=_blank + rel=noopener noreferrer nofollow）；
+        // 链接属性为 target=_blank + rel=noopener noreferrer nofollow）；
         // 宿主接管时保持拦截，由回调决定是否继续阻止默认行为。
         if (current.interactions.onLinkActivate !== undefined && !event.defaultPrevented) {
           event.preventDefault()

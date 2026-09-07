@@ -68,7 +68,7 @@ function hexToRgb(hex6: string): [number, number, number] {
   ];
 }
 
-/** #rrggbb / #rrggbbaa → HSV。 */
+/** 将 #rrggbb / #rrggbbaa 颜色值转换为 HSV。 */
 export function hexToHsv(hex: string): HsvColor {
   const [r, g, b] = hexToRgb(normalizeHex(hex, "#000000"));
   const max = Math.max(r, g, b) / 255;
@@ -85,7 +85,7 @@ export function hexToHsv(hex: string): HsvColor {
   return { h, s: max === 0 ? 0 : delta / max, v: max };
 }
 
-/** HSV → #rrggbb。 */
+/** 将 HSV 颜色值转换为 #rrggbb。 */
 export function hsvToHex(h: number, s: number, v: number): string {
   const hue = ((h % 360) + 360) % 360;
   const sat = Math.min(1, Math.max(0, s));

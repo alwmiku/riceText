@@ -39,7 +39,7 @@ export function addMissingParagraphAnchors(doc: JSONContent): JSONContent {
     path: string,
     insideReplyGate = false,
   ): void => {
-    // Excerpts have no source-platform thread data. Their empty markers are decorative CSS.
+    // 摘录没有来源平台的评论数据，空气泡通过装饰性 CSS 展示。
     if (node.type === "novelExcerpt" && (node.attrs?.variant === "fanqie" || node.attrs?.variant === "qidian")) return;
     const nextInsideReplyGate = insideReplyGate || node.type === "replyGate";
     if (node.type === "paragraph" && !insideReplyGate) {

@@ -4,7 +4,7 @@ import { addViewerNodeViews } from "../viewer/node-views.js";
 import type { ViewerContextRef } from "../viewer/types.js";
 import { schemaExtensions } from "./schema.js";
 
-/** Creates the read-only composition directly from the canonical persisted schema. */
+/** 直接基于规范持久化结构创建只读组合。 */
 export function createViewerExtensions(
   viewerRef: ViewerContextRef,
 ): Extensions {

@@ -1,6 +1,6 @@
 import type { TiptapDocument, TiptapNode } from "./schemas.js";
 
-/** Depth-first traversal for Tiptap documents shared by server-side document flows. */
+/** 服务端文档处理流程共用的 Tiptap 文档深度优先遍历。 */
 export function visitDocumentNodes(
   document: TiptapDocument,
   visitor: (node: TiptapNode) => void,

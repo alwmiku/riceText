@@ -246,8 +246,8 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
       }
     }
     case 'orderedList': {
-      // Tiptap persists type:null even for ordinary decimal lists. Keep the
-      // standard HTML numbering modes without permitting arbitrary attributes.
+      // Tiptap 也会为普通十进制列表持久化 type:null；保留标准
+      // HTML 编号模式，但不允许任意属性。
       const listType = raw.type == null ? null : typeof raw.type === 'string' && ['1', 'a', 'A', 'i', 'I'].includes(raw.type) ? raw.type : null
       if (raw.type != null && listType === null) {
         addIssue(context, { code: 'invalid-attribute', path: `${path}.attrs.type`, message: 'Ordered list type must be null, 1, a, A, i, or I.' })

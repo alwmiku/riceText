@@ -49,7 +49,7 @@ const IdentityButton = forwardRef<
   );
 });
 
-/** Development identity switcher and production account/session control. */
+/** 开发环境身份切换器及生产环境账号、会话控制。 */
 export function IdentitySwitcher() {
   const value = useAppContext();
   const [loginOpen, setLoginOpen] = useState(false);

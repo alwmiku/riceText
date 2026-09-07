@@ -17,7 +17,7 @@ interface ExcerptDialogProps {
   existingContent?: JSONContent[];
 }
 
-/** Each opening starts a fresh draft, including after cancel. */
+/** 每次打开均创建新草稿，取消后重新打开也不例外。 */
 export function ExcerptDialog(props: ExcerptDialogProps) {
   return props.open ? <ExcerptDialogForm {...props} /> : null;
 }

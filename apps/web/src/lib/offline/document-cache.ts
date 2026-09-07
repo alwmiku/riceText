@@ -15,7 +15,7 @@ export function missingDocument(id: string): DocumentEnvelope {
   };
 }
 
-/** Read a cached document, falling back to an explicit blank missing state. */
+/** 读取缓存文档，不存在时回退到明确的空白缺失状态。 */
 export function readCachedDocument(id: string): DocumentEnvelope {
   const cached = localStorage.getItem(documentCacheKey(id));
   return cached ? (JSON.parse(cached) as DocumentEnvelope) : missingDocument(id);

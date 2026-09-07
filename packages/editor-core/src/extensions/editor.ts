@@ -14,13 +14,13 @@ import { ParagraphIndent } from "./paragraph-indent.js";
 import { FormatPainter } from "./format-painter.js";
 
 export interface EditorExtensionsOptions {
-  /** Extensions appended after the canonical editor composition. */
+  /** 追加在规范编辑器组合之后的扩展。 */
   additionalExtensions?: Extensions;
-  /** Enables the React rich-image NodeView with resize handles. */
+  /** 启用带缩放手柄的 React 富图片 NodeView。 */
   resizableImages?: boolean;
 }
 
-/** Creates the editable composition by adding editor-only plugins and React NodeViews. */
+/** 通过添加编辑器专用插件和 React NodeView 创建可编辑组合。 */
 export function createEditorExtensions(
   options: EditorExtensionsOptions = {},
 ): Extensions {
@@ -48,5 +48,5 @@ export function createEditorExtensions(
   }).concat(FormatPainter, options.additionalExtensions ?? []);
 }
 
-/** Compatibility alias for the original editor extension factory. */
+/** 原有编辑器扩展工厂的兼容别名。 */
 export const editorExtensions = createEditorExtensions;

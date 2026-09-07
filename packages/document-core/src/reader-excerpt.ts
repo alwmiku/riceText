@@ -1,7 +1,7 @@
 import type { DOMOutputSpec } from "@tiptap/pm/model";
 import { sanitizeUrl } from "./sanitize.js";
 
-// Empty comment markers are platform chrome, never forum threads or counts.
+// 空气泡属于平台阅读页装饰，不代表论坛评论或回复数量。
 export const READER_PLATFORM_POLICY = {
   fanqie: { name: "番茄轻小说", emptyBubble: false },
   qidian: { name: "起点读书", emptyBubble: true },

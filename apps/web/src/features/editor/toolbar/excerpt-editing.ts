@@ -34,7 +34,7 @@ export function getExcerptEditTarget(editor: Editor): ExcerptEditTarget | null {
 }
 
 export function updateExcerptMetadata(editor: Editor, target: ExcerptEditTarget, attrs: Record<string, unknown>): boolean {
-  // Refuse stale targets instead of modifying another node after document changes.
+  // 拒绝过期目标，避免文档变化后误改其他节点。
   if (editor.state.doc.nodeAt(target.pos) !== target.node) return false;
   return editor.chain().focus().command(({ tr }) => {
     tr.setNodeMarkup(target.pos, undefined, { ...target.node.attrs, ...attrs });

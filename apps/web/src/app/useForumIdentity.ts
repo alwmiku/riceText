@@ -41,7 +41,7 @@ export function mapSessionIdentity(user: ForumSessionUser): SeedIdentity {
   };
 }
 
-/** Use local switchable identities in development and an HttpOnly server session in production. */
+/** 开发环境使用可切换的本地身份，生产环境使用 HttpOnly 服务端会话。 */
 export function useForumIdentity(): AppContextValue {
   const demo = isDemoAuthEnabled();
   const [identity, setIdentityState] = useState<SeedIdentity>(() =>

@@ -1,7 +1,7 @@
 import { Node } from "@tiptap/core";
 import { longTextBlockNodeSpec } from "@ricetext/document-core";
 
-/** Canonical persisted long-text block without editor storage or a React NodeView. */
+/** 不包含编辑器存储或 React NodeView 的规范持久化长文本块。 */
 export const LongTextBlockSchema = Node.create({
   ...longTextBlockNodeSpec,
   addCommands() {

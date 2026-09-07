@@ -1,7 +1,7 @@
 import { Node } from "@tiptap/core";
 import { richImageNodeSpec } from "@ricetext/document-core";
 
-/** Canonical persisted rich-image node without an editor React NodeView. */
+/** 不包含编辑器 React NodeView 的规范持久化富图片节点。 */
 export const RichImageSchema = Node.create({
   ...richImageNodeSpec,
   addCommands() {

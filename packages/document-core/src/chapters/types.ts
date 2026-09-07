@@ -1,6 +1,6 @@
 import type { JSONContent } from "@tiptap/core";
 
-/** A chapter and its node range in the full document. */
+/** 章节及其在完整文档中的节点范围。 */
 export interface ChapterSection {
   id: string;
   title: string;

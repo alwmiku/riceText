@@ -19,7 +19,7 @@ import {
   rethrowClientError,
 } from "./client";
 
-/** Read the server document, then fall back to local cache only for transport failures. */
+/** 读取服务端文档，仅在传输失败时回退到本地缓存。 */
 export async function getDocument(
   id: string,
   signal?: AbortSignal,
@@ -105,7 +105,7 @@ export async function saveDocumentSteps(
         input.steps,
       ) as RichTextNode;
     } catch {
-      // Keep the current content when local step application cannot be parsed.
+      // 无法解析本地步骤应用结果时保留当前内容。
     }
     const saved: DocumentEnvelope = {
       ...current,

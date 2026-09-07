@@ -26,7 +26,7 @@ import { RichImageSchema } from "./rich-image-schema.js";
 import { Spoiler } from "./spoiler.js";
 
 export interface SchemaExtensionsOptions {
-  /** Extensions appended after the canonical persisted node and mark set. */
+  /** 追加在规范持久化节点和标记集合之后的扩展。 */
   additionalExtensions?: Extensions;
 }
 
@@ -47,7 +47,7 @@ function parseAllowedFontSize(element: HTMLElement): string | null {
 }
 
 
-/** Creates the canonical persisted Tiptap node and mark composition without editor UI behavior. */
+/** 创建不含编辑器界面行为的规范持久化 Tiptap 节点与标记组合。 */
 export function schemaExtensions(
   options: SchemaExtensionsOptions = {},
 ): Extensions {

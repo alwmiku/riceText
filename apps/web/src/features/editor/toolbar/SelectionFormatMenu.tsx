@@ -5,7 +5,7 @@ import { EditorContextMenu } from "./EditorContextMenu";
 import { SelectionFloatingToolbar } from "./SelectionFloatingToolbar";
 import { getSelectedText, useEditorSelectionState } from "../hooks/useEditorSelectionState";
 
-/** Text-selection actions for desktop context menus and mobile selection toolbars. */
+/** 桌面右键菜单和移动端选区工具栏使用的文本选区操作。 */
 export function SelectionFormatMenu({
   editor,
   mobile = false,

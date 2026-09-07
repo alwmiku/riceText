@@ -557,7 +557,7 @@
   border-left-color: #536579;
 }
 
-/* Screenshot reader sheets: chrome and paragraph rhythm belong to the platform. */
+/* 截图式阅读页：页面信息和段落节奏遵循平台样式。 */
 .rt-novel-excerpt:is(.rt-novel-excerpt--fanqie, .rt-novel-excerpt--qidian) {
   --reader-paper: #e9e3cd;
   --reader-ink: #17150e;
@@ -703,7 +703,7 @@
   text-indent: 2em;
 }
 .rt-reader-page .rt-novel-excerpt__content :is(.rt-inline-comment-anchor, .rt-inline-comment-anchor-wrap) { display: none; }
-/* Empty source-platform bubbles are not links or live forum comment widgets. */
+/* 来源平台的空气泡不是链接，也不是实时论坛评论控件。 */
 .rt-novel-excerpt[data-empty-bubble="true"] .rt-reader-page .rt-novel-excerpt__content > p:not(:empty):not(:has(> br:only-child))::after,
 .rt-novel-excerpt[data-empty-bubble="true"] .rt-reader-page .rt-novel-excerpt__content > [data-node-view-content-react] > p:not(:empty):not(:has(> br:only-child))::after {
   content: "";

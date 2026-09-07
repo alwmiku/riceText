@@ -46,7 +46,7 @@ function fallbackSelectionPosition(editor: Editor): ToolbarPosition {
       };
     }
   } catch {
-    // jsdom and some IME selection states do not expose usable coordinates.
+    // jsdom 和部分输入法选区状态无法提供可用坐标。
   }
   return {
     x: clampX(window.innerWidth / 2),

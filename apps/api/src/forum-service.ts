@@ -18,7 +18,7 @@ import type {
   mapSuggestionBatch,
 } from "./forum/suggestion-service.js";
 
-/** Compatibility facade for forum domain services. */
+/** 论坛领域服务的兼容入口。 */
 export class ForumService {
   readonly #attachments: AttachmentService;
   readonly #chapters: ChapterService;

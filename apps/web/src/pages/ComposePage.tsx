@@ -451,7 +451,7 @@ export default function ComposePage() {
             : "正文已保存，可切换到阅读视图检查",
       );
     } catch (cause) {
-      // publishChapter also performs initial document creation and validation.
+      // publishChapter 也负责首次创建文档和校验。
       setNotice(
         cause instanceof Error
           ? `保存失败：${cause.message}`

@@ -34,7 +34,7 @@ export function identity(
   return dependencies.auth.resolve(request);
 }
 
-/** Determine whether the identity owns or can edit one document. */
+/** 判断当前身份是否拥有或可以编辑指定文档。 */
 export function canEditDocument(
   dependencies: RouteDependencies,
   user: RequestIdentity,

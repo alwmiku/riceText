@@ -295,7 +295,7 @@ function ViewerNovelExcerptNodeView({ node, viewerRef }: ViewerNodeProps) {
   return <NovelExcerptNodeView attrs={node.attrs as unknown as NovelExcerptAttributes} sourceLabel={viewer.labels.source} />;
 }
 
-/** Adds read-only React NodeViews and spoiler rendering to a schema composition. */
+/** 为结构组合添加只读 React NodeView 和黑幕渲染。 */
 export function addViewerNodeViews(
   extensions: Extensions,
   viewerRef: ViewerContextRef,

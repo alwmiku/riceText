@@ -27,7 +27,7 @@ export interface ChapterSyncItem {
   title: string;
   volumeTitle?: string;
   order: number;
-  /** SHA-256 hash of the chapter body. */
+  /** 章节正文的 SHA-256 哈希值。 */
   hash: string;
 }
 

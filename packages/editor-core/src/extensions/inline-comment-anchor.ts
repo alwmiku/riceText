@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { countInlineCommentAnchors } from "./helpers.js";
 import { InlineCommentAnchorSchema } from "./inline-comment-anchor-schema.js";
 
-/** Editable inline-comment anchor with protection against accidental deletion. */
+/** 具备误删保护的可编辑行内评论锚点。 */
 export const InlineCommentAnchor = InlineCommentAnchorSchema.extend({
   addProseMirrorPlugins() {
     return [

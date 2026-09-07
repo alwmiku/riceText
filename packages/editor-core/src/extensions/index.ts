@@ -27,7 +27,7 @@ export { schemaExtensions } from "./schema.js";
 export type { SchemaExtensionsOptions } from "./schema.js";
 export { Spoiler } from "./spoiler.js";
 
-// Keep command augmentation centralized so root and subpath imports expose identical typing.
+// 集中声明命令扩展，确保根路径与子路径导入具有相同类型。
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     inlineCommentAnchor: {

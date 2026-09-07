@@ -19,7 +19,7 @@ function isChapterBoundary(node: JSONContent, explicitMarkers: boolean): boolean
     : node.attrs?.level === 2;
 }
 
-/** Split a document using explicit chapter markers, with legacy h2 fallback. */
+/** 使用显式章节标记切分文档，并以旧版 h2 边界回退。 */
 export function splitDocumentByChapters(document: JSONContent): SplitDocument {
   const content = document.content ?? [];
   const explicitMarkers = hasExplicitChapterMarkers(content);
@@ -73,7 +73,7 @@ export function getChapterRange(
   return chapter ? { start: chapter.start, end: chapter.end } : null;
 }
 
-/** Convert chapter blocks to the line convention used by suggestions. */
+/** 将章节块转换为修订建议使用的行表示。 */
 export function chapterTextLines(blocks: readonly JSONContent[]): string[] {
   return blocks.map(collectText);
 }

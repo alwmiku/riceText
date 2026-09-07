@@ -10,7 +10,7 @@ function subscribeMobile(listener: () => void) {
   return () => media.removeEventListener("change", listener);
 }
 
-/** Pagination uses the browser's CSS fragmentation engine; document nodes are never split or rewritten. */
+/** 分页使用浏览器的 CSS 分片引擎，不拆分或重写文档节点。 */
 export function useReaderPagination(enabled: boolean) {
   const mobile = useSyncExternalStore(subscribeMobile, mobileSnapshot, () => false);
   const paginated = enabled && mobile;

@@ -6,7 +6,7 @@ import type { NovelExcerptAttributes } from "./types.js";
 import { sanitizeUrl } from "./sanitize.js";
 import { useReaderPagination } from "./use-reader-pagination.js";
 
-// The same chrome tree is used by React node views and persisted HTML.
+// React 节点视图与持久化 HTML 共用同一套阅读页结构。
 function chrome(spec: DOMOutputSpec, key: number): ReactNode {
   if (typeof spec === "string") return spec;
   if (!Array.isArray(spec)) return null;
