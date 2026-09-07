@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/core'
+import { isParagraphIndent } from './paragraph-indent.js'
 import {
   ALLOWED_DOCUMENT_FONT_FAMILIES,
   ALLOWED_DOCUMENT_FONT_SIZES,
@@ -227,13 +228,20 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
     case 'heading':
     case 'listItem': {
       const textAlign = raw.textAlign === 'center' || raw.textAlign === 'right' || raw.textAlign === 'justify' ? raw.textAlign : 'left'
-      if (type !== 'heading') return { textAlign }
-      // 属性键序必须与 schema 注册顺序（TextAlign/chapterStart/level）一致：
+      if (type === 'listItem') return { textAlign }
+      const indents = { firstLineIndent: 0, leftIndent: 0 }
+      for (const key of ['firstLineIndent', 'leftIndent'] as const) {
+        if (isParagraphIndent(raw[key])) indents[key] = raw[key]
+        else if (raw[key] != null) addIssue(context, { code: 'invalid-attribute', path: `${path}.attrs.${key}`, message: 'Indent must be an even integer between 0 and 20.' })
+      }
+      if (type === 'paragraph') return { textAlign, ...indents }
+      // 属性键序必须与 schema 注册顺序（对齐、章节标记、缩进、标题等级）一致：
       // 重建文档会被编辑器往返（PM toJSON）与 JSON.stringify 比较（publishChapter
       // 的 merge 差异判断、批量校订）使用，键序不一致会产生无意义的差异代次。
       return {
         textAlign,
         chapterStart: raw.chapterStart === true,
+        ...indents,
         level: finiteInteger(raw.level, 2, 1, 6),
       }
     }
@@ -401,10 +409,10 @@ function sanitizeNode(value: unknown, path: string, depth: number, context: Sani
     if (content.length > 0) node.content = content
   }
   if ((value.type === 'doc' || value.type === 'blockquote' || value.type === 'novelExcerpt' || value.type === 'replyGate' || value.type === 'listItem') && !node.content?.length) {
-    node.content = [{ type: 'paragraph', attrs: { textAlign: 'left' } }]
+    node.content = [{ type: 'paragraph', attrs: { textAlign: 'left', firstLineIndent: 0, leftIndent: 0 } }]
   }
   if ((value.type === 'bulletList' || value.type === 'orderedList') && !node.content?.length) {
-    node.content = [{ type: 'listItem', content: [{ type: 'paragraph', attrs: { textAlign: 'left' } }] }]
+    node.content = [{ type: 'listItem', content: [{ type: 'paragraph', attrs: { textAlign: 'left', firstLineIndent: 0, leftIndent: 0 } }] }]
   }
   return node
 }
@@ -423,9 +431,9 @@ function inspectDocument(value: unknown): DocumentValidationResult {
   const context: SanitizerContext = { issues: [], nodeCount: 0 }
   if (!isRecord(value) || value.type !== 'doc') {
     addIssue(context, { code: 'invalid-document', path: '$', message: 'Root node must be a Tiptap document.' })
-    return { valid: false, document: { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'left' } }] }, issues: context.issues }
+    return { valid: false, document: { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'left', firstLineIndent: 0, leftIndent: 0 } }] }, issues: context.issues }
   }
-  const document = sanitizeNode(value, '$', 0, context, null) ?? { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'left' } }] }
+  const document = sanitizeNode(value, '$', 0, context, null) ?? { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'left', firstLineIndent: 0, leftIndent: 0 } }] }
   removeInlineCommentAnchorsInsideReplyGate(document)
   return { valid: context.issues.length === 0, document, issues: context.issues }
 }
@@ -445,7 +453,7 @@ export function parseDocumentJson(serialized: string): DocumentValidationResult 
   try {
     return inspectDocument(JSON.parse(serialized) as unknown)
   } catch {
-    const document: JSONContent = { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'left' } }] }
+    const document: JSONContent = { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'left', firstLineIndent: 0, leftIndent: 0 } }] }
     return { valid: false, document, issues: [{ code: 'invalid-document', path: '$', message: 'Document is not valid JSON.' }] }
   }
 }

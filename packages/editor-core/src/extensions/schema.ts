@@ -1,5 +1,5 @@
 import { type Extensions } from "@tiptap/core";
-import { chapterStartExtension } from "@ricetext/document-core";
+import { chapterStartExtension, ParagraphIndentAttributes } from "@ricetext/document-core";
 import { Color } from "@tiptap/extension-color";
 import { FontFamily } from "@tiptap/extension-font-family";
 import { Link } from "@tiptap/extension-link";
@@ -127,6 +127,7 @@ export function schemaExtensions(
       alignments: ["left", "center", "right", "justify"],
     }),
     chapterStartExtension,
+    ParagraphIndentAttributes,
     InlineCommentAnchorSchema,
     RichImageSchema,
     DiceRoll,

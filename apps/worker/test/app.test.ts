@@ -2,7 +2,7 @@
 import { createExecutionContext } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { contractRoutes } from "@ricetext/contracts";
-import { diffDocuments } from "@ricetext/document-core";
+import { diffDocuments, sanitizeDocument } from "@ricetext/document-core";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { http, HttpResponse } from "msw";
 import {
@@ -379,7 +379,7 @@ describe("RiceText Worker", () => {
     expect(rollback.status).toBe(201);
     const result = (await rollback.json()) as { revision: number; content: unknown };
     expect(result.revision).toBe(3);
-    expect(result.content).toEqual(content);
+    expect(result.content).toEqual(sanitizeDocument(content));
 
     const operation = await env.DB.prepare(
       "SELECT operation, target_revision FROM document_revisions WHERE revision = 3",

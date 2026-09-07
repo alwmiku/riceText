@@ -40,7 +40,14 @@ export function toggleHeading(editor: Editor, level: 1 | 2): boolean {
 
 /** 清除样式：去掉全部行内 mark 与块级 node 格式。 */
 export function clearFormatting(editor: Editor): boolean {
-  return editor.chain().focus().unsetAllMarks().clearNodes().run();
+  return editor
+    .chain()
+    .focus()
+    .unsetAllMarks()
+    .resetAttributes("paragraph", ["firstLineIndent", "leftIndent"])
+    .resetAttributes("heading", ["firstLineIndent", "leftIndent"])
+    .clearNodes()
+    .run();
 }
 
 export function toggleBulletList(editor: Editor): boolean {

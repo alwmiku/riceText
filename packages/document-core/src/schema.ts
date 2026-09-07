@@ -15,6 +15,7 @@ import { Underline } from "@tiptap/extension-underline";
 import { StarterKit } from "@tiptap/starter-kit";
 import { sanitizeUrl } from "./sanitize.js";
 import { sharedMarkSpecs, sharedNodeSpecs } from "./nodes.js";
+import { ParagraphIndentAttributes } from "./paragraph-indent.js";
 
 /** {@link createDocumentExtensions} 接受的配置。 */
 export interface DocumentExtensionsOptions {
@@ -90,6 +91,7 @@ export function createDocumentExtensions(
       alignments: ["left", "center", "right", "justify"],
     }),
     chapterStartExtension,
+    ParagraphIndentAttributes,
     ...sharedNodeSpecs.map((spec) => Node.create(spec)),
     ...sharedMarkSpecs.map((spec) => Mark.create(spec)),
     ...(options.additionalExtensions ?? []),

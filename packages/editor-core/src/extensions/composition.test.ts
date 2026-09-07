@@ -24,10 +24,10 @@ function schemaNames(extensions: ReturnType<typeof schemaExtensions>) {
 }
 
 describe("extension compositions", () => {
-  it("keeps schema, editor, and viewer extension names in parity", () => {
+  it("adds editor-only behavior to the canonical schema extensions", () => {
     const canonicalNames = extensionNames(schemaExtensions());
 
-    expect(extensionNames(createEditorExtensions())).toEqual(canonicalNames);
+    expect(extensionNames(createEditorExtensions())).toEqual([...canonicalNames, "formatPainter"]);
     expect(extensionNames(createViewerExtensions(viewerRef))).toEqual(canonicalNames);
   });
 

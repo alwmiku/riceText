@@ -17,6 +17,18 @@ beforeAll(() => {
   })
 })
 
+it('renders persisted first-line and paragraph indentation in the reader', async () => {
+  const { container } = render(<RichTextViewer content={{ type: 'doc', content: [{
+    type: 'paragraph', attrs: { firstLineIndent: 2, leftIndent: 4 },
+    content: [{ type: 'text', text: 'Indented reader paragraph' }],
+  }] }} />)
+  await screen.findByText('Indented reader paragraph')
+  const paragraph = container.querySelector('.ProseMirror p')
+  expect(paragraph?.getAttribute('style')).toContain('text-indent: 2em')
+  expect(paragraph?.getAttribute('style')).toContain('margin-left: 4em')
+  expect(container.querySelector('.ProseMirror')).toHaveAttribute('contenteditable', 'false')
+})
+
 const interactiveDocument: JSONContent = {
   type: 'doc',
   content: [

@@ -13,12 +13,14 @@ export function ToolbarGroup({
   icon: Icon = MoreHorizontal,
   collapsed,
   mobile = false,
+  active = false,
   children,
 }: {
   label: string;
   icon?: LucideIcon;
   collapsed: boolean;
   mobile?: boolean;
+  active?: boolean;
   children: ReactNode;
 }) {
   if (!collapsed) {
@@ -36,7 +38,7 @@ export function ToolbarGroup({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <ToolbarButton label={label} mobile={mobile}>
+        <ToolbarButton label={label} mobile={mobile} active={active}>
           <Icon size={mobile ? 22 : 18} />
         </ToolbarButton>
       </DropdownMenuTrigger>

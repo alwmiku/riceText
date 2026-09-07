@@ -61,7 +61,11 @@ export function mergeSuggestionBatch(
     type: "doc" as const,
     content: current.content.slice(range.start, range.end),
   };
-  if (canonicalJson(existing) !== canonicalJson(before)) return null;
+  // Historical snapshots may predate newly added default attributes.
+  if (
+    canonicalJson(sanitizeDocumentForWrite(existing)) !==
+    canonicalJson(sanitizeDocumentForWrite(before))
+  ) return null;
   return replaceChapter(
     current as JSONContent,
     chapterIndex,

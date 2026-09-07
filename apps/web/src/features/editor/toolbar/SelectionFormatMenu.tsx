@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import type { ReactNode } from "react";
+import { getFormatPainterState } from "@ricetext/editor-core";
 import { EditorContextMenu } from "./EditorContextMenu";
 import { SelectionFloatingToolbar } from "./SelectionFloatingToolbar";
 import { getSelectedText, useEditorSelectionState } from "../hooks/useEditorSelectionState";
@@ -25,7 +26,7 @@ export function SelectionFormatMenu({
       <SelectionFloatingToolbar
         editor={editor}
         mobile={mobile}
-        visible={hasSelection}
+        visible={hasSelection && (!editor || getFormatPainterState(editor).mode === "off")}
       />
     </div>
   );

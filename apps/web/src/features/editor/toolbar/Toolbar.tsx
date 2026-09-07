@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useEditorSelectionState } from "../hooks/useEditorSelectionState";
 import { CompactToolbarControls } from "./CompactToolbarControls";
 import { ToolbarDialogs, useInsertRequest } from "./ToolbarDialogs";
+import { FormatPainterButton, IndentPopover } from "./FormattingTools";
 import {
   BusinessNodeGroup,
   ParagraphGroup,
@@ -21,6 +22,10 @@ export function Toolbar({
   const requestInsert = useInsertRequest();
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [compactLayout, setCompactLayout] = useState(condensed);
+  const [wholeDocument, setWholeDocument] = useState(false);
+  useEffect(() => {
+    setWholeDocument(false);
+  }, [editor]);
   useEditorSelectionState(editor);
   useEffect(() => {
     if (condensed) {
@@ -39,24 +44,45 @@ export function Toolbar({
     return () => observer.disconnect();
   }, [condensed, editor]);
   if (!editor)
-    return <div className="sticky top-[58px] z-20 flex min-h-[46px] flex-wrap items-center gap-[3px] border-b border-border bg-[#fbfcfc] px-[7px] py-[5px] max-[430px]:top-[54px]" aria-hidden="true" />;
+    return (
+      <div
+        className="sticky top-[58px] z-20 flex min-h-[46px] flex-wrap items-center gap-[3px] border-b border-border bg-[#fbfcfc] px-[7px] py-[5px] max-[430px]:top-[54px]"
+        aria-hidden="true"
+      />
+    );
 
   const content = (
     <div
       ref={toolbarRef}
-      className={condensed
-        ? "flex min-w-0 items-center gap-1"
-        : "sticky top-[58px] z-20 flex min-h-[46px] flex-wrap items-center gap-[3px] border-b border-border bg-[#fbfcfc] px-[7px] py-[5px] max-[430px]:top-[54px]"}
+      className={
+        condensed
+          ? "flex min-w-0 items-center gap-1"
+          : "sticky top-[58px] z-20 flex min-h-[46px] flex-wrap items-center gap-[3px] border-b border-border bg-[#fbfcfc] px-[7px] py-[5px] max-[430px]:top-[54px]"
+      }
       role="toolbar"
       aria-label="富文本工具栏"
     >
       {compactLayout ? (
-        <CompactToolbarControls editor={editor} mobile={condensed} />
+        <>
+          {!condensed && <FormatPainterButton editor={editor} />}
+          <CompactToolbarControls
+            editor={editor}
+            mobile={condensed}
+            wholeDocument={wholeDocument}
+            onWholeDocumentChange={setWholeDocument}
+          />
+        </>
       ) : (
         <>
           <UndoRedoGroup editor={editor} />
+          <FormatPainterButton editor={editor} />
           <TextFormatGroup editor={editor} condensed={condensed} />
           <ParagraphGroup editor={editor} condensed={condensed} />
+          <IndentPopover
+            editor={editor}
+            wholeDocument={wholeDocument}
+            onWholeDocumentChange={setWholeDocument}
+          />
           <BusinessNodeGroup editor={editor} condensed={condensed} />
         </>
       )}

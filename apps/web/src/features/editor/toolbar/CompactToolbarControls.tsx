@@ -1,4 +1,4 @@
-import type { Editor } from "@tiptap/react";
+import { getFormatPainterState } from "@ricetext/editor-core";
 import { DismissableLayer } from "radix-ui/internal";
 import { useState } from "react";
 
@@ -19,6 +19,7 @@ import {
   ListOrdered,
   MessageCirclePlus,
   MoreHorizontal,
+  Paintbrush,
   Quote,
   Redo2,
   Underline as UnderlineIcon,
@@ -70,12 +71,14 @@ import {
 import { useInsertRequest } from "./ToolbarDialogs";
 import { ToolbarButton } from "./ToolbarButton";
 import { ToolbarGroup } from "./ToolbarGroup";
+import { FormatPainterMenu, IndentControls, type IndentControlsProps } from "./FormattingTools";
 
 export function CompactToolbarControls({
   editor,
   mobile = false,
-}: {
-  editor: Editor;
+  wholeDocument,
+  onWholeDocumentChange,
+}: IndentControlsProps & {
   mobile?: boolean;
 }) {
   const requestInsert = useInsertRequest();
@@ -108,7 +111,10 @@ export function CompactToolbarControls({
       >
         <Bold size={mobile ? 22 : 18} />
       </ToolbarButton>
-      <ToolbarGroup label="文字格式" icon={Italic} collapsed mobile={mobile}>
+      <ToolbarGroup label="文字格式"
+        icon={getFormatPainterState(editor).mode === "off" ? Italic : Paintbrush}
+        active={getFormatPainterState(editor).mode !== "off"} collapsed mobile={mobile}>
+        <FormatPainterMenu editor={editor} />
         <DropdownMenuItem
           disabled={spoilerActive}
           onSelect={cmd(editor, toggleItalic)}
@@ -203,6 +209,7 @@ export function CompactToolbarControls({
         </PopoverAnchor>
       </ToolbarGroup>
       <ToolbarGroup label="段落排版" icon={AlignLeft} collapsed mobile={mobile}>
+        <IndentControls editor={editor} wholeDocument={wholeDocument} onWholeDocumentChange={onWholeDocumentChange} />
         <DropdownMenuItem onSelect={cmd(editor, toggleBulletList)}>
           <List />
           无序列表

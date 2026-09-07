@@ -2,9 +2,9 @@
 
 export const DOCUMENT_NODE_ATTRIBUTES = {
   doc: [],
-  paragraph: ["textAlign"],
+  paragraph: ["textAlign", "firstLineIndent", "leftIndent"],
   text: [],
-  heading: ["level", "textAlign", "chapterStart"],
+  heading: ["level", "textAlign", "chapterStart", "firstLineIndent", "leftIndent"],
   bulletList: [],
   orderedList: ["start"],
   listItem: ["textAlign"],

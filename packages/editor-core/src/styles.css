@@ -15,6 +15,11 @@
 }
 
 /* 无障碍辅助 */
+.ProseMirror[data-format-painter="once"],
+.ProseMirror[data-format-painter="continuous"] {
+  cursor: crosshair;
+}
+
 .rt-sr-only {
   position: absolute;
   width: 1px;

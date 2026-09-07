@@ -1,5 +1,6 @@
 /** 规范的 Tiptap 扩展、命令与 schema 工厂。 */
 export * from './extensions.js'
+export { getFormatPainterState } from './extensions/format-painter.js'
 
 /** 长文本章节切分辅助函数。 */
 export * from './chapter-splitter.js'

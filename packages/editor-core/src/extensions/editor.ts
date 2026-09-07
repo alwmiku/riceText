@@ -5,6 +5,8 @@ import { LongTextBlock } from "./long-text-block.js";
 import { PollRef } from "./poll-ref.js";
 import { RichImage } from "./rich-image.js";
 import { schemaExtensions } from "./schema.js";
+import { ParagraphIndent } from "./paragraph-indent.js";
+import { FormatPainter } from "./format-painter.js";
 
 export interface EditorExtensionsOptions {
   /** Extensions appended after the canonical editor composition. */
@@ -19,6 +21,8 @@ export function createEditorExtensions(
 ): Extensions {
   return schemaExtensions().map((extension) => {
     switch (extension.name) {
+      case "paragraphIndent":
+        return ParagraphIndent;
       case "inlineCommentAnchor":
         return InlineCommentAnchor;
       case "richImage":
@@ -30,7 +34,7 @@ export function createEditorExtensions(
       default:
         return extension;
     }
-  }).concat(options.additionalExtensions ?? []);
+  }).concat(FormatPainter, options.additionalExtensions ?? []);
 }
 
 /** Compatibility alias for the original editor extension factory. */
