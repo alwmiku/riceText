@@ -193,6 +193,16 @@ describe('ComposePage', () => {
     vi.restoreAllMocks();
   });
 
+  it('reports document save errors without incorrectly blaming chapter registration', async () => {
+    mocks.flush.mockRejectedValueOnce(new Error('Attribute type is not allowed and was removed.'));
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    fireEvent.click(screen.getByRole('button', { name: '模拟发布' }));
+    expect(await screen.findByText('保存失败：Attribute type is not allowed and was removed.')).toBeInTheDocument();
+    expect(screen.queryByText(/新增章节注册失败/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('editor')).toBeInTheDocument();
+  });
+
   it('游客只得到空白本地编辑器，不请求服务器文章或章节', async () => {
     const guest = {
       id: 'anonymous',

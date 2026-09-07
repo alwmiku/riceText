@@ -7,7 +7,7 @@ function attrs(raw: Record<string, unknown>) {
 
 describe("reader excerpt attributes", () => {
   it("provides backward-compatible display defaults", () => {
-    expect(attrs({ variant: "fanqie" })).toMatchObject({ readerTime: "13:59", batteryLevel: 100, pageLabel: "16/843", progressLabel: "", headerLabel: "" });
+    expect(attrs({ variant: "fanqie" })).toMatchObject({ readerTime: "", batteryLevel: 100, pageLabel: "1/1", progressLabel: "", headerLabel: "" });
   });
   it("preserves zero battery, custom labels, and explicitly empty text", () => {
     expect(attrs({ variant: "qidian", readerTime: "", batteryLevel: 0, pageLabel: "2/20", progressLabel: "1.0%", headerLabel: "Custom" })).toMatchObject({ readerTime: "", batteryLevel: 0, pageLabel: "2/20", progressLabel: "1.0%", headerLabel: "Custom" });
@@ -21,6 +21,6 @@ describe("reader excerpt attributes", () => {
     expect(result?.pageLabel).toHaveLength(40);
     expect(result?.progressLabel).toHaveLength(24);
     expect(result?.headerLabel).toHaveLength(80);
-    expect(attrs({ readerTime: 123, headerLabel: {} })).toMatchObject({ readerTime: "13:59", headerLabel: "" });
+    expect(attrs({ readerTime: 123, headerLabel: {} })).toMatchObject({ readerTime: "", headerLabel: "" });
   });
 });

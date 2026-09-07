@@ -1,4 +1,5 @@
 import type { JSONContent } from "@ricetext/editor-core";
+import { currentReaderTime } from "@ricetext/document-core";
 
 export interface ExcerptValues {
   bookTitle: string;
@@ -16,13 +17,17 @@ export interface ExcerptValues {
 
 export const emptyExcerptValues: ExcerptValues = {
   bookTitle: "", chapterTitle: "", author: "", sourceUrl: "", variant: "fanqie", text: "",
-  readerTime: "13:59", batteryLevel: "100", pageLabel: "16/843", progressLabel: "", headerLabel: "",
+  readerTime: "", batteryLevel: "100", pageLabel: "1/1", progressLabel: "", headerLabel: "",
 };
+
+export function createExcerptValues(): ExcerptValues {
+  return { ...emptyExcerptValues, readerTime: currentReaderTime() };
+}
 
 export function readerDisplayDefaults(variant: string) {
   return variant === "qidian"
-    ? { readerTime: "10:18", batteryLevel: "75", pageLabel: "2/20", progressLabel: "1.0%", headerLabel: "" }
-    : { readerTime: "13:59", batteryLevel: "100", pageLabel: "16/843", progressLabel: "", headerLabel: "" };
+    ? { batteryLevel: "75", headerLabel: "" }
+    : { batteryLevel: "100", headerLabel: "" };
 }
 
 export function isExcerptBatteryValid(value: string): boolean {

@@ -451,11 +451,11 @@ export default function ComposePage() {
             : "正文已保存，可切换到阅读视图检查",
       );
     } catch (cause) {
-      // 新增章节注册失败时中止保存并提示，避免产生没有归属的修订。
+      // publishChapter also performs initial document creation and validation.
       setNotice(
         cause instanceof Error
-          ? `新增章节注册失败：${cause.message}`
-          : "新增章节注册失败，请稍后重试",
+          ? `保存失败：${cause.message}`
+          : "保存失败，请稍后重试",
       );
     }
   };

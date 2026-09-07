@@ -233,6 +233,23 @@ describe("RiceText Worker", () => {
     });
   });
 
+  it("accepts editor orderedList type:null alongside excerpts and rejects malformed numbering", async () => {
+    const list = { type: "orderedList", attrs: { start: 1, type: null as string | null }, content: [{ type: "listItem", attrs: { textAlign: null }, content: [{ type: "paragraph", content: [{ type: "text", text: "List text" }] }] }] };
+    const document = { type: "doc", content: [list, { type: "novelExcerpt", attrs: { variant: "fanqie", bookTitle: "Book", chapterTitle: "Chapter", readerTime: "23:00" }, content: [{ type: "paragraph", content: [{ type: "text", text: "Excerpt" }] }] }] };
+    const save = (baseRevision: number, clientMutationId: string, value: unknown) => exports.default.fetch(new Request("http://example.com/api/documents/list-excerpt", { method: "PUT", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ title: "List and excerpt", schemaVersion: 1, baseRevision, clientMutationId, content: value }) }));
+    const created = await save(0, "create-list-excerpt", document);
+    expect(created.status).toBe(201);
+    await expect(created.json()).resolves.toMatchObject({ content: { content: [ { type: "orderedList", attrs: { start: 1, type: null } }, { type: "novelExcerpt", attrs: { bookTitle: "Book" } } ] } });
+    list.attrs = { start: 3, type: "I" };
+    const updated = await save(1, "update-list-excerpt", document);
+    expect(updated.status).toBe(201);
+    const loaded = await exports.default.fetch(new Request("http://example.com/api/documents/list-excerpt", { headers: { "x-user-id": "author" } }));
+    await expect(loaded.json()).resolves.toMatchObject({ content: { content: [ { type: "orderedList", attrs: { start: 3, type: "I" } }, { type: "novelExcerpt", attrs: { bookTitle: "Book" } } ] } });
+    const invalid = await save(2, "invalid-list-type", { type: "doc", content: [{ ...list, attrs: { type: { toString: {} } } }] });
+    expect(invalid.status).toBe(422);
+    await expect(invalid.json()).resolves.toMatchObject({ error: { code: "INVALID_ATTRIBUTE", details: { path: "$.content[0].attrs.type" } } });
+  });
+
   it("creates the first missing document only when an author explicitly saves", async () => {
     const request = {
       title: "未命名文章",

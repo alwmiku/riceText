@@ -231,7 +231,7 @@ describe('document sanitization', () => {
     // heading 属性键序与 schema 注册顺序（对齐、章节标记、缩进、标题等级）一致，
     // 保证重建文档与编辑器 PM 序列化结果 JSON 完全相等。
     expect(result.document.content?.[0]?.attrs).toEqual({ textAlign: 'justify', chapterStart: false, firstLineIndent: 0, leftIndent: 0, level: 6 })
-    expect(result.document.content?.[1]?.attrs).toEqual({ start: 1 })
+    expect(result.document.content?.[1]?.attrs).toEqual({ start: 1, type: null })
     expect(result.document.content?.[2]?.attrs).toEqual({ language: null })
     expect(result.document.content?.[2]?.content?.[0]?.marks).toBeUndefined()
     expect(result.document.content?.[3]?.content?.[0]?.attrs).toMatchObject({ threadId: '', count: 1_000_000, placement: 'end' })

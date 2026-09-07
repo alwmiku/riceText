@@ -245,7 +245,15 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
         level: finiteInteger(raw.level, 2, 1, 6),
       }
     }
-    case 'orderedList': return { start: finiteInteger(raw.start, 1, 1, 1_000_000) }
+    case 'orderedList': {
+      // Tiptap persists type:null even for ordinary decimal lists. Keep the
+      // standard HTML numbering modes without permitting arbitrary attributes.
+      const listType = raw.type == null ? null : typeof raw.type === 'string' && ['1', 'a', 'A', 'i', 'I'].includes(raw.type) ? raw.type : null
+      if (raw.type != null && listType === null) {
+        addIssue(context, { code: 'invalid-attribute', path: `${path}.attrs.type`, message: 'Ordered list type must be null, 1, a, A, i, or I.' })
+      }
+      return { start: finiteInteger(raw.start, 1, 1, 1_000_000), type: listType }
+    }
     case 'codeBlock': return { language: nullableString(raw.language, 40) }
     case 'inlineCommentAnchor': {
       const attrs: InlineCommentAnchorAttributes = {
@@ -282,9 +290,9 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
         bookTitle: stringValue(raw.bookTitle, 300), chapterTitle: stringValue(raw.chapterTitle, 300), author: stringValue(raw.author, 200),
         sourceUrl: safeLinkUrl(raw.sourceUrl, `${path}.attrs.sourceUrl`),
         variant: raw.variant === 'fanqie' || raw.variant === 'qidian' || raw.variant === 'mobile-book' || raw.variant === 'forum-evidence' ? raw.variant : 'desktop-book',
-        readerTime: stringValue(raw.readerTime, 16, '13:59'),
+        readerTime: stringValue(raw.readerTime, 16),
         batteryLevel: finiteInteger(raw.batteryLevel, 100, 0, 100),
-        pageLabel: stringValue(raw.pageLabel, 40, '16/843'),
+        pageLabel: stringValue(raw.pageLabel, 40, '1/1'),
         progressLabel: stringValue(raw.progressLabel, 24),
         headerLabel: stringValue(raw.headerLabel, 80),
       }

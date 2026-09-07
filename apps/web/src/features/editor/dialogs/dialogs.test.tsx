@@ -179,7 +179,7 @@ describe("editor dialogs", () => {
       sourceUrl: "https://books.example/5",
       variant: "mobile-book",
       text: "潮水漫过了石阶。",
-      readerTime: "13:59", batteryLevel: "100", pageLabel: "16/843", progressLabel: "", headerLabel: "",
+      readerTime: expect.stringMatching(/^\d{2}:\d{2}$/), batteryLevel: "100", pageLabel: "1/1", progressLabel: "", headerLabel: "",
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

@@ -6,7 +6,7 @@ export const DOCUMENT_NODE_ATTRIBUTES = {
   text: [],
   heading: ["level", "textAlign", "chapterStart", "firstLineIndent", "leftIndent"],
   bulletList: [],
-  orderedList: ["start"],
+  orderedList: ["start", "type"],
   listItem: ["textAlign"],
   blockquote: [],
   codeBlock: ["language"],

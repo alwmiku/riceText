@@ -43,6 +43,26 @@ describe("RiceText API", () => {
     }
   });
 
+  it("saves editor orderedList type:null with excerpts and preserves valid numbering modes", async () => {
+    const content = { type: "doc", content: [
+      { type: "orderedList", attrs: { start: 1, type: null as string | null }, content: [{ type: "listItem", attrs: { textAlign: null }, content: [{ type: "paragraph", content: [{ type: "text", text: "List text" }] }] }] },
+      { type: "novelExcerpt", attrs: { variant: "qidian", bookTitle: "Book", chapterTitle: "Chapter", readerTime: "23:00" }, content: [{ type: "paragraph", content: [{ type: "text", text: "Excerpt" }] }] },
+    ] };
+    const payload = { title: "List and excerpt", schemaVersion: 1, baseRevision: 0, clientMutationId: "create-list-excerpt", content };
+    const created = await app.inject({ method: "PUT", url: "/api/documents/list-excerpt", headers: { "x-user-id": "author" }, payload });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json().content.content[0].attrs).toEqual({ start: 1, type: null });
+    content.content[0]!.attrs = { start: 3, type: "A" };
+    const updated = await app.inject({ method: "PUT", url: "/api/documents/list-excerpt", headers: { "x-user-id": "author" }, payload: { ...payload, baseRevision: 1, clientMutationId: "update-list-excerpt" } });
+    expect(updated.statusCode, updated.body).toBe(201);
+    const loaded = await app.inject({ method: "GET", url: "/api/documents/list-excerpt", headers: { "x-user-id": "author" } });
+    expect(loaded.json().content.content[0].attrs).toEqual({ start: 3, type: "A" });
+    expect(loaded.json().content.content[1].attrs.bookTitle).toBe("Book");
+    const invalid = await app.inject({ method: "PUT", url: "/api/documents/list-excerpt", headers: { "x-user-id": "author" }, payload: { ...payload, baseRevision: 2, clientMutationId: "invalid-list-type", content: { type: "doc", content: [{ ...content.content[0], attrs: { type: { toString: {} } } }] } } });
+    expect(invalid.statusCode, invalid.body).toBe(422);
+    expect(invalid.json().error).toMatchObject({ code: "INVALID_ATTRIBUTE", details: { path: "$.content[0].attrs.type" } });
+  });
+
   it("作者首次保存可创建空白文章，读者不能创建", async () => {
     const payload = {
       title: "未命名文章",

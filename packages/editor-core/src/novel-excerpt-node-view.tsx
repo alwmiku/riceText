@@ -1,9 +1,10 @@
 import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
 import { createElement, type ReactNode } from "react";
 import type { DOMOutputSpec } from "@tiptap/pm/model";
-import { isReaderPlatform, readerTop, readerBottom, readerAttribution, READER_PLATFORM_POLICY } from "@ricetext/document-core";
+import { isReaderPlatform, readerTop, readerBottom, READER_PLATFORM_POLICY } from "@ricetext/document-core";
 import type { NovelExcerptAttributes } from "./types.js";
 import { sanitizeUrl } from "./sanitize.js";
+import { useReaderPagination } from "./use-reader-pagination.js";
 
 // The same chrome tree is used by React node views and persisted HTML.
 function chrome(spec: DOMOutputSpec, key: number): ReactNode {
@@ -16,28 +17,36 @@ function chrome(spec: DOMOutputSpec, key: number): ReactNode {
   ]));
   return createElement((tag as string).split(" ").at(-1)!, { ...props, key }, ...children.map((child, index) => chrome(child as DOMOutputSpec, index)));
 }
-export function NovelExcerptNodeView({ attrs, sourceLabel = "查看来源" }: {
+export function NovelExcerptNodeView({ attrs, sourceLabel = "查看来源", editable = false }: {
   attrs: NovelExcerptAttributes;
   sourceLabel?: string;
+  editable?: boolean;
 }) {
   const sourceUrl = sanitizeUrl(attrs.sourceUrl, "link");
   const reader = isReaderPlatform(attrs.variant);
   const raw = attrs as unknown as Record<string, unknown>;
+  const pagination = useReaderPagination(reader && !editable);
   return (
     <NodeViewWrapper as="aside" className={"rt-novel-excerpt rt-novel-excerpt--" + attrs.variant}
       data-node-type="novel-excerpt" data-variant={attrs.variant}
+      data-page-index={pagination.pages.index} data-page-count={pagination.pages.count}
       data-book-title={attrs.bookTitle} data-chapter-title={attrs.chapterTitle}
       data-author={attrs.author} data-source-url={sourceUrl ?? ""}
       data-reader-time={attrs.readerTime} data-battery-level={attrs.batteryLevel}
       data-page-label={attrs.pageLabel} data-progress-label={attrs.progressLabel} data-header-label={attrs.headerLabel}
       data-empty-bubble={isReaderPlatform(attrs.variant) ? String(READER_PLATFORM_POLICY[attrs.variant].emptyBubble) : undefined}>
       {reader ? <>
-        <div className="rt-reader-page">
+        <div className="rt-reader-page" ref={pagination.pageRef} data-paginated={pagination.paginated}>
           {readerTop(raw).map(chrome)}
-          <NodeViewContent className="rt-novel-excerpt__content" />
-          {chrome(readerBottom(raw), 0)}
+          <div className="rt-reader-viewport" ref={pagination.viewportRef}
+            role={pagination.paginated ? "group" : undefined} aria-label={pagination.paginated ? "摘录分页正文" : undefined}
+            tabIndex={pagination.paginated ? 0 : undefined}
+            onPointerDown={pagination.onPointerDown} onPointerUp={pagination.onPointerUp}
+            onPointerCancel={pagination.onPointerCancel} onKeyDown={pagination.onKeyDown}>
+            <NodeViewContent className="rt-novel-excerpt__content" style={{ transform: pagination.paginated ? `translateX(calc(-${pagination.pages.index} * (var(--reader-column-width, 100%) + var(--reader-column-gap, 24px))))` : undefined }} />
+          </div>
+          {chrome(readerBottom(raw, pagination.pages), 0)}
         </div>
-        {chrome(readerAttribution(raw), 0)}
       </> : <>
         <header contentEditable={false}>
           {attrs.bookTitle && <strong>{attrs.bookTitle}</strong>}

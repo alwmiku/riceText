@@ -31,7 +31,7 @@ describe("excerpt metadata editing", () => {
     expect(updateExcerptMetadata(editor, target, { bookTitle: "Changed", variant: "qidian" })).toBe(true);
     const updated = editor.getJSON();
     expect(updated.content![0]!.content).toEqual(content);
-    expect(updated.content![0]!.attrs).toMatchObject({ bookTitle: "Changed", variant: "qidian" });
+    expect(updated.content![0]!.attrs).toMatchObject({ bookTitle: "Changed", variant: "qidian", readerTime: "22:05", pageLabel: "88/100", progressLabel: "88%" });
     expect(updated.content).toHaveLength(2);
     expect(editor.commands.undo()).toBe(true);
     expect(editor.getJSON()).toEqual(original);

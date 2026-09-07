@@ -1,10 +1,11 @@
 import { useId, useState, type ChangeEvent } from "react";
+import { currentReaderTime } from "@ricetext/document-core";
 import { RichTextViewer, type JSONContent } from "@ricetext/editor-core";
 import { Button, Dialog } from "../../../components/ui";
 import { Input } from "../../../components/ui/input";
 import { Separator } from "../../../components/ui/separator";
 import {
-  emptyExcerptValues, excerptAttributes, excerptParagraphs,
+  createExcerptValues, emptyExcerptValues, excerptAttributes, excerptParagraphs,
   isExcerptSourceUrlValid, isExcerptBatteryValid, readerDisplayDefaults, type ExcerptValues,
 } from "./excerpt-values";
 
@@ -22,7 +23,7 @@ export function ExcerptDialog(props: ExcerptDialogProps) {
 }
 
 function ExcerptDialogForm({ open, onOpenChange, onInsert, initial, existingContent }: ExcerptDialogProps) {
-  const [values, setValues] = useState<ExcerptValues>(() => ({ ...emptyExcerptValues, ...initial }));
+  const [values, setValues] = useState<ExcerptValues>(() => initial ? { ...emptyExcerptValues, ...initial } : createExcerptValues());
   const [saveError, setSaveError] = useState(false);
   const id = useId();
   const editing = initial !== undefined;
@@ -65,6 +66,7 @@ function ExcerptDialogForm({ open, onOpenChange, onInsert, initial, existingCont
           if (!canSubmit) return;
           const result = onInsert({
             ...values,
+            readerTime: editing ? values.readerTime : currentReaderTime(),
             bookTitle: values.bookTitle.trim(), chapterTitle: values.chapterTitle.trim(),
             author: values.author.trim(), sourceUrl: values.sourceUrl.trim(),
           });
@@ -101,24 +103,10 @@ function ExcerptDialogForm({ open, onOpenChange, onInsert, initial, existingCont
           </div>
           {readerTemplate && <fieldset className="flex min-w-0 flex-col gap-3">
             <legend className="mb-2 text-xs font-semibold">阅读页信息</legend>
-            <div className="grid min-w-0 grid-cols-2 gap-3">
-              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
-                时间
-                <Input maxLength={16} placeholder="13:59" {...field("readerTime")} />
-              </label>
-              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold" data-invalid={!validBattery || undefined}>
-                电量（%）
-                <Input type="number" min={0} max={100} step={1} inputMode="numeric" {...field("batteryLevel")} aria-invalid={!validBattery} aria-describedby={!validBattery ? id + "-battery-error" : undefined} />
-              </label>
-              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
-                页码
-                <Input maxLength={40} placeholder="16/843" {...field("pageLabel")} />
-              </label>
-              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
-                阅读进度
-                <Input maxLength={24} placeholder="1.0%" {...field("progressLabel")} />
-              </label>
-            </div>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold" data-invalid={!validBattery || undefined}>
+              电量（%）
+              <Input type="number" min={0} max={100} step={1} inputMode="numeric" {...field("batteryLevel")} aria-invalid={!validBattery} aria-describedby={!validBattery ? id + "-battery-error" : undefined} />
+            </label>
             {!validBattery && <p id={id + "-battery-error"} role="alert" className="text-xs text-destructive">电量应为 0 至 100 的整数。</p>}
             <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold">
               顶部信息
