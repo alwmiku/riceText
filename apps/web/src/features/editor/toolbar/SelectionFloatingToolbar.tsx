@@ -7,7 +7,7 @@ import {
   ListOrdered,
   Underline as UnderlineIcon,
 } from "lucide-react";
-import { useEffect, useRef, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { IconButton } from "../../../components/ui";
 import {
   ColorPickerPopover,
@@ -298,11 +298,90 @@ function MobileSelectionFloatingToolbar({
   );
 }
 
+/** 拖选、滚动或缩放停止后，等待这段时间再显示工具栏。 */
+const SETTLE_DELAY = 160;
+
+/**
+ * 选择过程与滚动过程中先隐藏工具栏，停下来一小段时间后再显示：
+ * 拖选时工具栏不会跟着乱跳，滚动时也不会和文字错位，重新显示时
+ * 坐标按最新选区重新计算。
+ */
+function useSelectionSettled(editor: Editor | null): boolean {
+  const [settled, setSettled] = useState(true);
+  useEffect(() => {
+    if (!editor) return undefined;
+    let timer = 0;
+    let dragging = false;
+    const hold = () => {
+      window.clearTimeout(timer);
+      setSettled(false);
+    };
+    const release = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setSettled(true), SETTLE_DELAY);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      // 只有编辑器内的按下才算开始选择；工具栏和拾色器上的点击不应隐藏工具栏。
+      if (!(event.target instanceof Node) || !editor.view.dom.contains(event.target)) return;
+      dragging = true;
+      hold();
+    };
+    const onPointerUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      release();
+    };
+    const onViewportChange = () => {
+      hold();
+      release();
+    };
+    const onSelectionUpdate = () => {
+      // 拖拽期间由 pointerup 决定何时显示，避免中途停顿就弹出。
+      if (dragging) return;
+      hold();
+      release();
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", onPointerUp, true);
+    // capture 捕获编辑器内部滚动容器的滚动，passive 不阻塞滚动。
+    window.addEventListener("scroll", onViewportChange, { capture: true, passive: true });
+    window.addEventListener("resize", onViewportChange);
+    editor.on("selectionUpdate", onSelectionUpdate);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", onPointerUp, true);
+      window.removeEventListener("scroll", onViewportChange, { capture: true });
+      window.removeEventListener("resize", onViewportChange);
+      editor.off("selectionUpdate", onSelectionUpdate);
+    };
+  }, [editor]);
+  return settled;
+}
+
+/** 桌面浮动工具栏：坐标在渲染期按当前选区计算，重新显示时即为最新位置。 */
+function DesktopSelectionFloatingToolbar({ editor }: { editor: Editor }) {
+  const position = selectionMenuPosition(editor);
+  return (
+    <div
+      className="fixed z-[60] w-max max-w-[calc(100vw-24px)] overflow-visible rounded-md border border-[#c9c9c9] bg-white/[0.98] p-[5px] shadow-[0_8px_24px_rgb(15_23_42/0.18)] -translate-x-1/2 -translate-y-[calc(100%+8px)]"
+      role="toolbar"
+      aria-label="选区浮动工具栏"
+      style={{ left: position.x, top: position.y }}
+    >
+      <FormatControls editor={editor} />
+    </div>
+  );
+}
+
 /**
  * 选区浮动格式工具栏（桌面与移动端两套样式）。
  * 位置在渲染期按当前 DOM 选区计算：selectionUpdate/transaction 触发
- * 的父级重渲染会自然刷新坐标，无需额外订阅；移动端由
- * {@link MobileSelectionFloatingToolbar} 在选区拖拽期间实时跟踪。
+ * 的父级重渲染会自然刷新坐标；选择、滚动与缩放期间由
+ * {@link useSelectionSettled} 先隐藏，停下来后按最新坐标显示；
+ * 移动端由 {@link MobileSelectionFloatingToolbar} 在选区拖拽期间实时跟踪。
  */
 export function SelectionFloatingToolbar({
   editor,
@@ -313,7 +392,8 @@ export function SelectionFloatingToolbar({
   mobile?: boolean;
   visible: boolean;
 }) {
-  if (!editor || !visible) return null;
+  const settled = useSelectionSettled(editor);
+  if (!editor || !visible || !settled) return null;
 
   if (mobile) {
     const mobilePosition = mobileSelectionMenuPosition(editor);
@@ -325,16 +405,5 @@ export function SelectionFloatingToolbar({
     );
   }
 
-  const position = selectionMenuPosition(editor);
-
-  return (
-    <div
-      className="fixed z-[60] w-max max-w-[calc(100vw-24px)] overflow-visible rounded-md border border-[#c9c9c9] bg-white/[0.98] p-[5px] shadow-[0_8px_24px_rgb(15_23_42/0.18)] -translate-x-1/2 -translate-y-[calc(100%+8px)]"
-      role="toolbar"
-      aria-label="选区浮动工具栏"
-      style={{ left: position.x, top: position.y }}
-    >
-      <FormatControls editor={editor} />
-    </div>
-  );
+  return <DesktopSelectionFloatingToolbar editor={editor} />;
 }
