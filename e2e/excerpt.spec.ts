@@ -178,6 +178,11 @@ async function assertExcerpt(excerpt: Locator, variant: Variant, body: string[],
   expect(metrics.font).toBe(metrics.hostFont);
   expect(metrics.indent).toBe(metrics.font * 2);
   await expect(excerpt).toHaveAttribute("data-empty-bubble", String(variant !== "fanqie"));
+  // 四种模板的阅读页统一为圆角矩形卡片。
+  const cardRadius = await paper.evaluate((element) =>
+    parseFloat(getComputedStyle(element).borderTopLeftRadius),
+  );
+  expect(cardRadius).toBeGreaterThan(0);
   const bubbles = await text.evaluateAll((elements) =>
     elements.map((element) => {
       const style = getComputedStyle(element, "::after");
@@ -187,6 +192,7 @@ async function assertExcerpt(excerpt: Locator, variant: Variant, body: string[],
         borderRadius: style.borderRadius,
         width: style.width,
         height: style.height,
+        float: style.float,
       };
     }),
   );
@@ -194,12 +200,28 @@ async function assertExcerpt(excerpt: Locator, variant: Variant, body: string[],
     if (variant !== "fanqie") {
       expect(bubble.content).toBe('""');
       expect(bubble.pointerEvents).toBe("none");
+      // 菠萝包与刺猬猫的段尾装饰仍浮动在栏宽右边缘，与书站一致。
+      expect(bubble.float).toBe(variant === "qidian" ? "none" : "right");
       if (variant === "ciweimao") {
         expect(bubble.borderRadius).toBe("50%");
         expect(bubble.width).toBe(bubble.height);
       }
     } else expect(["none", "normal"]).toContain(bubble.content);
   }
+  // 正文相对卡片的左右内缩必须相等：右侧不再为段尾装饰多留一栏。
+  const column = await text.first().evaluate((element) => {
+    const page = element.closest(".rt-reader-page") as HTMLElement;
+    const pageBox = page.getBoundingClientRect();
+    const paragraphStyle = getComputedStyle(element);
+    const paragraphBox = element.getBoundingClientRect();
+    const gutter = parseFloat(paragraphStyle.paddingInlineEnd);
+    return {
+      leftInset: Math.round(paragraphBox.left - pageBox.left),
+      rightInset: Math.round(pageBox.right - (paragraphBox.right - gutter)),
+    };
+  });
+  expect(column.leftInset).toBeGreaterThan(0);
+  expect(Math.abs(column.leftInset - column.rightInset)).toBeLessThanOrEqual(1);
   await assertProgress(excerpt, variant);
   await assertPlatform(excerpt, variant);
   await expect(
@@ -286,6 +308,31 @@ async function assertPlatform(excerpt: Locator, variant: Variant) {
       /^\d+\.\d{2}%$/,
     );
     await expect(footer.locator(".rt-reader-danmaku")).toHaveText("开启弹幕");
+    // 细轨道位于正文右边缘，段尾圆点的中心必须落在轨道上。
+    const dotCenter = await excerpt
+      .locator(".rt-novel-excerpt__content p")
+      .first()
+      .evaluate((element) => {
+        const pseudo = getComputedStyle(element, "::after");
+        const paragraph = getComputedStyle(element);
+        const box = element.getBoundingClientRect();
+        return (
+          box.right -
+          parseFloat(paragraph.paddingRight) -
+          parseFloat(pseudo.marginRight) -
+          parseFloat(pseudo.width) / 2
+        );
+      });
+    const trackCenter = await paper.locator(".rt-reader-viewport").evaluate((element) => {
+      const style = getComputedStyle(element);
+      const raw = style.getPropertyValue("--reader-track-inset").trim();
+      const offset = raw.endsWith("em")
+        ? parseFloat(raw) * parseFloat(style.fontSize)
+        : parseFloat(raw);
+      // 轨道是 1px 宽的背景，位置为 right <offset>，取其中心。
+      return element.getBoundingClientRect().right - offset - 0.5;
+    });
+    expect(Math.abs(dotCenter - trackCenter)).toBeLessThanOrEqual(1);
   }
   const decorations = paper.locator(".rt-reader-moon, .rt-reader-danmaku");
   for (const decoration of await decorations.all()) {

@@ -549,6 +549,7 @@
   --reader-heading-font: "Noto Serif SC Variable", "Songti SC", SimSun, serif;
   --reader-leading: 2.04;
   --reader-gap: 1.16em;
+  --reader-radius: 14px;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -556,7 +557,7 @@
   margin: 20px auto;
   padding: 0;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--reader-radius);
   background: transparent;
   color: var(--reader-ink);
   font-family: "Noto Serif SC Variable", "Songti SC", SimSun, serif;
@@ -587,7 +588,6 @@
   --reader-heading-font: KaiTi, STKaiti, "Kaiti SC", "Noto Serif SC Variable", serif;
   --reader-leading: 1.8;
   --reader-gap: 0.8em;
-  --reader-marker-gutter: 1.5em;
   font-family: var(--reader-heading-font);
 }
 .rt-novel-excerpt.rt-novel-excerpt--ciweimao {
@@ -599,8 +599,20 @@
   --reader-heading-font: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
   --reader-leading: 1.85;
   --reader-gap: 0.7em;
-  --reader-marker-gutter: 1.6em;
+  /* 轨道距视口右边缘的距离，以及正文与轨道之间的呼吸间距。 */
+  --reader-track-inset: 0.4em;
+  --reader-track-gap: 0.5em;
   font-family: var(--reader-heading-font);
+}
+/* 刺猬猫：轨道与呼吸间距占用栏宽内 0.9em，页内边距等量补回，正文左右留白保持相等。 */
+.rt-novel-excerpt.rt-novel-excerpt--ciweimao .rt-reader-page {
+  padding-right: calc(6.25% - var(--reader-track-inset) - var(--reader-track-gap));
+}
+.rt-novel-excerpt--ciweimao
+  .rt-reader-page
+  > :is(header.rt-reader-topline, footer.rt-reader-bottomline) {
+  /* 首尾行同步内缩，避免页内边距补偿后右侧显得过窄。 */
+  margin-inline-end: calc(var(--reader-track-inset) + var(--reader-track-gap));
 }
 .rt-reader-page {
   display: flex;
@@ -608,6 +620,7 @@
   box-sizing: border-box;
   min-width: 0;
   padding: 20px 6.25% 12px;
+  border-radius: var(--reader-radius);
   background: var(--reader-paper);
 }
 .rt-reader-page > .rt-reader-book-title {
@@ -831,28 +844,11 @@
   height: 100%;
 }
 
-/* 装饰留在栏宽内部，段尾浮动随原生分栏流转，不伸出视口。 */
-.rt-novel-excerpt:is(.rt-novel-excerpt--sfacg, .rt-novel-excerpt--ciweimao)
-  .rt-novel-excerpt__content
-  > p,
-.rt-novel-excerpt:is(.rt-novel-excerpt--sfacg, .rt-novel-excerpt--ciweimao)
-  .rt-novel-excerpt__content
-  > [data-node-view-content-react]
-  > p {
-  box-sizing: border-box;
-  padding-inline-end: var(--reader-marker-gutter);
-}
-.rt-novel-excerpt:is(
-    .rt-novel-excerpt--sfacg,
-    .rt-novel-excerpt--ciweimao
-  )[data-empty-bubble="true"]
+.rt-novel-excerpt.rt-novel-excerpt--sfacg[data-empty-bubble="true"]
   .rt-reader-page
   .rt-novel-excerpt__content
   > p:not(:empty):not(:has(> br:only-child))::after,
-.rt-novel-excerpt:is(
-    .rt-novel-excerpt--sfacg,
-    .rt-novel-excerpt--ciweimao
-  )[data-empty-bubble="true"]
+.rt-novel-excerpt.rt-novel-excerpt--sfacg[data-empty-bubble="true"]
   .rt-reader-page
   .rt-novel-excerpt__content
   > [data-node-view-content-react]
@@ -860,7 +856,7 @@
   float: right;
   width: 1.1em;
   height: 0.85em;
-  margin: 0.475em -1.4em 0 0.3em;
+  margin: 0.475em 0 0 0.3em;
   text-indent: 0;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 70'%3E%3Cpath d='M4 5H76Q86 5 86 15V56Q86 66 76 66H30Q20 66 20 56V19Z' fill='none' stroke='%23858585' stroke-width='2' stroke-linejoin='round'/%3E%3Cg fill='%23858585'%3E%3Ccircle cx='39' cy='37' r='4'/%3E%3Ccircle cx='53' cy='37' r='4'/%3E%3Ccircle cx='67' cy='37' r='4'/%3E%3C/g%3E%3C/svg%3E");
 }
@@ -873,14 +869,24 @@
   .rt-novel-excerpt__content
   > [data-node-view-content-react]
   > p:not(:empty):not(:has(> br:only-child))::after {
+  float: right;
   width: 0.6em;
   height: 0.6em;
-  margin: 0.625em -1.2em 0 0.6em;
+  /* 右移半个直径 + 呼吸间距，使圆点中心正好落在细轨道上。 */
+  margin: 0.625em calc(-1 * (var(--reader-track-gap) + 0.3em)) 0 0.4em;
   border-radius: 50%;
   background: #d9d9d9;
 }
 .rt-novel-excerpt--ciweimao .rt-reader-viewport {
-  background: linear-gradient(#ebebeb, #ebebeb) right 0.7em top / 1px 100% no-repeat;
+  /* 细轨道从正文右边缘再往右让出呼吸间距，圆点中心与其对齐。 */
+  background: linear-gradient(#ebebeb, #ebebeb) right var(--reader-track-inset) top / 1px 100%
+    no-repeat;
+}
+.rt-novel-excerpt--ciweimao .rt-novel-excerpt__content > p,
+.rt-novel-excerpt--ciweimao .rt-novel-excerpt__content > [data-node-view-content-react] > p {
+  box-sizing: border-box;
+  /* 右内边距 = 轨道内缩 + 呼吸间距，正文右边缘仍与左侧页内边距对齐。 */
+  padding-inline-end: calc(var(--reader-track-inset) + var(--reader-track-gap));
 }
 .rt-novel-excerpt:is(.rt-novel-excerpt--sfacg, .rt-novel-excerpt--ciweimao)
   .rt-reader-page
