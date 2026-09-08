@@ -2,7 +2,11 @@ import type { MarkConfig, NodeConfig } from "@tiptap/core";
 import { sanitizeUrl } from "./sanitize.js";
 import { normalizeNovelExcerptVariant } from "./novel-excerpt-variant.js";
 import { parseInteger, parseJsonArray } from "./helpers.js";
-import { readerTop, readerBottom, READER_PLATFORM_POLICY } from "./reader-excerpt.js";
+import {
+  readerTop,
+  readerBottom,
+  READER_PLATFORM_POLICY,
+} from "./reader-excerpt.js";
 
 /**
  * 共享的节点/标记规格（单一权威来源）。
@@ -37,12 +41,14 @@ export const richImageNodeSpec = {
       alt: {
         default: "",
         parseHTML: (element: HTMLElement) =>
-          element.querySelector("img")?.getAttribute("alt")?.slice(0, 500) ?? "",
+          element.querySelector("img")?.getAttribute("alt")?.slice(0, 500) ??
+          "",
       },
       caption: {
         default: "",
         parseHTML: (element: HTMLElement) =>
-          element.querySelector("figcaption")?.textContent?.slice(0, 1_000) ?? "",
+          element.querySelector("figcaption")?.textContent?.slice(0, 1_000) ??
+          "",
       },
       align: {
         default: "center",
@@ -74,7 +80,9 @@ export const richImageNodeSpec = {
           node.attrs.align === "left" || node.attrs.align === "right"
             ? String(node.attrs.align)
             : "center",
-        "data-width": String(parseInteger(String(node.attrs.width), 100, 10, 100)),
+        "data-width": String(
+          parseInteger(String(node.attrs.width), 100, 10, 100),
+        ),
         style: `width: ${parseInteger(String(node.attrs.width), 100, 10, 100)}%;`,
       },
       ["img", { src, alt: String(node.attrs.alt ?? ""), draggable: "false" }],
@@ -141,7 +149,9 @@ export const diceRollNodeSpec = {
         "data-expression": String(node.attrs.expression),
         "data-rolls": JSON.stringify(node.attrs.rolls),
         "data-total": String(node.attrs.total),
-        "data-reroll-of": node.attrs.rerollOf ? String(node.attrs.rerollOf) : "",
+        "data-reroll-of": node.attrs.rerollOf
+          ? String(node.attrs.rerollOf)
+          : "",
         contenteditable: "false",
       },
       `${String(node.attrs.expression)} = ${String(node.attrs.total)}`,
@@ -180,36 +190,46 @@ export const novelExcerptNodeSpec = {
       },
       readerTime: {
         default: "",
-        parseHTML: (element: HTMLElement) => element.getAttribute("data-reader-time")?.slice(0, 16) ?? "",
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("data-reader-time")?.slice(0, 16) ?? "",
       },
       batteryLevel: {
         default: 100,
-        parseHTML: (element: HTMLElement) => parseInteger(element.getAttribute("data-battery-level"), 100, 0, 100),
+        parseHTML: (element: HTMLElement) =>
+          parseInteger(element.getAttribute("data-battery-level"), 100, 0, 100),
       },
       pageLabel: {
         default: "1/1",
-        parseHTML: (element: HTMLElement) => element.getAttribute("data-page-label")?.slice(0, 40) ?? "1/1",
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("data-page-label")?.slice(0, 40) ?? "1/1",
       },
       progressLabel: {
         default: "",
-        parseHTML: (element: HTMLElement) => element.getAttribute("data-progress-label")?.slice(0, 24) ?? "",
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("data-progress-label")?.slice(0, 24) ?? "",
       },
       headerLabel: {
         default: "",
-        parseHTML: (element: HTMLElement) => element.getAttribute("data-header-label")?.slice(0, 80) ?? "",
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("data-header-label")?.slice(0, 80) ?? "",
       },
       variant: {
         default: "fanqie",
-        parseHTML: (element: HTMLElement) => normalizeNovelExcerptVariant(element.getAttribute("data-variant")),
+        parseHTML: (element: HTMLElement) =>
+          normalizeNovelExcerptVariant(element.getAttribute("data-variant")),
       },
     };
   },
   parseHTML() {
-    return [{
-      tag: 'aside[data-node-type="novel-excerpt"]',
-      contentElement: (element: HTMLElement) =>
-        element.querySelector<HTMLElement>(":scope > .rt-reader-page > .rt-reader-viewport > .rt-novel-excerpt__content, :scope > .rt-reader-page > .rt-novel-excerpt__content, :scope > .rt-novel-excerpt__content") ?? element,
-    }];
+    return [
+      {
+        tag: 'aside[data-node-type="novel-excerpt"]',
+        contentElement: (element: HTMLElement) =>
+          element.querySelector<HTMLElement>(
+            ":scope > .rt-reader-page > .rt-reader-viewport > .rt-novel-excerpt__content, :scope > .rt-reader-page > .rt-novel-excerpt__content, :scope > .rt-novel-excerpt__content",
+          ) ?? element,
+      },
+    ];
   },
   renderHTML({ node }: { node: { attrs: Record<string, unknown> } }) {
     const variant = normalizeNovelExcerptVariant(node.attrs.variant);
@@ -229,9 +249,17 @@ export const novelExcerptNodeSpec = {
         "data-page-label": String(attrs.pageLabel ?? "1/1"),
         "data-progress-label": String(attrs.progressLabel ?? ""),
         "data-header-label": String(attrs.headerLabel ?? ""),
-        "data-empty-bubble": String(READER_PLATFORM_POLICY[variant].emptyBubble),
+        "data-empty-bubble": String(
+          READER_PLATFORM_POLICY[variant].emptyBubble,
+        ),
       },
-      ["div", { class: "rt-reader-page" }, ...readerTop(attrs), ["div", { class: "rt-novel-excerpt__content" }, 0], readerBottom(attrs)],
+      [
+        "div",
+        { class: "rt-reader-page" },
+        ...readerTop(attrs),
+        ["div", { class: "rt-novel-excerpt__content" }, 0],
+        readerBottom(attrs),
+      ],
     ];
   },
 } satisfies NodeConfig;
@@ -303,10 +331,10 @@ export const replyGateNodeSpec = {
           element.getAttribute("data-gate-id")?.slice(0, 128) ?? "",
       },
       prompt: {
-        default: "Reply to view this content",
+        default: "回复后查看此内容",
         parseHTML: (element: HTMLElement) =>
           element.getAttribute("data-prompt")?.slice(0, 300) ??
-          "Reply to view this content",
+          "回复后查看此内容",
       },
     };
   },
@@ -354,7 +382,12 @@ export const attachmentRefNodeSpec = {
       size: {
         default: 0,
         parseHTML: (element: HTMLElement) =>
-          parseInteger(element.getAttribute("data-size"), 0, 0, Number.MAX_SAFE_INTEGER),
+          parseInteger(
+            element.getAttribute("data-size"),
+            0,
+            0,
+            Number.MAX_SAFE_INTEGER,
+          ),
       },
       priceCoins: {
         default: 0,
@@ -486,7 +519,12 @@ export const longTextBlockNodeSpec = {
       end: {
         default: null,
         parseHTML: (element: HTMLElement) =>
-          parseInteger(element.getAttribute("data-end"), null, 0, 10_000_000_000),
+          parseInteger(
+            element.getAttribute("data-end"),
+            null,
+            0,
+            10_000_000_000,
+          ),
       },
     };
   },

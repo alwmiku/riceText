@@ -116,7 +116,7 @@ describe("useAutosave", () => {
     expect(saveDocumentStepsMock.mock.calls[0]![1].steps.length).toBeGreaterThan(0);
     expect(result.current).toMatchObject({ state: "saved", revision: 19 });
     expect(localStorage.getItem("ricetext:draft:demo-post")).toBeNull();
-    expect(onSaved).toHaveBeenCalledWith(savedDocument(19));
+    expect(onSaved).toHaveBeenCalledWith(savedDocument(19), "chapter-1");
   });
 
   it("正文没有服务器差异时显式保存不发送空请求", async () => {
@@ -209,6 +209,78 @@ describe("useAutosave", () => {
       baseRevision: 19,
     });
     expect(result.current.revision).toBe(20);
+  });
+
+  it("切换文章取消旧队列项，新会话仍串行并使用自身 revision", async () => {
+    const first = deferred<DocumentEnvelope>();
+    saveDocumentStepsMock.mockReturnValueOnce(first.promise);
+    const onSaved = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ document, content, generation }) => useAutosave({ document, content, generation, onSaved }),
+      { initialProps: { document: defaultDocument, content: changedContent, generation: 1 } },
+    );
+    let firstSave!: Promise<boolean>;
+    let queuedSave!: Promise<boolean>;
+    act(() => {
+      firstSave = result.current.flush(changedContent, 1);
+      queuedSave = result.current.flush(newestContent, 2);
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(saveDocumentStepsMock).toHaveBeenCalledTimes(1);
+    const nextDocument = { ...savedDocument(7, initialContent), id: "other" };
+    rerender({ document: nextDocument, content: changedContent, generation: 1 });
+    saveDocumentStepsMock.mockResolvedValueOnce({ ...nextDocument, revision: 8, content: changedContent });
+    let nextSave!: Promise<boolean>;
+    act(() => { nextSave = result.current.flush(); });
+    expect(saveDocumentStepsMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      first.resolve(savedDocument(19));
+      expect(await firstSave).toBe(false);
+      expect(await queuedSave).toBe(false);
+      expect(await nextSave).toBe(true);
+    });
+    expect(saveDocumentStepsMock).toHaveBeenCalledTimes(2);
+    expect(saveDocumentStepsMock.mock.calls[1]![0]).toBe("other");
+    expect(saveDocumentStepsMock.mock.calls[1]![1].baseRevision).toBe(7);
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(result.current.revision).toBe(8);
+  });
+
+  it("卸载后的保存结果不会回调宿主或清除草稿", async () => {
+    const first = deferred<DocumentEnvelope>();
+    saveDocumentStepsMock.mockReturnValueOnce(first.promise);
+    const onSaved = vi.fn();
+    const { result, unmount } = renderHook(() => useAutosave({
+      document: defaultDocument, content: changedContent, generation: 1, onSaved,
+    }));
+    act(() => { result.current.saveLocal(changedContent, 1); });
+    let pending!: Promise<boolean>;
+    act(() => { pending = result.current.flush(); });
+    await act(async () => { await Promise.resolve(); });
+    unmount();
+    first.resolve(savedDocument(19));
+    expect(await pending).toBe(false);
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(localStorage.getItem("ricetext:draft:demo-post")).not.toBeNull();
+  });
+
+  it("显式接纳 rollback 基线后忽略旧保存结果", async () => {
+    const first = deferred<DocumentEnvelope>();
+    saveDocumentStepsMock.mockReturnValueOnce(first.promise);
+    const onSaved = vi.fn();
+    const { result } = renderHook(() => useAutosave({
+      document: defaultDocument, content: changedContent, generation: 1, onSaved,
+    }));
+    let pending!: Promise<boolean>;
+    act(() => { pending = result.current.flush(); });
+    await act(async () => { await Promise.resolve(); });
+    act(() => result.current.acceptSaved(savedDocument(20, newestContent), newestContent, 2));
+    await act(async () => {
+      first.resolve(savedDocument(19));
+      expect(await pending).toBe(false);
+    });
+    expect(result.current.revision).toBe(20);
+    expect(onSaved).toHaveBeenCalledTimes(1);
   });
 
   it("409 时保留本地草稿并进入冲突状态", async () => {

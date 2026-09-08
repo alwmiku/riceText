@@ -5,7 +5,7 @@ import {
   convertLongTextBlocksToChapters,
   type JSONContent,
 } from "@ricetext/document-core";
-import { chapterStorageId } from "@ricetext/server-core";
+import { chapterStorageId, decideChapterUploadWrite, serializeChapterUploadManifest } from "@ricetext/server-core";
 import { HttpError } from "../errors.js";
 
 export class ChapterService {
@@ -321,10 +321,11 @@ export class ChapterService {
       .prepare("SELECT 1 AS found FROM documents WHERE id = ?")
       .get(documentId);
     if (!document) throw new HttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
+    this.#db.prepare("UPDATE chapter_uploads SET publish_token=NULL,publish_expires_at=NULL WHERE document_id=? AND status='uploading' AND julianday(publish_expires_at)<=julianday('now')").run(documentId);
     let existing = this.#db
       .prepare(
         "SELECT id, status FROM chapter_uploads " +
-          "WHERE document_id = ? AND manifest_hash = ? AND status = 'uploading' " +
+          "WHERE document_id = ? AND manifest_hash = ? AND status = 'uploading' AND base_generation=(SELECT generation FROM chapter_generations WHERE document_id=chapter_uploads.document_id) " +
           "ORDER BY created_at DESC LIMIT 1",
       )
       .get(documentId, manifestHash) as
@@ -333,7 +334,7 @@ export class ChapterService {
     if (!existing) {
       const recoverable = this.#db
         .prepare(
-          "SELECT id FROM chapter_uploads WHERE document_id=? AND manifest_hash=? AND status='aborted' ORDER BY created_at DESC LIMIT 1",
+          "SELECT id FROM chapter_uploads WHERE document_id=? AND manifest_hash=? AND status='aborted' AND publish_token IS NULL AND base_generation=(SELECT generation FROM chapter_generations WHERE document_id=chapter_uploads.document_id) ORDER BY created_at DESC LIMIT 1",
         )
         .get(documentId, manifestHash) as { id: string } | undefined;
       if (recoverable) {
@@ -352,6 +353,8 @@ export class ChapterService {
         )
         .run(documentId, uploadId, manifestHash, totalChapters, new Date().toISOString());
     }
+    const claimed = this.#db.prepare("SELECT 1 FROM chapter_uploads WHERE document_id=? AND id=? AND publish_token IS NOT NULL").get(documentId, uploadId);
+    if (claimed) throw new HttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话正在由其他请求发布");
     const staged = this.#db
       .prepare(
         "SELECT chapter_id FROM chapter_upload_items " +
@@ -383,7 +386,7 @@ export class ChapterService {
     const upload = this.#db
       .prepare(
         "SELECT total_chapters FROM chapter_uploads " +
-          "WHERE document_id = ? AND id = ? AND status = 'uploading'",
+          "WHERE document_id = ? AND id = ? AND status = 'uploading' AND publish_token IS NULL",
       )
       .get(documentId, uploadId) as { total_chapters: number } | undefined;
     if (!upload) throw new HttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话不存在或已结束");
@@ -416,9 +419,10 @@ export class ChapterService {
         const active = this.#db
           .prepare("SELECT revision, content_hash, hidden FROM chapters WHERE document_id = ? AND id = ?")
           .get(documentId, item.id) as { revision: number; content_hash: string | null; hidden: number } | undefined;
-        const unchanged =
-          (active?.revision ?? 0) > 0 && active?.content_hash === item.hash;
-        const revision = unchanged ? active.revision : item.baseRevision + 1;
+        const decision = decideChapterUploadWrite(active, item);
+        if (decision.status === "conflict") throw new HttpError(409, "CHAPTER_REVISION_CONFLICT", "章节已被其他修改更新", { chapterId: item.id, currentRevision: decision.currentRevision });
+        const unchanged = decision.status === "unchanged";
+        const revision = decision.revision;
         insert.run(documentId, uploadId, item.id, item.title, item.volumeTitle, item.order, item.hash, item.baseRevision, revision, JSON.stringify(item.content), active?.hidden ?? 0);
         results.push({ id: item.id, title: item.title, order: item.order, revision, status: unchanged ? "unchanged" as const : "saved" as const });
       }
@@ -432,23 +436,40 @@ export class ChapterService {
   }
 
   completeUpload(documentId: string, uploadId: string) {
+    // 在读取任何用于判断发布安全性的数据之前，先获取写锁。
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = this.#completeUpload(documentId, uploadId);
+      this.#db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.#db.exec("ROLLBACK");
+      if (error instanceof Error && error.message.includes("CHAPTER_REVISION_CONFLICT")) {
+        throw new HttpError(409, "CHAPTER_REVISION_CONFLICT", "发布前章节基线发生变化");
+      }
+      throw error;
+    }
+  }
+
+  #completeUpload(documentId: string, uploadId: string) {
     const upload = this.#db
       .prepare("SELECT manifest_hash, total_chapters, status, published_at FROM chapter_uploads WHERE document_id = ? AND id = ?")
       .get(documentId, uploadId) as { manifest_hash: string; total_chapters: number; status: string; published_at: string | null } | undefined;
     if (!upload) throw new HttpError(404, "CHAPTER_UPLOAD_NOT_FOUND", "上传会话不存在");
     if (upload.status === "published") return { uploadId, manifestHash: upload.manifest_hash, totalChapters: upload.total_chapters, publishedAt: upload.published_at! };
     if (upload.status !== "uploading") throw new HttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话正在由其他请求发布");
-    this.#db.prepare("UPDATE chapter_uploads SET status='aborted' WHERE document_id=? AND id=? AND status='uploading'").run(documentId, uploadId);
-    const reopen = () => this.#db.prepare("UPDATE chapter_uploads SET status='uploading' WHERE document_id=? AND id=? AND status='aborted'").run(documentId, uploadId);
+    const token = randomUUID();
+    const claimed = this.#db.prepare("UPDATE chapter_uploads SET publish_token=?,publish_expires_at=? WHERE document_id=? AND id=? AND status='uploading' AND (publish_token IS NULL OR julianday(publish_expires_at)<=julianday('now'))")
+      .run(token, new Date(Date.now() + 60_000).toISOString(), documentId, uploadId);
+    if (claimed.changes !== 1) throw new HttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话正在由其他请求发布");
     const items = this.#db
       .prepare("SELECT chapter_id, title, volume_title, sort_order, content_hash, base_revision FROM chapter_upload_items WHERE document_id = ? AND upload_id = ? ORDER BY sort_order")
       .all(documentId, uploadId) as Array<{ chapter_id: string; title: string; volume_title: string; sort_order: number; content_hash: string; base_revision: number }>;
     const invalidOrder = items.findIndex((item, index) => item.sort_order !== index);
     const manifestHash = createHash("sha256")
-      .update(JSON.stringify(items.map((item) => ({ id: item.chapter_id, title: item.title, volumeTitle: item.volume_title, order: item.sort_order, hash: item.content_hash }))))
+      .update(serializeChapterUploadManifest(items.map((item) => ({ id: item.chapter_id, title: item.title, volumeTitle: item.volume_title, order: item.sort_order, hash: item.content_hash }))))
       .digest("hex");
     if (items.length !== upload.total_chapters || invalidOrder >= 0 || manifestHash !== upload.manifest_hash) {
-      reopen();
       throw new HttpError(409, "CHAPTER_UPLOAD_INCOMPLETE", "上传章节数量、顺序或清单哈希不完整", { staged: items.length, expected: upload.total_chapters, invalidOrder });
     }
     const conflict = this.#db.prepare(
@@ -459,28 +480,21 @@ export class ChapterService {
       "AND COALESCE(chapter.revision, 0)<>item.base_revision LIMIT 1",
     ).get(documentId, uploadId) as { chapter_id: string; base_revision: number; current_revision: number } | undefined;
     if (conflict) {
-      reopen();
       throw new HttpError(409, "CHAPTER_REVISION_CONFLICT", "发布前章节基线发生变化", { chapterId: conflict.chapter_id, baseRevision: conflict.base_revision, currentRevision: conflict.current_revision });
     }
     const publishedAt = new Date().toISOString();
-    this.#db.exec("BEGIN IMMEDIATE");
-    try {
-      this.#db.prepare("UPDATE chapters SET sort_order = -sort_order - 1 WHERE document_id = ?").run(documentId);
-      this.#db.prepare(
-        "INSERT INTO chapters(id, title, volume_title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden) " +
-          "SELECT chapter_id, title, volume_title, sort_order, document_id, revision, content_json, content_hash, ?, hidden " +
-          "FROM chapter_upload_items WHERE document_id = ? AND upload_id = ? " +
-          "ON CONFLICT(document_id, id) DO UPDATE SET title=excluded.title, volume_title=excluded.volume_title, sort_order=excluded.sort_order, revision=excluded.revision, content_json=excluded.content_json, content_hash=excluded.content_hash, updated_at=excluded.updated_at, hidden=excluded.hidden",
-      ).run(publishedAt, documentId, uploadId);
-      this.#db.prepare("DELETE FROM chapters WHERE document_id = ? AND id NOT IN (SELECT chapter_id FROM chapter_upload_items WHERE document_id = ? AND upload_id = ?)").run(documentId, documentId, uploadId);
-      this.#db.prepare("UPDATE chapter_uploads SET status='published', published_at=? WHERE document_id=? AND id=? AND status='aborted'").run(publishedAt, documentId, uploadId);
-      this.#db.exec("COMMIT");
-      return { uploadId, manifestHash, totalChapters: items.length, publishedAt };
-    } catch (error) {
-      this.#db.exec("ROLLBACK");
-      reopen();
-      throw error;
-    }
+    this.#db.prepare("INSERT INTO chapter_publish_guards(document_id,upload_id,token) VALUES(?,?,?)").run(documentId, uploadId, token);
+    this.#db.prepare("UPDATE chapters SET sort_order = -sort_order - 1 WHERE document_id = ?").run(documentId);
+    this.#db.prepare(
+      "INSERT INTO chapters(id, title, volume_title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden) " +
+        "SELECT chapter_id, title, volume_title, sort_order, document_id, revision, content_json, content_hash, ?, hidden " +
+        "FROM chapter_upload_items WHERE document_id = ? AND upload_id = ? " +
+        "ON CONFLICT(document_id, id) DO UPDATE SET title=excluded.title, volume_title=excluded.volume_title, sort_order=excluded.sort_order, revision=excluded.revision, content_json=excluded.content_json, content_hash=excluded.content_hash, updated_at=excluded.updated_at, hidden=excluded.hidden",
+    ).run(publishedAt, documentId, uploadId);
+    this.#db.prepare("DELETE FROM chapters WHERE document_id = ? AND id NOT IN (SELECT chapter_id FROM chapter_upload_items WHERE document_id = ? AND upload_id = ?)").run(documentId, documentId, uploadId);
+    this.#db.prepare("UPDATE chapter_uploads SET status='published', published_at=?, publish_token=NULL, publish_expires_at=NULL WHERE document_id=? AND id=? AND publish_token=?").run(publishedAt, documentId, uploadId, token);
+    this.#db.prepare("DELETE FROM chapter_publish_guards WHERE token=?").run(token);
+    return { uploadId, manifestHash, totalChapters: items.length, publishedAt };
   }
 
   /**

@@ -13,7 +13,12 @@ import { TextAlign } from "@tiptap/extension-text-align";
 import { FontSize, TextStyle } from "@tiptap/extension-text-style";
 import { Underline } from "@tiptap/extension-underline";
 import { StarterKit } from "@tiptap/starter-kit";
-import { sanitizeUrl } from "./sanitize.js";
+import {
+  ALLOWED_FONT_FAMILIES,
+  sanitizeColor,
+  sanitizeFontSize,
+  sanitizeUrl,
+} from "./sanitize.js";
 import { sharedMarkSpecs, sharedNodeSpecs } from "./nodes.js";
 import { ParagraphIndentAttributes } from "./paragraph-indent.js";
 
@@ -49,8 +54,28 @@ export const chapterStartExtension = Extension.create({
   },
 });
 
+function parseAllowedFontFamily(element: HTMLElement): string | null {
+  const raw = element.style.fontFamily?.trim() ?? "";
+  if (!raw) return null;
+  const firstFamily =
+    raw
+      .split(",")[0]
+      ?.trim()
+      .replace(/^["']+|["']+$/g, "") ?? "";
+  return (ALLOWED_FONT_FAMILIES as readonly string[]).includes(firstFamily)
+    ? firstFamily
+    : null;
+}
+
+function parseAllowedFontSize(element: HTMLElement): string | null {
+  const raw = element.style.fontSize?.trim() ?? "";
+  const match = raw.match(/^(\d+)px$/u);
+  if (!match) return null;
+  return sanitizeFontSize(match[1]);
+}
+
 /**
- * 服务端与编辑器共用的规范扩展清单（无 React 依赖）。
+ * 服务端与编辑器共用的唯一持久化基础扩展清单（无 React 依赖）。
  * 自定义节点/标记来自 {@link sharedNodeSpecs}/{@link sharedMarkSpecs}，
  * 与 editor-core 的 UI 扩展消费同一批规格常量。
  */
@@ -69,8 +94,7 @@ export function createDocumentExtensions(
       HTMLAttributes: { rel: "noopener noreferrer nofollow", target: "_blank" },
     }).extend({
       // 持久化契约（DOCUMENT_MARK_ATTRIBUTES）只接受 href/target/rel：
-      // 与 editor-core 的 Link 配置保持一致，去掉 Tiptap 默认的
-      // class/title 属性，保证服务端 schema 与编辑器 schema 完全一致。
+      // 去掉 Tiptap 默认的 class/title，编辑器直接复用这里的定义。
       addAttributes() {
         return {
           href: {
@@ -83,9 +107,64 @@ export function createDocumentExtensions(
       },
     }),
     TextStyle,
-    Color.configure({ types: ["textStyle"] }),
-    FontFamily.configure({ types: ["textStyle"] }),
-    FontSize.configure({ types: ["textStyle"] }),
+    Color.extend({
+      addGlobalAttributes() {
+        return [
+          {
+            types: this.options.types,
+            attributes: {
+              color: {
+                default: null,
+                parseHTML: (element) =>
+                  sanitizeColor(element.style.color ?? ""),
+                renderHTML: (attributes) =>
+                  attributes.color
+                    ? { style: `color: ${attributes.color}` }
+                    : {},
+              },
+            },
+          },
+        ];
+      },
+    }).configure({ types: ["textStyle"] }),
+    FontFamily.extend({
+      addGlobalAttributes() {
+        return [
+          {
+            types: this.options.types,
+            attributes: {
+              fontFamily: {
+                default: null,
+                parseHTML: (element) => parseAllowedFontFamily(element),
+                renderHTML: (attributes) =>
+                  attributes.fontFamily
+                    ? { style: `font-family: ${attributes.fontFamily}` }
+                    : {},
+              },
+            },
+          },
+        ];
+      },
+    }).configure({ types: ["textStyle"] }),
+    FontSize.extend({
+      addGlobalAttributes() {
+        return [
+          {
+            types: this.options.types,
+            attributes: {
+              fontSize: {
+                default: null,
+                parseHTML: (element) => parseAllowedFontSize(element),
+                renderHTML: (attributes) =>
+                  attributes.fontSize
+                    ? { style: `font-size: ${attributes.fontSize}` }
+                    : {},
+              },
+            },
+          },
+        ];
+      },
+    }).configure({ types: ["textStyle"] }),
     TextAlign.configure({
       types: ["heading", "paragraph", "listItem"],
       alignments: ["left", "center", "right", "justify"],

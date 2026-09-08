@@ -1,21 +1,30 @@
 import { expect, test } from '@playwright/test';
 
 test('三种编辑布局共用同一正文', async ({ page }) => {
+  // 固定演示文章，避免继承前序用例创建文章后的默认排序。
+  await page.addInitScript(() => {
+    localStorage.setItem('ricetext:selected-document', 'demo-post');
+  });
   await page.goto('/compose');
-  await expect(page.getByRole('heading', { name: '发帖与创作工作台' })).toBeVisible();
+  // 首次访问会懒加载编辑器路由及其依赖；仅为工作区启动预留冷编译时间。
+  await expect(page.getByRole('heading', { name: '发帖与创作工作台' })).toBeVisible({ timeout: 20_000 });
   const editor = page.locator('.ProseMirror');
   await expect(editor).toBeVisible();
-  const initialText = await editor.textContent();
+  await expect(editor).toHaveAttribute('contenteditable', 'true');
+  await expect(editor).not.toHaveText('');
+  const initialText = (await editor.textContent())!;
 
   await page.getByRole('button', { name: /极简/ }).click();
   await expect(page.getByRole('button', { name: '发布回复' })).toBeVisible();
-  await expect(page.locator('.ProseMirror')).toContainText((initialText ?? '').slice(0, 6));
+  await expect(editor).toHaveText(initialText);
 
   await page.getByRole('button', { name: /完整/ }).click();
   await expect(page.getByRole('toolbar', { name: '富文本工具栏' })).toBeVisible();
+  await expect(editor).toHaveText(initialText);
 
   await page.getByRole('button', { name: /移动/ }).click();
   await expect(page.getByRole('button', { name: '更多工具' })).toBeVisible();
+  await expect(editor).toHaveText(initialText);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });

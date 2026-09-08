@@ -1,6 +1,6 @@
-import type { JSONContent } from '@tiptap/core'
-import { normalizeNovelExcerptVariant } from './novel-excerpt-variant.js'
-import { isParagraphIndent } from './paragraph-indent.js'
+import type { JSONContent } from "@tiptap/core";
+import { normalizeNovelExcerptVariant } from "./novel-excerpt-variant.js";
+import { isParagraphIndent } from "./paragraph-indent.js";
 import {
   ALLOWED_DOCUMENT_FONT_FAMILIES,
   ALLOWED_DOCUMENT_FONT_SIZES,
@@ -8,7 +8,7 @@ import {
   DOCUMENT_NODE_ATTRIBUTES,
   MAX_DOCUMENT_DEPTH as POLICY_MAX_DOCUMENT_DEPTH,
   MAX_DOCUMENT_NODES as POLICY_MAX_DOCUMENT_NODES,
-} from '@ricetext/contracts'
+} from "@ricetext/contracts";
 
 import type {
   AttachmentReferenceAttributes,
@@ -23,79 +23,129 @@ import type {
   PollReferenceAttributes,
   ReplyGateAttributes,
   RichImageAttributes,
-} from './types.js'
+} from "./types.js";
 
 /** 单个文档中可接受的 JSON 节点最大数量。 */
-export const MAX_DOCUMENT_NODES = POLICY_MAX_DOCUMENT_NODES
+export const MAX_DOCUMENT_NODES = POLICY_MAX_DOCUMENT_NODES;
 
 /** 净化器可接受的最大嵌套深度。 */
-export const MAX_DOCUMENT_DEPTH = POLICY_MAX_DOCUMENT_DEPTH
+export const MAX_DOCUMENT_DEPTH = POLICY_MAX_DOCUMENT_DEPTH;
 
 /** `textStyle` 可持久化的字体族。 */
-export const ALLOWED_FONT_FAMILIES = ALLOWED_DOCUMENT_FONT_FAMILIES
+export const ALLOWED_FONT_FAMILIES = ALLOWED_DOCUMENT_FONT_FAMILIES;
 
 /** `textStyle` 可持久化的像素字号。 */
-export const ALLOWED_FONT_SIZES = ALLOWED_DOCUMENT_FONT_SIZES
+export const ALLOWED_FONT_SIZES = ALLOWED_DOCUMENT_FONT_SIZES;
 
-const allowedFontSet = new Set<string>(ALLOWED_FONT_FAMILIES)
-const allowedFontSizeSet = new Set<number>(ALLOWED_FONT_SIZES)
-const allowedSimpleMarks = new Set(['bold', 'italic', 'underline', 'strike', 'code', 'spoiler'])
-const allowedNodes = new Set(Object.keys(DOCUMENT_NODE_ATTRIBUTES))
+const allowedFontSet = new Set<string>(ALLOWED_FONT_FAMILIES);
+const allowedFontSizeSet = new Set<number>(ALLOWED_FONT_SIZES);
+const allowedSimpleMarks = new Set([
+  "bold",
+  "italic",
+  "underline",
+  "strike",
+  "code",
+  "spoiler",
+]);
+const allowedNodes = new Set(Object.keys(DOCUMENT_NODE_ATTRIBUTES));
 
-const blockNodes = new Set(['paragraph', 'heading', 'bulletList', 'orderedList', 'blockquote', 'codeBlock', 'horizontalRule', 'richImage', 'novelExcerpt', 'replyGate', 'attachmentRef', 'pollRef', 'longTextBlock'])
-const inlineNodes = new Set(['text', 'hardBreak', 'inlineCommentAnchor', 'diceRoll', 'mention'])
-const atomNodes = new Set(['hardBreak', 'horizontalRule', 'inlineCommentAnchor', 'richImage', 'diceRoll', 'mention', 'attachmentRef', 'pollRef', 'longTextBlock'])
+const blockNodes = new Set([
+  "paragraph",
+  "heading",
+  "bulletList",
+  "orderedList",
+  "blockquote",
+  "codeBlock",
+  "horizontalRule",
+  "richImage",
+  "novelExcerpt",
+  "replyGate",
+  "attachmentRef",
+  "pollRef",
+  "longTextBlock",
+]);
+const inlineNodes = new Set([
+  "text",
+  "hardBreak",
+  "inlineCommentAnchor",
+  "diceRoll",
+  "mention",
+]);
+const atomNodes = new Set([
+  "hardBreak",
+  "horizontalRule",
+  "inlineCommentAnchor",
+  "richImage",
+  "diceRoll",
+  "mention",
+  "attachmentRef",
+  "pollRef",
+  "longTextBlock",
+]);
 
 const nodeAttributeAllowlist: Readonly<Record<string, readonly string[]>> =
-  DOCUMENT_NODE_ATTRIBUTES
+  DOCUMENT_NODE_ATTRIBUTES;
 const markAttributeAllowlist: Readonly<Record<string, readonly string[]>> =
-  DOCUMENT_MARK_ATTRIBUTES
+  DOCUMENT_MARK_ATTRIBUTES;
 
 interface SanitizerContext {
-  issues: DocumentValidationIssue[]
-  nodeCount: number
+  issues: DocumentValidationIssue[];
+  nodeCount: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function addIssue(context: SanitizerContext, value: DocumentValidationIssue): void {
-  context.issues.push(value)
+function addIssue(
+  context: SanitizerContext,
+  value: DocumentValidationIssue,
+): void {
+  context.issues.push(value);
 }
 
-function reportUnknownAttributes(context: SanitizerContext, path: string, attrs: Record<string, unknown>, allowed: readonly string[]): void {
-  const allow = new Set(allowed)
+function reportUnknownAttributes(
+  context: SanitizerContext,
+  path: string,
+  attrs: Record<string, unknown>,
+  allowed: readonly string[],
+): void {
+  const allow = new Set(allowed);
   for (const name of Object.keys(attrs)) {
     if (!allow.has(name)) {
       addIssue(context, {
-        code: 'unknown-attribute',
+        code: "unknown-attribute",
         path: `${path}.attrs.${name}`,
-        message: `Attribute ${name} is not allowed and was removed.`,
-      })
+        message: `已移除不允许使用的属性 ${name}。`,
+      });
     }
   }
 }
 
-function stringValue(value: unknown, maxLength: number, fallback = ''): string {
-  return typeof value === 'string' ? value.slice(0, maxLength) : fallback
+function stringValue(value: unknown, maxLength: number, fallback = ""): string {
+  return typeof value === "string" ? value.slice(0, maxLength) : fallback;
 }
 
 function nullableString(value: unknown, maxLength: number): string | null {
-  if (typeof value !== 'string' || value.length === 0) return null
-  return value.slice(0, maxLength)
+  if (typeof value !== "string" || value.length === 0) return null;
+  return value.slice(0, maxLength);
 }
 
-function finiteInteger(value: unknown, fallback: number, min: number, max: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
-  return Math.min(max, Math.max(min, Math.round(value)))
+function finiteInteger(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 function containsControlCharacter(value: string): boolean {
   return Array.from(value).some((character) => {
-    const code = character.charCodeAt(0)
-    return code <= 0x1f || code === 0x7f
-  })
+    const code = character.charCodeAt(0);
+    return code <= 0x1f || code === 0x7f;
+  });
 }
 
 /**
@@ -103,139 +153,253 @@ function containsControlCharacter(value: string): boolean {
  * 图片 URL 接受 HTTP(S)、`/uploads/...`、`/api/assets/...` 以及本地
  * `blob:` 对象 URL；链接额外接受 `mailto:`、锚点片段以及普通同源路径。
  */
-export function sanitizeUrl(value: unknown, kind: 'image' | 'link' = 'link'): string | null {
-  if (typeof value !== 'string') return null
-  if (containsControlCharacter(value)) return null
-  const candidate = value.trim()
-  if (!candidate || candidate.length > 2_048) return null
-  if ((candidate.startsWith('/uploads/') || candidate.startsWith('/api/assets/')) && !candidate.includes('\\')) return candidate
-  if (kind === 'image' && candidate.startsWith('blob:') && !candidate.includes('\\')) return candidate
-  if (kind === 'link' && (candidate.startsWith('/') || candidate.startsWith('#'))) return candidate
+export function sanitizeUrl(
+  value: unknown,
+  kind: "image" | "link" = "link",
+): string | null {
+  if (typeof value !== "string") return null;
+  if (containsControlCharacter(value)) return null;
+  const candidate = value.trim();
+  if (!candidate || candidate.length > 2_048) return null;
+  if (
+    (candidate.startsWith("/uploads/") ||
+      candidate.startsWith("/api/assets/")) &&
+    !candidate.includes("\\")
+  )
+    return candidate;
+  if (
+    kind === "image" &&
+    candidate.startsWith("blob:") &&
+    !candidate.includes("\\")
+  )
+    return candidate;
+  if (
+    kind === "link" &&
+    (candidate.startsWith("/") || candidate.startsWith("#"))
+  )
+    return candidate;
   try {
-    const url = new URL(candidate)
-    if (url.protocol === 'http:' || url.protocol === 'https:') return url.toString()
-    if (kind === 'link' && url.protocol === 'mailto:') return url.toString()
+    const url = new URL(candidate);
+    if (url.protocol === "http:" || url.protocol === "https:")
+      return url.toString();
+    if (kind === "link" && url.protocol === "mailto:") return url.toString();
   } catch {
-    return null
+    return null;
   }
-  return null
+  return null;
 }
 
 /** 返回归一化的 CSS 颜色标记；不安全的输入返回 `null`。 */
 export function sanitizeColor(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const color = value.trim().toLowerCase()
+  if (typeof value !== "string") return null;
+  const color = value.trim().toLowerCase();
   // #rgb / #rrggbb / #rrggbbaa：8 位十六进制（CSS Color 4）承载透明度，由拾色器产出。
-  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3}(?:[0-9a-f]{2})?)?$/u.test(color)) return color
+  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3}(?:[0-9a-f]{2})?)?$/u.test(color))
+    return color;
   if (/^rgb\(\s*(?:\d{1,3}\s*,\s*){2}\d{1,3}\s*\)$/u.test(color)) {
-    const channels = color.match(/\d+/gu)?.map(Number) ?? []
-    return channels.length === 3 && channels.every((channel) => channel <= 255) ? `rgb(${channels.join(', ')})` : null
+    const channels = color.match(/\d+/gu)?.map(Number) ?? [];
+    return channels.length === 3 && channels.every((channel) => channel <= 255)
+      ? `rgb(${channels.join(", ")})`
+      : null;
   }
-  return null
+  return null;
 }
 
 /** 返回白名单内的字体族；值不允许时返回 `null`。 */
 export function sanitizeFontFamily(value: unknown): string | null {
-  return typeof value === 'string' && allowedFontSet.has(value) ? value : null
+  return typeof value === "string" && allowedFontSet.has(value) ? value : null;
 }
 
 /** 返回白名单内的像素字号；值不允许时返回 `null`。 */
 export function sanitizeFontSize(value: unknown): string | null {
-  const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number.parseInt(value, 10) : Number.NaN
-  return allowedFontSizeSet.has(numeric) ? `${numeric}px` : null
+  const numeric =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
+  return allowedFontSizeSet.has(numeric) ? `${numeric}px` : null;
 }
 
-function sanitizeMarks(value: unknown, path: string, context: SanitizerContext): JSONContent['marks'] {
-  if (!Array.isArray(value)) return undefined
-  const marks: NonNullable<JSONContent['marks']> = []
+function sanitizeMarks(
+  value: unknown,
+  path: string,
+  context: SanitizerContext,
+): JSONContent["marks"] {
+  if (!Array.isArray(value)) return undefined;
+  const marks: NonNullable<JSONContent["marks"]> = [];
   for (let index = 0; index < value.length; index += 1) {
-    const raw = value[index]
-    const markPath = `${path}.marks[${index}]`
-    if (!isRecord(raw) || typeof raw.type !== 'string') {
-      addIssue(context, { code: 'unknown-mark', path: markPath, message: 'Malformed mark was removed.' })
-      continue
+    const raw = value[index];
+    const markPath = `${path}.marks[${index}]`;
+    if (!isRecord(raw) || typeof raw.type !== "string") {
+      addIssue(context, {
+        code: "unknown-mark",
+        path: markPath,
+        message: "已移除格式错误的标记。",
+      });
+      continue;
     }
-    const attrs = isRecord(raw.attrs) ? raw.attrs : {}
+    const attrs = isRecord(raw.attrs) ? raw.attrs : {};
     if (allowedSimpleMarks.has(raw.type)) {
-      reportUnknownAttributes(context, markPath, attrs, markAttributeAllowlist[raw.type] ?? [])
-      marks.push({ type: raw.type })
-      continue
+      reportUnknownAttributes(
+        context,
+        markPath,
+        attrs,
+        markAttributeAllowlist[raw.type] ?? [],
+      );
+      marks.push({ type: raw.type });
+      continue;
     }
-    if (raw.type === 'link') {
-      reportUnknownAttributes(context, markPath, attrs, markAttributeAllowlist.link ?? [])
-      const href = sanitizeUrl(attrs.href, 'link')
+    if (raw.type === "link") {
+      reportUnknownAttributes(
+        context,
+        markPath,
+        attrs,
+        markAttributeAllowlist.link ?? [],
+      );
+      const href = sanitizeUrl(attrs.href, "link");
       if (!href) {
-        addIssue(context, { code: 'unsafe-url', path: `${markPath}.attrs.href`, message: 'Unsafe link URL was removed.' })
-        continue
+        addIssue(context, {
+          code: "unsafe-url",
+          path: `${markPath}.attrs.href`,
+          message: "已移除不安全的链接 URL。",
+        });
+        continue;
       }
-      marks.push({ type: 'link', attrs: { href, target: '_blank', rel: 'noopener noreferrer nofollow' } })
-      continue
+      marks.push({
+        type: "link",
+        attrs: { href, target: "_blank", rel: "noopener noreferrer nofollow" },
+      });
+      continue;
     }
-    if (raw.type === 'textStyle') {
-      reportUnknownAttributes(context, markPath, attrs, markAttributeAllowlist.textStyle ?? [])
-      const safeAttrs: Record<string, string> = {}
-      const color = sanitizeColor(attrs.color)
-      const fontFamily = sanitizeFontFamily(attrs.fontFamily)
-      const fontSize = sanitizeFontSize(attrs.fontSize)
+    if (raw.type === "textStyle") {
+      reportUnknownAttributes(
+        context,
+        markPath,
+        attrs,
+        markAttributeAllowlist.textStyle ?? [],
+      );
+      const safeAttrs: Record<string, string> = {};
+      const color = sanitizeColor(attrs.color);
+      const fontFamily = sanitizeFontFamily(attrs.fontFamily);
+      const fontSize = sanitizeFontSize(attrs.fontSize);
       // Tiptap 序列化 mark 时未设置的属性是 null（而非缺省）：null 视为
       // 「未设置」直接跳过；只有真正非法的字符串值才判定为校验问题。
-      if (attrs.color != null && !color) addIssue(context, { code: 'invalid-attribute', path: `${markPath}.attrs.color`, message: 'Invalid text color was removed.' })
-      if (attrs.fontFamily != null && !fontFamily) addIssue(context, { code: 'invalid-attribute', path: `${markPath}.attrs.fontFamily`, message: 'Font family is not in the allowlist.' })
-      if (attrs.fontSize != null && !fontSize) addIssue(context, { code: 'invalid-attribute', path: `${markPath}.attrs.fontSize`, message: 'Font size is not in the allowlist.' })
-      if (color) safeAttrs.color = color
-      if (fontFamily) safeAttrs.fontFamily = fontFamily
-      if (fontSize) safeAttrs.fontSize = fontSize
-      if (Object.keys(safeAttrs).length > 0) marks.push({ type: 'textStyle', attrs: safeAttrs })
-      continue
+      if (attrs.color != null && !color)
+        addIssue(context, {
+          code: "invalid-attribute",
+          path: `${markPath}.attrs.color`,
+          message: "已移除非法文本颜色。",
+        });
+      if (attrs.fontFamily != null && !fontFamily)
+        addIssue(context, {
+          code: "invalid-attribute",
+          path: `${markPath}.attrs.fontFamily`,
+          message: "字体族不在白名单中。",
+        });
+      if (attrs.fontSize != null && !fontSize)
+        addIssue(context, {
+          code: "invalid-attribute",
+          path: `${markPath}.attrs.fontSize`,
+          message: "字号不在白名单中。",
+        });
+      if (color) safeAttrs.color = color;
+      if (fontFamily) safeAttrs.fontFamily = fontFamily;
+      if (fontSize) safeAttrs.fontSize = fontSize;
+      if (Object.keys(safeAttrs).length > 0)
+        marks.push({ type: "textStyle", attrs: safeAttrs });
+      continue;
     }
-    addIssue(context, { code: 'unknown-mark', path: markPath, message: `Mark ${raw.type} is not allowed and was removed.` })
+    addIssue(context, {
+      code: "unknown-mark",
+      path: markPath,
+      message: `已移除不允许使用的标记 ${raw.type}。`,
+    });
   }
-  if (marks.some((mark) => mark.type === 'spoiler')) {
-    const spoilerSafeMarks: NonNullable<JSONContent['marks']> = []
+  if (marks.some((mark) => mark.type === "spoiler")) {
+    const spoilerSafeMarks: NonNullable<JSONContent["marks"]> = [];
     for (const mark of marks) {
-      if (mark.type === 'bold' || mark.type === 'italic') {
-        addIssue(context, { code: 'invalid-attribute', path, message: `${mark.type} is not allowed inside spoiler and was removed.` })
-        continue
+      if (mark.type === "bold" || mark.type === "italic") {
+        addIssue(context, {
+          code: "invalid-attribute",
+          path,
+          message: `spoiler 内不允许使用 ${mark.type}，已将其移除。`,
+        });
+        continue;
       }
-      if (mark.type === 'textStyle') {
-        addIssue(context, { code: 'invalid-attribute', path, message: 'Text style is not allowed inside spoiler and was removed.' })
-        continue
+      if (mark.type === "textStyle") {
+        addIssue(context, {
+          code: "invalid-attribute",
+          path,
+          message: "spoiler 内不允许使用文本样式，已将其移除。",
+        });
+        continue;
       }
-      spoilerSafeMarks.push(mark)
+      spoilerSafeMarks.push(mark);
     }
-    return spoilerSafeMarks.length > 0 ? spoilerSafeMarks : undefined
+    return spoilerSafeMarks.length > 0 ? spoilerSafeMarks : undefined;
   }
-  return marks.length > 0 ? marks : undefined
+  return marks.length > 0 ? marks : undefined;
 }
 
 /** 按节点类型重建 attrs，而不是在原对象上删除字段，防止修改调用方输入。 */
-function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path: string, context: SanitizerContext): Record<string, unknown> | undefined {
-  reportUnknownAttributes(context, path, raw, nodeAttributeAllowlist[type] ?? [])
+function sanitizeNodeAttributes(
+  type: string,
+  raw: Record<string, unknown>,
+  path: string,
+  context: SanitizerContext,
+): Record<string, unknown> | undefined {
+  reportUnknownAttributes(
+    context,
+    path,
+    raw,
+    nodeAttributeAllowlist[type] ?? [],
+  );
   const safeImageUrl = (value: unknown, attrPath: string): string | null => {
-    if (value === null || value === undefined || value === '') return null
-    const result = sanitizeUrl(value, 'image')
-    if (!result) addIssue(context, { code: 'unsafe-url', path: attrPath, message: 'Unsafe image URL was removed.' })
-    return result
-  }
+    if (value === null || value === undefined || value === "") return null;
+    const result = sanitizeUrl(value, "image");
+    if (!result)
+      addIssue(context, {
+        code: "unsafe-url",
+        path: attrPath,
+        message: "已移除不安全的图片 URL。",
+      });
+    return result;
+  };
   const safeLinkUrl = (value: unknown, attrPath: string): string | null => {
-    if (value === null || value === undefined || value === '') return null
-    const result = sanitizeUrl(value, 'link')
-    if (!result) addIssue(context, { code: 'unsafe-url', path: attrPath, message: 'Unsafe source URL was removed.' })
-    return result
-  }
+    if (value === null || value === undefined || value === "") return null;
+    const result = sanitizeUrl(value, "link");
+    if (!result)
+      addIssue(context, {
+        code: "unsafe-url",
+        path: attrPath,
+        message: "已移除不安全的来源 URL。",
+      });
+    return result;
+  };
 
   switch (type) {
-    case 'paragraph':
-    case 'heading':
-    case 'listItem': {
-      const textAlign = raw.textAlign === 'center' || raw.textAlign === 'right' || raw.textAlign === 'justify' ? raw.textAlign : 'left'
-      if (type === 'listItem') return { textAlign }
-      const indents = { firstLineIndent: 0, leftIndent: 0 }
-      for (const key of ['firstLineIndent', 'leftIndent'] as const) {
-        if (isParagraphIndent(raw[key])) indents[key] = raw[key]
-        else if (raw[key] != null) addIssue(context, { code: 'invalid-attribute', path: `${path}.attrs.${key}`, message: 'Indent must be an even integer between 0 and 20.' })
+    case "paragraph":
+    case "heading":
+    case "listItem": {
+      const textAlign =
+        raw.textAlign === "center" ||
+        raw.textAlign === "right" ||
+        raw.textAlign === "justify"
+          ? raw.textAlign
+          : "left";
+      if (type === "listItem") return { textAlign };
+      const indents = { firstLineIndent: 0, leftIndent: 0 };
+      for (const key of ["firstLineIndent", "leftIndent"] as const) {
+        if (isParagraphIndent(raw[key])) indents[key] = raw[key];
+        else if (raw[key] != null)
+          addIssue(context, {
+            code: "invalid-attribute",
+            path: `${path}.attrs.${key}`,
+            message: "缩进必须是 0 到 20 之间的偶数。",
+          });
       }
-      if (type === 'paragraph') return { textAlign, ...indents }
+      if (type === "paragraph") return { textAlign, ...indents };
       // 属性键序必须与 schema 注册顺序（对齐、章节标记、缩进、标题等级）一致：
       // 重建文档会被编辑器往返（PM toJSON）与 JSON.stringify 比较（publishChapter
       // 的 merge 差异判断、批量校订）使用，键序不一致会产生无意义的差异代次。
@@ -244,96 +408,137 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
         chapterStart: raw.chapterStart === true,
         ...indents,
         level: finiteInteger(raw.level, 2, 1, 6),
-      }
+      };
     }
-    case 'orderedList': {
+    case "orderedList": {
       // Tiptap 也会为普通十进制列表持久化 type:null；保留标准
       // HTML 编号模式，但不允许任意属性。
-      const listType = raw.type == null ? null : typeof raw.type === 'string' && ['1', 'a', 'A', 'i', 'I'].includes(raw.type) ? raw.type : null
+      const listType =
+        raw.type == null
+          ? null
+          : typeof raw.type === "string" &&
+              ["1", "a", "A", "i", "I"].includes(raw.type)
+            ? raw.type
+            : null;
       if (raw.type != null && listType === null) {
-        addIssue(context, { code: 'invalid-attribute', path: `${path}.attrs.type`, message: 'Ordered list type must be null, 1, a, A, i, or I.' })
+        addIssue(context, {
+          code: "invalid-attribute",
+          path: `${path}.attrs.type`,
+          message: "有序列表的 type 必须是 null、1、a、A、i 或 I。",
+        });
       }
-      return { start: finiteInteger(raw.start, 1, 1, 1_000_000), type: listType }
+      return {
+        start: finiteInteger(raw.start, 1, 1, 1_000_000),
+        type: listType,
+      };
     }
-    case 'codeBlock': return { language: nullableString(raw.language, 40) }
-    case 'inlineCommentAnchor': {
+    case "codeBlock":
+      return { language: nullableString(raw.language, 40) };
+    case "inlineCommentAnchor": {
       const attrs: InlineCommentAnchorAttributes = {
         threadId: stringValue(raw.threadId, 128),
         count: finiteInteger(raw.count, 0, 0, 1_000_000),
-        placement: raw.placement === 'start' ? 'start' : 'end',
-      }
-      return attrs as unknown as Record<string, unknown>
+        placement: raw.placement === "start" ? "start" : "end",
+      };
+      return attrs as unknown as Record<string, unknown>;
     }
-    case 'richImage': {
+    case "richImage": {
       const attrs: RichImageAttributes = {
         assetId: nullableString(raw.assetId, 128),
-        src: safeImageUrl(raw.src, `${path}.attrs.src`) ?? '',
+        src: safeImageUrl(raw.src, `${path}.attrs.src`) ?? "",
         alt: stringValue(raw.alt, 500),
         caption: stringValue(raw.caption, 1_000),
-        align: raw.align === 'left' || raw.align === 'right' ? raw.align : 'center',
+        align:
+          raw.align === "left" || raw.align === "right" ? raw.align : "center",
         width: finiteInteger(raw.width, 100, 10, 100),
-      }
-      return attrs as unknown as Record<string, unknown>
+      };
+      return attrs as unknown as Record<string, unknown>;
     }
-    case 'diceRoll': {
-      const rolls = Array.isArray(raw.rolls) ? raw.rolls.slice(0, 100).map((roll) => finiteInteger(roll, 0, -1_000_000, 1_000_000)) : []
+    case "diceRoll": {
+      const rolls = Array.isArray(raw.rolls)
+        ? raw.rolls
+            .slice(0, 100)
+            .map((roll) => finiteInteger(roll, 0, -1_000_000, 1_000_000))
+        : [];
       const attrs: DiceRollAttributes = {
         rollId: stringValue(raw.rollId, 128),
         expression: stringValue(raw.expression, 80),
         rolls,
         total: finiteInteger(raw.total, 0, -100_000_000, 100_000_000),
         rerollOf: nullableString(raw.rerollOf, 128),
-      }
-      return attrs as unknown as Record<string, unknown>
+      };
+      return attrs as unknown as Record<string, unknown>;
     }
-    case 'novelExcerpt': {
+    case "novelExcerpt": {
       const attrs: NovelExcerptAttributes = {
-        bookTitle: stringValue(raw.bookTitle, 300), chapterTitle: stringValue(raw.chapterTitle, 300), author: stringValue(raw.author, 200),
+        bookTitle: stringValue(raw.bookTitle, 300),
+        chapterTitle: stringValue(raw.chapterTitle, 300),
+        author: stringValue(raw.author, 200),
         sourceUrl: safeLinkUrl(raw.sourceUrl, `${path}.attrs.sourceUrl`),
         variant: normalizeNovelExcerptVariant(raw.variant),
         readerTime: stringValue(raw.readerTime, 16),
         batteryLevel: finiteInteger(raw.batteryLevel, 100, 0, 100),
-        pageLabel: stringValue(raw.pageLabel, 40, '1/1'),
+        pageLabel: stringValue(raw.pageLabel, 40, "1/1"),
         progressLabel: stringValue(raw.progressLabel, 24),
         headerLabel: stringValue(raw.headerLabel, 80),
-      }
-      return attrs as unknown as Record<string, unknown>
+      };
+      return attrs as unknown as Record<string, unknown>;
     }
-    case 'mention': {
+    case "mention": {
       const attrs: MentionAttributes = {
-        userId: nullableString(raw.userId, 128), name: stringValue(raw.name, 100), resolved: raw.resolved === true,
+        userId: nullableString(raw.userId, 128),
+        name: stringValue(raw.name, 100),
+        resolved: raw.resolved === true,
         avatarUrl: safeImageUrl(raw.avatarUrl, `${path}.attrs.avatarUrl`),
-      }
-      return attrs as unknown as Record<string, unknown>
+      };
+      return attrs as unknown as Record<string, unknown>;
     }
-    case 'replyGate': {
-      const attrs: ReplyGateAttributes = { gateId: stringValue(raw.gateId, 128), prompt: stringValue(raw.prompt, 300, 'Reply to view this content') }
-      return attrs as unknown as Record<string, unknown>
+    case "replyGate": {
+      const attrs: ReplyGateAttributes = {
+        gateId: stringValue(raw.gateId, 128),
+        prompt: stringValue(raw.prompt, 300, "回复后查看此内容"),
+      };
+      return attrs as unknown as Record<string, unknown>;
     }
-    case 'attachmentRef': {
+    case "attachmentRef": {
       const attrs: AttachmentReferenceAttributes = {
-        attachmentId: stringValue(raw.attachmentId, 128), name: stringValue(raw.name, 300),
-        mimeType: stringValue(raw.mimeType, 120, 'application/octet-stream'),
-        size: finiteInteger(raw.size, 0, 0, Number.MAX_SAFE_INTEGER), priceCoins: finiteInteger(raw.priceCoins, 0, 0, 1_000_000_000),
-      }
-      return attrs as unknown as Record<string, unknown>
+        attachmentId: stringValue(raw.attachmentId, 128),
+        name: stringValue(raw.name, 300),
+        mimeType: stringValue(raw.mimeType, 120, "application/octet-stream"),
+        size: finiteInteger(raw.size, 0, 0, Number.MAX_SAFE_INTEGER),
+        priceCoins: finiteInteger(raw.priceCoins, 0, 0, 1_000_000_000),
+      };
+      return attrs as unknown as Record<string, unknown>;
     }
-    case 'pollRef': {
-      const options: PollOptionReference[] = []
+    case "pollRef": {
+      const options: PollOptionReference[] = [];
       if (Array.isArray(raw.options)) {
         for (const option of raw.options.slice(0, 100)) {
-          if (!isRecord(option)) continue
-          const id = stringValue(option.id, 128)
-          const label = stringValue(option.label, 300)
-          if (id && label) options.push({ id, label })
+          if (!isRecord(option)) continue;
+          const id = stringValue(option.id, 128);
+          const label = stringValue(option.label, 300);
+          if (id && label) options.push({ id, label });
         }
       }
       const attrs: PollReferenceAttributes = {
-        pollId: stringValue(raw.pollId, 128), question: stringValue(raw.question, 500), multiple: raw.multiple === true, options,
-      }
-      return attrs as unknown as Record<string, unknown>
+        pollId: stringValue(raw.pollId, 128),
+        question: stringValue(raw.question, 500),
+        multiple: raw.multiple === true,
+        options,
+      };
+      return attrs as unknown as Record<string, unknown>;
     }
-    case 'longTextBlock': {
+    case "longTextBlock": {
+      if (
+        raw.volumeTitle !== undefined &&
+        (typeof raw.volumeTitle !== "string" || raw.volumeTitle.length > 500)
+      ) {
+        addIssue(context, {
+          code: "invalid-attribute",
+          path: `${path}.attrs.volumeTitle`,
+          message: "卷名必须是不超过 500 字符的字符串。",
+        });
+      }
       const attrs: LongTextBlockAttributes = {
         chapterId: stringValue(raw.chapterId, 128),
         title: stringValue(raw.title, 500),
@@ -348,131 +553,278 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
           raw.end === null || raw.end === undefined
             ? null
             : finiteInteger(raw.end, 0, 0, 10_000_000_000),
-      }
-      return attrs as unknown as Record<string, unknown>
+      };
+      return attrs as unknown as Record<string, unknown>;
     }
-    default: return undefined
+    default:
+      return undefined;
   }
 }
 
 /** 描述共享 ProseMirror schema 的父子结构约束。 */
 function childAllowed(parentType: string | null, childType: string): boolean {
-  if (parentType === null) return childType === 'doc'
-  if (parentType === 'doc' || parentType === 'blockquote' || parentType === 'novelExcerpt' || parentType === 'replyGate' || parentType === 'listItem') return blockNodes.has(childType)
-  if (parentType === 'paragraph' || parentType === 'heading') return inlineNodes.has(childType)
-  if (parentType === 'bulletList' || parentType === 'orderedList') return childType === 'listItem'
-  if (parentType === 'codeBlock') return childType === 'text'
-  return false
+  if (parentType === null) return childType === "doc";
+  if (
+    parentType === "doc" ||
+    parentType === "blockquote" ||
+    parentType === "novelExcerpt" ||
+    parentType === "replyGate" ||
+    parentType === "listItem"
+  )
+    return blockNodes.has(childType);
+  if (parentType === "paragraph" || parentType === "heading")
+    return inlineNodes.has(childType);
+  if (parentType === "bulletList" || parentType === "orderedList")
+    return childType === "listItem";
+  if (parentType === "codeBlock") return childType === "text";
+  return false;
 }
 
 /** 带 JSON 路径、深度和总节点计数的递归净化器。 */
-function sanitizeNode(value: unknown, path: string, depth: number, context: SanitizerContext, parentType: string | null): JSONContent | null {
+function sanitizeNode(
+  value: unknown,
+  path: string,
+  depth: number,
+  context: SanitizerContext,
+  parentType: string | null,
+): JSONContent | null {
   if (depth > MAX_DOCUMENT_DEPTH) {
-    addIssue(context, { code: 'limit-exceeded', path, message: 'Maximum document depth was exceeded.' })
-    return null
+    addIssue(context, {
+      code: "limit-exceeded",
+      path,
+      message: "文档嵌套深度超过上限。",
+    });
+    return null;
   }
   if (context.nodeCount >= MAX_DOCUMENT_NODES) {
-    addIssue(context, { code: 'limit-exceeded', path, message: 'Maximum document node count was exceeded.' })
-    return null
+    addIssue(context, {
+      code: "limit-exceeded",
+      path,
+      message: "文档节点数量超过上限。",
+    });
+    return null;
   }
-  context.nodeCount += 1
-  if (!isRecord(value) || typeof value.type !== 'string' || !allowedNodes.has(value.type)) {
-    const type = isRecord(value) && typeof value.type === 'string' ? value.type : 'malformed'
-    addIssue(context, { code: 'unknown-node', path, message: `Node ${type} is not allowed and was removed.` })
-    return null
+  context.nodeCount += 1;
+  if (
+    !isRecord(value) ||
+    typeof value.type !== "string" ||
+    !allowedNodes.has(value.type)
+  ) {
+    const type =
+      isRecord(value) && typeof value.type === "string"
+        ? value.type
+        : "malformed";
+    addIssue(context, {
+      code: "unknown-node",
+      path,
+      message: `已移除不允许使用的节点 ${type}。`,
+    });
+    return null;
   }
   if (!childAllowed(parentType, value.type)) {
-    addIssue(context, { code: 'invalid-structure', path, message: `Node ${value.type} is not valid inside ${parentType ?? 'the document root'} and was removed.` })
-    return null
+    addIssue(context, {
+      code: "invalid-structure",
+      path,
+      message: `${parentType ?? "文档根节点"} 内不允许使用节点 ${value.type}，已将其移除。`,
+    });
+    return null;
   }
 
-  const rawAttrs = isRecord(value.attrs) ? value.attrs : {}
-  if (value.type === 'text') {
-    reportUnknownAttributes(context, path, rawAttrs, [])
-    if (typeof value.text !== 'string') {
-      addIssue(context, { code: 'invalid-attribute', path: `${path}.text`, message: 'Text node without text was removed.' })
-      return null
+  const rawAttrs = isRecord(value.attrs) ? value.attrs : {};
+  if (value.type === "text") {
+    reportUnknownAttributes(context, path, rawAttrs, []);
+    if (typeof value.text !== "string") {
+      addIssue(context, {
+        code: "invalid-attribute",
+        path: `${path}.text`,
+        message: "已移除缺少文本的文本节点。",
+      });
+      return null;
     }
-    const marks = parentType === 'codeBlock' ? undefined : sanitizeMarks(value.marks, path, context)
-    if (parentType === 'codeBlock' && Array.isArray(value.marks) && value.marks.length > 0) {
-      addIssue(context, { code: 'invalid-structure', path: `${path}.marks`, message: 'Marks are not valid inside a code block and were removed.' })
+    const marks =
+      parentType === "codeBlock"
+        ? undefined
+        : sanitizeMarks(value.marks, path, context);
+    if (
+      parentType === "codeBlock" &&
+      Array.isArray(value.marks) &&
+      value.marks.length > 0
+    ) {
+      addIssue(context, {
+        code: "invalid-structure",
+        path: `${path}.marks`,
+        message: "代码块内不允许使用标记，已将其移除。",
+      });
     }
     // 键序与 PM TextNode.toJSON 一致（type → marks → text），保证重建文档
     // 与编辑器序列化结果 JSON 完全相等（publishChapter 依赖 stringify 比较）。
-    const node: JSONContent = { type: 'text' }
-    if (marks) node.marks = marks
-    node.text = value.text.slice(0, 1_000_000)
-    return node
+    const node: JSONContent = { type: "text" };
+    if (marks) node.marks = marks;
+    node.text = value.text.slice(0, 1_000_000);
+    return node;
   }
 
-  const node: JSONContent = { type: value.type }
-  const attrs = sanitizeNodeAttributes(value.type, rawAttrs, path, context)
-  if (attrs && Object.keys(attrs).length > 0) node.attrs = attrs
-  if (value.type === 'diceRoll' || value.type === 'mention') {
-    const marks = sanitizeMarks(value.marks, path, context)
-    if (marks) node.marks = marks
+  const node: JSONContent = { type: value.type };
+  const attrs = sanitizeNodeAttributes(value.type, rawAttrs, path, context);
+  if (attrs && Object.keys(attrs).length > 0) node.attrs = attrs;
+  if (value.type === "diceRoll" || value.type === "mention") {
+    const marks = sanitizeMarks(value.marks, path, context);
+    if (marks) node.marks = marks;
   }
-  if (atomNodes.has(value.type) && Array.isArray(value.content) && value.content.length > 0) {
-    addIssue(context, { code: 'invalid-structure', path: `${path}.content`, message: `Atomic node ${value.type} cannot contain child nodes.` })
+  if (
+    atomNodes.has(value.type) &&
+    Array.isArray(value.content) &&
+    value.content.length > 0
+  ) {
+    addIssue(context, {
+      code: "invalid-structure",
+      path: `${path}.content`,
+      message: `原子节点 ${value.type} 不能包含子节点。`,
+    });
   } else if (Array.isArray(value.content)) {
-    const content: JSONContent[] = []
+    const content: JSONContent[] = [];
     for (let index = 0; index < value.content.length; index += 1) {
-      const child = sanitizeNode(value.content[index], `${path}.content[${index}]`, depth + 1, context, value.type)
-      if (child) content.push(child)
+      const child = sanitizeNode(
+        value.content[index],
+        `${path}.content[${index}]`,
+        depth + 1,
+        context,
+        value.type,
+      );
+      if (child) content.push(child);
     }
-    if (content.length > 0) node.content = content
+    if (content.length > 0) node.content = content;
   }
-  if ((value.type === 'doc' || value.type === 'blockquote' || value.type === 'novelExcerpt' || value.type === 'replyGate' || value.type === 'listItem') && !node.content?.length) {
-    node.content = [{ type: 'paragraph', attrs: { textAlign: 'left', firstLineIndent: 0, leftIndent: 0 } }]
+  if (
+    (value.type === "doc" ||
+      value.type === "blockquote" ||
+      value.type === "novelExcerpt" ||
+      value.type === "replyGate" ||
+      value.type === "listItem") &&
+    !node.content?.length
+  ) {
+    node.content = [
+      {
+        type: "paragraph",
+        attrs: { textAlign: "left", firstLineIndent: 0, leftIndent: 0 },
+      },
+    ];
   }
-  if ((value.type === 'bulletList' || value.type === 'orderedList') && !node.content?.length) {
-    node.content = [{ type: 'listItem', content: [{ type: 'paragraph', attrs: { textAlign: 'left', firstLineIndent: 0, leftIndent: 0 } }] }]
+  if (
+    (value.type === "bulletList" || value.type === "orderedList") &&
+    !node.content?.length
+  ) {
+    node.content = [
+      {
+        type: "listItem",
+        content: [
+          {
+            type: "paragraph",
+            attrs: { textAlign: "left", firstLineIndent: 0, leftIndent: 0 },
+          },
+        ],
+      },
+    ];
   }
-  return node
+  return node;
 }
 
-function removeInlineCommentAnchorsInsideReplyGate(node: JSONContent, insideReplyGate = false): void {
-  const nextInsideReplyGate = insideReplyGate || node.type === 'replyGate'
+function removeInlineCommentAnchorsInsideReplyGate(
+  node: JSONContent,
+  insideReplyGate = false,
+): void {
+  const nextInsideReplyGate = insideReplyGate || node.type === "replyGate";
   if (Array.isArray(node.content)) {
     if (nextInsideReplyGate) {
-      node.content = node.content.filter((child) => child.type !== 'inlineCommentAnchor')
+      node.content = node.content.filter(
+        (child) => child.type !== "inlineCommentAnchor",
+      );
     }
-    for (const child of node.content) removeInlineCommentAnchorsInsideReplyGate(child, nextInsideReplyGate)
+    for (const child of node.content)
+      removeInlineCommentAnchorsInsideReplyGate(child, nextInsideReplyGate);
   }
 }
 
 function inspectDocument(value: unknown): DocumentValidationResult {
-  const context: SanitizerContext = { issues: [], nodeCount: 0 }
-  if (!isRecord(value) || value.type !== 'doc') {
-    addIssue(context, { code: 'invalid-document', path: '$', message: 'Root node must be a Tiptap document.' })
-    return { valid: false, document: { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'left', firstLineIndent: 0, leftIndent: 0 } }] }, issues: context.issues }
+  const context: SanitizerContext = { issues: [], nodeCount: 0 };
+  if (!isRecord(value) || value.type !== "doc") {
+    addIssue(context, {
+      code: "invalid-document",
+      path: "$",
+      message: "根节点必须是 Tiptap 文档。",
+    });
+    return {
+      valid: false,
+      document: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            attrs: { textAlign: "left", firstLineIndent: 0, leftIndent: 0 },
+          },
+        ],
+      },
+      issues: context.issues,
+    };
   }
-  const document = sanitizeNode(value, '$', 0, context, null) ?? { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'left', firstLineIndent: 0, leftIndent: 0 } }] }
-  removeInlineCommentAnchorsInsideReplyGate(document)
-  return { valid: context.issues.length === 0, document, issues: context.issues }
+  const document = sanitizeNode(value, "$", 0, context, null) ?? {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        attrs: { textAlign: "left", firstLineIndent: 0, leftIndent: 0 },
+      },
+    ],
+  };
+  removeInlineCommentAnchorsInsideReplyGate(document);
+  return {
+    valid: context.issues.length === 0,
+    document,
+    issues: context.issues,
+  };
 }
 
 /** 从不信任的 JSON 中移除未知结构与不安全值，且不修改原始输入。 */
 export function sanitizeDocument(value: unknown): JSONContent {
-  return inspectDocument(value).document
+  return inspectDocument(value).document;
 }
 
 /** 校验 JSON，并返回有序诊断信息及安全替换结果。 */
 export function validateDocument(value: unknown): DocumentValidationResult {
-  return inspectDocument(value)
+  return inspectDocument(value);
 }
 
 /** 解析序列化的 JSON；输入无效时返回安全的空文档。 */
-export function parseDocumentJson(serialized: string): DocumentValidationResult {
+export function parseDocumentJson(
+  serialized: string,
+): DocumentValidationResult {
   try {
-    return inspectDocument(JSON.parse(serialized) as unknown)
+    return inspectDocument(JSON.parse(serialized) as unknown);
   } catch {
-    const document: JSONContent = { type: 'doc', content: [{ type: 'paragraph', attrs: { textAlign: 'left', firstLineIndent: 0, leftIndent: 0 } }] }
-    return { valid: false, document, issues: [{ code: 'invalid-document', path: '$', message: 'Document is not valid JSON.' }] }
+    const document: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { textAlign: "left", firstLineIndent: 0, leftIndent: 0 },
+        },
+      ],
+    };
+    return {
+      valid: false,
+      document,
+      issues: [
+        {
+          code: "invalid-document",
+          path: "$",
+          message: "文档不是有效的 JSON。",
+        },
+      ],
+    };
   }
 }
 
 /** 序列化已净化的文档，用于传输或持久化。 */
 export function stringifyDocument(value: unknown): string {
-  return JSON.stringify(sanitizeDocument(value))
+  return JSON.stringify(sanitizeDocument(value));
 }

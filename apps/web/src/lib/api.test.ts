@@ -17,6 +17,8 @@ import {
   submitSuggestion,
   uploadAsset,
   uploadLongTextChapter,
+  uploadLongTextChaptersBatch,
+  stageLongTextChapterUploadBatch,
   voteComment,
 } from './api';
 
@@ -30,7 +32,7 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   });
 }
 
-describe('web api client', () => {
+describe('Web API 客户端', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
@@ -41,6 +43,14 @@ describe('web api client', () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+  });
+
+  it('单章、批次和暂存写边界均在发送前拒绝非文档正文', async () => {
+    const chapter = { id: 'chapter-a', title: '甲', order: 0, hash: 'a'.repeat(64), baseRevision: 0, content: { type: 'paragraph' } };
+    await expect(uploadLongTextChapter('article', chapter.id, chapter)).rejects.toThrow();
+    await expect(uploadLongTextChaptersBatch('article', [chapter])).rejects.toThrow();
+    await expect(stageLongTextChapterUploadBatch('article', 'upload', [chapter])).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('显式关闭 demo 模式时不启用身份请求头', () => {
@@ -98,7 +108,7 @@ describe('web api client', () => {
   it('读取失败时优先返回本地副本，否则返回空白缺失状态', async () => {
     const cached = { ...defaultDocument, revision: 33, storage: 'local-cache' as const };
     localStorage.setItem('ricetext:document:cached', JSON.stringify(cached));
-    fetchMock.mockRejectedValue(new TypeError('offline'));
+    fetchMock.mockRejectedValue(new TypeError('网络离线'));
 
     await expect(getDocument('cached')).resolves.toEqual(cached);
     await expect(getDocument('missing')).resolves.toMatchObject({
@@ -140,7 +150,7 @@ describe('web api client', () => {
   });
 
   it('不会把 AbortError 降级成本地文档', async () => {
-    const aborted = new DOMException('aborted', 'AbortError');
+    const aborted = new DOMException('请求已中止', 'AbortError');
     fetchMock.mockRejectedValueOnce(aborted);
     await expect(getDocument('demo-post')).rejects.toBe(aborted);
   });
@@ -166,7 +176,7 @@ describe('web api client', () => {
   it('网络不可达时保存本地缓存副本并递增较新的修订号', async () => {
     const cached = { ...defaultDocument, revision: 24 };
     localStorage.setItem('ricetext:document:demo-post', JSON.stringify(cached));
-    fetchMock.mockRejectedValue(new TypeError('offline'));
+    fetchMock.mockRejectedValue(new TypeError('网络离线'));
 
     const result = await saveDocument('demo-post', {
       schemaVersion: 1,
@@ -218,7 +228,7 @@ describe('web api client', () => {
       'ricetext:document:demo-post',
       JSON.stringify({ ...defaultDocument, storage: 'local-cache' }),
     );
-    fetchMock.mockRejectedValue(new TypeError('offline'));
+    fetchMock.mockRejectedValue(new TypeError('网络离线'));
     const offline = await saveDocumentSteps('demo-post', {
       schemaVersion: 1,
       baseRevision: 18,
@@ -235,7 +245,7 @@ describe('web api client', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ items: seedRevisions.slice(0, 1) }));
     await expect(getRevisions('demo-post')).resolves.toEqual(seedRevisions.slice(0, 1));
 
-    fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    fetchMock.mockRejectedValueOnce(new TypeError('网络离线'));
     await expect(getRevisions('demo-post')).resolves.toBe(seedRevisions);
 
     // 服务不可用（代理 502/503）与断网等价，同样降级到本地历史
@@ -300,16 +310,16 @@ describe('web api client', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(serverRoll));
     await expect(createDice('1d20+2')).resolves.toEqual(serverRoll);
 
-    fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    fetchMock.mockRejectedValueOnce(new TypeError('网络离线'));
     vi.spyOn(Math, 'random').mockReturnValue(0.4);
     await expect(createDice(' 2d6-1 ', 'roll_old')).resolves.toMatchObject({ expression: ' 2d6-1 ', rolls: [3, 3], total: 5, rerollOf: 'roll_old' });
   });
 
   it('骰子拒绝无效表达式和越界参数，并透传服务端校验错误', async () => {
-    fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    fetchMock.mockRejectedValueOnce(new TypeError('网络离线'));
     await expect(createDice('not-dice')).rejects.toMatchObject({ status: 422 });
 
-    fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    fetchMock.mockRejectedValueOnce(new TypeError('网络离线'));
     await expect(createDice('51d6')).rejects.toMatchObject({ status: 422, message: '骰子数量或面数超出范围' });
 
     fetchMock.mockResolvedValueOnce(
@@ -327,7 +337,7 @@ describe('web api client', () => {
     // multipart 请求不设置 JSON Content-Type，让浏览器生成 boundary
     expect(new Headers(fetchMock.mock.calls[0]![1]?.headers).get('content-type')).toBeNull();
 
-    fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    fetchMock.mockRejectedValueOnce(new TypeError('网络离线'));
     const createObjectURL = vi.fn(() => 'blob:cover');
     vi.stubGlobal('URL', { ...URL, createObjectURL });
     await expect(uploadAsset(file)).resolves.toMatchObject({ url: 'blob:cover', name: 'cover.png' });
@@ -342,7 +352,7 @@ describe('web api client', () => {
     await expect(uploadAsset(file)).rejects.toMatchObject({ status: 413, message: '图片超过大小限制' });
 
     const huge = { name: 'huge.png', type: 'image/png', size: 8 * 1024 * 1024 + 1 } as File;
-    fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    fetchMock.mockRejectedValueOnce(new TypeError('网络离线'));
     await expect(uploadAsset(huge)).rejects.toMatchObject({ status: 422, message: '上传限制为 8 MB' });
   });
 
@@ -379,7 +389,7 @@ describe('web api client', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ items: seedComments.slice(0, 1) }));
     await expect(getCommentThread('doc', 'thread')).resolves.toEqual(seedComments.slice(0, 1));
 
-    fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    fetchMock.mockRejectedValueOnce(new TypeError('网络离线'));
     const fallback = await getCommentThread('doc', 'thread');
     expect(fallback).toEqual(seedComments);
     expect(fallback).not.toBe(seedComments);
@@ -387,7 +397,7 @@ describe('web api client', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ upvotes: 4, downvotes: 1, myVote: -1 }));
     await expect(voteComment('comment_1', -1)).resolves.toEqual({ upvotes: 4, downvotes: 1, myVote: -1 });
 
-    fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    fetchMock.mockRejectedValueOnce(new TypeError('网络离线'));
     await expect(voteComment('comment_1', 1)).resolves.toEqual({ upvotes: 9, downvotes: 0, myVote: 1 });
   });
 });

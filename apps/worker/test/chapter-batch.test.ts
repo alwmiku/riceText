@@ -120,7 +120,7 @@ beforeEach(async () => {
   ]);
 });
 
-describe("Worker chapter batch", () => {
+describe("Worker 章节批次", () => {
   it("恢复异常冻结会话并发布超过 D1 变量上限的完整清单", async () => {
     await seedNovel("large-atomic", 1);
     const manifest = Array.from({ length: 1100 }, (_, order) => ({
@@ -133,7 +133,7 @@ describe("Worker chapter batch", () => {
     const hash = await manifestHash(manifest);
     await env.DB.prepare(
       "INSERT INTO chapter_uploads(document_id,id,manifest_hash,total_chapters,status,created_at) VALUES(?,?,?,?,? ,?)",
-    ).bind("large-atomic", "upload-large", hash, manifest.length, "aborted", now).run();
+    ).bind("large-atomic", "upload-large", hash, manifest.length, "uploading", now).run();
     for (let offset = 0; offset < manifest.length; offset += 20) {
       await env.DB.batch(
         manifest.slice(offset, offset + 20).map((item) =>
@@ -154,6 +154,7 @@ describe("Worker chapter batch", () => {
         ),
       );
     }
+    await env.DB.prepare("UPDATE chapter_uploads SET status='aborted' WHERE document_id=? AND id=?").bind("large-atomic", "upload-large").run();
     const resumed = await exports.default.fetch(new Request(
       "http://example.com/api/forum/novels/large-atomic/chapter-uploads",
       { method: "POST", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ manifestHash: hash, totalChapters: manifest.length }) },
@@ -293,7 +294,7 @@ describe("Worker chapter batch", () => {
     expect(untouched?.content_hash).toBe("old-2");
   });
 
-  it("跨文章复用 ID；批内重复或目标 order 占用都 fail-closed", async () => {
+  it("跨文章复用 ID；批内重复或目标 order 占用时均拒绝操作", async () => {
     await seedNovel("owner-a", 2);
     await seedNovel("owner-b", 1);
     const cross = await batchRequest("owner-b", [
@@ -591,13 +592,13 @@ describe("Worker chapter batch", () => {
     }
     const elapsed = Date.now() - started;
     console.log(
-      "[batch benchmark] 300 chapters -> " +
+      "[批量上传基准测试] 300 章，共 " +
         requests +
-        " POST requests, " +
+        " 个 POST 请求，总耗时 " +
         elapsed +
-        "ms total, ~" +
+        " 毫秒，约 " +
         Math.round((300 / elapsed) * 1000) +
-        " chapters/s",
+        " 章/秒",
     );
     expect(requests).toBe(15);
     const finalState = await env.DB.prepare(

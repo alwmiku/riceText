@@ -1,6 +1,13 @@
 import type { RichTextNode } from "../../lib/types";
-import type { CoverageChapter } from "../novel/ChapterCoverageDialog";
-import type { ChapterSummary } from "../novel/ChapterSidebar";
+import type { CoverageChapter } from "./chapter-upload-domain";
+
+/** 章节目录的领域投影，展示组件只消费摘要。 */
+export interface ChapterSummary {
+  id: string;
+  title: string;
+  volumeTitle?: string;
+  charCount: number;
+}
 import { expandRawRangeToIncludeLeadingTitle } from "../editor/long-text/long-text-ranges";
 
 /** 从完整章节 JSON 提取目录需要的轻量字段，避免侧栏持有正文节点。 */

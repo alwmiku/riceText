@@ -46,8 +46,17 @@ import type {
   EditorMode,
   ForumChapterItem,
   RichTextNode,
+  SeedIdentity,
 } from "../lib/types";
 import { cn, sha256Hex } from "../lib/utils";
+import { chapterQueryKeys } from "../lib/chapter-query-keys";
+import {
+  resolveChapterContent,
+  resolveChapterSources,
+  isBlankDocumentShell,
+  type ChapterIdentity,
+} from "../lib/chapter-source";
+import { Skeleton } from "../components/ui/skeleton";
 
 const CHINESE_NUMERALS = [
   "零",
@@ -65,8 +74,7 @@ const CHINESE_NUMERALS = [
 /** 把章节序号转成中文数字（1→一，11→十一，23→二十三），与种子章节命名一致。 */
 function toChineseNumber(value: number): string {
   if (value < 10) return CHINESE_NUMERALS[value] ?? String(value);
-  if (value < 20)
-    return `十${value > 10 ? CHINESE_NUMERALS[value % 10] : ""}`;
+  if (value < 20) return `十${value > 10 ? CHINESE_NUMERALS[value % 10] : ""}`;
   const tens = Math.floor(value / 10);
   const units = value % 10;
   if (tens > 9 || units === 0) return String(value);
@@ -80,6 +88,25 @@ export default function ComposePage() {
   const activeDocumentId = articleSelection.authenticated
     ? articleSelection.selectedId || `article-${identity.id}`
     : "guest-local";
+  return (
+    <ComposeDocumentSession
+      key={JSON.stringify([identity.id, activeDocumentId])}
+      identity={identity}
+      articleSelection={articleSelection}
+      activeDocumentId={activeDocumentId}
+    />
+  );
+}
+
+function ComposeDocumentSession({
+  identity,
+  articleSelection,
+  activeDocumentId,
+}: {
+  identity: SeedIdentity;
+  articleSelection: ReturnType<typeof useArticleSelection>;
+  activeDocumentId: string;
+}) {
   const selectedArticle = articleSelection.articles.find(
     (article) => article.id === activeDocumentId,
   );
@@ -90,7 +117,7 @@ export default function ComposePage() {
     window.matchMedia("(max-width: 600px)").matches ? "mobile" : "full",
   );
   // 记住上次编辑的章节：刷新/重进页面后仍停留在原章节（移动端尤其依赖）。
-  // 索引按文档 ID 隔离，超出章节数时由 activeIndex 钳制。
+  // 稳定章节 ID 优先；原索引键仅作为旧草稿的兼容回退。
   const ACTIVE_CHAPTER_STORAGE_KEY = `ricetext:active-chapter:${activeDocumentId}`;
   const [chapterIndex, setChapterIndex] = useState<number>(() => {
     try {
@@ -113,12 +140,37 @@ export default function ComposePage() {
       // 隐私模式等场景下忽略持久化失败。
     }
   }, [chapterIndex, ACTIVE_CHAPTER_STORAGE_KEY]);
+  const [selectedChapter, setSelectedChapter] =
+    useState<ChapterIdentity | null>(() => {
+      try {
+        const id = window.localStorage.getItem(
+          `ricetext:active-chapter-id:${activeDocumentId}`,
+        );
+        return id ? { documentId: activeDocumentId, id } : null;
+      } catch {
+        return null;
+      }
+    });
+  useEffect(() => {
+    if (!selectedChapter) return;
+    try {
+      window.localStorage.setItem(
+        `ricetext:active-chapter-id:${activeDocumentId}`,
+        selectedChapter.id,
+      );
+    } catch {
+      // 存储不可用时，仍使用旧版位置作为回退。
+    }
+  }, [activeDocumentId, selectedChapter]);
+  const [documentIndex, setDocumentIndex] = useState(chapterIndex);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [newArticleDialogOpen, setNewArticleDialogOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [comparingRevision, setComparingRevision] = useState<number | null>(null);
+  const [comparingRevision, setComparingRevision] = useState<number | null>(
+    null,
+  );
   const [comparison, setComparison] = useState<{
     revision: number;
     chapterTitle: string;
@@ -129,35 +181,26 @@ export default function ComposePage() {
   const articleSwitchRef = useRef(false);
   const [switchingArticle, setSwitchingArticle] = useState(false);
 
-  const { data: chapterDirectory = [] } = useQuery({
-    queryKey: ["forum", "chapters", activeDocumentId],
-    queryFn: () => listForumChapters(activeDocumentId),
+  const directoryQuery = useQuery({
+    queryKey: chapterQueryKeys.directory(activeDocumentId),
+    queryFn: () => listForumChapters(activeDocumentId, { strict: true }),
     enabled: articleSelection.authenticated && !articleSelection.loading,
   });
   // 三个控制器通过完整文档快照衔接；页面只负责跨领域编排和提示展示。
-  const compose = useComposeDocument(activeDocumentId, chapterIndex, {
+  const chapterDirectory = directoryQuery.data ?? [];
+  const compose = useComposeDocument(activeDocumentId, documentIndex, {
     serverEnabled: articleSelection.authenticated && !articleSelection.loading,
     localOnly: !articleSelection.authenticated,
     initialTitle: articleSelection.selectedDraftTitle,
   });
   const longText = useLongTextWorkspace({
     documentId: activeDocumentId,
-    content: compose.content,
-    contentRef: compose.contentRef,
-    replaceContent: compose.replaceContent,
-    setAutosaveEnabled: compose.setAutosaveEnabled,
     setNotice,
   });
   const upload = useChapterUpload({
     novelId: activeDocumentId,
-    getDocument: () => {
-      // 上传准备必须先冲刷章节防抖队列，才能冻结用户眼前的最新正文。
-      longText.flushEdits();
-      return compose.contentRef.current;
-    },
-    getCoverage: () => longText.coverageChapters,
-    ensureDocument: () =>
-      compose.ensureServerDocument(longText.getBaseContent()),
+    captureSnapshot: longText.captureUploadSnapshot,
+    ensureDocument: compose.ensureServerDocument,
     onNotice: setNotice,
   });
 
@@ -165,69 +208,153 @@ export default function ComposePage() {
     () => splitDocumentByHeadings(compose.content),
     [compose.content],
   );
-  const isBlankDocumentShell = (compose.content.content ?? []).every(
-    (node) =>
-      node.type === "paragraph" &&
-      (!node.content || node.content.length === 0),
+  const directoryReady =
+    !articleSelection.authenticated || directoryQuery.isSuccess;
+  const navigationChapters = useMemo(
+    () =>
+      directoryReady
+        ? resolveChapterSources({
+            documentId: activeDocumentId,
+            content: compose.content,
+            directory: chapterDirectory,
+            includeHidden: true,
+            preferDocumentContent: true,
+            includeUnlistedDocumentChapters: true,
+          })
+        : [],
+    [activeDocumentId, compose.content, chapterDirectory, directoryReady],
   );
-  const usesUploadedChapters =
-    isBlankDocumentShell &&
-    chapterDirectory.some(
-      (chapter) =>
-        chapter.hasContent === true ||
-        (chapter.hasContent === undefined && chapter.revision > 0),
-    );
-  const navigationChapters = usesUploadedChapters
-    ? chapterDirectory.map((chapter) => ({
-        id: chapter.id,
-        title: chapter.title,
-        volumeTitle: chapter.volumeTitle ?? "",
-        blocks: [],
-        start: chapter.order,
-        end: chapter.order + 1,
-      }))
-    : chapters;
   const displayedChapters = compose.articleStarted ? navigationChapters : [];
-  const activeIndex = Math.min(
-    chapterIndex,
-    Math.max(0, navigationChapters.length - 1),
-  );
-  // 目录「章节总结」的真实数据：字数按当前章节正文的非空白字符统计，
-  // 修订号取该章节在服务端目录中的独立版本号。
-  const activeChapterStatus = chapterDirectory[activeIndex];
-  const uploadedChapterKey = [
-    "forum",
-    "chapter-content",
+  const selectedIndex =
+    selectedChapter?.documentId === activeDocumentId
+      ? navigationChapters.findIndex(
+          (chapter) => chapter.id === selectedChapter.id,
+        )
+      : -1;
+  const activeIndex =
+    selectedIndex >= 0
+      ? selectedIndex
+      : Math.min(chapterIndex, Math.max(0, navigationChapters.length - 1));
+  const activeChapter = navigationChapters[activeIndex];
+  // 空白本地编辑器会成为第一个旧版章节，同时保持编辑会话不变。
+  const activeChapterId = activeChapter?.id ?? "chapter-0";
+  const activeChapterSource = activeChapter?.source ?? "document";
+  if (activeChapter && selectedChapter?.id !== activeChapter.id) {
+    setSelectedChapter({ documentId: activeDocumentId, id: activeChapter.id });
+  }
+  const activeChapterStatus = activeChapter?.directory;
+  const usesUploadedChapters = activeChapter?.source === "standalone";
+  const mappedDocumentIndex = activeChapter?.documentChapter
+    ? chapters.findIndex(
+        (chapter) =>
+          chapter.start === activeChapter.documentChapter!.start &&
+          chapter.end === activeChapter.documentChapter!.end,
+      )
+    : activeChapter
+      ? -1
+      : 0;
+  if (documentIndex !== mappedDocumentIndex)
+    setDocumentIndex(mappedDocumentIndex);
+  const uploadedChapterKey = chapterQueryKeys.content(
     activeDocumentId,
-    activeChapterStatus?.id,
-  ] as const;
-  const { data: uploadedChapter } = useQuery({
+    activeChapter?.id,
+  );
+  const chapterQuery = useQuery({
     queryKey: uploadedChapterKey,
     queryFn: ({ signal }) =>
-      getLongTextChapter(activeDocumentId, activeChapterStatus!.id, signal),
-    enabled:
-      usesUploadedChapters &&
-      Boolean(activeChapterStatus?.id) &&
-      activeChapterStatus?.hasContent !== false,
+      getLongTextChapter(activeDocumentId, activeChapter!.id, signal),
+    enabled: articleSelection.authenticated && usesUploadedChapters,
   });
-  const activeCharCount = useMemo(() => {
-    const blocks = usesUploadedChapters
-      ? ((uploadedChapter?.content.content ?? []) as RichTextNode[])
-      : (chapters[activeIndex]?.blocks ?? []);
-    return chapterTextLines(blocks).join("").replace(/\s+/gu, "").length;
-  }, [activeIndex, chapters, uploadedChapter?.content.content, usesUploadedChapters]);
-  const activeRevision = activeChapterStatus?.revision ?? 0;
+  const uploadedChapter = chapterQuery.data;
+  const resolvedContent = useMemo(
+    () =>
+      resolveChapterContent(activeChapter, {
+        data: uploadedChapter,
+        isError: chapterQuery.isError,
+      }),
+    [activeChapter, uploadedChapter, chapterQuery.isError],
+  );
+  const directoryLoading =
+    articleSelection.authenticated && directoryQuery.isPending;
+  const sourceError =
+    directoryQuery.isError || resolvedContent.source === "error";
+  const sourceLoading =
+    directoryLoading || resolvedContent.source === "loading";
+  const contentReady =
+    !sourceError &&
+    !sourceLoading &&
+    (resolvedContent.source === "document" ||
+      resolvedContent.source === "standalone" ||
+      !activeChapter);
+  const unsupportedDocumentRange =
+    activeChapter?.source === "document" && mappedDocumentIndex < 0;
+  const canWriteChapter =
+    !compose.isPlaceholderData &&
+    compose.articleStarted &&
+    canEditSelected &&
+    contentReady &&
+    !unsupportedDocumentRange;
+  const editorContent = useMemo<RichTextNode>(
+    () =>
+      resolvedContent.content ?? {
+        type: "doc",
+        content: activeChapter ? [] : (chapters[0]?.blocks ?? []),
+      },
+    [resolvedContent.content, activeChapter, chapters],
+  );
+  const activeCharCount = useMemo(
+    () =>
+      chapterTextLines(editorContent.content ?? [])
+        .join("")
+        .replace(/\s+/gu, "").length,
+    [editorContent],
+  );
+  const activeRevision =
+    uploadedChapter?.id === activeChapter?.id && usesUploadedChapters
+      ? (uploadedChapter?.revision ?? activeChapterStatus?.revision ?? 0)
+      : (activeChapterStatus?.revision ?? 0);
   const activeSavedAt =
     compose.autosave.state === "saved"
       ? (activeChapterStatus?.savedAt ?? compose.document.savedAt)
       : compose.autosave.savedAt;
-  const editorContent = useMemo<RichTextNode>(
-    () =>
-      usesUploadedChapters && uploadedChapter
-        ? (uploadedChapter.content as RichTextNode)
-        : { type: "doc", content: chapters[activeIndex]?.blocks ?? [] },
-    [activeIndex, chapters, uploadedChapter, usesUploadedChapters],
-  );
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  const viewKey = JSON.stringify([
+    activeDocumentId,
+    activeChapterId,
+    activeChapterSource,
+    longText.enabled,
+    longText.enabled ? longText.activeIndex : null,
+  ]);
+  const viewScopeRef = useRef({ key: viewKey });
+  if (viewScopeRef.current.key !== viewKey)
+    viewScopeRef.current = { key: viewKey };
+  const viewScope = viewScopeRef.current;
+  const isCurrentView = () =>
+    mountedRef.current && viewScopeRef.current === viewScope;
+  const compareRequestRef = useRef(0);
+  const rollbackRequestRef = useRef(0);
+  const resetView = () => {
+    viewScopeRef.current = { key: viewKey };
+    editorRef.current = null;
+    setNotice("");
+    setComparison(null);
+    setComparingRevision(null);
+    setThreadId(null);
+  };
+  const selectChapter = (index: number) => {
+    resetView();
+    setChapterIndex(index);
+    const chapter = navigationChapters[index];
+    setSelectedChapter(
+      chapter ? { documentId: activeDocumentId, id: chapter.id } : null,
+    );
+  };
   const { data: comments = [] } = useQuery<CommentReply[]>({
     queryKey: ["comments", compose.document.id, threadId],
     queryFn: () => getCommentThread(compose.document.id, threadId!),
@@ -235,57 +362,86 @@ export default function ComposePage() {
   });
 
   const compareRevision = async (revision: number) => {
+    if (!contentReady) return;
+    const request = ++compareRequestRef.current;
+    const currentContent = structuredClone(
+      editorRef.current?.getJSON() ?? editorContent,
+    );
     setComparingRevision(revision);
     try {
-      const snapshot = await getRevision(compose.document.id, revision);
-      const targetChapters = splitDocumentByHeadings(snapshot.content).chapters;
+      const snapshot = await getRevision(activeDocumentId, revision);
+      if (!isCurrentView() || request !== compareRequestRef.current) return;
+      const historical = resolveChapterSources({
+        documentId: activeDocumentId,
+        content: snapshot.content,
+        directory: chapterDirectory,
+        includeHidden: true,
+        preferDocumentContent: true,
+        includeUnlistedDocumentChapters: true,
+      }).find((chapter) => chapter.id === activeChapter?.id);
+      const historicalContent = resolveChapterContent(historical);
+      if (historicalContent.source !== "document") {
+        setNotice("该历史版本没有当前章节正文");
+        return;
+      }
       setComparison({
         revision,
-        chapterTitle: chapters[activeIndex]?.title ?? compose.document.title,
-        historicalContent: {
-          type: "doc",
-          content: targetChapters[activeIndex]?.blocks ?? [],
-        },
-        currentContent: {
-          type: "doc",
-          content: chapters[activeIndex]?.blocks ?? [],
-        },
+        chapterTitle: activeChapter?.title ?? compose.document.title,
+        historicalContent: historicalContent.content,
+        currentContent,
       });
     } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : "版本比较加载失败");
+      if (isCurrentView() && request === compareRequestRef.current) {
+        setNotice(cause instanceof Error ? cause.message : "版本比较加载失败");
+      }
     } finally {
-      setComparingRevision(null);
+      if (isCurrentView() && request === compareRequestRef.current)
+        setComparingRevision(null);
     }
   };
 
   const rollback = async (revision: number) => {
+    if (!canWriteChapter) return;
+    const request = ++rollbackRequestRef.current;
+    const operationIsCurrent = () =>
+      isCurrentView() && rollbackRequestRef.current === request;
+    compareRequestRef.current += 1;
+    setComparingRevision(null);
+    setComparison(null);
     try {
-      const next = await compose.rollback(revision);
-      setNotice(`已回退到版本 ${revision}，并创建版本 ${next.revision}`);
+      const next = await compose.rollback(revision, operationIsCurrent);
+      if (!operationIsCurrent()) return;
+      setNotice("已回退到版本 " + revision + "，并创建版本 " + next.revision);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "版本回退失败");
+      if (operationIsCurrent())
+        setNotice(error instanceof Error ? error.message : "版本回退失败");
     }
   };
 
-  // 隐藏/恢复章节：隐藏后读者不可读，作者写完取消隐藏后恢复可读。
   const toggleChapterHidden = async (index: number, hidden: boolean) => {
-    const row = chapterDirectory[index];
+    const chapter = navigationChapters[index];
+    const row = chapter?.directory;
+    if (!canEditSelected) return;
     if (!row) {
       setNotice("该章节尚未注册到服务器（保存后才会创建），暂时无法设置隐藏");
       return;
     }
     try {
-      await setDocumentChapterHidden(compose.document.id, row.id, hidden);
-      void queryClient.invalidateQueries({ queryKey: ["forum", "chapters"] });
+      await setDocumentChapterHidden(activeDocumentId, row.id, hidden);
+      void queryClient.invalidateQueries({
+        queryKey: chapterQueryKeys.directory(activeDocumentId),
+      });
+      if (!isCurrentView()) return;
       setNotice(
         hidden
-          ? `已隐藏「${chapters[index]?.title ?? ""}」，读者在取消隐藏前不可见`
-          : `「${chapters[index]?.title ?? ""}」已恢复可读`,
+          ? "已隐藏「" + chapter.title + "」，读者在取消隐藏前不可见"
+          : "「" + chapter.title + "」已恢复可读",
       );
     } catch (cause) {
+      if (!isCurrentView()) return;
       setNotice(
         cause instanceof Error
-          ? `设置章节可见性失败：${cause.message}`
+          ? "设置章节可见性失败：" + cause.message
           : "设置章节可见性失败",
       );
     }
@@ -293,7 +449,11 @@ export default function ComposePage() {
 
   // 校订章节：与阅读页「开始校订」一致（字级 diff 校订视图）。
   const proofreadChapter = (index: number) => {
-    navigate(`/read?chapter=${index}&proofread=1`);
+    const chapter = navigationChapters[index];
+    if (chapter)
+      navigate(
+        `/read?chapter=${index}&chapterId=${encodeURIComponent(chapter.id)}&proofread=1`,
+      );
   };
 
   // 空库先建立纯本地空白文章；只有之后点击保存才会创建服务器首版。
@@ -305,7 +465,8 @@ export default function ComposePage() {
       selectedArticle ||
       !articleSelection.selectedDraftTitle ||
       compose.articleStarted
-    ) return;
+    )
+      return;
     compose.createLocalArticle();
     setChapterIndex(0);
     setNotice(
@@ -321,79 +482,132 @@ export default function ComposePage() {
 
   // 在文档末尾追加一个空章节并切换到它；保存时随整篇正文一起入库。
   const addChapter = () => {
+    if (
+      !canEditSelected ||
+      compose.isPlaceholderData ||
+      directoryLoading ||
+      directoryQuery.isError
+    ) {
+      setNotice("章节目录尚未就绪，请加载后再新增");
+      return;
+    }
     const current = compose.contentRef.current;
+    if (chapterDirectory.length > 0 && isBlankDocumentShell(current)) {
+      setNotice("请在长文本工作台新增并上传章节");
+      return;
+    }
     const number = splitDocumentByHeadings(current).chapters.length + 1;
     const result = appendChapter(
       current,
       `第${toChineseNumber(number)}章 新章节`,
     );
-    compose.replaceContent(result.document as RichTextNode);
+    compose.replaceContent(result.document);
+    resetView();
+    setSelectedChapter(null);
     setChapterIndex(result.index);
     setNotice(`已新增第 ${number} 章，保存后目录与版本号会同步更新`);
   };
 
-  // 删除章节：正文先移除（自动保存只写浏览器草稿，点保存生效），
-  // 同时调用删除章节接口清理服务器目录行（幂等；离线时留给保存对账清理）。
   const deleteChapter = async (index: number) => {
-    if (usesUploadedChapters) {
-      const row = chapterDirectory[index];
+    const chapter = navigationChapters[index];
+    if (!chapter || !canEditSelected || compose.isPlaceholderData) return;
+    if (chapter.source !== "document") {
+      const row = chapter.directory;
       if (!row) return;
       try {
         const outcome = await deleteDocumentChapter(activeDocumentId, row.id);
-        if (!outcome.deleted) {
-          setNotice("该服务器章节已经不存在，目录即将刷新");
-        } else {
-          setNotice(`已从服务器删除章节「${row.title}」`);
-        }
-        queryClient.setQueryData<ForumChapterItem[]>(
-          ["forum", "chapters", activeDocumentId],
-          (current = []) => current.filter((chapter) => chapter.id !== row.id),
-        );
-        setChapterIndex(
-          Math.min(index, Math.max(0, chapterDirectory.length - 2)),
-        );
         void queryClient.invalidateQueries({
-          queryKey: ["forum", "chapters", activeDocumentId],
+          queryKey: chapterQueryKeys.directory(activeDocumentId),
         });
+        queryClient.removeQueries({
+          queryKey: chapterQueryKeys.content(activeDocumentId, row.id),
+          exact: true,
+        });
+        if (!isCurrentView()) return;
+        resetView();
+        queryClient.setQueryData<ForumChapterItem[]>(
+          chapterQueryKeys.directory(activeDocumentId),
+          (current = []) => current.filter((item) => item.id !== row.id),
+        );
+        setSelectedChapter(null);
+        setChapterIndex(
+          Math.min(index, Math.max(0, navigationChapters.length - 2)),
+        );
+        setNotice(
+          outcome.deleted
+            ? "已从服务器删除章节「" + row.title + "」"
+            : "该服务器章节已经不存在，目录即将刷新",
+        );
       } catch (error) {
-        setNotice(error instanceof Error ? error.message : "服务器章节删除失败");
+        if (isCurrentView())
+          setNotice(
+            error instanceof Error ? error.message : "服务器章节删除失败",
+          );
       }
       return;
     }
-    const result = removeChapter(compose.contentRef.current, index);
+    const position = chapters.findIndex(
+      (candidate) =>
+        candidate.start === chapter.documentChapter?.start &&
+        candidate.end === chapter.documentChapter?.end,
+    );
+    if (position < 0) {
+      setNotice("请在长文本工作台编辑此章节");
+      return;
+    }
+    const result = removeChapter(compose.contentRef.current, position);
     if (!result.removed) return;
-    const next = result.document as RichTextNode;
-    compose.replaceContent(next);
-    const remaining = splitDocumentByHeadings(next).chapters.length;
-    setChapterIndex(Math.min(index, Math.max(0, remaining - 1)));
+    resetView();
+    compose.replaceContent(result.document);
+    queryClient.setQueryData<ForumChapterItem[]>(
+      chapterQueryKeys.directory(activeDocumentId),
+      (current = []) =>
+        current
+          .filter((row) => row.id !== chapter.id)
+          .map((row) =>
+            row.order > position ? { ...row, order: row.order - 1 } : row,
+          ),
+    );
+    setSelectedChapter(null);
+    setChapterIndex(
+      Math.min(index, Math.max(0, navigationChapters.length - 2)),
+    );
     setNotice(
-      `已删除章节「${result.removed.title}」（仅本地草稿，点保存后生效）`,
+      "已删除章节「" + result.removed.title + "」（仅本地草稿，点保存后生效）",
     );
     try {
-      const outcome = await deleteDocumentChapter(
-        compose.document.id,
-        result.removed.id,
-      );
+      const outcome = await deleteDocumentChapter(activeDocumentId, chapter.id);
       if (outcome.deleted) {
         void queryClient.invalidateQueries({
-          queryKey: ["forum", "chapters"],
+          queryKey: chapterQueryKeys.directory(activeDocumentId),
         });
       }
     } catch {
-      setNotice(
-        `已从本地草稿删除「${result.removed.title}」，服务器目录将在下次保存时重新对账`,
-      );
+      if (isCurrentView()) {
+        setNotice(
+          "已从本地草稿删除「" +
+            result.removed.title +
+            "」，服务器目录将在下次保存时重新对账",
+        );
+      }
     }
   };
 
+  const publishingRef = useRef<object | null>(null);
+  const [publishingScope, setPublishingScope] = useState<object | null>(null);
   const publish = async (latestContent?: RichTextNode) => {
+    if (!isCurrentView()) return;
     if (longText.enabled) {
       await longText.saveDraft();
       return;
     }
-    if (usesUploadedChapters && activeChapterStatus) {
-      const snapshot = latestContent ?? editorContent;
-      try {
+    if (!canWriteChapter || publishingRef.current === viewScope) return;
+    publishingRef.current = viewScope;
+    setPublishingScope(viewScope);
+    try {
+      if (usesUploadedChapters && activeChapterStatus && uploadedChapter) {
+        const snapshot =
+          latestContent ?? editorRef.current?.getJSON() ?? editorContent;
         const hash = await sha256Hex(
           JSON.stringify({
             title: activeChapterStatus.title,
@@ -401,6 +615,7 @@ export default function ComposePage() {
             content: snapshot,
           }),
         );
+        if (!isCurrentView()) return;
         const saved = await uploadLongTextChapter(
           activeDocumentId,
           activeChapterStatus.id,
@@ -409,40 +624,40 @@ export default function ComposePage() {
             order: activeChapterStatus.order,
             content: snapshot,
             hash,
-            baseRevision:
-              uploadedChapter?.revision ?? activeChapterStatus.revision,
+            baseRevision: uploadedChapter.revision,
           },
         );
-        queryClient.setQueryData(uploadedChapterKey, (current: typeof uploadedChapter) =>
-          current
-            ? { ...current, content: snapshot, revision: saved.revision }
-            : current,
-        );
         void queryClient.invalidateQueries({
-          queryKey: ["forum", "chapters", activeDocumentId],
+          queryKey: chapterQueryKeys.directory(activeDocumentId),
         });
-        setNotice("章节已保存为版本 " + String(saved.revision));
-      } catch (error) {
-        setNotice(error instanceof Error ? error.message : "章节保存失败");
+        if (!isCurrentView()) return;
+        queryClient.setQueryData(
+          uploadedChapterKey,
+          (current: typeof uploadedChapter | undefined) =>
+            current
+              ? {
+                  ...current,
+                  content:
+                    current.content === uploadedChapter.content
+                      ? snapshot
+                      : current.content,
+                  revision: saved.revision,
+                }
+              : current,
+        );
+        setNotice("章节已保存为版本 " + saved.revision);
+        return;
       }
-      return;
-    }
-    const snapshot =
-      latestContent ??
-      (editorRef.current?.getJSON() as RichTextNode | undefined);
-    // 用文档缓存修订号判断本次保存是否真的产生了新修订：无内容差异时服务器
-    // 不会建版（章节版本号与历史也在首次实际保存时才生成），不能提示“已保存”。
-    const latestBefore = queryClient.getQueryData<DocumentEnvelope>([
-      "document",
-      compose.document.id,
-    ])?.revision ?? compose.autosave.revision;
-    try {
-      const saved = await compose.publishChapter(activeIndex, snapshot);
-      if (!saved) return;
-      const latestAfter = queryClient.getQueryData<DocumentEnvelope>([
-        "document",
-        compose.document.id,
-      ])?.revision;
+      if (mappedDocumentIndex < 0) return;
+      const snapshot = latestContent ?? editorRef.current?.getJSON();
+      const documentKey = ["document", activeDocumentId] as const;
+      const latestBefore =
+        queryClient.getQueryData<DocumentEnvelope>(documentKey)?.revision ??
+        compose.autosave.revision;
+      const saved = await compose.publishChapter(mappedDocumentIndex, snapshot);
+      if (!isCurrentView() || !saved) return;
+      const latestAfter =
+        queryClient.getQueryData<DocumentEnvelope>(documentKey)?.revision;
       setNotice(
         latestAfter === undefined || latestAfter === latestBefore
           ? "内容没有变化，未创建新版本；该章的版本号与历史在首次实际保存时生成"
@@ -451,50 +666,89 @@ export default function ComposePage() {
             : "正文已保存，可切换到阅读视图检查",
       );
     } catch (cause) {
-      // publishChapter 也负责首次创建文档和校验。
+      if (!isCurrentView()) return;
       setNotice(
         cause instanceof Error
-          ? `保存失败：${cause.message}`
+          ? "保存失败：" + cause.message
           : "保存失败，请稍后重试",
       );
+    } finally {
+      if (publishingRef.current === viewScope) {
+        publishingRef.current = null;
+        if (isCurrentView()) setPublishingScope(null);
+      }
     }
   };
 
   const editor = (
-    <RichTextEditor
-      key={
-        longText.enabled
-          ? `long-text-${activeDocumentId}-${longText.documentVersion}`
-          : `chapter-${activeDocumentId}-${activeIndex}`
-      }
-      content={longText.enabled ? longText.editorContent : editorContent}
-      mode={mode}
-      editable={
-        !compose.isPlaceholderData && compose.articleStarted && canEditSelected
-      }
-      longTextMode={longText.enabled}
-      onChange={(next) => {
-        if (compose.isPlaceholderData) return;
-        if (longText.enabled) longText.updateEditor(next);
-        else if (usesUploadedChapters && activeChapterStatus) {
-          queryClient.setQueryData(
-            uploadedChapterKey,
-            (current: typeof uploadedChapter) =>
-              current ? { ...current, content: next } : current,
-          );
-        } else compose.updateChapter(activeIndex, next);
-      }}
-      onSplitChapter={longText.splitChapter}
-      onChapterEdit={longText.editChapter}
-      onSubmit={(latestContent) => void publish(latestContent)}
-      savedAt={compose.autosave.savedAt}
-      onReady={(editorInstance) => {
-        editorRef.current = editorInstance;
-      }}
-      onExpand={() => setMode("full")}
-      onModeToolsOpen={() => setMode("full")}
-      onCommentAnchorOpen={setThreadId}
-    />
+    <>
+      {!longText.enabled && sourceError ? (
+        <p role="alert">
+          章节加载失败，请重试。{" "}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (directoryQuery.isError) void directoryQuery.refetch();
+              else void chapterQuery.refetch();
+            }}
+          >
+            重试
+          </Button>
+        </p>
+      ) : !longText.enabled && sourceLoading ? (
+        <Skeleton
+          className="h-16 w-full"
+          role="status"
+          aria-label="正在加载章节正文"
+        />
+      ) : !longText.enabled && unsupportedDocumentRange ? (
+        <p role="status">请在长文本工作台编辑此章节</p>
+      ) : !longText.enabled && activeChapter?.source === "placeholder" ? (
+        <p role="status">本章暂无正文。</p>
+      ) : null}
+      <RichTextEditor
+        key={
+          longText.enabled
+            ? `long-text-${activeDocumentId}-${longText.documentVersion}`
+            : JSON.stringify([activeDocumentId, activeChapterId])
+        }
+        content={longText.enabled ? longText.editorContent : editorContent}
+        mode={mode}
+        editable={
+          longText.enabled
+            ? !compose.isPlaceholderData &&
+              compose.articleStarted &&
+              canEditSelected
+            : canWriteChapter
+        }
+        longTextMode={longText.enabled}
+        onChange={(next) => {
+          if (!isCurrentView() || compose.isPlaceholderData || !canEditSelected)
+            return;
+          if (!longText.enabled && !canWriteChapter) return;
+          if (longText.enabled) longText.updateEditor(next);
+          else if (usesUploadedChapters && activeChapterStatus) {
+            queryClient.setQueryData(
+              uploadedChapterKey,
+              (current: typeof uploadedChapter) =>
+                current ? { ...current, content: next } : current,
+            );
+          } else if (mappedDocumentIndex >= 0)
+            compose.updateChapter(mappedDocumentIndex, next);
+        }}
+        onSplitChapter={longText.splitChapter}
+        onChapterEdit={longText.editChapter}
+        onSubmit={(latestContent) => void publish(latestContent)}
+        savedAt={compose.autosave.savedAt}
+        onReady={(editorInstance) => {
+          if (isCurrentView()) editorRef.current = editorInstance;
+        }}
+        onExpand={() => setMode("full")}
+        onModeToolsOpen={() => setMode("full")}
+        onCommentAnchorOpen={setThreadId}
+      />
+    </>
   );
 
   const comparisonView = comparison ? (
@@ -546,10 +800,14 @@ export default function ComposePage() {
                 setSwitchingArticle(true);
                 try {
                   if (longText.enabled && !(await longText.close())) return;
+                  if (!mountedRef.current) return;
+                  resetView();
                   upload.cancel();
                   articleSelection.setSelectedId(id);
                   const stored = Number.parseInt(
-                    window.localStorage.getItem(`ricetext:active-chapter:${id}`) ?? "",
+                    window.localStorage.getItem(
+                      `ricetext:active-chapter:${id}`,
+                    ) ?? "",
                     10,
                   );
                   setChapterIndex(
@@ -566,6 +824,8 @@ export default function ComposePage() {
                 setSwitchingArticle(true);
                 try {
                   if (longText.enabled && !(await longText.close())) return;
+                  if (!mountedRef.current) return;
+                  resetView();
                   upload.cancel();
                   articleSelection.createArticle(title);
                   setChapterIndex(0);
@@ -706,13 +966,17 @@ export default function ComposePage() {
           activeIndex={activeIndex}
           title={
             compose.articleStarted
-              ? chapters[activeIndex]?.title ?? compose.document.title
+              ? (activeChapter?.title ?? compose.document.title)
               : "尚未创建文章"
           }
           saveStatus={
             <SaveStatus
               state={
-                compose.isPlaceholderData ? "loading" : compose.autosave.state
+                compose.isPlaceholderData || sourceLoading
+                  ? "loading"
+                  : sourceError
+                    ? "error"
+                    : compose.autosave.state
               }
               revision={activeRevision}
               savedAt={activeSavedAt}
@@ -723,23 +987,24 @@ export default function ComposePage() {
           identity={identity}
           documentId={compose.document.id}
           revision={compose.autosave.revision}
-          saveDisabled={
-            compose.isPlaceholderData || !compose.articleStarted || !canEditSelected
-          }
+          saveDisabled={!canWriteChapter || publishingScope === viewScope}
           activeCharCount={activeCharCount}
-          chapterId={chapterDirectory[activeIndex]?.id}
+          chapterId={activeChapterStatus?.id}
           activeRevision={activeRevision}
           activeContent={editorContent}
           comparingRevision={comparingRevision}
           onCompareRevision={(revision) => void compareRevision(revision)}
           {...(canEditSelected
             ? {
-                onAddChapter: compose.articleStarted ? addChapter : createArticle,
+                onAddChapter: compose.articleStarted
+                  ? addChapter
+                  : createArticle,
               }
             : {})}
           createArticle={!compose.articleStarted}
           showServerTools={
-            articleSelection.authenticated && compose.document.storage === "server"
+            articleSelection.authenticated &&
+            compose.document.storage === "server"
           }
           {...(canEditSelected
             ? {
@@ -752,8 +1017,10 @@ export default function ComposePage() {
                 onProofread: proofreadChapter,
               }
             : {})}
-          hiddenChapters={chapterDirectory.map((chapter) => chapter.hidden)}
-          onSelectChapter={setChapterIndex}
+          hiddenChapters={navigationChapters.map(
+            (chapter) => chapter.directory?.hidden ?? false,
+          )}
+          onSelectChapter={selectChapter}
           onSave={() => void publish()}
           onRestore={(revision) => void rollback(revision)}
           onExpand={() => setMode("full")}

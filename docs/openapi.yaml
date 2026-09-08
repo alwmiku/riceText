@@ -662,6 +662,9 @@ paths:
                     pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
                   title:
                     type: string
+                  volumeTitle:
+                    type: string
+                    maxLength: 500
                   order:
                     type: integer
                     minimum: 0
@@ -675,6 +678,8 @@ paths:
                     type: integer
                     minimum: 0
                     maximum: 9007199254740991
+                  hasContent:
+                    type: boolean
                   savedAt:
                     type: string
                     format: date-time
@@ -1064,6 +1069,9 @@ paths:
                     pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
                   title:
                     type: string
+                  volumeTitle:
+                    type: string
+                    maxLength: 500
                   order:
                     type: integer
                     minimum: 0
@@ -1077,6 +1085,8 @@ paths:
                     type: integer
                     minimum: 0
                     maximum: 9007199254740991
+                  hasContent:
+                    type: boolean
                   savedAt:
                     type: string
                     format: date-time
@@ -1106,6 +1116,9 @@ paths:
                     pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
                   title:
                     type: string
+                  volumeTitle:
+                    type: string
+                    maxLength: 500
                   order:
                     type: integer
                     minimum: 0
@@ -1119,6 +1132,8 @@ paths:
                     type: integer
                     minimum: 0
                     maximum: 9007199254740991
+                  hasContent:
+                    type: boolean
                   savedAt:
                     type: string
                     format: date-time
@@ -1655,6 +1670,9 @@ paths:
                         type: string
                         minLength: 1
                         maxLength: 500
+                      volumeTitle:
+                        type: string
+                        maxLength: 500
                       order:
                         type: integer
                         minimum: 0
@@ -1731,6 +1749,152 @@ paths:
                 additionalProperties: false
       x-implementation-status: implemented
   /api/forum/novels/{novelId}/chapters/{chapterId}:
+    get:
+      operationId: getNovelChapter
+      tags:
+        - 论坛业务
+      summary: 读取单个已上传章节
+      description: |-
+        按文章与章节 ID 返回分章正文；隐藏章节仅编辑者可读。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: novelId
+          in: path
+          required: true
+          description: 路径参数 novelId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: chapterId
+          in: path
+          required: true
+          description: 路径参数 chapterId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - {}
+        - cookieSession: []
+      responses:
+        "200":
+          description: 章节目录元数据与正文。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  title:
+                    type: string
+                  volumeTitle:
+                    type: string
+                    maxLength: 500
+                  order:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  documentId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  revision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  hasContent:
+                    type: boolean
+                  savedAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  hidden:
+                    type: boolean
+                  content:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        const: doc
+                      content:
+                        default: []
+                        maxItems: 20000
+                        type: array
+                        items:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - type
+                      - content
+                    additionalProperties: false
+                required:
+                  - id
+                  - title
+                  - order
+                  - documentId
+                  - revision
+                  - savedAt
+                  - hidden
+                  - content
+                additionalProperties: false
+        "404":
+          description: 文章、章节不存在或当前身份不可读。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文章、章节不存在或当前身份不可读。
+      x-implementation-status: implemented
     put:
       operationId: saveNovelChapter
       tags:
@@ -1784,6 +1948,9 @@ paths:
                 title:
                   type: string
                   minLength: 1
+                  maxLength: 500
+                volumeTitle:
+                  type: string
                   maxLength: 500
                 order:
                   type: integer
@@ -1989,6 +2156,1280 @@ paths:
                 error:
                   code: EXAMPLE_ERROR
                   message: 章节内容或字段非法。
+      x-implementation-status: implemented
+  /api/forum/novels/{novelId}/chapters/batch:
+    post:
+      operationId: saveNovelChaptersBatch
+      tags:
+        - 论坛业务
+      summary: 批量保存章节正文（每批最多 20 章）
+      description: >-
+        需要 author 或 moderator。章节身份由文章 ID 与章节 ID 共同确定。整批先读取当前文章内相关章节的 revision、order 与 content_hash 完成预校验：目标 order
+        被批外章节占用、批内目标 order 重复或任一 baseRevision 过期时整批返回 409（details.chapterId 指出具体章节），正文不发生部分提交。已存在记录 content_hash 与请求
+        hash 一致时返回 unchanged 与当前 revision，因此上次响应丢失后重试不会再次递增版本。正文继续执行标准 Tiptap 清洗与 longTextBlock 转换保护。路由 body 上限约 5
+        MiB，超出返回 413。
+
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: novelId
+          in: path
+          required: true
+          description: 章节所属的文档/小说 ID
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 章节所属的文档/小说 ID
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chapters:
+                  minItems: 1
+                  maxItems: 20
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      title:
+                        type: string
+                        minLength: 1
+                        maxLength: 500
+                      volumeTitle:
+                        type: string
+                        maxLength: 500
+                      order:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      content:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            const: doc
+                          content:
+                            default: []
+                            maxItems: 20000
+                            type: array
+                            items:
+                              type: object
+                              description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                              additionalProperties: true
+                        required:
+                          - type
+                          - content
+                        additionalProperties: false
+                      hash:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      baseRevision:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                    required:
+                      - id
+                      - title
+                      - order
+                      - content
+                      - hash
+                      - baseRevision
+                    additionalProperties: false
+              required:
+                - chapters
+              additionalProperties: false
+      responses:
+        "200":
+          description: 与请求顺序一致的单章保存结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chapters:
+                    minItems: 1
+                    maxItems: 20
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        title:
+                          type: string
+                          minLength: 1
+                          maxLength: 500
+                        order:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        revision:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        status:
+                          type: string
+                          enum:
+                            - saved
+                            - unchanged
+                      required:
+                        - id
+                        - title
+                        - order
+                        - revision
+                        - status
+                      additionalProperties: false
+                required:
+                  - chapters
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        "403":
+          description: 当前身份无编辑权限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份无编辑权限。
+        "409":
+          description: 批内任一章节存在 order 或 baseRevision 冲突；未发生部分提交。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 批内任一章节存在 order 或 baseRevision 冲突；未发生部分提交。
+        "413":
+          description: 序列化请求体超过约 5 MiB 上限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 序列化请求体超过约 5 MiB 上限。
+        "422":
+          description: 章节数超过 20 或章节字段非法。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 章节数超过 20 或章节字段非法。
+      x-implementation-status: implemented
+  /api/forum/novels/{novelId}/chapter-uploads:
+    post:
+      operationId: createChapterUpload
+      tags:
+        - 论坛业务
+      summary: 创建或恢复整本章节上传会话
+      description: |-
+        冻结章节总数与有序清单哈希；相同文章和清单的未完成会话幂等复用。暂存期间不修改线上章节。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: novelId
+          in: path
+          required: true
+          description: 章节所属的文档/小说 ID
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 章节所属的文档/小说 ID
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                manifestHash:
+                  type: string
+                  pattern: ^[0-9a-f]{64}$
+                totalChapters:
+                  type: integer
+                  minimum: 1
+                  maximum: 10000
+              required:
+                - manifestHash
+                - totalChapters
+              additionalProperties: false
+      responses:
+        "200":
+          description: 可续传的上传会话。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  manifestHash:
+                    type: string
+                    pattern: ^[0-9a-f]{64}$
+                  totalChapters:
+                    type: integer
+                    minimum: 1
+                    maximum: 10000
+                  status:
+                    type: string
+                    enum:
+                      - uploading
+                      - published
+                  staged:
+                    type: array
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                required:
+                  - uploadId
+                  - manifestHash
+                  - totalChapters
+                  - status
+                  - staged
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        "403":
+          description: 无编辑权限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 无编辑权限。
+        "409":
+          description: 上传清单与既有会话冲突。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 上传清单与既有会话冲突。
+      x-implementation-status: implemented
+  /api/forum/novels/{novelId}/chapter-uploads/{uploadId}/batch:
+    put:
+      operationId: stageChapterUploadBatch
+      tags:
+        - 论坛业务
+      summary: 暂存整本上传的一个正文批次
+      description: |-
+        每批最多 20 章，只写上传会话暂存区；ID、order、hash 或基线版本冲突时整批拒绝，线上目录不变。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: novelId
+          in: path
+          required: true
+          description: 路径参数 novelId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: uploadId
+          in: path
+          required: true
+          description: 路径参数 uploadId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chapters:
+                  minItems: 1
+                  maxItems: 20
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      title:
+                        type: string
+                        minLength: 1
+                        maxLength: 500
+                      volumeTitle:
+                        type: string
+                        maxLength: 500
+                      order:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      content:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            const: doc
+                          content:
+                            default: []
+                            maxItems: 20000
+                            type: array
+                            items:
+                              type: object
+                              description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                              additionalProperties: true
+                        required:
+                          - type
+                          - content
+                        additionalProperties: false
+                      hash:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      baseRevision:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                    required:
+                      - id
+                      - title
+                      - order
+                      - content
+                      - hash
+                      - baseRevision
+                    additionalProperties: false
+              required:
+                - chapters
+              additionalProperties: false
+      responses:
+        "200":
+          description: 暂存结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chapters:
+                    minItems: 1
+                    maxItems: 20
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        title:
+                          type: string
+                          minLength: 1
+                          maxLength: 500
+                        order:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        revision:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        status:
+                          type: string
+                          enum:
+                            - saved
+                            - unchanged
+                      required:
+                        - id
+                        - title
+                        - order
+                        - revision
+                        - status
+                      additionalProperties: false
+                required:
+                  - chapters
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        "403":
+          description: 无编辑权限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 无编辑权限。
+        "409":
+          description: 会话、顺序或版本冲突。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 会话、顺序或版本冲突。
+        "413":
+          description: 批次过大。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 批次过大。
+      x-implementation-status: implemented
+  /api/forum/novels/{novelId}/chapter-uploads/{uploadId}/complete:
+    post:
+      operationId: completeChapterUpload
+      tags:
+        - 论坛业务
+      summary: 验收并原子发布完整章节集
+      description: |-
+        服务端复算有序清单哈希并校验 0..N-1、数量、正文和基线版本；全部通过后才在一个事务内替换线上章节。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: novelId
+          in: path
+          required: true
+          description: 路径参数 novelId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: uploadId
+          in: path
+          required: true
+          description: 路径参数 uploadId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: 原子发布结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadId:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  manifestHash:
+                    type: string
+                    pattern: ^[0-9a-f]{64}$
+                  totalChapters:
+                    type: integer
+                    minimum: 1
+                    maximum: 10000
+                  publishedAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                required:
+                  - uploadId
+                  - manifestHash
+                  - totalChapters
+                  - publishedAt
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        "403":
+          description: 无编辑权限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 无编辑权限。
+        "409":
+          description: 清单不完整、顺序错误或基线版本变化。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 清单不完整、顺序错误或基线版本变化。
+      x-implementation-status: implemented
+  /api/forum/novels/{novelId}/chapters/reorder-stage:
+    post:
+      operationId: stageNovelChapterReorder
+      tags:
+        - 论坛业务
+      summary: 换序暂存（每批最多 40 项，不发送正文）
+      description: >-
+        需要 author 或 moderator。先把当前文章的所有移动章节按批放到文章内唯一临时 order，再执行最终正文批次，避免中途占用其他章节的目标位置。当前顺序已经等于临时顺序时幂等返回 unchanged，不重复递增
+        revision；上次响应丢失后的重试同样返回当前 revision。目标临时 order 被批外章节占用、批内临时 order 重复或 baseRevision 过期时整批返回 409（details.chapterId
+        指出具体章节）。
+
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: novelId
+          in: path
+          required: true
+          description: 章节所属的文档/小说 ID
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 章节所属的文档/小说 ID
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chapters:
+                  minItems: 1
+                  maxItems: 40
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                      temporaryOrder:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      baseRevision:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                    required:
+                      - id
+                      - temporaryOrder
+                      - baseRevision
+                    additionalProperties: false
+              required:
+                - chapters
+              additionalProperties: false
+      responses:
+        "200":
+          description: 与请求顺序一致的单章暂存结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chapters:
+                    minItems: 1
+                    maxItems: 40
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        revision:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        status:
+                          type: string
+                          enum:
+                            - staged
+                            - unchanged
+                      required:
+                        - id
+                        - revision
+                        - status
+                      additionalProperties: false
+                required:
+                  - chapters
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        "403":
+          description: 当前身份无编辑权限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份无编辑权限。
+        "409":
+          description: 批内任一章节存在临时 order 或 baseRevision 冲突；未发生部分提交。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 批内任一章节存在临时 order 或 baseRevision 冲突；未发生部分提交。
+        "413":
+          description: 序列化请求体超过约 5 MiB 上限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 序列化请求体超过约 5 MiB 上限。
+        "422":
+          description: 章节数超过 40 或字段非法。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 章节数超过 40 或字段非法。
       x-implementation-status: implemented
   /api/documents/{documentId}/revisions:
     get:
@@ -4294,6 +5735,9 @@ paths:
                           pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
                         title:
                           type: string
+                        volumeTitle:
+                          type: string
+                          maxLength: 500
                         order:
                           type: integer
                           minimum: 0
@@ -4307,6 +5751,8 @@ paths:
                           type: integer
                           minimum: 0
                           maximum: 9007199254740991
+                        hasContent:
+                          type: boolean
                         savedAt:
                           type: string
                           format: date-time
@@ -4513,8 +5959,10 @@ paths:
       tags:
         - 论坛业务
       summary: 提交纠错建议
-      description: |-
-        读者提交待审核文字替换；未审核内容不会写入正文。
+      description: >-
+        读者提交待审核文字替换；未审核内容不会写入正文。chapterId 使用服务端章节目录身份；lineNo 为章内顶层块行号（1-based，0 表示未知），lineText 为该行完整文本，chapterTitle
+        仅供展示。
+
 
         生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
@@ -4727,8 +6175,11 @@ paths:
       tags:
         - 论坛业务
       summary: 审核纠错建议
-      description: |-
-        仅 author/moderator。approve 会替换当前正文第一次匹配文字并创建 operation=suggestion 的真实修订；reject 只更新建议状态。
+      description: >-
+        仅 author/moderator。approve 按服务端 documentId + chapterId 身份限定章节，核对 lineNo 与完整 lineText；行号漂移时仅接受章内唯一上下文，行内 fromText
+        也必须唯一。无定位旧建议仅允许全文唯一匹配；已失效的章节或行定位不降级为全文首次替换。独立章节正文与文档快照不一致时拒绝应用。成功创建 operation=suggestion 的真实修订；找不到原文或上下文返回 409
+        SUGGESTION_SOURCE_NOT_FOUND，定位歧义返回 409 SUGGESTION_SOURCE_AMBIGUOUS，均不改变正文和建议状态。reject 只更新建议状态。
+
 
         生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:
@@ -4973,7 +6424,7 @@ paths:
                   code: EXAMPLE_ERROR
                   message: 当前身份不可审核。
         "404":
-          description: 建议不存在或待替换文字已不存在。
+          description: 建议不存在。
           content:
             application/json:
               schema:
@@ -5006,9 +6457,9 @@ paths:
               example:
                 error:
                   code: EXAMPLE_ERROR
-                  message: 建议不存在或待替换文字已不存在。
+                  message: 建议不存在。
         "409":
-          description: 建议已审核或 baseRevision 过期。
+          description: 建议已审核、baseRevision 过期，或原文/章节/行定位不存在或有歧义。
           content:
             application/json:
               schema:
@@ -5041,7 +6492,7 @@ paths:
               example:
                 error:
                   code: EXAMPLE_ERROR
-                  message: 建议已审核或 baseRevision 过期。
+                  message: 建议已审核、baseRevision 过期，或原文/章节/行定位不存在或有歧义。
       x-implementation-status: implemented
   /api/forum/documents/{documentId}/suggestion-batches:
     get:

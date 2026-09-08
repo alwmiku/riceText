@@ -29,9 +29,9 @@ const uploadDiff: ChapterUploadDiff = {
   batchCurrent: null,
   batchTotal: null,
   rows: [
-    { id: "one", title: "第一章", action: "新增", status: "待上传", attempts: 0 },
-    { id: "two", title: "第二章", action: "修改", status: "待上传", attempts: 0 },
-    { id: "three", title: "第三章", action: "未变化", status: "未变化", attempts: 0 },
+    { id: "one", title: "第一章", action: "add", status: "pending", attempts: 0 },
+    { id: "two", title: "第二章", action: "modify", status: "pending", attempts: 0 },
+    { id: "three", title: "第三章", action: "unchanged", status: "unchanged", attempts: 0 },
   ],
 };
 
@@ -87,11 +87,22 @@ describe("ChapterUploadDialog", () => {
     expect(screen.getByText(/仍有/)).toHaveTextContent("2");
     expect(screen.getByText(/本地共/)).toHaveTextContent("本次上传 2 个");
     expect(screen.getByText("总上传进度")).toBeInTheDocument();
+    expect(screen.getByText("新增")).toBeInTheDocument();
+    expect(screen.getByText("修改")).toBeInTheDocument();
+    expect(screen.getAllByText("待上传")).toHaveLength(2);
+    expect(screen.queryByText("pending")).not.toBeInTheDocument();
     expect(screen.getByLabelText("长文本上传总进度")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "确认分章上传" }));
     fireEvent.click(screen.getByRole("button", { name: "稍后继续" }));
     expect(onConfirm).toHaveBeenCalledOnce();
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("所有章节已暂存但尚未发布时仍可确认", () => {
+    render(<ChapterUploadDialog open diff={{ ...uploadDiff, published: false, uploaded: 2, pending: 0, failed: 0 }}
+      uploading={false} onOpenChange={vi.fn()} onConfirm={vi.fn()} onReprepare={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "确认分章上传" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "稍后继续" })).toBeEnabled();
   });
 
   it("覆盖无缺口、上传中、批次进度与空差异分支", () => {
@@ -139,8 +150,8 @@ describe("ChapterUploadDialog", () => {
             {
               id: "remote-only",
               title: "错乱章节",
-              action: "服务器额外",
-              status: "待整套替换",
+              action: "remote_only",
+              status: "awaiting_replacement",
               attempts: 0,
             },
           ],
@@ -166,8 +177,8 @@ describe("ChapterUploadDialog", () => {
             {
               id: "broken",
               title: "冲突章",
-              action: "修改",
-              status: "失败",
+              action: "modify",
+              status: "failed",
               retryable: false,
               attempts: 1,
               error: "章节已被其他修改更新",

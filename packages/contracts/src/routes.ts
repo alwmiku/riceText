@@ -306,13 +306,13 @@ export const contractRoutes: readonly ContractRoute[] = [
   },
   {
     operationId: "createSuggestion", method: "POST", path: "/api/forum/documents/:documentId/suggestions", tags: ["论坛业务"], implementationStatus: "implemented",
-    summary: "提交纠错建议", description: "读者提交待审核文字替换；未审核内容不会写入正文。",
+    summary: "提交纠错建议", description: "读者提交待审核文字替换；未审核内容不会写入正文。chapterId 使用服务端章节目录身份；lineNo 为章内顶层块行号（从 1 开始，0 表示未知），lineText 为该行完整文本，chapterTitle 仅供展示。",
     params: documentParams, body: CreateSuggestionRequestSchema, responses: { 201: { description: "pending 状态建议。", schema: SuggestionSchema }, 404: { description: "文档不存在。", schema: ApiErrorSchema } },
   },
   {
     operationId: "reviewSuggestion", method: "PATCH", path: "/api/forum/suggestions/:suggestionId", tags: ["论坛业务"], implementationStatus: "implemented",
-    summary: "审核纠错建议", description: "仅 author/moderator。approve 会替换当前正文第一次匹配文字并创建 operation=suggestion 的真实修订；reject 只更新建议状态。",
-    params: suggestionParams, body: ReviewSuggestionRequestSchema, responses: { 200: { description: "审核后的建议和可选新文档修订。", schema: z.object({ suggestion: SuggestionSchema, document: DocumentEnvelopeSchema.nullable() }).strict() }, 403: { description: "当前身份不可审核。", schema: ApiErrorSchema }, 404: { description: "建议不存在或待替换文字已不存在。", schema: ApiErrorSchema }, 409: { description: "建议已审核或 baseRevision 过期。", schema: ApiErrorSchema } },
+    summary: "审核纠错建议", description: "仅 author/moderator。approve 按服务端 documentId + chapterId 身份限定章节，核对 lineNo 与完整 lineText；行号漂移时仅接受章内唯一上下文，行内 fromText 也必须唯一。无定位旧建议仅允许全文唯一匹配；已失效的章节或行定位不降级为全文首次替换。独立章节正文与文档快照不一致时拒绝应用。成功创建 operation=suggestion 的真实修订；找不到原文或上下文返回 409 SUGGESTION_SOURCE_NOT_FOUND，定位歧义返回 409 SUGGESTION_SOURCE_AMBIGUOUS，均不改变正文和建议状态。reject 只更新建议状态。",
+    params: suggestionParams, body: ReviewSuggestionRequestSchema, responses: { 200: { description: "审核后的建议和可选新文档修订。", schema: z.object({ suggestion: SuggestionSchema, document: DocumentEnvelopeSchema.nullable() }).strict() }, 403: { description: "当前身份不可审核。", schema: ApiErrorSchema }, 404: { description: "建议不存在。", schema: ApiErrorSchema }, 409: { description: "建议已审核、baseRevision 过期，或原文/章节/行定位不存在或有歧义。", schema: ApiErrorSchema } },
   },
   {
     operationId: "listSuggestionBatches", method: "GET", path: "/api/forum/documents/:documentId/suggestion-batches", tags: ["论坛业务"], implementationStatus: "implemented",

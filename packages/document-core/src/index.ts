@@ -11,12 +11,9 @@ export {
   chapterStartExtension,
   createDocumentExtensions,
   createDocumentSchema,
+  type DocumentExtensionsOptions,
 } from "./schema.js";
-export {
-  parseDocument,
-  applyStepsToDocument,
-  validateSteps,
-} from "./apply.js";
+export { parseDocument, applyStepsToDocument, validateSteps } from "./apply.js";
 export { stepFromJson, describeStepsJson, type StepJson } from "./steps.js";
 export { diffDocuments, diffDocumentsVerified, sharedSchema } from "./diff.js";
 export * from "./sanitize.js";

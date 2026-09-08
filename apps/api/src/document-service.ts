@@ -271,20 +271,22 @@ export class DocumentService {
     request: UpdateDocumentStepsRequest,
     authorId: string,
   ): { envelope: DocumentEnvelope; created: boolean } {
-    const current = this.get(documentId);
-    let content: TiptapDocument;
-    try {
-      const next = applyStepsToDocument(
-        createDocumentSchema(),
-        current.content as unknown as JSONContent,
-        request.steps as unknown as StepJson[],
-      );
-      content = sanitizeDocument(next);
-    } catch (error) {
-      if (error instanceof ApplyStepsError)
-        throw new HttpError(422, "INVALID_STEPS", error.message);
-      throw error;
-    }
+    // 延迟到写事务中的幂等与基线检查之后，避免重试在新正文上重复应用删除步骤。
+    const content = (): TiptapDocument => {
+      const current = this.get(documentId);
+      try {
+        const next = applyStepsToDocument(
+          createDocumentSchema(),
+          current.content as unknown as JSONContent,
+          request.steps as unknown as StepJson[],
+        );
+        return sanitizeDocument(next);
+      } catch (error) {
+        if (error instanceof ApplyStepsError)
+          throw new HttpError(422, "INVALID_STEPS", error.message);
+        throw error;
+      }
+    };
     return this.#write(
       documentId,
       request.baseRevision,
@@ -488,7 +490,7 @@ export class DocumentService {
     mutationId: string,
     requestJson: string,
     schemaVersion: number,
-    content: TiptapDocument,
+    content: TiptapDocument | (() => TiptapDocument),
     authorId: string,
     operation: RevisionRow["operation"],
     targetRevision: number | null,
@@ -528,6 +530,7 @@ export class DocumentService {
           currentRevision: document.current_revision,
           baseRevision,
         });
+      if (typeof content === "function") content = content();
       const revision = document.current_revision + 1;
       const now = new Date().toISOString();
       this.#db

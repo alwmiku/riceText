@@ -4,7 +4,13 @@ export const DOCUMENT_NODE_ATTRIBUTES = {
   doc: [],
   paragraph: ["textAlign", "firstLineIndent", "leftIndent"],
   text: [],
-  heading: ["level", "textAlign", "chapterStart", "firstLineIndent", "leftIndent"],
+  heading: [
+    "level",
+    "textAlign",
+    "chapterStart",
+    "firstLineIndent",
+    "leftIndent",
+  ],
   bulletList: [],
   orderedList: ["start", "type"],
   listItem: ["textAlign"],
@@ -15,12 +21,31 @@ export const DOCUMENT_NODE_ATTRIBUTES = {
   inlineCommentAnchor: ["threadId", "count", "placement"],
   richImage: ["assetId", "src", "alt", "caption", "align", "width"],
   diceRoll: ["rollId", "expression", "rolls", "total", "rerollOf"],
-  novelExcerpt: ["bookTitle", "chapterTitle", "author", "sourceUrl", "variant", "readerTime", "batteryLevel", "pageLabel", "progressLabel", "headerLabel"],
+  novelExcerpt: [
+    "bookTitle",
+    "chapterTitle",
+    "author",
+    "sourceUrl",
+    "variant",
+    "readerTime",
+    "batteryLevel",
+    "pageLabel",
+    "progressLabel",
+    "headerLabel",
+  ],
   mention: ["userId", "name", "resolved", "avatarUrl"],
   replyGate: ["gateId", "prompt"],
   attachmentRef: ["attachmentId", "name", "mimeType", "size", "priceCoins"],
   pollRef: ["pollId", "question", "multiple", "options"],
-  longTextBlock: ["chapterId", "title", "text", "order", "start", "end"],
+  longTextBlock: [
+    "chapterId",
+    "title",
+    "volumeTitle",
+    "text",
+    "order",
+    "start",
+    "end",
+  ],
 } as const;
 
 export const DOCUMENT_MARK_ATTRIBUTES = {
@@ -47,16 +72,7 @@ export const ALLOWED_DOCUMENT_FONT_FAMILIES = [
 ] as const;
 
 export const ALLOWED_DOCUMENT_FONT_SIZES = [
-  12,
-  14,
-  16,
-  18,
-  20,
-  24,
-  28,
-  32,
-  36,
-  48,
+  12, 14, 16, 18, 20, 24, 28, 32, 36, 48,
 ] as const;
 
 export const MAX_DOCUMENT_NODES = 10_000;

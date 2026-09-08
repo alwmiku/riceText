@@ -17,7 +17,12 @@ export const EntityIdSchema = z
 
 /** 可安全放进 Tiptap JSON 属性中的 JSON 值。 */
 export type JsonValue =
-  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 /** Tiptap mark 的最小、可传输表示。 */
 export interface TiptapMark {
@@ -71,7 +76,23 @@ export const TiptapNodeSchema: z.ZodType<TiptapNode> = z.lazy(() =>
       marks: z.array(TiptapMarkSchema).max(64).optional(),
       text: z.string().max(2_000_000).optional(),
     })
-    .strict(),
+    .strict()
+    .superRefine((node, context) => {
+      // 长文卷名是既有持久化字段；缺省兼容旧文档，显式值必须满足字符串上限。
+      if (
+        node.type !== "longTextBlock" ||
+        node.attrs?.volumeTitle === undefined
+      )
+        return;
+      const result = z.string().max(500).safeParse(node.attrs.volumeTitle);
+      if (!result.success) {
+        context.addIssue({
+          code: "custom",
+          path: ["attrs", "volumeTitle"],
+          message: "卷名必须是不超过 500 字符的字符串",
+        });
+      }
+    }),
 );
 
 /** 服务端接受和返回的唯一正文格式。 */
@@ -178,7 +199,10 @@ export const CursorQuerySchema = z
 
 /** 版本历史查询；chapterId 存在时只返回该章实际变化的版本。 */
 export const RevisionQuerySchema = CursorQuerySchema.extend({
-  cursor: z.string().regex(/^[1-9]\d*$/, "版本 cursor 必须是正整数 revision").optional(),
+  cursor: z
+    .string()
+    .regex(/^[1-9]\d*$/, "版本 cursor 必须是正整数 revision")
+    .optional(),
   chapterId: EntityIdSchema.optional(),
 }).strict();
 
@@ -387,7 +411,12 @@ export const PASSWORD_HASH_ITERATIONS = 100_000;
 /** 本地账号密码登录；生产只通过 HTTPS 发送，服务端不保存明文密码。 */
 export const PasswordLoginRequestSchema = z
   .object({
-    username: z.string().trim().min(3).max(64).regex(/^[A-Za-z0-9._-]+$/),
+    username: z
+      .string()
+      .trim()
+      .min(3)
+      .max(64)
+      .regex(/^[A-Za-z0-9._-]+$/),
     password: z.string().min(10).max(128),
   })
   .strict();
@@ -592,7 +621,10 @@ export type StageNovelChapterReorderItemResponse = z.infer<
 /** 换序暂存响应：与请求顺序一致。 */
 export const StageNovelChapterReorderResponseSchema = z
   .object({
-    chapters: z.array(StageNovelChapterReorderItemResponseSchema).min(1).max(40),
+    chapters: z
+      .array(StageNovelChapterReorderItemResponseSchema)
+      .min(1)
+      .max(40),
   })
   .strict();
 /** 换序暂存响应。 */
@@ -655,7 +687,7 @@ export const SuggestionSchema = z
     chapterId: z.string(),
     /** 章节标题（冗余存储，免联表即可展示“对哪一章校订”）。 */
     chapterTitle: z.string(),
-    /** 校订在章节内的行号（1-based；0 表示未知）。 */
+    /** 校订在章节内的行号（从 1 开始；0 表示未知）。 */
     lineNo: z.number().int().nonnegative(),
     /** 该行完整文本，作为行级定位依据。 */
     lineText: z.string(),

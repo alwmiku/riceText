@@ -14,7 +14,10 @@ import {
   type JSONContent,
   type StepJson,
 } from "@ricetext/document-core";
-import { chapterStorageId, sanitizeDocumentForWrite } from "@ricetext/server-core";
+import {
+  chapterStorageId,
+  sanitizeDocumentForWrite,
+} from "@ricetext/server-core";
 import { WorkerHttpError } from "../http-error";
 import { D1ReadRepository } from "./read-repository";
 
@@ -111,62 +114,97 @@ export class D1WriteRepository {
       targetRevision: null,
       stepsJson: null,
     };
-    const existingMutation = await this.mutation(documentId, request.clientMutationId);
-    if (existingMutation) return this.idempotentResult(writeInput, existingMutation);
+    const existingMutation = await this.mutation(
+      documentId,
+      request.clientMutationId,
+    );
+    if (existingMutation)
+      return this.idempotentResult(writeInput, existingMutation);
 
     const createdAt = new Date().toISOString();
-    const chapters = splitDocumentByChapters(content as unknown as JSONContent).chapters;
-    const chapterRows = chapters.length > 0 ? chapters : [{ id: "chapter-0", title: "正文" }];
+    const chapters = splitDocumentByChapters(
+      content as unknown as JSONContent,
+    ).chapters;
+    const chapterRows =
+      chapters.length > 0 ? chapters : [{ id: "chapter-0", title: "正文" }];
     const statements: D1PreparedStatement[] = [
-      this.db.prepare(
-        "INSERT INTO documents(id, title, schema_version, current_revision, created_by, created_at, updated_at) " +
-          "VALUES (?, ?, ?, 1, ?, ?, ?)",
-      ).bind(
-        documentId,
-        request.title ?? "未命名文章",
-        request.schemaVersion,
-        authorId,
-        createdAt,
-        createdAt,
-      ),
-      this.db.prepare(
-        "INSERT INTO document_revisions(document_id, revision, schema_version, content_json, steps_json, author_id, operation, target_revision, created_at) " +
-          "VALUES (?, 1, ?, ?, NULL, ?, 'update', NULL, ?)",
-      ).bind(documentId, request.schemaVersion, JSON.stringify(content), authorId, createdAt),
-      this.db.prepare(
-        "INSERT INTO document_mutations(document_id, client_mutation_id, request_json, revision) VALUES (?, ?, ?, 1)",
-      ).bind(documentId, request.clientMutationId, requestJson),
-      this.db.prepare(
-        "INSERT INTO document_acl(document_id, user_id, permission, created_at) VALUES (?, ?, 'admin', ?)",
-      ).bind(documentId, authorId, createdAt),
-      ...chapterRows.map((chapter, order) =>
-        this.db.prepare(
-          "INSERT INTO chapters(id, title, sort_order, document_id, revision, updated_at, hidden) " +
-            "VALUES (?, ?, ?, ?, 1, ?, 0)",
-        ).bind(
-          chapterStorageId(documentId, order),
-          chapter.title,
-          order,
+      this.db
+        .prepare(
+          "INSERT INTO documents(id, title, schema_version, current_revision, created_by, created_at, updated_at) " +
+            "VALUES (?, ?, ?, 1, ?, ?, ?)",
+        )
+        .bind(
           documentId,
+          request.title ?? "未命名文章",
+          request.schemaVersion,
+          authorId,
+          createdAt,
           createdAt,
         ),
+      this.db
+        .prepare(
+          "INSERT INTO document_revisions(document_id, revision, schema_version, content_json, steps_json, author_id, operation, target_revision, created_at) " +
+            "VALUES (?, 1, ?, ?, NULL, ?, 'update', NULL, ?)",
+        )
+        .bind(
+          documentId,
+          request.schemaVersion,
+          JSON.stringify(content),
+          authorId,
+          createdAt,
+        ),
+      this.db
+        .prepare(
+          "INSERT INTO document_mutations(document_id, client_mutation_id, request_json, revision) VALUES (?, ?, ?, 1)",
+        )
+        .bind(documentId, request.clientMutationId, requestJson),
+      this.db
+        .prepare(
+          "INSERT INTO document_acl(document_id, user_id, permission, created_at) VALUES (?, ?, 'admin', ?)",
+        )
+        .bind(documentId, authorId, createdAt),
+      ...chapterRows.map((chapter, order) =>
+        this.db
+          .prepare(
+            "INSERT INTO chapters(id, title, sort_order, document_id, revision, updated_at, hidden) " +
+              "VALUES (?, ?, ?, ?, 1, ?, 0)",
+          )
+          .bind(
+            chapterStorageId(documentId, order),
+            chapter.title,
+            order,
+            documentId,
+            createdAt,
+          ),
       ),
     ];
     try {
       await this.db.batch(statements);
-      return { envelope: await this.reads.revision(documentId, 1), created: true };
+      return {
+        envelope: await this.reads.revision(documentId, 1),
+        created: true,
+      };
     } catch (error) {
-      const concurrentMutation = await this.mutation(documentId, request.clientMutationId);
-      if (concurrentMutation) return this.idempotentResult(writeInput, concurrentMutation);
+      const concurrentMutation = await this.mutation(
+        documentId,
+        request.clientMutationId,
+      );
+      if (concurrentMutation)
+        return this.idempotentResult(writeInput, concurrentMutation);
       const current = await this.db
         .prepare("SELECT current_revision FROM documents WHERE id = ?")
         .bind(documentId)
         .first<DocumentPointerRow>();
       if (current) {
-        throw new WorkerHttpError(409, "REVISION_CONFLICT", "文档已由另一请求创建", {
-          currentRevision: current.current_revision,
-          baseRevision: 0,
-        });
+        throw new WorkerHttpError(
+          409,
+          "REVISION_CONFLICT",
+          "文档已由另一请求创建",
+          {
+            currentRevision: current.current_revision,
+            baseRevision: 0,
+          },
+        );
       }
       throw error;
     }
@@ -184,7 +222,8 @@ export class D1WriteRepository {
       )
       .bind(documentId, request.targetRevision)
       .first<RevisionContentRow>();
-    if (!target) throw new WorkerHttpError(404, "REVISION_NOT_FOUND", "目标修订不存在");
+    if (!target)
+      throw new WorkerHttpError(404, "REVISION_NOT_FOUND", "目标修订不存在");
     return this.write({
       documentId,
       baseRevision: request.baseRevision,
@@ -204,7 +243,34 @@ export class D1WriteRepository {
     request: UpdateDocumentStepsRequest,
     authorId: string,
   ): Promise<DocumentWriteResult> {
+    const requestJson = JSON.stringify(request);
+    const existing = await this.mutation(documentId, request.clientMutationId);
+    if (existing)
+      return this.idempotentResult({ documentId, requestJson }, existing);
+
     const current = await this.reads.document(documentId);
+    if (current.revision !== request.baseRevision) {
+      // 快照读取期间可能已有相同请求提交，冲突前再次回收其成功结果。
+      const concurrentMutation = await this.mutation(
+        documentId,
+        request.clientMutationId,
+      );
+      if (concurrentMutation) {
+        return this.idempotentResult(
+          { documentId, requestJson },
+          concurrentMutation,
+        );
+      }
+      throw new WorkerHttpError(
+        409,
+        "REVISION_CONFLICT",
+        "文档已被其他修订更新",
+        {
+          currentRevision: current.revision,
+          baseRevision: request.baseRevision,
+        },
+      );
+    }
     let content: TiptapDocument;
     try {
       const updated = applyStepsToDocument(
@@ -223,7 +289,7 @@ export class D1WriteRepository {
       documentId,
       baseRevision: request.baseRevision,
       mutationId: request.clientMutationId,
-      requestJson: JSON.stringify(request),
+      requestJson,
       schemaVersion: request.schemaVersion,
       content,
       authorId,
@@ -256,7 +322,8 @@ export class D1WriteRepository {
       documentId: input.documentId,
       baseRevision: input.baseRevision,
       mutationId:
-        (input.kind === "batch" ? "suggestion-batch-" : "suggestion-") + input.suggestionId,
+        (input.kind === "batch" ? "suggestion-batch-" : "suggestion-") +
+        input.suggestionId,
       requestJson,
       schemaVersion: input.schemaVersion,
       content: sanitizeDocumentForWrite(input.content),
@@ -265,11 +332,18 @@ export class D1WriteRepository {
       targetRevision: null,
       stepsJson: input.steps ? JSON.stringify(input.steps) : null,
       ...(input.chapterId ? { chapterId: input.chapterId } : {}),
-      review: { kind: input.kind, id: input.suggestionId, reviewerId: input.reviewerId },
+      review: {
+        kind: input.kind,
+        id: input.suggestionId,
+        reviewerId: input.reviewerId,
+      },
     });
   }
 
-  private async mutation(documentId: string, mutationId: string): Promise<MutationRow | null> {
+  private async mutation(
+    documentId: string,
+    mutationId: string,
+  ): Promise<MutationRow | null> {
     return this.db
       .prepare(
         "SELECT request_json, revision FROM document_mutations " +
@@ -280,7 +354,7 @@ export class D1WriteRepository {
   }
 
   private async idempotentResult(
-    input: WriteInput,
+    input: Pick<WriteInput, "documentId" | "requestJson">,
     existing: MutationRow,
   ): Promise<DocumentWriteResult> {
     if (existing.request_json !== input.requestJson) {
@@ -304,12 +378,18 @@ export class D1WriteRepository {
       .prepare("SELECT current_revision FROM documents WHERE id = ?")
       .bind(input.documentId)
       .first<DocumentPointerRow>();
-    if (!document) throw new WorkerHttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
+    if (!document)
+      throw new WorkerHttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
     if (document.current_revision !== input.baseRevision) {
-      throw new WorkerHttpError(409, "REVISION_CONFLICT", "文档已被其他修订更新", {
-        currentRevision: document.current_revision,
-        baseRevision: input.baseRevision,
-      });
+      throw new WorkerHttpError(
+        409,
+        "REVISION_CONFLICT",
+        "文档已被其他修订更新",
+        {
+          currentRevision: document.current_revision,
+          baseRevision: input.baseRevision,
+        },
+      );
     }
 
     const revision = input.baseRevision + 1;
@@ -372,7 +452,9 @@ export class D1WriteRepository {
           input.baseRevision,
         ),
       this.db
-        .prepare("UPDATE comment_threads SET archived = 1 WHERE document_id = ?")
+        .prepare(
+          "UPDATE comment_threads SET archived = 1 WHERE document_id = ?",
+        )
         .bind(input.documentId),
     );
 
@@ -416,8 +498,12 @@ export class D1WriteRepository {
         created: true,
       };
     } catch (error) {
-      const concurrentMutation = await this.mutation(input.documentId, input.mutationId);
-      if (concurrentMutation) return this.idempotentResult(input, concurrentMutation);
+      const concurrentMutation = await this.mutation(
+        input.documentId,
+        input.mutationId,
+      );
+      if (concurrentMutation)
+        return this.idempotentResult(input, concurrentMutation);
       if (input.review) {
         const reviewed = await this.db
           .prepare(
@@ -441,10 +527,15 @@ export class D1WriteRepository {
         .bind(input.documentId)
         .first<DocumentPointerRow>();
       if (current && current.current_revision !== input.baseRevision) {
-        throw new WorkerHttpError(409, "REVISION_CONFLICT", "文档已被其他修订更新", {
-          currentRevision: current.current_revision,
-          baseRevision: input.baseRevision,
-        });
+        throw new WorkerHttpError(
+          409,
+          "REVISION_CONFLICT",
+          "文档已被其他修订更新",
+          {
+            currentRevision: current.current_revision,
+            baseRevision: input.baseRevision,
+          },
+        );
       }
       throw error;
     }

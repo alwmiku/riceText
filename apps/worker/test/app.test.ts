@@ -78,7 +78,7 @@ beforeEach(async () => {
 });
 
 describe("RiceText Worker", () => {
-  it("registers every shared contract route", () => {
+  it("注册所有共享契约路由", () => {
     const registered = new Set(
       createWorkerApp().routes.map((route) => route.method + " " + route.path),
     );
@@ -87,7 +87,7 @@ describe("RiceText Worker", () => {
     }
   });
 
-  it("applies the D1 baseline and exposes health", async () => {
+  it("应用 D1 基线并提供健康检查", async () => {
     const table = await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'document_revisions'",
     ).first<{ name: string }>();
@@ -101,7 +101,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("reads document, revision history and chapters from D1", async () => {
+  it("从 D1 读取文档、修订历史和章节", async () => {
     const anonymousDocument = await exports.default.fetch(
       "http://example.com/api/documents/demo-post",
     );
@@ -153,7 +153,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("allows demo identity headers only when explicitly enabled", async () => {
+  it("仅在显式启用时允许演示身份请求头", async () => {
     const anonymous = await exports.default.fetch("http://example.com/api/forum/session");
     expect(anonymous.status).toBe(401);
 
@@ -180,7 +180,7 @@ describe("RiceText Worker", () => {
     expect(preflight.headers.get("access-control-allow-headers")).toContain("x-user-id");
   });
 
-  it("creates one revision and replays the same mutation idempotently", async () => {
+  it("创建一个修订并幂等重放相同变更请求", async () => {
     const request = {
       schemaVersion: 1,
       baseRevision: 1,
@@ -233,7 +233,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("accepts editor orderedList type:null alongside excerpts and rejects malformed numbering", async () => {
+  it("接受编辑器摘录与 orderedList type:null，拒绝非法编号格式", async () => {
     const list = { type: "orderedList", attrs: { start: 1, type: null as string | null }, content: [{ type: "listItem", attrs: { textAlign: null }, content: [{ type: "paragraph", content: [{ type: "text", text: "List text" }] }] }] };
     const document = { type: "doc", content: [list, { type: "novelExcerpt", attrs: { variant: "fanqie", bookTitle: "Book", chapterTitle: "Chapter", readerTime: "23:00" }, content: [{ type: "paragraph", content: [{ type: "text", text: "Excerpt" }] }] }] };
     const save = (baseRevision: number, clientMutationId: string, value: unknown) => exports.default.fetch(new Request("http://example.com/api/documents/list-excerpt", { method: "PUT", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ title: "List and excerpt", schemaVersion: 1, baseRevision, clientMutationId, content: value }) }));
@@ -250,7 +250,7 @@ describe("RiceText Worker", () => {
     await expect(invalid.json()).resolves.toMatchObject({ error: { code: "INVALID_ATTRIBUTE", details: { path: "$.content[0].attrs.type" } } });
   });
 
-  it("creates the first missing document only when an author explicitly saves", async () => {
+  it("仅在作者显式保存时创建尚不存在的文档", async () => {
     const request = {
       title: "未命名文章",
       schemaVersion: 1,
@@ -316,7 +316,7 @@ describe("RiceText Worker", () => {
     expect(reader.status, await reader.clone().text()).toBe(403);
   });
 
-  it("allows exactly one concurrent writer for the same base revision", async () => {
+  it("同一基线修订仅允许一个并发写入成功", async () => {
     const save = (mutationId: string, text: string) =>
       exports.default.fetch(
         new Request("http://example.com/api/documents/demo-post", {
@@ -358,7 +358,7 @@ describe("RiceText Worker", () => {
     expect(revisionCount?.count).toBe(2);
   });
 
-  it("rolls back by creating a new immutable revision", async () => {
+  it("通过创建新的不可变修订执行回滚", async () => {
     const saveResponse = await exports.default.fetch(
       new Request("http://example.com/api/documents/demo-post", {
         method: "PUT",
@@ -404,7 +404,7 @@ describe("RiceText Worker", () => {
     expect(operation).toEqual({ operation: "rollback", target_revision: 1 });
   });
 
-  it("rejects readers and unsafe document writes", async () => {
+  it("拒绝读者写入及不安全的文档内容", async () => {
     const write = (userId: string, document: unknown) =>
       exports.default.fetch(
         new Request("http://example.com/api/documents/demo-post", {
@@ -436,7 +436,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("applies ProseMirror steps with audit history", async () => {
+  it("应用 ProseMirror steps 并记录审计历史", async () => {
     const steps = [
       {
         stepType: "replace",
@@ -490,7 +490,87 @@ describe("RiceText Worker", () => {
     expect(JSON.parse(stepsSummary!.steps_json)).toEqual(steps);
   });
 
-  it("archives and restores inline comment anchors in the write batch", async () => {
+  it("steps 删除响应丢失后重试返回原修订，且不绕过校验", async () => {
+    const payload = {
+      schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-delete-retry", chapterId: "chapter-0",
+      steps: [{ stepType: "replace", from: 1, to: content.content[0]!.content[0]!.text.length + 1 }],
+    };
+    const patch = (body: unknown, userId = "author") => exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post/steps", {
+        method: "PATCH", headers: { "content-type": "application/json", "x-user-id": userId }, body: JSON.stringify(body),
+      }),
+    );
+    const saved = await patch(payload);
+    expect(saved.status).toBe(201);
+    const original = await saved.json();
+    expect(original).toMatchObject({ revision: 2 });
+    const retry = await patch(payload);
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual(original);
+    expect((await patch(payload, "reader")).status).toBe(403);
+    expect((await patch({ ...payload, steps: [] })).status).toBe(422);
+    const reused = await patch({ ...payload, steps: [{ stepType: "replace", from: 9999, to: 10000 }] });
+    expect(reused.status).toBe(409);
+    expect(await reused.json()).toMatchObject({ error: { code: "MUTATION_ID_REUSED" } });
+
+    const advanced = await exports.default.fetch(new Request("http://example.com/api/documents/demo-post", {
+      method: "PUT", headers: { "content-type": "application/json", "x-user-id": "author" },
+      body: JSON.stringify({ schemaVersion: 1, baseRevision: 2, clientMutationId: "steps-after-delete", content }),
+    }));
+    expect(advanced.status).toBe(201);
+    const latest = await advanced.json();
+    const lateRetry = await patch(payload);
+    expect(lateRetry.status).toBe(200);
+    expect(await lateRetry.json()).toEqual(original);
+    const current = await exports.default.fetch(new Request("http://example.com/api/documents/demo-post", {
+      headers: { "x-user-id": "author" },
+    }));
+    expect(await current.json()).toEqual(latest);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM document_revisions WHERE document_id = ?").bind("demo-post").first()).toEqual({ count: 3 });
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM document_mutations WHERE document_id = ?").bind("demo-post").first()).toEqual({ count: 2 });
+    expect(await env.DB.prepare("SELECT revision FROM chapters WHERE id = ?").bind("chapter-0").first()).toEqual({ revision: 2 });
+  });
+
+  it("应用 steps 前检查基线，失败时不占用幂等键", async () => {
+    const patch = (baseRevision: number, steps: unknown[]) => exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post/steps", {
+        method: "PATCH", headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({ schemaVersion: 1, baseRevision, clientMutationId: "steps-baseline-check", steps }),
+      }),
+    );
+    const invalidSteps = [{ stepType: "replace", from: 9999, to: 10000 }];
+    for (const baseRevision of [0, 2]) {
+      const conflict = await patch(baseRevision, invalidSteps);
+      expect(conflict.status).toBe(409);
+      expect(await conflict.json()).toMatchObject({ error: {
+        code: "REVISION_CONFLICT", details: { currentRevision: 1, baseRevision },
+      } });
+    }
+    const invalid = await patch(1, invalidSteps);
+    expect(invalid.status).toBe(422);
+    expect(await invalid.json()).toMatchObject({ error: { code: "INVALID_STEPS" } });
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM document_mutations").first()).toEqual({ count: 0 });
+    const saved = await patch(1, [{ stepType: "replace", from: 1, to: 2 }]);
+    expect(saved.status).toBe(201);
+    expect(await saved.json()).toMatchObject({ revision: 2 });
+  });
+
+  it.each([true, false])("并发 steps 写入保留保护机制（同幂等键：%s）", async (sameMutation) => {
+    const patch = (clientMutationId: string) => exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post/steps", {
+        method: "PATCH", headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({ schemaVersion: 1, baseRevision: 1, clientMutationId, steps: [{ stepType: "replace", from: 1, to: 2 }] }),
+      }),
+    );
+    const responses: Response[] = await Promise.all([patch("steps-concurrent-one"), patch(sameMutation ? "steps-concurrent-one" : "steps-concurrent-two")]);
+    expect(responses.map((response) => response.status).sort()).toEqual(sameMutation ? [200, 201] : [201, 409]);
+    if (sameMutation) expect(await responses[0]!.json()).toEqual(await responses[1]!.json());
+    else expect(await responses.find((response) => response.status === 409)!.json()).toMatchObject({ error: { code: "REVISION_CONFLICT" } });
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM document_revisions").first()).toEqual({ count: 2 });
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM document_mutations").first()).toEqual({ count: 1 });
+  });
+
+  it("在写入批次中归档和恢复行内评论锚点", async () => {
     const save = (baseRevision: number, mutationId: string, withAnchor: boolean) =>
       exports.default.fetch(
         new Request("http://example.com/api/documents/demo-post", {
@@ -537,7 +617,7 @@ describe("RiceText Worker", () => {
     expect(archived?.archived).toBe(1);
   });
 
-  it("registers chapters idempotently and hides content from readers", async () => {
+  it("幂等注册章节并对读者隐藏正文", async () => {
     const chapteredContent = {
       type: "doc",
       content: [
@@ -615,7 +695,7 @@ describe("RiceText Worker", () => {
     expect(JSON.stringify((await authorDocument.json()) as unknown)).toContain("隐藏章节正文");
   });
 
-  it("excludes the seed revision from a chapter created later", async () => {
+  it("后建章节的历史不包含种子修订", async () => {
     const registered = await exports.default.fetch(
       new Request("http://example.com/api/documents/demo-post/chapters", {
         method: "POST",
@@ -656,7 +736,7 @@ describe("RiceText Worker", () => {
     expect(page.items.map((item) => item.revision)).toEqual([2]);
   });
 
-  it("deletes chapter metadata atomically while preserving suggestion history", async () => {
+  it("原子删除章节元数据并保留建议历史", async () => {
     await env.DB.prepare(
       "INSERT INTO suggestions(" +
         "id, document_id, chapter_id, chapter_title, line_no, line_text, from_text, to_text, " +
@@ -700,7 +780,7 @@ describe("RiceText Worker", () => {
     await expect(replayed.json()).resolves.toEqual({ id: "chapter-0", deleted: false });
   });
 
-  it("compares chapter hashes without mutating D1", async () => {
+  it("比较章节哈希且不修改 D1", async () => {
     const response = await exports.default.fetch(
       new Request("http://example.com/api/forum/novels/demo-post/chapters/sync", {
         method: "POST",
@@ -720,7 +800,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("reads an uploaded chapter body by document and chapter ID", async () => {
+  it("按文档和章节 ID 读取已上传章节正文", async () => {
     const response = await exports.default.fetch(
       new Request(
         "http://example.com/api/forum/novels/demo-post/chapters/chapter-0",
@@ -735,7 +815,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("guards single-chapter saves with an atomic revision predicate", async () => {
+  it("使用原子修订条件保护单章保存", async () => {
     const save = (title: string) =>
       exports.default.fetch(
         new Request("http://example.com/api/forum/novels/demo-post/chapters/chapter-0", {
@@ -778,7 +858,7 @@ describe("RiceText Worker", () => {
     expect(row?.content_hash).toMatch(/^hash-章节 [AB]$/);
   });
 
-  it("rejects unauthorized or unsafe single-chapter saves", async () => {
+  it("拒绝未授权或不安全的单章保存", async () => {
     const save = (userId: string, chapterContent: unknown) =>
       exports.default.fetch(
         new Request("http://example.com/api/forum/novels/demo-post/chapters/chapter-0", {
@@ -804,7 +884,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("submits, filters, and atomically approves a single suggestion", async () => {
+  it("提交、筛选并原子批准单条建议", async () => {
     const submitted = await exports.default.fetch(
       new Request("http://example.com/api/forum/documents/demo-post/suggestions", {
         method: "POST",
@@ -873,7 +953,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("allows only one concurrent approve or reject decision", async () => {
+  it("并发批准或拒绝时仅允许一个审核决定成功", async () => {
     const submitted = await exports.default.fetch(
       new Request("http://example.com/api/forum/documents/demo-post/suggestions", {
         method: "POST",
@@ -919,7 +999,7 @@ describe("RiceText Worker", () => {
     }
   });
 
-  it("validates and atomically approves a chapter suggestion batch", async () => {
+  it("校验并原子批准章节建议批次", async () => {
     const before = {
       type: "doc" as const,
       content: [
@@ -1018,7 +1098,7 @@ describe("RiceText Worker", () => {
     expect(JSON.parse(state!.steps_json)).toHaveLength(steps.length);
   });
 
-  it("creates nested comment trees, records receipts, and aggregates votes", async () => {
+  it("创建嵌套评论树、记录回复凭证并汇总投票", async () => {
     await env.DB.batch([
       env.DB.prepare(
         "INSERT INTO comment_threads(document_id, anchor_id, archived, created_at) VALUES (?, ?, 0, ?)",
@@ -1095,7 +1175,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("keeps archived comment threads readable and rejects invalid parents", async () => {
+  it("保持已归档评论串可读并拒绝无效父评论", async () => {
     await env.DB.batch([
       env.DB.prepare(
         "INSERT INTO comment_threads(document_id, anchor_id, archived, created_at) VALUES (?, ?, 0, ?)",
@@ -1147,7 +1227,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("searches and resolves mentions", async () => {
+  it("搜索并解析提及用户", async () => {
     const search = await exports.default.fetch(
       new Request("http://example.com/api/forum/users/search?q=%E6%9E%97&friendsOnly=true", {
         headers: { "x-user-id": "reader" },
@@ -1185,7 +1265,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("unlocks reply-gated content through the comment receipt trigger", async () => {
+  it("通过评论凭证触发器解锁回复可见内容", async () => {
     const hiddenContent = {
       type: "doc",
       content: [
@@ -1233,7 +1313,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("submits, replaces, and lists named poll votes atomically", async () => {
+  it("原子提交、替换并列出实名投票", async () => {
     await env.DB.batch([
       env.DB.prepare(
         "INSERT INTO polls(id, question, multiple, minimum_role) VALUES (?, ?, 0, 'reader')",
@@ -1295,7 +1375,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("enforces poll role eligibility", async () => {
+  it("校验角色的投票资格", async () => {
     await env.DB.batch([
       env.DB.prepare(
         "INSERT INTO polls(id, question, multiple, minimum_role) VALUES (?, ?, 0, 'moderator')",
@@ -1317,7 +1397,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("charges exactly once for concurrent duplicate attachment purchases", async () => {
+  it("并发重复购买附件时仅扣费一次", async () => {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO wallets(user_id, balance) VALUES (?, ?)").bind("reader", 100),
       env.DB.prepare("INSERT INTO wallets(user_id, balance) VALUES (?, ?)").bind("author", 10),
@@ -1362,7 +1442,7 @@ describe("RiceText Worker", () => {
     expect(state).toEqual({ buyer: 70, author: 31, purchases: 1 });
   });
 
-  it("prevents concurrent purchases from making a wallet negative", async () => {
+  it("防止并发购买使钱包余额变为负数", async () => {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO wallets(user_id, balance) VALUES (?, ?)").bind("reader", 100),
       env.DB.prepare("INSERT INTO wallets(user_id, balance) VALUES (?, ?)").bind("author", 0),
@@ -1395,7 +1475,7 @@ describe("RiceText Worker", () => {
     expect(state).toEqual({ buyer: 40, author: 42, purchases: 1 });
   });
 
-  it("uploads signed images to R2 and supports immutable conditional ranges", async () => {
+  it("上传已校验文件签名的图片到 R2，并支持不可变缓存和条件范围请求", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const form = new FormData();
     form.set("file", new File([png], "tiny.png", { type: "image/png" }));
@@ -1448,7 +1528,7 @@ describe("RiceText Worker", () => {
     expect(new Uint8Array(await partial.arrayBuffer())).toEqual(png.slice(0, 4));
   });
 
-  it("rejects invalid images and marks failed R2 uploads", async () => {
+  it("拒绝无效图片并标记失败的 R2 上传", async () => {
     const form = new FormData();
     form.set("file", new File([new Uint8Array([1, 2, 3])], "fake.png", { type: "image/png" }));
     const invalid = await exports.default.fetch(
@@ -1501,7 +1581,7 @@ describe("RiceText Worker", () => {
 
     const failingBucket = {
       put: async () => {
-        throw new Error("simulated R2 outage");
+        throw new Error("模拟 R2 故障");
       },
       get: async () => null,
       delete: async () => undefined,
@@ -1520,14 +1600,14 @@ describe("RiceText Worker", () => {
         isFriend: true,
         bio: "读者",
       }),
-    ).rejects.toThrow("simulated R2 outage");
+    ).rejects.toThrow("模拟 R2 故障");
     const failed = await env.DB.prepare(
       "SELECT state FROM assets WHERE original_name = 'failed.png' ORDER BY created_at DESC LIMIT 1",
     ).first<{ state: string }>();
     expect(failed?.state).toBe("failed");
   });
 
-  it("protects R2 objects referenced by paid attachments", async () => {
+  it("保护付费附件引用的 R2 对象", async () => {
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const form = new FormData();
     form.set("file", new File([bytes], "paid.png", { type: "image/png" }));
@@ -1580,7 +1660,7 @@ describe("RiceText Worker", () => {
     expect(new Uint8Array(await allowed.arrayBuffer())).toEqual(bytes);
   });
 
-  it("cleans stale pending R2 objects and metadata", async () => {
+  it("清理长期处于待处理状态的 R2 对象及元数据", async () => {
     const objectKey = "images/stale-worker.png";
     const old = "2020-01-01T00:00:00.000Z";
     await env.UPLOADS.put(objectKey, new Uint8Array([1, 2, 3]));
@@ -1610,7 +1690,7 @@ describe("RiceText Worker", () => {
     expect(row).toBeNull();
   });
 
-  it("persists stable dice rolls and explicit reroll chains in workerd", async () => {
+  it("在 workerd 中持久化稳定骰子结果和显式重投链", async () => {
     const create = await exports.default.fetch(
       new Request("http://example.com/api/dice", {
         method: "POST",
@@ -1660,7 +1740,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("logs in with a D1 password credential and rate-limits repeated failures", async () => {
+  it("使用 D1 密码凭证登录，并对重复失败限流", async () => {
     const salt = new TextEncoder().encode("1234567890abcdef");
     const encodedSalt = btoa(String.fromCharCode(...salt)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
     const hash = await derivePasswordHash("correct-password", salt, 100_000);
@@ -1705,7 +1785,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("reports an actionable error for credentials above the production PBKDF2 limit", async () => {
+  it("凭证超过生产 PBKDF2 上限时返回含处理建议的错误", async () => {
     await env.DB.prepare(
       "INSERT INTO password_credentials(user_id, username, salt, password_hash, iterations, failed_attempts, locked_until, updated_at) " +
         "VALUES (?, ?, ?, ?, ?, 0, NULL, ?)",
@@ -1730,7 +1810,7 @@ describe("RiceText Worker", () => {
     });
   });
 
-  it("enforces production Origin checks and ignores demo identity headers", async () => {
+  it("执行生产环境 Origin 检查并忽略演示身份请求头", async () => {
     const productionEnv: WorkerEnv = {
       DB: env.DB,
       UPLOADS: env.UPLOADS,
@@ -1780,7 +1860,7 @@ describe("RiceText Worker", () => {
     expect(fakeIdentity.status).toBe(401);
   });
 
-  it("completes OIDC PKCE login, creates a reader session, and logs out", async () => {
+  it("完成 OIDC PKCE 登录、创建读者会话并退出登录", async () => {
     const issuer = "https://identity.example.test";
     const clientId = "ricetext-test";
     const productionEnv: WorkerEnv = {
@@ -1903,7 +1983,7 @@ describe("RiceText Worker", () => {
     expect(sessions?.count).toBe(0);
   });
 
-  it("returns stable contract errors", async () => {
+  it("返回稳定的契约错误", async () => {
     const missing = await exports.default.fetch(
       new Request("http://example.com/api/documents/missing-document", {
         headers: { "x-user-id": "reader" },

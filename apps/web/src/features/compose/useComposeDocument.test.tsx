@@ -113,7 +113,7 @@ function HydrationRaceHarness() {
   );
 }
 
-describe("useComposeDocument hydration", () => {
+describe("useComposeDocument 水合", () => {
   beforeEach(() => {
     localStorage.clear();
     mocks.getDocument.mockReset().mockResolvedValue(serverDocument);
@@ -148,6 +148,7 @@ describe("useComposeDocument hydration", () => {
         savedAt: defaultDocument.savedAt,
         conflictMessage: "",
         flush: vi.fn().mockResolvedValue(true),
+        saveLocal: vi.fn().mockReturnValue(true),
         acceptSaved: (next: DocumentEnvelope) => options.onSaved?.(next),
         acceptLatest: vi.fn(),
       }),
@@ -190,7 +191,7 @@ describe("useComposeDocument hydration", () => {
     await waitFor(() => expect(result.current.document.storage).toBe("server"));
   });
 
-  it("hydrates server content even when placeholder metadata has a higher revision", async () => {
+  it("即使占位元数据的 revision 更高，也水合服务器正文", async () => {
     const { result } = renderHook(() => useComposeDocument("demo-post"), {
       wrapper,
     });
@@ -224,7 +225,7 @@ describe("useComposeDocument hydration", () => {
     act(() => result.current.createLocalArticle());
 
     await expect(
-      act(() => result.current.ensureServerDocument({ type: "doc", content: [] })),
+      act(() => result.current.ensureServerDocument()),
     ).resolves.toBe("existing");
     await waitFor(() => expect(result.current.document.revision).toBe(1));
     expect(mocks.getDocument).toHaveBeenCalledTimes(2);
@@ -417,7 +418,7 @@ describe("useComposeDocument hydration", () => {
     );
   });
 
-  it("does not replace local edits when the query resolves later", async () => {
+  it("查询稍后完成时不替换本地编辑", async () => {
     let resolveDocument!: (document: DocumentEnvelope) => void;
     mocks.getDocument.mockReturnValueOnce(
       new Promise<DocumentEnvelope>((resolve) => {

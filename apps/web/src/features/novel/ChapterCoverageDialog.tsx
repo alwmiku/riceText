@@ -1,17 +1,7 @@
 import { Fragment, useState } from "react";
 
-/** 覆盖检查使用的章节信息。 */
-export interface CoverageChapter {
-  id: string;
-  title: string;
-  charCount: number;
-  /** 在导入原文中的起始偏移；手动添加的章节为 null。 */
-  start: number | null;
-  /** 在导入原文中的结束偏移（不含）；手动添加的章节为 null。 */
-  end: number | null;
-  /** 章节正文开头片段，用于与原文对比。 */
-  preview: string;
-}
+import type { CoverageChapter } from "../compose/chapter-upload-domain";
+export type { CoverageChapter } from "../compose/chapter-upload-domain";
 
 /** 章节与上一章之间的切割状态。 */
 export type CoverageStatus = "ok" | "gap" | "overlap" | "manual" | "start";

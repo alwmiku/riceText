@@ -106,8 +106,8 @@ function createProps() {
         {
           id: "chapter-0",
           title: "第一章",
-          action: "新增" as const,
-          status: "待上传" as const,
+          action: "add" as const,
+          status: "pending" as const,
           attempts: 0,
         },
       ],

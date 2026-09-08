@@ -33,7 +33,14 @@ import {
   missingDocument,
   listSuggestions,
 } from "../lib/api";
-import { chapterTextLines, splitDocumentByHeadings } from "../lib/chapters";
+import { chapterTextLines } from "../lib/chapters";
+import { chapterQueryKeys } from "../lib/chapter-query-keys";
+import {
+  resolveChapterContent,
+  resolveChapterSources,
+  type ChapterIdentity,
+} from "../lib/chapter-source";
+import { Skeleton } from "../components/ui/skeleton";
 import type { CommentReply } from "../lib/types";
 import { formatTime } from "../lib/utils";
 
@@ -58,80 +65,103 @@ export default function ReadPage() {
     {},
   );
   // 从「校订章节」入口跳转：chapter 指定章节，proofread 直接进入校订视图。
-  const initialChapter = Number.parseInt(
-    searchParams.get("chapter") ?? "",
-    10,
-  );
+  const initialChapter = Number.parseInt(searchParams.get("chapter") ?? "", 10);
   const [chapterIndex, setChapterIndex] = useState(() =>
     Number.isFinite(initialChapter) && initialChapter >= 0 ? initialChapter : 0,
   );
+  const [selectedChapter, setSelectedChapter] =
+    useState<ChapterIdentity | null>(() => {
+      const id = searchParams.get("chapterId");
+      return id ? { documentId, id } : null;
+    });
   const placeholder = useMemo(
     () => missingDocument(documentId || "pending-selection"),
     [documentId],
   );
-  const { data: document = placeholder } = useQuery({
+  const documentQuery = useQuery({
     queryKey: ["document", documentId],
     queryFn: ({ signal }) => getDocument(documentId, signal),
     placeholderData: placeholder,
     enabled: Boolean(documentId) && articleSelection.authenticated,
   });
-  const { chapters } = useMemo(
-    () => splitDocumentByHeadings(document.content as JSONContent),
-    [document.content],
-  );
-  // 隐藏章节：读者过滤掉，作者（含版主）仍可预览与校订。
-  const { data: chapterDirectory = [] } = useQuery({
-    queryKey: ["forum", "chapters", documentId],
-    queryFn: () => listForumChapters(documentId),
+  const document = documentQuery.data ?? placeholder;
+  const directoryQuery = useQuery({
+    queryKey: chapterQueryKeys.directory(documentId),
+    queryFn: () => listForumChapters(documentId, { strict: true }),
     enabled: Boolean(documentId) && articleSelection.authenticated,
   });
-  // 隐藏章节已经由服务端按 sort_order 从正文和目录中同时裁剪；前端不能再用
-  // 存储层 chapter id 对正文派生 id 二次过滤，否则多文章作用域下会发生错配。
-  const visibleChapters =
-    chapterDirectory.length > 0
-      ? chapterDirectory.map((chapter) => ({
-          id: chapter.id,
-          title: chapter.title,
-          volumeTitle: chapter.volumeTitle ?? "",
-          blocks: [] as JSONContent[],
-        }))
-      : (document.content.content?.length ?? 0) === 0
-        ? []
-        : chapters;
-  const activeIndex = Math.min(
-    chapterIndex,
-    Math.max(0, visibleChapters.length - 1),
-  );
-  // 头部元信息匹配当前章节：时间与版本号取该章在服务器目录中的独立保存时间
-  // 与版本号（无目录行时回退到文档级真实数据）。章节标题由正文自带的标题承担，
-  // 头部不重复展示。
-  const activeChapterStatus = chapterDirectory[activeIndex];
-  const { data: uploadedChapter } = useQuery({
-    queryKey: [
-      "forum",
-      "chapter-content",
+  const visibleChapters = useMemo(
+    () =>
+      directoryQuery.isSuccess
+        ? resolveChapterSources({
+            documentId,
+            content: document.content,
+            directory: directoryQuery.data,
+            includeHidden: selectedArticle?.canEdit ?? false,
+            documentIsReaderProjection: !(selectedArticle?.canEdit ?? false),
+          })
+        : [],
+    [
       documentId,
-      activeChapterStatus?.id,
+      document.content,
+      directoryQuery.isSuccess,
+      directoryQuery.data,
+      selectedArticle?.canEdit,
     ],
+  );
+  const selectedIndex =
+    selectedChapter?.documentId === documentId
+      ? visibleChapters.findIndex(
+          (chapter) => chapter.id === selectedChapter.id,
+        )
+      : -1;
+  const activeIndex =
+    selectedIndex >= 0
+      ? selectedIndex
+      : Math.min(chapterIndex, Math.max(0, visibleChapters.length - 1));
+  const activeChapter = visibleChapters[activeIndex];
+  // 只记录一次解析出的实体；之后目录重排只改变其位置。
+  if (
+    activeChapter &&
+    (selectedChapter?.documentId !== documentId ||
+      selectedChapter.id !== activeChapter.id)
+  ) {
+    setSelectedChapter({ documentId, id: activeChapter.id });
+  }
+  const activeChapterStatus = activeChapter?.directory;
+  const chapterQuery = useQuery({
+    queryKey: chapterQueryKeys.content(documentId, activeChapter?.id),
     queryFn: ({ signal }) =>
-      getLongTextChapter(documentId, activeChapterStatus!.id, signal),
+      getLongTextChapter(documentId, activeChapter!.id, signal),
     enabled:
-      Boolean(documentId) &&
-      Boolean(activeChapterStatus?.id) &&
-      activeChapterStatus?.hasContent !== false,
+      articleSelection.authenticated && activeChapter?.source === "standalone",
   });
+  const resolvedContent = useMemo(
+    () =>
+      resolveChapterContent(activeChapter, {
+        data: chapterQuery.data,
+        isError: chapterQuery.isError,
+      }),
+    [activeChapter, chapterQuery.data, chapterQuery.isError],
+  );
+  const contentReady =
+    resolvedContent.source === "document" ||
+    resolvedContent.source === "standalone";
+  const needsDocument =
+    !activeChapter || activeChapter.source === "placeholder";
+  const contentError =
+    directoryQuery.isError ||
+    (documentQuery.isError && needsDocument) ||
+    resolvedContent.source === "error";
+  const contentLoading =
+    directoryQuery.isPending ||
+    (documentQuery.isPlaceholderData && needsDocument) ||
+    resolvedContent.source === "loading";
   const headerSavedAt = activeChapterStatus?.savedAt ?? document.savedAt;
   const headerRevision = activeChapterStatus?.revision ?? document.revision;
-  // 正文优先使用已上传章节内容；目录行是占位行（未真正上传正文，读取 404）
-  // 时回退到文档正文按标题切分的章节块，保证文章仍然可读（间贴、黑幕等
-  // 节点只存在于文档正文中，占位行不能把它们吞掉）。
   const chapterDoc = useMemo<JSONContent>(
-    () =>
-      (uploadedChapter?.content as unknown as JSONContent | undefined) ?? {
-        type: "doc",
-        content: chapters[activeIndex]?.blocks ?? [],
-      },
-    [activeIndex, uploadedChapter?.content, chapters],
+    () => resolvedContent.content ?? { type: "doc", content: [] },
+    [resolvedContent.content],
   );
   const { data: comments = [] } = useQuery<CommentReply[]>({
     queryKey: ["comments", document.id, threadId],
@@ -160,11 +190,13 @@ export default function ReadPage() {
     [chapterDoc],
   );
   const changedLineNos = useMemo(
-    () => [...new Set(chapterSuggestions.map((suggestion) => suggestion.lineNo))],
+    () => [
+      ...new Set(chapterSuggestions.map((suggestion) => suggestion.lineNo)),
+    ],
     [chapterSuggestions],
   );
 
-  // 业务数据通过 Viewer adapter 注入，正文 JSON 只保存稳定 ID 和必要的显示属性。
+  // 业务数据通过查看器适配器注入，正文 JSON 只保存稳定 ID 和必要的显示属性。
   const interactions = useMemo<RichTextViewerInteractions>(
     () => ({
       onInlineCommentActivate: (attrs) => setThreadId(attrs.threadId),
@@ -203,8 +235,14 @@ export default function ReadPage() {
         canVote: true,
         pending: false,
       }),
-      onPollSubmit: (attrs: PollReferenceAttributes, optionIds: readonly string[]) =>
-        setPollVotes((current) => ({ ...current, [attrs.pollId]: [...optionIds] })),
+      onPollSubmit: (
+        attrs: PollReferenceAttributes,
+        optionIds: readonly string[],
+      ) =>
+        setPollVotes((current) => ({
+          ...current,
+          [attrs.pollId]: [...optionIds],
+        })),
       onPollVote: (attrs: PollReferenceAttributes, optionId: string) =>
         setPollVotes((current) => {
           const selected = current[attrs.pollId] ?? [];
@@ -246,6 +284,7 @@ export default function ReadPage() {
           onChange={(id) => {
             articleSelection.setSelectedId(id);
             setChapterIndex(0);
+            setSelectedChapter(null);
           }}
           onCreate={(title) => {
             articleSelection.createArticle(title);
@@ -257,7 +296,11 @@ export default function ReadPage() {
         <TocSidebar
           chapters={visibleChapters}
           currentIndex={activeIndex}
-          onSelect={setChapterIndex}
+          onSelect={(index) => {
+            setChapterIndex(index);
+            const chapter = visibleChapters[index];
+            if (chapter) setSelectedChapter({ documentId, id: chapter.id });
+          }}
         />
         <article className="min-w-0 border border-border bg-white p-[clamp(28px,6vw,72px)] shadow-[0_8px_32px_rgb(25_36_45/0.05)] max-[840px]:p-[30px_22px] max-[430px]:border-x-0 max-[430px]:p-[28px_18px] max-[430px]:[&_.rt-viewer]:text-base max-[430px]:[&_.rt-viewer]:leading-[1.85] max-[430px]:[&_.rt-viewer_h1]:text-[25px]">
           <header className="mb-8 border-b border-border pb-4 font-sans">
@@ -276,15 +319,18 @@ export default function ReadPage() {
                   <Eye size={13} />
                   1,284
                 </span>
-                <Badge tone={document.storage === "local-cache" ? "amber" : "teal"}>
+                <Badge
+                  tone={document.storage === "local-cache" ? "amber" : "teal"}
+                >
                   {document.storage === "local-cache"
                     ? "本地缓存副本"
                     : `版本 ${headerRevision}`}
                 </Badge>
               </div>
-              {identity.role === "reader" ? (
+              {identity.role === "reader" && contentReady ? (
                 <div className="ml-auto shrink-0">
                   <ChapterSuggestionEditor
+                    key={JSON.stringify([documentId, chapterId])}
                     documentId={document.id}
                     baseRevision={document.revision}
                     chapterId={chapterId}
@@ -295,7 +341,7 @@ export default function ReadPage() {
                   />
                 </div>
               ) : null}
-              {canProofread ? (
+              {canProofread && contentReady ? (
                 <div className="ml-auto shrink-0">
                   <Button
                     size="sm"
@@ -313,8 +359,33 @@ export default function ReadPage() {
               ) : null}
             </div>
           </header>
-          {proofreading && canProofread ? (
+          {contentError ? (
+            <p role="alert">
+              章节加载失败，请重试。{" "}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (directoryQuery.isError) void directoryQuery.refetch();
+                  else if (resolvedContent.source === "error")
+                    void chapterQuery.refetch();
+                  else void documentQuery.refetch();
+                }}
+              >
+                重试
+              </Button>
+            </p>
+          ) : contentLoading ? (
+            <Skeleton
+              className="h-32 w-full"
+              role="status"
+              aria-label="正在加载章节正文"
+            />
+          ) : !contentReady ? (
+            <p role="status">本章暂无正文。</p>
+          ) : proofreading && canProofread ? (
             <ProofreadWorkspace
+              key={JSON.stringify([documentId, chapterId])}
               documentId={document.id}
               baseRevision={document.revision}
               documentTitle={document.title}
@@ -347,7 +418,9 @@ export default function ReadPage() {
         </article>
         <aside className="sticky top-20">
           <div className="rounded-lg border border-border bg-white p-4 shadow-panel">
-            <p className="text-xs font-semibold tracking-normal text-muted-foreground uppercase">阅读位置</p>
+            <p className="text-xs font-semibold tracking-normal text-muted-foreground uppercase">
+              阅读位置
+            </p>
             <div className="mt-3 flex items-start gap-3">
               <span className="grid h-9 w-9 place-items-center rounded bg-accent text-accent-foreground">
                 <BookOpen size={17} />
@@ -360,7 +433,7 @@ export default function ReadPage() {
               </div>
             </div>
             <div className="my-4 h-px bg-border" />
-            {canProofread ? (
+            {canProofread && contentReady ? (
               <div className="rounded-md bg-[#f5f8f8] px-2 py-2 text-[11px] leading-5 text-muted-foreground">
                 <p className="flex items-center gap-1 font-semibold text-[#176e66]">
                   <GitCompareArrows size={12} aria-hidden="true" />

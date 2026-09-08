@@ -1,6 +1,8 @@
 import type {
   Attachment,
   Chapter,
+  ChapterContent as ContractChapterContent,
+  DocumentEnvelope as ContractDocumentEnvelope,
   Poll,
   SuggestionBatch,
   Suggestion,
@@ -15,6 +17,11 @@ import type {
 /** 与 editor-core 共用的 Tiptap/ProseMirror JSON 类型。 */
 export type RichTextNode = JSONContent;
 
+/** API 章节元数据，其正文已显式适配编辑器和查看器。 */
+export type ChapterContent = Omit<ContractChapterContent, "content"> & {
+  content: RichTextNode;
+};
+
 /** 编辑器的三种布局预设。 */
 export type EditorMode = CoreEditorMode;
 
@@ -24,18 +31,11 @@ export type EditorMode = CoreEditorMode;
  * content 使用编辑器宽松的 JSONContent（编辑器/查看器直接消费），
  * storage 标记本地缓存落点。
  */
-export interface DocumentEnvelope {
-  /** 稳定文档 ID。 */
-  id: string;
-  /** 帖子或章节标题。 */
-  title: string;
-  /** Tiptap JSON schema 版本。 */
-  schemaVersion: number;
-  /** 单调递增的乐观并发版本号。 */
-  revision: number;
-  /** 最近一次成功保存时间。 */
-  savedAt: string;
-  /** 唯一权威正文格式。 */
+export interface DocumentEnvelope extends Omit<
+  ContractDocumentEnvelope,
+  "content"
+> {
+  /** 编辑器直接消费的正文；发送到 API 时由契约 schema 校验。 */
   content: RichTextNode;
   /** 当前副本的落点；local-cache 表示 API 不可达时的本机缓存副本。 */
   storage?: "server" | "local-cache" | "missing";
@@ -57,7 +57,14 @@ export interface RevisionSummary {
 
 /** 编辑器保存状态，供宿主页面显示而不依赖实现细节。 */
 export type SaveState =
-  "loading" | "saved" | "local-saved" | "dirty" | "saving" | "conflict" | "offline" | "error";
+  | "loading"
+  | "saved"
+  | "local-saved"
+  | "dirty"
+  | "saving"
+  | "conflict"
+  | "offline"
+  | "error";
 
 /** 用于本地权限、金币和回复状态的身份。 */
 export interface SeedIdentity {

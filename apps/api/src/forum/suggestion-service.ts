@@ -6,7 +6,7 @@ import {
   DomainError,
   mergeSuggestionBatch,
   repairDocumentForRead,
-  replaceFirstText,
+  applySuggestionText,
   validateSuggestionBatch,
 } from "@ricetext/server-core";
 import type { RequestIdentity } from "../auth.js";
@@ -349,17 +349,25 @@ export class SuggestionService {
           "正文已变化，请重新核对建议",
           { currentRevision: current.revision, baseRevision },
         );
-      const replaced = replaceFirstText(
-        current.content,
-        row.from_text,
-        row.to_text,
-      );
-      if (!replaced)
-        throw new HttpError(
-          404,
-          "SUGGESTION_SOURCE_NOT_FOUND",
-          "当前正文已找不到待替换文字",
-        );
+      const chapter = row.chapter_id
+        ? this.#db.prepare("SELECT sort_order, content_json FROM chapters WHERE id = ? AND document_id = ?")
+            .get(row.chapter_id, row.document_id) as { sort_order: number; content_json: string | null } | undefined
+        : undefined;
+      let replaced: TiptapDocument;
+      try {
+        replaced = applySuggestionText(current.content, row.from_text, row.to_text, {
+          chapterId: row.chapter_id ?? "",
+          chapterOrder: chapter?.sort_order ?? null,
+          chapterContent: chapter?.content_json ? repairDocumentForRead(JSON.parse(chapter.content_json)) : null,
+          lineNo: row.line_no,
+          lineText: row.line_text,
+        });
+      } catch (error) {
+        if (error instanceof DomainError) {
+          throw new HttpError(error.status, error.code, error.message, error.details);
+        }
+        throw error;
+      }
       document = this.#documents.applySuggestion(
         row.document_id,
         baseRevision,

@@ -1,7 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
-import { useCallback, useRef, useState } from "react";
+import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RichTextNode } from "../../lib/types";
 import { useLongTextWorkspace } from "./useLongTextWorkspace";
 
 const storage = vi.hoisted(() => ({
@@ -20,31 +19,13 @@ vi.mock("../../lib/long-text-draft-storage", () => ({
   deleteLongTextValue: storage.deleteValue,
 }));
 
-const normalDocument: RichTextNode = {
-  type: "doc",
-  content: [
-    { type: "paragraph", content: [{ type: "text", text: "普通正文" }] },
-  ],
-};
-
 function useHarness(documentId = "article-a") {
-  const [content, setContent] = useState<RichTextNode>(normalDocument);
-  const contentRef = useRef(content);
-  const replaceContent = useCallback((next: RichTextNode) => {
-    contentRef.current = next;
-    setContent(next);
-  }, []);
-  const setAutosaveEnabled = useRef(vi.fn()).current;
   const setNotice = useRef(vi.fn()).current;
   const workspace = useLongTextWorkspace({
     documentId,
-    content,
-    contentRef,
-    replaceContent,
-    setAutosaveEnabled,
     setNotice,
   });
-  return { content, workspace, setAutosaveEnabled };
+  return { workspace, setNotice };
 }
 
 describe("useLongTextWorkspace", () => {
@@ -61,12 +42,11 @@ describe("useLongTextWorkspace", () => {
     vi.useRealTimers();
   });
 
-  it("imports chapters, flushes before selection, auto-saves and restores normal content", async () => {
+  it("导入章节，切换前刷新缓冲并自动保存自身草稿", async () => {
     const { result } = renderHook(() => useHarness());
 
     await act(async () => result.current.workspace.open());
     expect(result.current.workspace.enabled).toBe(true);
-    expect(result.current.setAutosaveEnabled).toHaveBeenCalledWith(false);
 
     const file = {
       name: "novel.txt",
@@ -94,7 +74,7 @@ describe("useLongTextWorkspace", () => {
       result.current.workspace.selectChapter(1);
     });
     expect(result.current.workspace.activeIndex).toBe(1);
-    expect(result.current.content.content?.[0]?.attrs?.text).toBe(
+    expect(result.current.workspace.captureUploadSnapshot().document.content?.[0]?.attrs?.text).toBe(
       "编辑后的正文",
     );
 
@@ -117,12 +97,10 @@ describe("useLongTextWorkspace", () => {
 
     await act(async () => result.current.workspace.close());
     expect(result.current.workspace.enabled).toBe(false);
-    expect(result.current.content).toEqual(normalDocument);
-    expect(result.current.setAutosaveEnabled).toHaveBeenLastCalledWith(true);
   });
 
-  it("keeps the workspace open when the final draft save fails", async () => {
-    storage.saveDraft.mockRejectedValueOnce(new Error("quota exceeded"));
+  it("最终草稿保存失败时保持工作台开启", async () => {
+    storage.saveDraft.mockRejectedValueOnce(new Error("超出存储配额"));
     const { result } = renderHook(() => useHarness());
 
     await act(async () => result.current.workspace.open());
@@ -133,10 +111,9 @@ describe("useLongTextWorkspace", () => {
 
     expect(closed).toBe(false);
     expect(result.current.workspace.enabled).toBe(true);
-    expect(result.current.setAutosaveEnabled).toHaveBeenLastCalledWith(false);
   });
 
-  it("ignores an import that finishes after leaving its document", async () => {
+  it("忽略离开所属文档后才完成的导入", async () => {
     let resolveText!: (text: string) => void;
     const file = {
       name: "slow.txt",
@@ -163,7 +140,54 @@ describe("useLongTextWorkspace", () => {
     });
 
     expect(result.current.workspace.enabled).toBe(false);
-    expect(result.current.content).toEqual(normalDocument);
     expect(storage.saveRaw).not.toHaveBeenCalled();
+  });
+
+  it("无需外部刷新缓冲即可同时捕获缓冲正文与覆盖信息", async () => {
+    const { result } = renderHook(() => useHarness());
+    await act(async () => result.current.workspace.open());
+    await act(async () => result.current.workspace.addChapter("新章", "旧内容"));
+    const id = result.current.workspace.chapterSummaries[0]!.id;
+    act(() => result.current.workspace.editChapter(id, { text: "最新内容六个字" }));
+    let snapshot!: ReturnType<typeof result.current.workspace.captureUploadSnapshot>;
+    act(() => { snapshot = result.current.workspace.captureUploadSnapshot(); });
+    expect(snapshot.document.content?.[0]?.attrs?.text).toBe("最新内容六个字");
+    expect(snapshot.coverage[0]?.charCount).toBe("最新内容六个字".length);
+    expect(snapshot.coverage[0]?.id).toBe(id);
+    act(() => result.current.workspace.editChapter(id, { text: "后续修改" }));
+    act(() => { result.current.workspace.captureUploadSnapshot(); });
+    expect(snapshot.document.content?.[0]?.attrs?.text).toBe("最新内容六个字");
+  });
+
+  it("未显式关闭时切换文档也会丢弃旧编辑器缓冲", async () => {
+    const { result, rerender } = renderHook(({ documentId }) => useHarness(documentId),
+      { initialProps: { documentId: "article-a" } });
+    await act(async () => result.current.workspace.open());
+    await act(async () => result.current.workspace.addChapter("旧章", "旧正文"));
+    act(() => result.current.workspace.updateEditor({ type: "doc", content: [
+      { type: "longTextBlock", attrs: { chapterId: "old", title: "旧章", text: "缓冲" } },
+    ] }));
+    rerender({ documentId: "article-b" });
+    await act(async () => result.current.workspace.open());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(result.current.workspace.chapterSummaries).toEqual([]);
+    expect(storage.saveDraft).not.toHaveBeenCalledWith("ricetext:local-long-text:article-b",
+      expect.objectContaining({ content: [expect.objectContaining({ attrs: expect.objectContaining({ text: "缓冲" }) })] }));
+  });
+
+  it("切换文档后忽略迟到的关闭失败", async () => {
+    let rejectSave!: (error: Error) => void;
+    storage.saveDraft.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectSave = reject; }));
+    const { result, rerender } = renderHook(({ documentId }) => useHarness(documentId),
+      { initialProps: { documentId: "article-a" } });
+    await act(async () => result.current.workspace.open());
+    let closing!: Promise<boolean>;
+    act(() => { closing = result.current.workspace.close(); });
+    rerender({ documentId: "article-b" });
+    await act(async () => result.current.workspace.open());
+    result.current.setNotice.mockClear();
+    await act(async () => { rejectSave(new Error("超出存储配额")); expect(await closing).toBe(false); });
+    expect(result.current.workspace.enabled).toBe(true);
+    expect(result.current.setNotice).not.toHaveBeenCalled();
   });
 });

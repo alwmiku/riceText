@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { contractRoutes } from "@ricetext/contracts";
 import {
   appendChapter,
+  createDocumentSchema,
   diffDocuments,
   replaceChapter,
   splitDocumentByChapters,
@@ -43,7 +44,7 @@ describe("RiceText API", () => {
     }
   });
 
-  it("saves editor orderedList type:null with excerpts and preserves valid numbering modes", async () => {
+  it("保存编辑器摘录与 orderedList type:null，并保留合法编号模式", async () => {
     const content = { type: "doc", content: [
       { type: "orderedList", attrs: { start: 1, type: null as string | null }, content: [{ type: "listItem", attrs: { textAlign: null }, content: [{ type: "paragraph", content: [{ type: "text", text: "List text" }] }] }] },
       { type: "novelExcerpt", attrs: { variant: "qidian", bookTitle: "Book", chapterTitle: "Chapter", readerTime: "23:00" }, content: [{ type: "paragraph", content: [{ type: "text", text: "Excerpt" }] }] },
@@ -699,6 +700,84 @@ describe("RiceText API", () => {
     expect(history.json().items[0]).toMatchObject({ operation: "steps", summary: "应用增量编辑" });
     expect(typeof history.json().items[0].stepsSummary).toBe("string");
     expect(history.json().items[0].stepsSummary.length).toBeGreaterThan(0);
+  });
+
+  it("steps 删除成功响应丢失后重试返回原修订，且不绕过鉴权和结构校验", async () => {
+    const before = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json().content;
+    const payload = {
+      schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-delete-retry",
+      steps: [{
+        stepType: "replace", from: 0, to: createDocumentSchema().nodeFromJSON(before).content.size,
+        slice: { content: [{ type: "paragraph" }], openStart: 0, openEnd: 0 },
+      }],
+      chapterId: "chapter-0",
+    };
+    const patch = (body: unknown, userId = "author") => app.inject({
+      method: "PATCH", url: "/api/documents/demo-post/steps",
+      headers: { "x-user-id": userId }, payload: body as object,
+    });
+    const saved = await patch(payload);
+    expect(saved.statusCode, saved.body).toBe(201);
+    const original = saved.json();
+    expect(original.revision).toBe(2);
+    const retry = await patch(payload);
+    expect(retry.statusCode, retry.body).toBe(200);
+    expect(retry.json()).toEqual(original);
+
+    expect((await patch(payload, "reader")).statusCode).toBe(403);
+    expect((await patch({ ...payload, steps: [] })).statusCode).toBe(422);
+    const reused = await patch({ ...payload, steps: [{ stepType: "replace", from: 9999, to: 10000 }] });
+    expect(reused.statusCode).toBe(409);
+    expect(reused.json().error.code).toBe("MUTATION_ID_REUSED");
+
+    const advanced = await app.inject({
+      method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" },
+      payload: { schemaVersion: 1, baseRevision: 2, clientMutationId: "steps-after-delete", content: validContent("后续修订") },
+    });
+    expect(advanced.statusCode, advanced.body).toBe(201);
+    const lateRetry = await patch(payload);
+    expect(lateRetry.statusCode).toBe(200);
+    expect(lateRetry.json()).toEqual(original);
+    const current = await app.inject({ method: "GET", url: "/api/documents/demo-post" });
+    expect(current.json()).toEqual(advanced.json());
+    const history = await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions" });
+    expect(history.json().items.map((item: { revision: number }) => item.revision)).toEqual([3, 2, 1]);
+    const chapters = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items;
+    expect(chapters.find((item: { id: string }) => item.id === "chapter-0").revision).toBe(2);
+  });
+
+  it("steps 在应用前拒绝过期或未来基线，正确基线仍校验非法步骤且失败不占用幂等键", async () => {
+    const patch = (baseRevision: number, steps: unknown[]) => app.inject({
+      method: "PATCH", url: "/api/documents/demo-post/steps", headers: { "x-user-id": "author" },
+      payload: { schemaVersion: 1, baseRevision, clientMutationId: "steps-baseline-check", steps },
+    });
+    const invalidSteps = [{ stepType: "replace", from: 9999, to: 10000 }];
+    for (const baseRevision of [0, 2]) {
+      const conflict = await patch(baseRevision, invalidSteps);
+      expect(conflict.statusCode, conflict.body).toBe(409);
+      expect(conflict.json().error).toMatchObject({
+        code: "REVISION_CONFLICT", details: { currentRevision: 1, baseRevision },
+      });
+    }
+    const invalid = await patch(1, invalidSteps);
+    expect(invalid.statusCode).toBe(422);
+    expect(invalid.json().error.code).toBe("INVALID_STEPS");
+    const saved = await patch(1, [{ stepType: "replace", from: 1, to: 2 }]);
+    expect(saved.statusCode, saved.body).toBe(201);
+    expect(saved.json().revision).toBe(2);
+  });
+
+  it.each([true, false])("steps 并发保存保留幂等和基线保护（同幂等键=%s）", async (sameMutation) => {
+    const patch = (clientMutationId: string) => app.inject({
+      method: "PATCH", url: "/api/documents/demo-post/steps", headers: { "x-user-id": "author" },
+      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId, steps: [{ stepType: "replace", from: 1, to: 2 }] },
+    });
+    const responses = await Promise.all([patch("steps-concurrent-one"), patch(sameMutation ? "steps-concurrent-one" : "steps-concurrent-two")]);
+    expect(responses.map((response) => response.statusCode).sort()).toEqual(sameMutation ? [200, 201] : [201, 409]);
+    if (sameMutation) expect(responses[0]!.json()).toEqual(responses[1]!.json());
+    else expect(responses.find((response) => response.statusCode === 409)!.json().error.code).toBe("REVISION_CONFLICT");
+    const history = await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions" });
+    expect(history.json().items.map((item: { revision: number }) => item.revision)).toEqual([2, 1]);
   });
 
   it("steps 应用拒绝权限不足、非法步骤与 revision 冲突", async () => {

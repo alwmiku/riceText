@@ -96,14 +96,18 @@ export function useLongTextEditorBuffer({
     [commitChapter],
   );
 
-  useEffect(() => {
-    return () => {
-      if (editorTimerRef.current !== null)
-        window.clearTimeout(editorTimerRef.current);
-      if (chapterTimerRef.current !== null)
-        window.clearTimeout(chapterTimerRef.current);
-    };
+  const discard = useCallback(() => {
+    if (editorTimerRef.current !== null)
+      window.clearTimeout(editorTimerRef.current);
+    if (chapterTimerRef.current !== null)
+      window.clearTimeout(chapterTimerRef.current);
+    editorTimerRef.current = null;
+    chapterTimerRef.current = null;
+    pendingEditorRef.current = null;
+    pendingChapterRef.current = null;
   }, []);
 
-  return { flush, updateEditor, editChapter };
+  useEffect(() => discard, [discard]);
+
+  return { flush, discard, updateEditor, editChapter };
 }

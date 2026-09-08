@@ -57,7 +57,7 @@ export interface AutosaveOptions {
   /** 关闭时保留状态接口，但不安排本地保存或网络保存。 */
   enabled?: boolean;
   /** 服务器确认保存后的宿主同步回调。 */
-  onSaved?: (next: DocumentEnvelope) => void;
+  onSaved?: (next: DocumentEnvelope, chapterId?: string) => void;
 }
 
 /**
@@ -83,23 +83,42 @@ export function useAutosave({
   const baselineRef = useRef(document.content);
   // 最新编辑快照与两个保存代次分开记录：本地保存不能冒充服务器保存。
   const latestRef = useRef({ content, generation });
-  const serverGenerationRef = useRef(generation);
-  const localGenerationRef = useRef(generation);
+  const serverGenerationRef = useRef(0);
+  const localGenerationRef = useRef(0);
   // 显式服务器保存保持串行；防抖定时器只负责本地草稿。
   const queueRef = useRef(Promise.resolve());
+  const baselineEpochRef = useRef(0);
   const timerRef = useRef<number | null>(null);
-  const onSavedRef = useRef(onSaved);
-  const chapterIdRef = useRef(chapterId);
+  // 会话身份不能只比较 id：A → B → A 时，第一轮 A 的结果仍然过期。
+  const sessionRef = useRef({ documentId: document.id });
+  if (sessionRef.current.documentId !== document.id) {
+    sessionRef.current = { documentId: document.id };
+    revisionRef.current = document.revision;
+    baselineRef.current = document.content;
+    serverGenerationRef.current = 0;
+    localGenerationRef.current = 0;
+  }
+  const session = sessionRef.current;
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  const isCurrent = useCallback(
+    () => mountedRef.current && sessionRef.current === session,
+    [session],
+  );
 
   latestRef.current = { content, generation };
-  onSavedRef.current = onSaved;
-  chapterIdRef.current = chapterId;
 
   // 宿主装载服务器修订或服务器保存成功时，同步 revision 与 diff 基线。
   // 若当前正文与服务器快照不同，说明宿主恢复了同 revision 的本地草稿，
   // 此时代次仍属于“本地已保存、服务器未保存”，不能推进服务器代次。
   useEffect(() => {
     revisionRef.current = document.revision;
+    setConflictMessage("");
     setRevision(document.revision);
     setSavedAt(document.savedAt);
     if (document.storage === "server") baselineRef.current = document.content;
@@ -110,15 +129,18 @@ export function useAutosave({
     if (matchesServer) {
       serverGenerationRef.current = current.generation;
       localGenerationRef.current = current.generation;
-      clearLocalDocumentDraft(document.id);
+      if (document.storage === "server") clearLocalDocumentDraft(document.id);
       setState(document.storage === "local-cache" ? "offline" : "saved");
     } else {
       serverGenerationRef.current = Math.min(
         serverGenerationRef.current,
         Math.max(0, current.generation - 1),
       );
-      localGenerationRef.current = current.generation;
-      setState("local-saved");
+      setState(
+        localGenerationRef.current >= current.generation
+          ? "local-saved"
+          : "dirty",
+      );
     }
   }, [
     document.id,
@@ -132,6 +154,7 @@ export function useAutosave({
   // 不能影响编辑器内仍然保留的正文。
   const persistLocal = useCallback(
     (snapshot: { content: RichTextNode; generation: number }): boolean => {
+      if (!isCurrent()) return false;
       try {
         const timestamp = new Date().toISOString();
         saveLocalDocumentDraft({
@@ -158,7 +181,7 @@ export function useAutosave({
         return false;
       }
     },
-    [document.id],
+    [document.id, isCurrent],
   );
 
   // 仅由保存按钮调用。请求进入同一 Promise 队列，后一快照会在前一请求完成后
@@ -169,16 +192,33 @@ export function useAutosave({
       generation: number;
       chapterId?: string;
     }): Promise<boolean> => {
+      if (!isCurrent()) return false;
       const snapshot = override ?? latestRef.current;
+      const savedChapterId = override?.chapterId ?? chapterId;
+      const notifySaved = onSaved;
+      const baselineEpoch = baselineEpochRef.current;
+      const canApply = () =>
+        isCurrent() && baselineEpoch === baselineEpochRef.current;
       if (!enabled) return true;
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       if (snapshot.generation <= serverGenerationRef.current) return true;
 
+      // 请求期间切换/卸载也必须留下当前草稿；迟到结果不会再操作旧会话存储。
+      persistLocal(
+        latestRef.current.generation > snapshot.generation
+          ? latestRef.current
+          : snapshot,
+      );
       setState("saving");
       let succeeded = true;
       queueRef.current = queueRef.current
         .catch(() => undefined)
         .then(async () => {
+          if (!canApply()) {
+            succeeded = false;
+            return;
+          }
+          if (snapshot.generation <= serverGenerationRef.current) return;
           // 与最后一次服务器确认快照比较；本地自动保存不会改变该基线。
           const steps = diffDocuments(baselineRef.current, snapshot.content);
           if (steps.length === 0) {
@@ -186,10 +226,12 @@ export function useAutosave({
             localGenerationRef.current = snapshot.generation;
             clearLocalDocumentDraft(document.id);
             setState("saved");
+            if (latestRef.current.generation > snapshot.generation)
+              persistLocal(latestRef.current);
             return;
           }
           // 显式保存的章节 id 优先（新章节注册后服务器分配），否则用当前编辑章节。
-          const chapterId = override?.chapterId ?? chapterIdRef.current;
+          const chapterId = savedChapterId;
           const result = await saveDocumentSteps(document.id, {
             schemaVersion: document.schemaVersion,
             baseRevision: revisionRef.current,
@@ -197,16 +239,24 @@ export function useAutosave({
             steps,
             ...(chapterId ? { chapterId } : {}),
           });
+          if (!canApply()) {
+            succeeded = false;
+            return;
+          }
           // API 离线降级只代表本机已有副本，不能推进服务器 revision 或触发 onSaved。
           if (result.storage !== "server") {
-            persistLocal(snapshot);
+            persistLocal(
+              latestRef.current.generation > snapshot.generation
+                ? latestRef.current
+                : snapshot,
+            );
             succeeded = false;
             setState("offline");
             return;
           }
           // 只有服务器确认后才同时推进 revision、diff 基线和服务器保存代次。
           revisionRef.current = result.revision;
-          baselineRef.current = snapshot.content;
+          baselineRef.current = result.content;
           serverGenerationRef.current = snapshot.generation;
           localGenerationRef.current = snapshot.generation;
           clearLocalDocumentDraft(document.id);
@@ -218,12 +268,20 @@ export function useAutosave({
               ? "saved"
               : "dirty",
           );
-          onSavedRef.current?.(result);
+          if (latestRef.current.generation > snapshot.generation) {
+            persistLocal(latestRef.current);
+          }
+          notifySaved?.(result, savedChapterId);
         })
         .catch((error: unknown) => {
           succeeded = false;
+          if (!canApply()) return;
           // 无论网络失败还是 revision 冲突，都先保证当前快照仍留在本机。
-          persistLocal(snapshot);
+          persistLocal(
+            latestRef.current.generation > snapshot.generation
+              ? latestRef.current
+              : snapshot,
+          );
           if (error instanceof ApiError && error.status === 409) {
             setConflictMessage(
               "服务器已有更新版本。本地内容仍保留，请比较后选择加载最新版或继续复制。",
@@ -239,7 +297,15 @@ export function useAutosave({
       await queueRef.current;
       return succeeded;
     },
-    [document.id, document.schemaVersion, enabled, persistLocal],
+    [
+      chapterId,
+      document.id,
+      document.schemaVersion,
+      enabled,
+      isCurrent,
+      onSaved,
+      persistLocal,
+    ],
   );
 
   // 新编辑代静默 1.2 秒后只写本地草稿；继续输入或卸载会取消旧定时器。
@@ -258,7 +324,14 @@ export function useAutosave({
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
-  }, [content, enabled, generation, persistLocal]);
+  }, [
+    content,
+    document.revision,
+    document.content,
+    enabled,
+    generation,
+    persistLocal,
+  ]);
 
   return {
     state,
@@ -278,12 +351,17 @@ export function useAutosave({
           : undefined,
       ),
     saveLocal(savedContent, savedGeneration) {
-      return persistLocal({ content: savedContent, generation: savedGeneration });
+      return persistLocal({
+        content: savedContent,
+        generation: savedGeneration,
+      });
     },
     acceptSaved(next, savedContent, savedGeneration) {
+      if (!isCurrent() || next.id !== document.id) return;
+      baselineEpochRef.current += 1;
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       revisionRef.current = next.revision;
-      baselineRef.current = savedContent;
+      baselineRef.current = next.content;
       serverGenerationRef.current = savedGeneration;
       localGenerationRef.current = savedGeneration;
       clearLocalDocumentDraft(document.id);
@@ -291,9 +369,20 @@ export function useAutosave({
       setSavedAt(next.savedAt);
       setConflictMessage("");
       setState("saved");
-      onSavedRef.current?.(next);
+      if (
+        latestRef.current.generation > savedGeneration ||
+        JSON.stringify(savedContent) !== JSON.stringify(next.content)
+      ) {
+        persistLocal(latestRef.current);
+        serverGenerationRef.current = Math.min(
+          savedGeneration,
+          latestRef.current.generation - 1,
+        );
+      }
+      onSaved?.(next);
     },
     acceptLatest(latestRevision) {
+      if (!isCurrent()) return;
       // 只更新并发基线，不在这里改正文；正文取舍由冲突 UI 的用户操作负责。
       revisionRef.current = latestRevision;
       setRevision(latestRevision);

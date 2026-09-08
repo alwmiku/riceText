@@ -8,13 +8,8 @@ import {
 } from "../../components/ui/collapsible";
 import { cn } from "../../lib/utils";
 
-/** 目录中的单个章节摘要。 */
-export interface ChapterSummary {
-  id: string;
-  title: string;
-  volumeTitle?: string;
-  charCount: number;
-}
+import type { ChapterSummary } from "../compose/long-text-workspace-projections";
+export type { ChapterSummary } from "../compose/long-text-workspace-projections";
 
 interface ChapterSidebarProps {
   /** 全部章节摘要；操作按索引进行。 */

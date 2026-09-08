@@ -1,14 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ComponentType, ReactNode } from 'react';
+import type { Editor } from '@tiptap/react';
+import type * as EditorModule from '../features/editor/RichTextEditor';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppContext } from '../app-context';
 import { defaultDocument, identities } from '../lib/seed';
-import type { DocumentEnvelope, RichTextNode, SaveState } from '../lib/types';
+import type { DocumentEnvelope, ForumChapterItem, RichTextNode, SaveState } from '../lib/types';
+import { chapterQueryKeys } from '../lib/chapter-query-keys';
 import ComposePage from './ComposePage';
 
 const mocks = vi.hoisted(() => ({
+  realEditor: null as ComponentType<EditorModule.RichTextEditorProps> | null,
+  editorReady: vi.fn<(editor: Editor | null) => void>(),
   autosave: vi.fn(),
   createDocumentChapter: vi.fn(),
   deleteDocumentChapter: vi.fn(),
@@ -26,6 +31,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../features/editor/hooks/useAutosave', () => ({ useAutosave: mocks.autosave }));
+// jsdom 不提供 IndexedDB；本页验证正常存储流程，上传 Hook 测试覆盖失败场景。
+vi.mock('../lib/long-text-draft-storage', () => ({
+  loadLongTextValue: vi.fn(async () => undefined),
+  loadLongTextDraft: vi.fn(async () => undefined),
+  loadLongTextRaw: vi.fn(async () => undefined),
+  saveLongTextValue: vi.fn(async () => undefined),
+  saveLongTextDraft: vi.fn(async () => undefined),
+  saveLongTextRaw: vi.fn(async () => undefined),
+  deleteLongTextValue: vi.fn(async () => undefined),
+}));
 vi.mock('../lib/api', () => ({
   createDocumentChapter: mocks.createDocumentChapter,
   deleteDocumentChapter: mocks.deleteDocumentChapter,
@@ -52,29 +67,31 @@ vi.mock('../lib/api/revisions', () => ({
   getRevision: mocks.getRevision,
 }));
 vi.mock('../features/editor/RichTextEditor', () => ({
-  RichTextEditor: (props: {
-    content: RichTextNode;
-    mode: string;
-    editable?: boolean;
-    onChange: (content: RichTextNode) => void;
-    onSubmit?: (content: RichTextNode) => void;
-    onReady?: (editor: null) => void;
-    onExpand?: () => void;
-    onCommentAnchorOpen?: (id: string) => void;
-  }) => <section aria-label="正文编辑区" data-testid="editor" data-mode={props.mode} data-editable={String(props.editable)} data-content={JSON.stringify(props.content)}>
+  RichTextEditor: (props: EditorModule.RichTextEditorProps) => {
+    const ActualEditor = mocks.realEditor;
+    if (ActualEditor) return <ActualEditor {...props} onReady={(editor) => {
+      mocks.editorReady(editor);
+      props.onReady?.(editor);
+    }} />;
+    return <section aria-label="正文编辑区" data-testid="editor" data-mode={props.mode} data-editable={String(props.editable)} data-content={JSON.stringify(props.content)}>
     <button type="button" onClick={() => props.onChange({ type: 'doc', content: [{ type: 'paragraph' }] })}>模拟编辑</button>
     <button type="button" onClick={() => props.onSubmit?.({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'submitted' }] }] })}>模拟发布</button>
+    <button type="button" onClick={() => props.onChange({ ...props.content, content: [...(props.content.content ?? []), { type: 'paragraph', content: [{ type: 'text', text: '当前章新编辑' }] }] })}>模拟修改当前章节</button>
+    <button type="button" onClick={() => props.onSubmit?.(props.content)}>模拟保存当前章节</button>
     <button type="button" onClick={props.onExpand}>模拟展开</button>
     <button type="button" onClick={() => props.onCommentAnchorOpen?.('thread_1')}>模拟间贴锚点</button>
-  </section>,
+  </section>;
+  },
 }));
 vi.mock('../features/forum/ForumPanels', () => ({
-  ChapterRail: (props: { chapters?: readonly unknown[]; currentIndex?: number; onSelect: (index: number) => void; onAddChapter?: () => void; createArticle?: boolean; onDelete?: (index: number) => void | Promise<void>; className?: string }) => (
-    <aside className={props.className} aria-label="章节目录" data-chapters={String(props.chapters?.length ?? 0)} data-active-index={String(props.currentIndex ?? 0)}>
+  ChapterRail: (props: { chapters?: readonly { id: string; title: string }[]; onToggleHidden?: (index: number, hidden: boolean) => void; currentIndex?: number; onSelect: (index: number) => void; onAddChapter?: () => void; createArticle?: boolean; onDelete?: (index: number) => void | Promise<void>; className?: string }) => (
+    <aside className={props.className} aria-label="章节目录" data-chapters={String(props.chapters?.length ?? 0)} data-chapter-ids={JSON.stringify(props.chapters?.map((chapter) => chapter.id))} data-active-index={String(props.currentIndex ?? 0)}>
       <span>模拟章节目录</span>
       <button type="button" onClick={() => props.onSelect(0)}>模拟章节 1</button>
+      {(props.chapters?.length ?? 0) > 1 ? <button type="button" onClick={() => props.onSelect(1)}>模拟章节 2</button> : null}
+      {props.onToggleHidden ? <button type="button" onClick={() => props.onToggleHidden?.(props.currentIndex ?? 0, true)}>模拟隐藏章节</button> : null}
       <button type="button" onClick={() => props.onAddChapter?.()}>{props.createArticle ? '创建文章' : '模拟新增章节'}</button>
-      {props.onDelete ? <button type="button" onClick={() => void props.onDelete?.(0)}>模拟删除章节</button> : null}
+      {props.onDelete ? <><button type="button" onClick={() => void props.onDelete?.(0)}>模拟删除章节</button><button type="button" onClick={() => void props.onDelete?.(props.currentIndex ?? 0)}>模拟删除当前章节</button></> : null}
     </aside>
   ),
   ForumBusinessPanel: (props: { onRestore: (revision: number) => void; onCompare?: (revision: number) => void }) => <aside><span>模拟创作工具</span><button type="button" onClick={() => props.onCompare?.(17)}>模拟比较</button><button type="button" onClick={() => props.onRestore(17)}>模拟回退</button></aside>,
@@ -106,7 +123,7 @@ function renderPage(
   mocks.listDocuments.mockResolvedValue(articles);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><AppContext.Provider value={{ identity, setIdentity: vi.fn(), authMode: authStatus === "authenticated" ? "demo" : "session", authStatus, login: vi.fn(), logout: vi.fn(async () => undefined), refreshIdentity: vi.fn(async () => undefined) }}>{children}</AppContext.Provider></QueryClientProvider>;
-  return render(<MemoryRouter><ComposePage /></MemoryRouter>, { wrapper });
+  return { ...render(<MemoryRouter><ComposePage /></MemoryRouter>, { wrapper }), client };
 }
 
 function autosaveValue(state: SaveState = 'saved') {
@@ -138,6 +155,27 @@ const twoChapterDoc: DocumentEnvelope = {
   },
 };
 
+const chapterRows = (documentId = 'demo-post', hasContent = false): ForumChapterItem[] => [0, 1].map((order) => ({
+  id: 'stable-' + order, documentId, order, title: '章节' + order, hasContent,
+  revision: 0, hidden: false, savedAt: defaultDocument.savedAt,
+}));
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+function mockStandaloneChapters() {
+  mocks.getDocument.mockImplementation(async (id: string) => ({ ...defaultDocument, id, storage: 'server', content: { type: 'doc', content: [] } }));
+  mocks.listForumChapters.mockImplementation(async (id: string) => chapterRows(id, true));
+  mocks.getLongTextChapter.mockImplementation(async (documentId: string, id: string) => ({
+    ...chapterRows(documentId, true).find((row) => row.id === id),
+    content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: documentId + '/' + id + '正文' }] }] },
+  }));
+}
+
 describe('ComposePage', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'matchMedia', {
@@ -145,6 +183,8 @@ describe('ComposePage', () => {
       value: vi.fn(() => ({ matches: false, media: '', addEventListener: vi.fn(), removeEventListener: vi.fn() })),
     });
     window.localStorage.clear();
+    mocks.realEditor = null;
+    mocks.editorReady.mockReset();
     mocks.autosave.mockReset().mockReturnValue(autosaveValue());
     mocks.createDocumentChapter.mockReset().mockImplementation(async (_documentId: string, input: { title: string; order: number }) => ({
       id: 'chapter-' + String(input.order),
@@ -154,6 +194,7 @@ describe('ComposePage', () => {
       revision: 0,
       savedAt: '2026-09-01T20:00:00.000Z',
     }));
+    mocks.setDocumentChapterHidden.mockReset().mockResolvedValue({ hidden: true });
     mocks.deleteDocumentChapter.mockReset().mockResolvedValue({ id: 'chapter-0', deleted: true });
     mocks.listForumChapters.mockReset().mockResolvedValue([]);
     mocks.listDocuments.mockReset().mockResolvedValue([
@@ -193,14 +234,41 @@ describe('ComposePage', () => {
     vi.restoreAllMocks();
   });
 
-  it('reports document save errors without incorrectly blaming chapter registration', async () => {
-    mocks.flush.mockRejectedValueOnce(new Error('Attribute type is not allowed and was removed.'));
+  it('报告文档保存错误，不误归因于章节注册', async () => {
+    mocks.flush.mockRejectedValueOnce(new Error('已移除不允许使用的属性 type。'));
     renderPage();
     await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
     fireEvent.click(screen.getByRole('button', { name: '模拟发布' }));
-    expect(await screen.findByText('保存失败：Attribute type is not allowed and was removed.')).toBeInTheDocument();
+    expect(await screen.findByText('保存失败：已移除不允许使用的属性 type。')).toBeInTheDocument();
     expect(screen.queryByText(/新增章节注册失败/)).not.toBeInTheDocument();
     expect(screen.getByTestId('editor')).toBeInTheDocument();
+  });
+
+  it('真实空白编辑器输入首字后保持实例和焦点，并连续输入后续段落', async () => {
+    const actual = await vi.importActual<typeof EditorModule>('../features/editor/RichTextEditor');
+    mocks.realEditor = actual.RichTextEditor;
+    Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [] });
+    Object.defineProperty(Range.prototype, 'getBoundingClientRect', { configurable: true, value: () => new DOMRect(0, 0, 0, 0) });
+    mocks.getDocument.mockResolvedValue({ ...defaultDocument, storage: 'server', content: { type: 'doc', content: [{ type: 'paragraph' }] } });
+    renderPage();
+    await waitFor(() => expect(mocks.editorReady.mock.lastCall?.[0]?.isEditable).toBe(true));
+    const editor = mocks.editorReady.mock.lastCall?.[0];
+    if (!editor) throw new Error('编辑器未就绪');
+    const originalDOM = editor.view.dom;
+    act(() => { editor.view.focus(); editor.commands.insertContent('source'); });
+    expect(mocks.editorReady.mock.lastCall?.[0]).toBe(editor);
+    expect(editor.view.dom).toBe(originalDOM);
+    expect(originalDOM.isConnected).toBe(true);
+    expect(document.activeElement).toBe(originalDOM);
+    fireEvent.keyDown(originalDOM, { key: 'Enter', code: 'Enter' });
+    act(() => { editor.commands.insertContent('target'); });
+    fireEvent.keyDown(originalDOM, { key: 'Enter', code: 'Enter' });
+    act(() => { editor.commands.insertContent('third'); });
+    expect(document.activeElement).toBe(originalDOM);
+    expect(editor.getJSON().content).toHaveLength(3);
+    expect(editor.getText()).toContain('source');
+    expect(editor.getText()).toContain('target');
+    expect(editor.getText()).toContain('third');
   });
 
   it('游客只得到空白本地编辑器，不请求服务器文章或章节', async () => {
@@ -243,7 +311,7 @@ describe('ComposePage', () => {
       expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'),
     );
     expect(screen.getByRole('button', { name: '模拟新增章节' })).toBeInTheDocument();
-    expect(screen.getByText('已在本地创建《第一篇文章》，点击保存后上传服务器')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '关闭提示' })?.parentElement?.textContent).toContain('已在本地创建《第一篇文章》，点击保存后上传服务器');
   });
 
   it('新建文章先填写名称，并把名称保存在对应本地草稿中', async () => {
@@ -660,6 +728,217 @@ describe('ComposePage', () => {
     expect(
       screen.queryByRole('button', { name: '模拟删除章节' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('目录数组无序时普通正文编辑保存删除仍绑定服务器实体', async () => {
+    const rows = chapterRows();
+    mocks.getDocument.mockResolvedValue(twoChapterDoc);
+    mocks.listForumChapters.mockResolvedValue([rows[1]!, rows[0]!]);
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    fireEvent.click(screen.getByRole('button', { name: '模拟章节 2' }));
+    expect(screen.getByTestId('editor').dataset.content).toContain('陌生的船票');
+    fireEvent.click(screen.getByRole('button', { name: '模拟修改当前章节' }));
+    fireEvent.click(screen.getByRole('button', { name: '模拟保存当前章节' }));
+    await waitFor(() => expect(mocks.flush).toHaveBeenCalledWith(expect.anything(), expect.any(Number), 'stable-1'));
+    const savedContent = JSON.stringify(mocks.flush.mock.calls[0]?.[0]);
+    expect(savedContent).toContain('潮声沿着旧城墙');
+    expect(savedContent).toContain('当前章新编辑');
+    expect(mocks.getLongTextChapter).not.toHaveBeenCalled();
+    mocks.listForumChapters.mockResolvedValue([rows[0]!]);
+    fireEvent.click(screen.getByRole('button', { name: '模拟删除当前章节' }));
+    await waitFor(() => expect(mocks.deleteDocumentChapter).toHaveBeenCalledWith('demo-post', 'stable-1'));
+    expect(screen.getByTestId('editor').dataset.content).toContain('潮声沿着旧城墙');
+    expect(screen.getByTestId('editor').dataset.content).not.toContain('陌生的船票');
+  });
+
+  it('持久化章节ID优先于旧位置，并等待目录后再解析身份', async () => {
+    const pending = deferred<ForumChapterItem[]>();
+    mocks.getDocument.mockResolvedValue(twoChapterDoc);
+    mocks.listForumChapters.mockReturnValue(pending.promise);
+    localStorage.setItem('ricetext:active-chapter:demo-post', '0');
+    localStorage.setItem('ricetext:active-chapter-id:demo-post', 'stable-1');
+    renderPage();
+    await waitFor(() => expect(mocks.getDocument).toHaveBeenCalled());
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'false');
+    await act(async () => pending.resolve(chapterRows()));
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    expect(screen.getByTestId('editor').dataset.content).toContain('陌生的船票');
+    expect(localStorage.getItem('ricetext:active-chapter-id:demo-post')).toBe('stable-1');
+  });
+
+  it('独立章目录重排后当前实体、正文和保存目标保持一致', async () => {
+    mockStandaloneChapters();
+    const { client } = renderPage();
+    await waitFor(() => expect(screen.getByTestId('editor').dataset.content).toContain('demo-post/stable-0正文'));
+    fireEvent.click(screen.getByRole('button', { name: '模拟章节 2' }));
+    await waitFor(() => expect(screen.getByTestId('editor').dataset.content).toContain('demo-post/stable-1正文'));
+    const rows = chapterRows('demo-post', true);
+    act(() => client.setQueryData(chapterQueryKeys.directory('demo-post'), [{ ...rows[1]!, order: 0 }, { ...rows[0]!, order: 1 }]));
+    await waitFor(() => expect(screen.getByRole('complementary', { name: '章节目录' })).toHaveAttribute('data-active-index', '0'));
+    fireEvent.click(screen.getByRole('button', { name: '模拟保存当前章节' }));
+    await waitFor(() => expect(mocks.uploadLongTextChapter).toHaveBeenCalledWith('demo-post', 'stable-1', expect.objectContaining({ order: 0 })));
+    expect(screen.getByTestId('editor').dataset.content).toContain('demo-post/stable-1正文');
+  });
+
+  it('独立正文失败时编辑与快捷保存均被拦截，重试后才允许写入', async () => {
+    mockStandaloneChapters();
+    mocks.getLongTextChapter.mockRejectedValue(new Error('正文不可用'));
+    renderPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent('章节加载失败');
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'false');
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '模拟编辑' }));
+    fireEvent.click(screen.getByRole('button', { name: '模拟发布' }));
+    expect(mocks.uploadLongTextChapter).not.toHaveBeenCalled();
+    expect(mocks.flush).not.toHaveBeenCalled();
+    mocks.getLongTextChapter.mockResolvedValue({ ...chapterRows('demo-post', true)[0], content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '恢复的正文' }] }] } });
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    expect(screen.getByTestId('editor').dataset.content).toContain('恢复的正文');
+  });
+
+  it('空壳占位章不会请求独立正文或保存空白覆盖', async () => {
+    mocks.getDocument.mockResolvedValue({ ...defaultDocument, storage: 'server', content: { type: 'doc', content: [] } });
+    mocks.listForumChapters.mockResolvedValue(chapterRows());
+    renderPage();
+    expect(await screen.findByText('本章暂无正文。')).toBeInTheDocument();
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'false');
+    fireEvent.click(screen.getByRole('button', { name: '模拟发布' }));
+    expect(mocks.getLongTextChapter).not.toHaveBeenCalled();
+    expect(mocks.uploadLongTextChapter).not.toHaveBeenCalled();
+    expect(mocks.flush).not.toHaveBeenCalled();
+  });
+
+  it.each(['保存', '隐藏', '删除'] as const)('%s请求期间切章，迟到成功不会改动新章节界面', async (operation) => {
+    mockStandaloneChapters();
+    const pending = deferred<{ revision: number; deleted: boolean }>();
+    const request = operation === '保存' ? mocks.uploadLongTextChapter : operation === '隐藏' ? mocks.setDocumentChapterHidden : mocks.deleteDocumentChapter;
+    request.mockReturnValue(pending.promise);
+    const { client } = renderPage();
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    fireEvent.click(screen.getByRole('button', { name: operation === '保存' ? '模拟保存当前章节' : operation === '隐藏' ? '模拟隐藏章节' : '模拟删除章节' }));
+    await waitFor(() => expect(request).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '模拟章节 2' }));
+    await waitFor(() => expect(screen.getByTestId('editor').dataset.content).toContain('stable-1正文'));
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    if (operation === '删除') mocks.listForumChapters.mockResolvedValue([{ ...chapterRows('demo-post', true)[1]!, order: 0 }]);
+    await act(async () => pending.resolve({ revision: 9, deleted: true }));
+    expect(screen.getByTestId('editor').dataset.content).toContain('stable-1正文');
+    expect(screen.queryByRole('button', { name: '关闭提示' }), screen.queryByRole('button', { name: '关闭提示' })?.parentElement?.textContent ?? '').not.toBeInTheDocument();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: chapterQueryKeys.directory('demo-post') });
+    await waitFor(() => expect(client.getQueryData<ForumChapterItem[]>(chapterQueryKeys.directory('demo-post'))).toHaveLength(operation === '删除' ? 1 : 2));
+  });
+
+  it('目录尚未返回时新增不会制造覆盖独立第一章的主文档正文', async () => {
+    mockStandaloneChapters();
+    const pending = deferred<ForumChapterItem[]>();
+    mocks.listForumChapters.mockReturnValue(pending.promise);
+    renderPage();
+    await screen.findByText('模拟创作工具');
+    fireEvent.click(screen.getByRole('button', { name: '模拟新增章节' }));
+    expect(screen.getByText('章节目录尚未就绪，请加载后再新增')).toBeInTheDocument();
+    await act(async () => pending.resolve(chapterRows('demo-post', true)));
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    expect(screen.getByTestId('editor').dataset.content).toContain('stable-0正文');
+    expect(mocks.flush).not.toHaveBeenCalled();
+  });
+
+  it('旧主文档的单个longTextBlock范围不能误当整篇章节写回或删除', async () => {
+    mocks.getDocument.mockResolvedValue({ ...defaultDocument, storage: 'server', content: { type: 'doc', content: [
+      { type: 'longTextBlock', attrs: { chapterId: 'stable-0', title: '甲', text: '甲正文' } },
+      { type: 'longTextBlock', attrs: { chapterId: 'stable-1', title: '乙', text: '乙正文' } },
+    ] } });
+    mocks.listForumChapters.mockResolvedValue(chapterRows());
+    renderPage();
+    await screen.findByText('请在长文本工作台编辑此章节');
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'false');
+    fireEvent.click(screen.getByRole('button', { name: '模拟编辑' }));
+    fireEvent.click(screen.getByRole('button', { name: '模拟发布' }));
+    fireEvent.click(screen.getByRole('button', { name: '模拟删除章节' }));
+    expect(screen.getByRole('complementary', { name: '章节目录' })).toHaveAttribute('data-chapters', '2');
+    expect(mocks.deleteDocumentChapter).not.toHaveBeenCalled();
+    expect(mocks.flush).not.toHaveBeenCalled();
+  });
+
+  it('独立目录新增不会把新主文档正文映射到已有第一章', async () => {
+    mockStandaloneChapters();
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    fireEvent.click(screen.getByRole('button', { name: '模拟新增章节' }));
+    expect(screen.getByText('请在长文本工作台新增并上传章节')).toBeInTheDocument();
+    expect(screen.getByTestId('editor').dataset.content).toContain('stable-0正文');
+    expect(mocks.flush).not.toHaveBeenCalled();
+  });
+
+  it('保存期间离开又返回同一章节，旧保存结果仍不能覆盖本次会话', async () => {
+    mockStandaloneChapters();
+    const pending = deferred<{ revision: number }>();
+    mocks.uploadLongTextChapter.mockReturnValue(pending.promise);
+    const { client } = renderPage();
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    fireEvent.click(screen.getByRole('button', { name: '模拟保存当前章节' }));
+    await waitFor(() => expect(mocks.uploadLongTextChapter).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '模拟章节 2' }));
+    fireEvent.click(screen.getByRole('button', { name: '模拟章节 1' }));
+    await act(async () => pending.resolve({ revision: 9 }));
+    expect(client.getQueryData<{ revision: number }>(chapterQueryKeys.content('demo-post', 'stable-0'))?.revision).toBe(0);
+    expect(screen.queryByRole('button', { name: '关闭提示' }), screen.queryByRole('button', { name: '关闭提示' })?.parentElement?.textContent ?? '').not.toBeInTheDocument();
+  });
+
+  it.each(['章节', '文章'] as const)('历史比较期间切换%s，迟到结果不再打开比较界面', async (target) => {
+    mocks.getDocument.mockImplementation(async (id: string) => ({ ...twoChapterDoc, id }));
+    mocks.listForumChapters.mockImplementation(async (id: string) => chapterRows(id));
+    const pending = deferred<DocumentEnvelope>();
+    mocks.getRevision.mockReturnValue(pending.promise);
+    const articles = ['demo-post', 'other'].map((id) => ({ id, title: id, revision: 18, savedAt: defaultDocument.savedAt, canEdit: true }));
+    renderPage(identities[0]!, 'authenticated', articles);
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    fireEvent.click(screen.getByRole('button', { name: '模拟比较' }));
+    await waitFor(() => expect(mocks.getRevision).toHaveBeenCalled());
+    if (target === '章节') fireEvent.click(screen.getByRole('button', { name: '模拟章节 2' }));
+    else fireEvent.change(screen.getByRole('combobox', { name: '选择文章' }), { target: { value: 'other' } });
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    await act(async () => pending.resolve({ ...twoChapterDoc, revision: 17 }));
+    expect(screen.queryByRole('region', { name: '版本格式比较视图' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '关闭提示' }), screen.queryByRole('button', { name: '关闭提示' })?.parentElement?.textContent ?? '').not.toBeInTheDocument();
+  });
+
+  it.each(['章节', '文章'] as const)('回退请求期间切换%s，不用迟到快照替换当前编辑内容', async (target) => {
+    mocks.getDocument.mockImplementation(async (id: string) => ({ ...twoChapterDoc, id }));
+    mocks.listForumChapters.mockImplementation(async (id: string) => chapterRows(id));
+    const pending = deferred<DocumentEnvelope>();
+    mocks.restoreRevision.mockReturnValue(pending.promise);
+    const articles = ['demo-post', 'other'].map((id) => ({ id, title: id, revision: 18, savedAt: defaultDocument.savedAt, canEdit: true }));
+    const autosave = autosaveValue();
+    mocks.autosave.mockReturnValue(autosave);
+    renderPage(identities[0]!, 'authenticated', articles);
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    fireEvent.click(screen.getByRole('button', { name: '模拟回退' }));
+    await waitFor(() => expect(mocks.restoreRevision).toHaveBeenCalled());
+    if (target === '章节') fireEvent.click(screen.getByRole('button', { name: '模拟章节 2' }));
+    else fireEvent.change(screen.getByRole('combobox', { name: '选择文章' }), { target: { value: 'other' } });
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    await act(async () => pending.resolve({ ...twoChapterDoc, revision: 19, content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '迟到的回退正文' }] }] } }));
+    expect(screen.getByTestId('editor').dataset.content).not.toContain('迟到的回退正文');
+    expect(autosave.acceptSaved).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '关闭提示' }), screen.queryByRole('button', { name: '关闭提示' })?.parentElement?.textContent ?? '').not.toBeInTheDocument();
+  });
+
+  it('保存请求切文档后失败，不把旧错误展示在新文章', async () => {
+    mockStandaloneChapters();
+    const pending = deferred<{ revision: number }>();
+    mocks.uploadLongTextChapter.mockReturnValue(pending.promise);
+    const articles = ['demo-post', 'other'].map((id) => ({ id, title: id, revision: 18, savedAt: defaultDocument.savedAt, canEdit: true }));
+    renderPage(identities[0]!, 'authenticated', articles);
+    await waitFor(() => expect(screen.getByTestId('editor')).toHaveAttribute('data-editable', 'true'));
+    fireEvent.click(screen.getByRole('button', { name: '模拟保存当前章节' }));
+    await waitFor(() => expect(mocks.uploadLongTextChapter).toHaveBeenCalled());
+    fireEvent.change(screen.getByRole('combobox', { name: '选择文章' }), { target: { value: 'other' } });
+    await waitFor(() => expect(screen.getByTestId('editor').dataset.content).toContain('other/stable-0正文'));
+    await act(async () => pending.reject(new Error('旧文章保存失败')));
+    expect(screen.queryByText(/旧文章保存失败/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('editor').dataset.content).toContain('other/stable-0正文');
   });
 
   it('冲突时允许复制本地正文', async () => {

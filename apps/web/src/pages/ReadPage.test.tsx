@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppContext } from '../app-context';
 import { defaultDocument, identities, seedComments, seedSuggestions } from '../lib/seed';
 import { formatTime } from '../lib/utils';
-import type { DocumentEnvelope, SeedIdentity } from '../lib/types';
+import type { DocumentEnvelope, ForumChapterItem, SeedIdentity } from '../lib/types';
+import { chapterQueryKeys } from '../lib/chapter-query-keys';
 import ReadPage from './ReadPage';
 
 const mocks = vi.hoisted(() => ({
@@ -84,7 +85,7 @@ function renderPage(identity: SeedIdentity, initialPath = '/read') {
   ]);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><AppContext.Provider value={{ identity, setIdentity: vi.fn(), authMode: "demo", authStatus: "authenticated", login: vi.fn(), logout: vi.fn(async () => undefined), refreshIdentity: vi.fn(async () => undefined) }}>{children}</AppContext.Provider></QueryClientProvider>;
-  return render(<MemoryRouter initialEntries={[initialPath]}><ReadPage /></MemoryRouter>, { wrapper });
+  return { ...render(<MemoryRouter initialEntries={[initialPath]}><ReadPage /></MemoryRouter>, { wrapper }), client };
 }
 
 describe('ReadPage', () => {
@@ -339,8 +340,93 @@ describe('ReadPage', () => {
       expect(mocks.getDocument).toHaveBeenCalledWith('demo-post', expect.anything()),
     );
     await waitFor(() =>
-      expect(mocks.listForumChapters).toHaveBeenCalledWith('demo-post'),
+      expect(mocks.listForumChapters).toHaveBeenCalledWith('demo-post', { strict: true }),
     );
+  });
+
+  it('占位章保留文档派生正文且不请求不存在的独立正文', async () => {
+    mocks.listForumChapters.mockResolvedValue([{
+      id: 'legacy-stable', documentId: 'demo-post', title: '正文', order: 0,
+      revision: 8, hasContent: false, hidden: false, savedAt: interactiveDocument.savedAt,
+    }]);
+    renderPage(identities[1]!);
+    expect(await screen.findByText('章节资料.zip')).toBeInTheDocument();
+    expect(mocks.getLongTextChapter).not.toHaveBeenCalled();
+  });
+
+  it('独立正文失败显示重试且不泄露同位置的文档内容', async () => {
+    mocks.listForumChapters.mockResolvedValue([{
+      id: 'uploaded', documentId: 'demo-post', title: '上传章节', order: 0,
+      revision: 0, hasContent: true, hidden: false, savedAt: interactiveDocument.savedAt,
+    }]);
+    mocks.getLongTextChapter.mockRejectedValue(new Error('网络离线'));
+    renderPage(identities[1]!);
+    expect(await screen.findByRole('alert')).toHaveTextContent('章节加载失败');
+    expect(screen.queryByText('章节资料.zip')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '开始校订' })).not.toBeInTheDocument();
+    mocks.getLongTextChapter.mockResolvedValue({
+      id: 'uploaded', documentId: 'demo-post', content: { type: 'doc', content: [
+        { type: 'paragraph', content: [{ type: 'text', text: '重试后的正确章节' }] },
+      ] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    expect(await screen.findByText('重试后的正确章节')).toBeInTheDocument();
+  });
+
+  it('空壳中的占位目录显示暂无正文且不挂载校订入口', async () => {
+    mocks.getDocument.mockResolvedValue({ ...interactiveDocument, content: { type: 'doc', content: [] } });
+    mocks.listForumChapters.mockResolvedValue([{
+      id: 'empty', documentId: 'demo-post', title: '待写章节', order: 0,
+      revision: 0, hasContent: false, hidden: false, savedAt: interactiveDocument.savedAt,
+    }]);
+    renderPage(identities[0]!);
+    expect(await screen.findByText('本章暂无正文。')).toBeInTheDocument();
+    expect(mocks.getLongTextChapter).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '开始校订' })).not.toBeInTheDocument();
+  });
+
+  it('目录重排后保持当前稳定章节及其正文与版本', async () => {
+    const directory: ForumChapterItem[] = ['甲', '乙'].map((title, order) => ({
+      id: 'stable-' + order, documentId: 'demo-post', title, order,
+      revision: order + 1, hasContent: true, hidden: false, savedAt: interactiveDocument.savedAt,
+    }));
+    mocks.listForumChapters.mockResolvedValue(directory);
+    mocks.getLongTextChapter.mockImplementation(async (_documentId: string, id: string) => ({
+      ...directory.find((chapter) => chapter.id === id),
+      content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: id + '正文' }] }] },
+    }));
+    const { client } = renderPage(identities[1]!);
+    await screen.findByText('stable-0正文');
+    fireEvent.click(screen.getByRole('button', { name: '乙' }));
+    await screen.findByText('stable-1正文');
+    act(() => client.setQueryData(chapterQueryKeys.directory('demo-post'), [
+      { ...directory[1]!, order: 0 }, { ...directory[0]!, order: 1 },
+    ]));
+    await waitFor(() => expect(screen.getByRole('button', { name: '乙' })).toHaveAttribute('aria-current', 'true'));
+    expect(screen.getByText('stable-1正文')).toBeInTheDocument();
+    expect(screen.getByText('版本 2')).toBeInTheDocument();
+    expect(screen.queryByText('stable-0正文')).not.toBeInTheDocument();
+  });
+
+  it('校订入口的稳定章节ID优先于旧位置参数', async () => {
+    mocks.getDocument.mockResolvedValue({ ...interactiveDocument, content: { type: 'doc', content: [] } });
+    mocks.listForumChapters.mockResolvedValue([0, 1].map((order) => ({
+      id: 'stable-' + order, documentId: 'demo-post', title: '章节' + order, order,
+      revision: 0, hasContent: true, hidden: false, savedAt: interactiveDocument.savedAt,
+    })));
+    mocks.getLongTextChapter.mockImplementation(async (documentId: string, id: string) => ({
+      documentId, id, content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: id + '正文' }] }] },
+    }));
+    renderPage(identities[1]!, '/read?chapter=0&chapterId=stable-1');
+    expect(await screen.findByText('stable-1正文')).toBeInTheDocument();
+    expect(mocks.getLongTextChapter).not.toHaveBeenCalledWith('demo-post', 'stable-0', expect.anything());
+  });
+
+  it('目录失败不会被当作空目录并回退到文档正文', async () => {
+    mocks.listForumChapters.mockRejectedValue(new Error('网络离线'));
+    renderPage(identities[1]!);
+    expect(await screen.findByRole('alert')).toHaveTextContent('章节加载失败');
+    expect(screen.queryByText('章节资料.zip')).not.toBeInTheDocument();
   });
 
   it('作者仍可预览与校订已隐藏章节', async () => {

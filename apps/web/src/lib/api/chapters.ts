@@ -1,6 +1,12 @@
-import type { DocumentEnvelope as ContractDocumentEnvelope } from "@ricetext/contracts";
-import type { ForumChapterItem, RichTextNode } from "../types";
+import { TiptapDocumentSchema, type TiptapDocument } from "@ricetext/contracts";
+import type { ChapterContent, ForumChapterItem, RichTextNode } from "../types";
+import { toEditorContent } from "../document-content";
 import { api, isServiceUnavailable, rethrowClientError } from "./client";
+
+/** 在强类型 API 写入边界校验编辑器的宽松 JSON。 */
+export function toChapterDocument(content: RichTextNode): TiptapDocument {
+  return TiptapDocumentSchema.parse(content);
+}
 
 export async function listForumChapters(
   documentId: string,
@@ -9,7 +15,8 @@ export async function listForumChapters(
   try {
     return (await api().listChapters(documentId)).items;
   } catch (error) {
-    if (options?.strict || !isServiceUnavailable(error)) rethrowClientError(error);
+    if (options?.strict || !isServiceUnavailable(error))
+      rethrowClientError(error);
     return [];
   }
 }
@@ -18,8 +25,9 @@ export async function getLongTextChapter(
   documentId: string,
   chapterId: string,
   signal?: AbortSignal,
-) {
-  return api().getNovelChapter(documentId, chapterId, signal);
+): Promise<ChapterContent> {
+  const chapter = await api().getNovelChapter(documentId, chapterId, signal);
+  return { ...chapter, content: toEditorContent(chapter.content) };
 }
 
 export interface ChapterSyncItem {
@@ -85,7 +93,7 @@ export async function uploadLongTextChapter(
   try {
     return await api().saveNovelChapter(novelId, chapterId, {
       ...input,
-      content: input.content as unknown as ContractDocumentEnvelope["content"],
+      content: toChapterDocument(input.content),
     });
   } catch (error) {
     rethrowClientError(error);
@@ -120,7 +128,7 @@ export async function uploadLongTextChaptersBatch(
     return await api().saveNovelChaptersBatch(novelId, {
       chapters: chapters.map((chapter) => ({
         ...chapter,
-        content: chapter.content as unknown as ContractDocumentEnvelope["content"],
+        content: toChapterDocument(chapter.content),
       })),
     });
   } catch (error) {
@@ -145,7 +153,7 @@ export async function stageLongTextChapterUploadBatch(
     chapters: chapters.map((chapter) => ({
       ...chapter,
       volumeTitle: chapter.volumeTitle ?? "",
-      content: chapter.content as unknown as ContractDocumentEnvelope["content"],
+      content: toChapterDocument(chapter.content),
     })),
   });
 }
@@ -169,7 +177,11 @@ export async function stageLongTextChapterReorder(
   novelId: string,
   chapters: readonly StageChapterReorderItem[],
 ): Promise<{
-  chapters: Array<{ id: string; revision: number; status: "staged" | "unchanged" }>;
+  chapters: Array<{
+    id: string;
+    revision: number;
+    status: "staged" | "unchanged";
+  }>;
 }> {
   try {
     return await api().stageNovelChapterReorder(novelId, {

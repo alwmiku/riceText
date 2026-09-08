@@ -1,23 +1,24 @@
 import { Editor, type JSONContent } from '@tiptap/core'
 import { describe, expect, it } from 'vitest'
+import { createDocumentSchema, parseDocumentJson, stringifyDocument, validateDocument } from '@ricetext/document-core'
 
 import { editorExtensions } from './extensions.js'
 
 describe('editorExtensions', () => {
-  it('registers the canonical custom schema exactly once', () => {
+  it('规范自定义 schema 仅注册一次', () => {
     const names = editorExtensions().map((extension) => extension.name)
     for (const name of ['inlineCommentAnchor', 'richImage', 'diceRoll', 'novelExcerpt', 'mention', 'replyGate', 'attachmentRef', 'pollRef', 'spoiler']) {
       expect(names.filter((candidate) => candidate === name)).toHaveLength(1)
     }
   })
 
-  it('appends application extensions after the canonical schema', () => {
+  it('在规范 schema 之后追加应用扩展', () => {
     const extension = { name: 'applicationExtension' } as ReturnType<typeof editorExtensions>[number]
     const names = editorExtensions({ additionalExtensions: [extension] }).map((item) => item.name)
     expect(names.at(-1)).toBe('applicationExtension')
   })
 
-  it('executes every custom insertion command against the shared schema', () => {
+  it('基于共享 schema 执行每个自定义插入命令', () => {
     const assertInsertion = (type: string, insert: (editor: Editor) => boolean) => {
       const editor = new Editor({ extensions: editorExtensions(), content: { type: 'doc', content: [{ type: 'paragraph' }] } })
       expect(insert(editor)).toBe(true)
@@ -26,7 +27,21 @@ describe('editorExtensions', () => {
       visit(editor.getJSON())
       expect(types).toContain(type)
       expect(typeof editor.commands.toggleSpoiler).toBe('function')
-      editor.destroy()
+      const validated = validateDocument(editor.getJSON())
+      expect(validated.issues, type).toEqual([])
+      const read = parseDocumentJson(stringifyDocument(validated.document))
+      expect(read.valid, type).toBe(true)
+      expect(read.document, type).toEqual(validated.document)
+      const persisted = createDocumentSchema().nodeFromJSON(read.document)
+      expect(() => persisted.check(), type).not.toThrow()
+      const restored = new Editor({ extensions: editorExtensions(), content: read.document })
+      try {
+        expect(restored.getJSON(), type).toEqual(persisted.toJSON())
+        expect(validateDocument(restored.getJSON()), type).toEqual(read)
+      } finally {
+        restored.destroy()
+        editor.destroy()
+      }
     }
 
     assertInsertion('inlineCommentAnchor', (editor) => editor.commands.insertInlineCommentAnchor({ threadId: 't1', count: 2, placement: 'end' }))
@@ -37,9 +52,10 @@ describe('editorExtensions', () => {
     assertInsertion('replyGate', (editor) => editor.commands.insertReplyGate({ gateId: 'g1', prompt: 'Reply first' }))
     assertInsertion('attachmentRef', (editor) => editor.commands.insertAttachmentRef({ attachmentId: 'f1', name: 'file.txt', mimeType: 'text/plain', size: 4, priceCoins: 0 }))
     assertInsertion('pollRef', (editor) => editor.commands.insertPollRef({ pollId: 'p1', question: 'Choose', multiple: false, options: [{ id: 'o1', label: 'One' }] }))
+    assertInsertion('longTextBlock', (editor) => editor.commands.insertLongTextBlock({ chapterId: 'c1', title: 'Chapter', volumeTitle: 'Volume', text: 'Long text', order: 2, start: 10, end: 19 }))
   })
 
-  it('does not reroll immutable dice JSON when an editor is remounted', () => {
+  it('重新挂载编辑器时不重投不可变的骰子 JSON', () => {
     const content: JSONContent = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'diceRoll', attrs: { rollId: 'r1', expression: '3d5', rolls: [3, 4, 5], total: 12, rerollOf: null } }] }] }
     const first = new Editor({ extensions: editorExtensions(), content })
     const persisted = first.getJSON()
@@ -49,7 +65,7 @@ describe('editorExtensions', () => {
     second.destroy()
   })
 
-  it('parses and renders every custom node from persisted HTML', () => {
+  it('从持久化 HTML 解析并渲染每种自定义节点', () => {
     const editor = new Editor({
       extensions: editorExtensions(),
       content: `
@@ -99,7 +115,7 @@ describe('editorExtensions', () => {
     editor.destroy()
   })
 
-  it('falls back safely while parsing malformed extension attributes', () => {
+  it('解析格式错误的扩展属性时安全回退', () => {
     const editor = new Editor({
       extensions: editorExtensions(),
       content: `
@@ -125,7 +141,7 @@ describe('editorExtensions', () => {
     expect(find('mention')?.attrs).toMatchObject({ resolved: false, avatarUrl: null })
     expect(find('richImage')?.attrs).toMatchObject({ src: '', align: 'center', width: 10 })
     expect(find('novelExcerpt')?.attrs).toMatchObject({ sourceUrl: null, variant: 'fanqie' })
-    expect(find('replyGate')?.attrs).toMatchObject({ prompt: 'Reply to view this content' })
+    expect(find('replyGate')?.attrs).toMatchObject({ prompt: '回复后查看此内容' })
     expect(find('attachmentRef')?.attrs).toMatchObject({ size: 0, priceCoins: 0 })
     expect(find('pollRef')?.attrs).toMatchObject({ multiple: false, options: [] })
 
@@ -144,7 +160,7 @@ describe('editorExtensions', () => {
     invalidArray.destroy()
   })
 
-  it('prevents bold, italic, and text style from coexisting with spoiler', () => {
+  it('防止粗体、斜体和文本样式与 spoiler 共存', () => {
     const editor = new Editor({ extensions: editorExtensions(), content: '<p>secret</p>' })
     editor.commands.selectAll()
     editor.commands.toggleBold()
@@ -173,7 +189,7 @@ describe('editorExtensions', () => {
     editor.destroy()
   })
 
-  it('protects inline comment anchors from deletion', () => {
+  it('保护行内评论锚点不被删除', () => {
     const content: JSONContent = {
       type: 'doc',
       content: [{
@@ -192,7 +208,7 @@ describe('editorExtensions', () => {
     editor.destroy()
   })
 
-  it('applies, toggles, and removes the spoiler command and rejects unsafe links', () => {
+  it('应用、切换和移除 spoiler，并拒绝不安全的链接', () => {
     const editor = new Editor({ extensions: editorExtensions(), content: '<p>classified</p>' })
     editor.commands.selectAll()
     expect(editor.commands.setSpoiler()).toBe(true)

@@ -16,46 +16,16 @@ import { ScrollArea } from "../../components/ui/scroll-area";
 import { TextMarquee } from "../../components/ui/text-marquee";
 import { cn } from "../../lib/utils";
 
-export type ChapterUploadAction = "新增" | "修改" | "未变化" | "服务器额外";
-export type ChapterUploadStatus =
-  | "待上传"
-  | "上传中"
-  | "已上传"
-  | "未变化"
-  | "待整套替换"
-  | "失败";
+import type { ChapterUploadAction, ChapterUploadStatus, ChapterUploadRow, ChapterUploadDiff } from "../compose/chapter-upload-domain";
+export type { ChapterUploadAction, ChapterUploadStatus, ChapterUploadRow, ChapterUploadDiff } from "../compose/chapter-upload-domain";
 
-export interface ChapterUploadRow {
-  id: string;
-  title: string;
-  volumeTitle?: string;
-  action: ChapterUploadAction;
-  status: ChapterUploadStatus;
-  attempts: number;
-  error?: string;
-  retryable?: boolean;
-}
-
-/** prepare 阶段生成并在每批上传后更新的差异与进度摘要。 */
-export interface ChapterUploadDiff {
-  total: number;
-  toUpdate: number;
-  added: number;
-  modified: number;
-  /** 服务器存在、当前本地长文本中不存在，必须由用户从目录删除的章节数。 */
-  remoteOnly: number;
-  uploaded: number;
-  /** 失败（含不可重试冲突）章节数。 */
-  failed: number;
-  /** 待上传（含上传中）章节数。 */
-  pending: number;
-  gaps: number;
-  /** 当前正在发送的第几批（1-based），未在上传时为 null。 */
-  batchCurrent: number | null;
-  /** 当前运行的预计批次数，未在上传时为 null。 */
-  batchTotal: number | null;
-  rows: ChapterUploadRow[];
-}
+const actionLabels: Record<ChapterUploadAction, string> = {
+  add: "新增", modify: "修改", unchanged: "未变化", remote_only: "服务器额外",
+};
+const statusLabels: Record<ChapterUploadStatus, string> = {
+  pending: "待上传", uploading: "上传中", uploaded: "已上传", unchanged: "未变化",
+  awaiting_replacement: "待整套替换", failed: "失败",
+};
 
 const ROW_HEIGHT = 64;
 const OVERSCAN_ROWS = 8;
@@ -64,11 +34,11 @@ const DIALOG_BODY_MAX_HEIGHT = "min(72dvh, 640px)";
 
 function StatusMarker({ row }: { row: ChapterUploadRow }) {
   const icon =
-    row.status === "已上传" || row.status === "未变化" ? (
+    row.status === "uploaded" || row.status === "unchanged" ? (
       <CheckCircle2 />
-    ) : row.status === "上传中" ? (
+    ) : row.status === "uploading" ? (
       <LoaderCircle className="animate-spin" />
-    ) : row.status === "失败" || row.status === "待整套替换" ? (
+    ) : row.status === "failed" || row.status === "awaiting_replacement" ? (
       <AlertCircle />
     ) : (
       <CircleDashed />
@@ -77,15 +47,15 @@ function StatusMarker({ row }: { row: ChapterUploadRow }) {
     <Marker
       className={cn(
         "w-auto shrink-0 normal-case tracking-normal",
-        (row.status === "失败" || row.status === "待整套替换") &&
+        (row.status === "failed" || row.status === "awaiting_replacement") &&
           "text-destructive",
-        row.status === "上传中" && "text-primary",
-        (row.status === "已上传" || row.status === "未变化") &&
+        row.status === "uploading" && "text-primary",
+        (row.status === "uploaded" || row.status === "unchanged") &&
           "text-foreground",
       )}
     >
       <MarkerIcon>{icon}</MarkerIcon>
-      <MarkerContent>{row.status}</MarkerContent>
+      <MarkerContent>{statusLabels[row.status]}</MarkerContent>
     </Marker>
   );
 }
@@ -110,7 +80,7 @@ function ChapterListRow({
           className="text-xs font-medium"
         />
         <p className="truncate text-muted-foreground">
-          {row.action}
+          {actionLabels[row.action]}
           {row.attempts > 0 ? " · 已尝试 " + row.attempts + " 次" : ""}
         </p>
         {row.error ? (
@@ -228,13 +198,14 @@ export function ChapterUploadDialog({
     ? Math.round((diff.uploaded / diff.toUpdate) * 100)
     : 100;
   const hasFailed =
-    diff?.rows.some((row) => row.status === "失败" && row.retryable !== false) ??
+    diff?.rows.some((row) => row.status === "failed" && row.retryable !== false) ??
     false;
   const hasBlockingConflict =
-    diff?.rows.some((row) => row.status === "失败" && row.retryable === false) ??
+    diff?.rows.some((row) => row.status === "failed" && row.retryable === false) ??
     false;
   const complete = Boolean(
     diff &&
+      diff.published !== false &&
       diff.uploaded === diff.toUpdate &&
       diff.pending === 0 &&
       diff.failed === 0,
@@ -243,7 +214,7 @@ export function ChapterUploadDialog({
     complete && diff?.remoteOnly === 0 && diff.gaps === 0,
   );
   const failedRows = useMemo(
-    () => diff?.rows.filter((row) => row.status === "失败") ?? [],
+    () => diff?.rows.filter((row) => row.status === "failed") ?? [],
     [diff],
   );
   const visibleRows = filter === "failed" ? failedRows : (diff?.rows ?? []);

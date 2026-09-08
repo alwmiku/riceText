@@ -589,7 +589,7 @@ describe("RiceText API 补充分支", () => {
       headers: { "x-user-id": "moderator" },
       payload: { decision: "approve", baseRevision: 2 },
     });
-    expect(absent.statusCode).toBe(404);
+    expect(absent.statusCode).toBe(409);
     expect(absent.json().error.code).toBe("SUGGESTION_SOURCE_NOT_FOUND");
 
     const missing = await app.inject({
