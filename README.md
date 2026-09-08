@@ -34,6 +34,19 @@ pnpm.cmd dev
 
 项目自有源码的注释、JSDoc 和文档类说明统一使用中文。API、Markdown、Tiptap 等技术术语可以保留英文，但不使用整段英文说明。不为统一语言而修改测试文件、日志、界面或错误提示。代码标识符、协议字段、稳定错误码、命令和路径保持不变；第三方依赖、许可证和生成产物不直接修改，生成文档应从源描述更新。
 
+## 代码格式与 VS Code
+
+Prettier，排版规则以 `.prettierrc.json` 为准：2 个空格缩进、双引号、保留分号、100 列换行参考宽度和 LF 换行符。`.prettierignore` 排除依赖、构建产物、本地数据和生成文件。不要手动格式化 `pnpm-lock.yaml` 或 `docs/openapi.yaml`。
+
+```powershell
+pnpm.cmd format:check                         # 检查全仓格式，不改写文件
+pnpm.cmd format                               # 按统一规则格式化全仓支持的文件
+pnpm.cmd exec prettier --write path/to/file.ts # 仅格式化正在修改的文件
+pnpm.cmd lint:fix                             # 执行 ESLint 可自动修复的规则
+```
+
+格式工具接入时不批量重排历史源码；存量文件可随编辑逐步整理，`format:check` 会如实报告尚未统一的文件。当前 `pnpm check` 和 CI 保持原有检查范围；全仓格式统一后再加入格式检查。
+
 ## 质量命令
 
 ```powershell

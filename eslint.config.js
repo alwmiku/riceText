@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
+import prettierConfig from "eslint-config-prettier/flat";
 import architecture from "./test/architecture/dependency-rules.mjs";
 
 export default defineConfig(
@@ -42,7 +43,10 @@ export default defineConfig(
     files: ["**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
     },
   },
   {
@@ -56,4 +60,6 @@ export default defineConfig(
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
+  // 排版统一由 Prettier 处理，关闭可能与其冲突的 ESLint 格式规则。
+  prettierConfig,
 );

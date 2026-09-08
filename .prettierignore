@@ -1,0 +1,19 @@
+# 依赖、构建产物与本地数据
+**/node_modules/
+.pnpm-store/
+**/dist/
+**/dist-*/
+**/.wrangler/
+**/coverage/
+.data/
+.tmp/
+output/
+.agents/
+playwright-report/
+test-results/
+apps/web/public/uploads/
+
+# 由工具生成或维护的文件
+pnpm-lock.yaml
+docs/openapi.yaml
+skills-lock.json

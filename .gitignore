@@ -10,7 +10,9 @@ test-results/
 .env
 .env.local
 apps/web/public/uploads/
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .pnpm-store/
 *.sqlite
 *.sqlite-shm
