@@ -95,13 +95,18 @@ test("desktop selection toolbar hides while selecting or scrolling and returns a
       ) as HTMLElement | null;
       const rect = window.getSelection()?.getRangeAt(0).getBoundingClientRect();
       return {
+        toolbarTop: bar?.getBoundingClientRect().top ?? Number.NaN,
         toolbarBottom: bar?.getBoundingClientRect().bottom ?? Number.NaN,
         selectionTop: rect?.top ?? Number.NaN,
+        selectionBottom: rect?.bottom ?? Number.NaN,
       };
     });
+  // 选区靠顶部时工具栏改到下方，两种贴合位置都算通过。
   const attached = async () => {
     const current = await gap();
-    expect(Math.abs(current.toolbarBottom - (current.selectionTop - 8))).toBeLessThanOrEqual(2);
+    const above = Math.abs(current.toolbarBottom - (current.selectionTop - 8));
+    const below = Math.abs(current.toolbarTop - (current.selectionBottom + 8));
+    expect(Math.min(above, below)).toBeLessThanOrEqual(2);
   };
 
   // 先键盘选中最后一段，确认工具栏出现且贴在选区上方。
@@ -212,6 +217,47 @@ test("desktop painter double-click, repeated drag, undo and indentation", async 
       .filter({ hasText: /^target$/u })
       .locator("strong"),
   ).toHaveText("target");
+});
+
+test("mobile selection toolbar copies, pastes and selects all", async ({
+  page,
+  isMobile,
+}, testInfo) => {
+  test.skip(!isMobile);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const editor = await prepare(page, true);
+  const toolbar = page.getByRole("toolbar", { name: "选区格式菜单", exact: true });
+  await expect(toolbar).toBeVisible();
+  await expect(page.getByRole("button", { name: "复制", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "粘贴", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "全选", exact: true })).toBeVisible();
+
+  // 工具栏不得超出屏幕宽度（新增按钮不应把面板撑宽）。
+  expect(
+    await page.evaluate(() => {
+      const bar = document.querySelector(
+        '[role="toolbar"][aria-label="选区格式菜单"]',
+      ) as HTMLElement;
+      const rect = bar.getBoundingClientRect();
+      return rect.left >= 0 && rect.right <= window.innerWidth;
+    }),
+  ).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("mobile-selection-toolbar.png") });
+
+  await page.getByRole("button", { name: "复制", exact: true }).tap();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("source");
+
+  await page.getByRole("button", { name: "全选", exact: true }).tap();
+  await expect
+    .poll(() => page.evaluate(() => (window.getSelection()?.toString() ?? "").replace(/\s+/g, "")))
+    .toBe("sourcetargetthird");
+
+  await expect(toolbar).toBeVisible();
+  await page.getByRole("button", { name: "粘贴", exact: true }).tap();
+  await expect
+    .poll(() => page.evaluate(() => document.querySelector(".ProseMirror")?.textContent ?? ""))
+    .toBe("source");
+  await expect(editor).toHaveText("source");
 });
 
 test("mobile explicit painter application and compact indentation", async ({

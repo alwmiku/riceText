@@ -1,10 +1,13 @@
 import type { Editor } from "@tiptap/react";
 import {
   Bold,
+  ClipboardPaste,
+  Copy,
   Eraser,
   Italic,
   List,
   ListOrdered,
+  TextSelect,
   Underline as UnderlineIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
@@ -16,6 +19,9 @@ import {
 import { cmd } from "../commands";
 import {
   clearFormatting,
+  copySelection,
+  pasteSelection,
+  selectAll,
   setColor,
   setFontFamily,
   setFontSize,
@@ -103,6 +109,10 @@ function FormatControls({
   mobile?: boolean;
 }) {
   const spoilerActive = editor.isActive("spoiler");
+  // 移动端面板更窄：图标按钮收紧到 26px，保证复制/粘贴/全选与格式按钮同排放下。
+  const iconButton = mobile
+    ? "h-[26px] w-[26px] min-h-[26px] min-w-[26px] rounded"
+    : "h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded";
   const lastColor = useLastColor();
   const textStyle = editor.getAttributes("textStyle") as {
     color?: string;
@@ -148,7 +158,7 @@ function FormatControls({
         </label>
         <IconButton
           label="清除样式"
-          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
+          className={iconButton}
           onMouseDown={preventSelectionLoss}
           onClick={cmd(editor, clearFormatting)}
         >
@@ -162,7 +172,7 @@ function FormatControls({
         <IconButton
           label="加粗"
           active={editor.isActive("bold")}
-          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
+          className={iconButton}
           disabled={spoilerActive}
           onMouseDown={preventSelectionLoss}
           onClick={cmd(editor, toggleBold)}
@@ -172,7 +182,7 @@ function FormatControls({
         <IconButton
           label="斜体"
           active={editor.isActive("italic")}
-          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
+          className={iconButton}
           disabled={spoilerActive}
           onMouseDown={preventSelectionLoss}
           onClick={cmd(editor, toggleItalic)}
@@ -182,7 +192,7 @@ function FormatControls({
         <IconButton
           label="下划线"
           active={editor.isActive("underline")}
-          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
+          className={iconButton}
           onMouseDown={preventSelectionLoss}
           onClick={cmd(editor, toggleUnderline)}
         >
@@ -219,7 +229,7 @@ function FormatControls({
         <IconButton
           label="无序列表"
           active={editor.isActive("bulletList")}
-          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
+          className={iconButton}
           onMouseDown={preventSelectionLoss}
           onClick={cmd(editor, toggleBulletList)}
         >
@@ -228,11 +238,39 @@ function FormatControls({
         <IconButton
           label="有序列表"
           active={editor.isActive("orderedList")}
-          className="h-[30px] w-[30px] min-h-[30px] min-w-[30px] rounded"
+          className={iconButton}
           onMouseDown={preventSelectionLoss}
           onClick={cmd(editor, toggleOrderedList)}
         >
           <ListOrdered size={15} />
+        </IconButton>
+        <IconButton
+          label="复制"
+          className={iconButton}
+          onMouseDown={preventSelectionLoss}
+          onClick={() => {
+            void copySelection(editor);
+          }}
+        >
+          <Copy size={15} />
+        </IconButton>
+        <IconButton
+          label="粘贴"
+          className={iconButton}
+          onMouseDown={preventSelectionLoss}
+          onClick={() => {
+            void pasteSelection(editor);
+          }}
+        >
+          <ClipboardPaste size={15} />
+        </IconButton>
+        <IconButton
+          label="全选"
+          className={iconButton}
+          onMouseDown={preventSelectionLoss}
+          onClick={cmd(editor, selectAll)}
+        >
+          <TextSelect size={15} />
         </IconButton>
       </div>
     </div>
@@ -361,15 +399,23 @@ function useSelectionSettled(editor: Editor | null): boolean {
   return settled;
 }
 
-/** 桌面浮动工具栏：坐标在渲染期按当前选区计算，重新显示时即为最新位置。 */
+/**
+ * 桌面浮动工具栏：坐标在渲染期按当前选区计算，重新显示时即为最新位置。
+ * 选区太靠近顶部时改放到选区下方，避免盖住顶部工具栏。
+ */
 function DesktopSelectionFloatingToolbar({ editor }: { editor: Editor }) {
   const position = selectionMenuPosition(editor);
+  const rect = nativeSelectionRect(editor);
+  const below = (rect?.top ?? position.y) < 220;
   return (
     <div
-      className="fixed z-[60] w-max max-w-[calc(100vw-24px)] overflow-visible rounded-md border border-[#c9c9c9] bg-white/[0.98] p-[5px] shadow-[0_8px_24px_rgb(15_23_42/0.18)] -translate-x-1/2 -translate-y-[calc(100%+8px)]"
+      className={
+        "fixed z-[60] w-max max-w-[calc(100vw-24px)] overflow-visible rounded-md border border-[#c9c9c9] bg-white/[0.98] p-[5px] shadow-[0_8px_24px_rgb(15_23_42/0.18)] -translate-x-1/2" +
+        (below ? "" : " -translate-y-[calc(100%+8px)]")
+      }
       role="toolbar"
       aria-label="选区浮动工具栏"
-      style={{ left: position.x, top: position.y }}
+      style={{ left: position.x, top: below ? (rect?.bottom ?? position.y) + 8 : position.y }}
     >
       <FormatControls editor={editor} />
     </div>

@@ -399,6 +399,55 @@ describe("RichTextEditor presets", () => {
     expect(screen.getByLabelText("选区文字颜色")).toBeInTheDocument();
   });
 
+  it("移动端选区工具栏提供复制、粘贴与全选", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const readText = vi.fn().mockResolvedValue("粘贴进来的内容");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText, readText },
+    });
+    const editorRef: { current: Editor | null } = { current: null };
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="mobile"
+        onChange={vi.fn()}
+        onReady={(value) => {
+          editorRef.current = value;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const editor = editorRef.current;
+    if (!editor) throw new Error("编辑器未初始化");
+    editor.commands.setTextSelection({ from: 1, to: 4 });
+    const expected = editor.state.doc.textBetween(
+      editor.state.selection.from,
+      editor.state.selection.to,
+      "\n\n",
+      " ",
+    );
+    await screen.findByRole("toolbar", { name: "选区格式菜单" });
+
+    fireEvent.click(screen.getByRole("button", { name: "复制" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expected));
+
+    fireEvent.click(screen.getByRole("button", { name: "全选" }));
+    await waitFor(() =>
+      expect(
+        editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, "", ""),
+      ).toBe(editor.state.doc.textContent),
+    );
+
+    // 选区变化会先隐藏工具栏，稳定后重新出现；在段内选区上粘贴会替换选中文字。
+    editor.commands.setTextSelection({ from: 1, to: 3 });
+    await screen.findByRole("toolbar", { name: "选区格式菜单" });
+    fireEvent.click(screen.getByRole("button", { name: "粘贴" }));
+    await waitFor(() => expect(readText).toHaveBeenCalled());
+    await waitFor(() => expect(editor.state.doc.textContent).toContain("粘贴进来的内容"));
+  });
+
   it("章节从空壳异步装载正文时不误弹选区格式菜单", async () => {
     const editorRef: { current: Editor | null } = { current: null };
     const props = {
