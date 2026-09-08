@@ -18,23 +18,75 @@ export function selectAll(editor: Editor): boolean {
   return editor.chain().focus().selectAll().run();
 }
 
-/** 复制当前选区文本到剪贴板；没有选区或剪贴板不可用时返回 false。 */
+/** 与 Ctrl+C 共用选区序列化，同时复制 HTML 和纯文本；失败时不降级为丢格式的复制。 */
 export async function copySelection(editor: Editor): Promise<boolean> {
-  const { from, to } = editor.state.selection;
-  if (from === to) return false;
-  const text = editor.state.doc.textBetween(from, to, "\n\n", " ");
+  if (editor.isDestroyed || editor.state.selection.empty) return false;
   try {
-    await navigator.clipboard.writeText(text);
-    return true;
+    // 在权限请求前冻结选区，保留原生切片的上下文、段落属性和自定义节点。
+    const { dom, text } = editor.view.serializeForClipboard(editor.state.selection.content());
+    const html = dom.innerHTML;
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        }),
+      ]);
+      return true;
+    }
+    // 旧浏览器仍通过真实复制事件写入两种格式，不插入隐藏节点或修改正文。
+    const document = editor.view.dom.ownerDocument;
+    let copied = false;
+    const onCopy = (event: ClipboardEvent) => {
+      if (!event.clipboardData) return;
+      event.clipboardData.clearData();
+      event.clipboardData.setData("text/html", html);
+      event.clipboardData.setData("text/plain", text);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      copied = true;
+    };
+    document.addEventListener("copy", onCopy, true);
+    try {
+      editor.view.focus();
+      return document.execCommand("copy") && copied;
+    } finally {
+      document.removeEventListener("copy", onCopy, true);
+    }
   } catch {
     return false;
   }
 }
 
-/** 把剪贴板文本插入当前选区；多行按段落插入，不把文本当 HTML 解析。 */
+/** 优先粘贴原生 HTML 切片；只有剪贴板确实提供纯文本时才按原样插入文字。 */
 export async function pasteSelection(editor: Editor): Promise<boolean> {
-  const text = await navigator.clipboard.readText().catch(() => "");
-  if (!text) return false;
+  if (editor.isDestroyed) return false;
+  const originalDocument = editor.state.doc;
+  const originalSelection = editor.state.selection;
+  const isCurrent = () =>
+    !editor.isDestroyed &&
+    editor.state.doc === originalDocument &&
+    editor.state.selection.eq(originalSelection);
+  let text = "";
+  try {
+    if (navigator.clipboard?.read) {
+      const items = await navigator.clipboard.read();
+      const htmlItem = items.find((item) => item.types.includes("text/html"));
+      if (htmlItem) {
+        const html = await (await htmlItem.getType("text/html")).text();
+        if (!html || !isCurrent()) return false;
+        editor.view.focus();
+        return editor.view.pasteHTML(html);
+      }
+      const textItem = items.find((item) => item.types.includes("text/plain"));
+      if (textItem) text = await (await textItem.getType("text/plain")).text();
+    } else {
+      text = await navigator.clipboard.readText();
+    }
+  } catch {
+    return false;
+  }
+  if (!text || !isCurrent()) return false;
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const { selection } = editor.state;
   // 只有光标/选区落在同一个文本块内才插入行内文本，跨块或全选时按段落插入，

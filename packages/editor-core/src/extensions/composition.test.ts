@@ -27,7 +27,11 @@ describe("extension compositions", () => {
   it("adds editor-only behavior to the canonical schema extensions", () => {
     const canonicalNames = extensionNames(schemaExtensions());
 
-    expect(extensionNames(createEditorExtensions())).toEqual([...canonicalNames, "formatPainter"]);
+    expect(extensionNames(createEditorExtensions())).toEqual([
+      ...canonicalNames,
+      "formatPainter",
+      "sharedClipboard",
+    ]);
     expect(extensionNames(createViewerExtensions(viewerRef))).toEqual(canonicalNames);
   });
 
@@ -41,5 +45,4 @@ describe("extension compositions", () => {
   it("keeps editorExtensions as a compatibility alias", () => {
     expect(editorExtensions).toBe(createEditorExtensions);
   });
-
 });

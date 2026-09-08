@@ -1,10 +1,4 @@
-import {
-  Extension,
-  getSchema,
-  Mark,
-  Node,
-  type Extensions,
-} from "@tiptap/core";
+import { Extension, getSchema, Mark, Node, type Extensions } from "@tiptap/core";
 import type { Schema } from "@tiptap/pm/model";
 import { Color } from "@tiptap/extension-color";
 import { FontFamily } from "@tiptap/extension-font-family";
@@ -13,12 +7,7 @@ import { TextAlign } from "@tiptap/extension-text-align";
 import { FontSize, TextStyle } from "@tiptap/extension-text-style";
 import { Underline } from "@tiptap/extension-underline";
 import { StarterKit } from "@tiptap/starter-kit";
-import {
-  ALLOWED_FONT_FAMILIES,
-  sanitizeColor,
-  sanitizeFontSize,
-  sanitizeUrl,
-} from "./sanitize.js";
+import { ALLOWED_FONT_FAMILIES, sanitizeColor, sanitizeFontSize, sanitizeUrl } from "./sanitize.js";
 import { sharedMarkSpecs, sharedNodeSpecs } from "./nodes.js";
 import { ParagraphIndentAttributes } from "./paragraph-indent.js";
 
@@ -43,8 +32,7 @@ export const chapterStartExtension = Extension.create({
         attributes: {
           chapterStart: {
             default: false,
-            parseHTML: (element) =>
-              element.getAttribute("data-chapter-start") === "true",
+            parseHTML: (element) => element.getAttribute("data-chapter-start") === "true",
             renderHTML: (attributes) =>
               attributes.chapterStart ? { "data-chapter-start": "true" } : {},
           },
@@ -62,9 +50,7 @@ function parseAllowedFontFamily(element: HTMLElement): string | null {
       .split(",")[0]
       ?.trim()
       .replace(/^["']+|["']+$/g, "") ?? "";
-  return (ALLOWED_FONT_FAMILIES as readonly string[]).includes(firstFamily)
-    ? firstFamily
-    : null;
+  return (ALLOWED_FONT_FAMILIES as readonly string[]).includes(firstFamily) ? firstFamily : null;
 }
 
 function parseAllowedFontSize(element: HTMLElement): string | null {
@@ -79,9 +65,7 @@ function parseAllowedFontSize(element: HTMLElement): string | null {
  * 自定义节点/标记来自 {@link sharedNodeSpecs}/{@link sharedMarkSpecs}，
  * 与 editor-core 的 UI 扩展消费同一批规格常量。
  */
-export function createDocumentExtensions(
-  options: DocumentExtensionsOptions = {},
-): Extensions {
+export function createDocumentExtensions(options: DocumentExtensionsOptions = {}): Extensions {
   return [
     StarterKit.configure({ link: false, underline: false }),
     Underline,
@@ -115,11 +99,13 @@ export function createDocumentExtensions(
             attributes: {
               color: {
                 default: null,
+                // 浏览器会把透明色改写成 rgba；内部复制优先读取经白名单校验的原始值。
                 parseHTML: (element) =>
+                  sanitizeColor(element.getAttribute("data-text-color")) ??
                   sanitizeColor(element.style.color ?? ""),
                 renderHTML: (attributes) =>
                   attributes.color
-                    ? { style: `color: ${attributes.color}` }
+                    ? { style: `color: ${attributes.color}`, "data-text-color": attributes.color }
                     : {},
               },
             },
@@ -137,9 +123,7 @@ export function createDocumentExtensions(
                 default: null,
                 parseHTML: (element) => parseAllowedFontFamily(element),
                 renderHTML: (attributes) =>
-                  attributes.fontFamily
-                    ? { style: `font-family: ${attributes.fontFamily}` }
-                    : {},
+                  attributes.fontFamily ? { style: `font-family: ${attributes.fontFamily}` } : {},
               },
             },
           },
@@ -156,9 +140,7 @@ export function createDocumentExtensions(
                 default: null,
                 parseHTML: (element) => parseAllowedFontSize(element),
                 renderHTML: (attributes) =>
-                  attributes.fontSize
-                    ? { style: `font-size: ${attributes.fontSize}` }
-                    : {},
+                  attributes.fontSize ? { style: `font-size: ${attributes.fontSize}` } : {},
               },
             },
           },
@@ -178,8 +160,6 @@ export function createDocumentExtensions(
 }
 
 /** 构建规范 ProseMirror schema；服务端应用 steps 与客户端编辑器共用。 */
-export function createDocumentSchema(
-  options: DocumentExtensionsOptions = {},
-): Schema {
+export function createDocumentSchema(options: DocumentExtensionsOptions = {}): Schema {
   return getSchema(createDocumentExtensions(options));
 }

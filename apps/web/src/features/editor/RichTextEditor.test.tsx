@@ -319,11 +319,20 @@ describe("RichTextEditor presets", () => {
   });
 
   it("移动端选区工具栏提供复制、粘贴与全选", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
+    const write = vi.fn().mockResolvedValue(undefined);
+    let copied: Record<string, Blob> = {};
+    vi.stubGlobal(
+      "ClipboardItem",
+      class {
+        constructor(items: Record<string, Blob>) {
+          copied = items;
+        }
+      },
+    );
     const readText = vi.fn().mockResolvedValue("粘贴进来的内容");
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
-      value: { writeText, readText },
+      value: { write, readText },
     });
     const editorRef: { current: Editor | null } = { current: null };
     render(
@@ -350,7 +359,15 @@ describe("RichTextEditor presets", () => {
     await screen.findByRole("toolbar", { name: "选区格式菜单" });
 
     fireEvent.click(screen.getByRole("button", { name: "复制" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expected));
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    expect(Object.keys(copied)).toEqual(["text/html", "text/plain"]);
+    const plain = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(copied["text/plain"]!);
+    });
+    expect(plain).toBe(expected);
+    expect(await screen.findByRole("status")).toHaveTextContent("已复制，格式已保留");
 
     fireEvent.click(screen.getByRole("button", { name: "全选" }));
     await waitFor(() =>
@@ -370,6 +387,39 @@ describe("RichTextEditor presets", () => {
     fireEvent.click(screen.getByRole("button", { name: "粘贴" }));
     await waitFor(() => expect(readText).toHaveBeenCalled());
     await waitFor(() => expect(editor.state.doc.textContent).toContain("粘贴进来的内容"));
+  });
+
+  it("浮动工具栏复制被拒绝时显示失败提示并保留正文与选区", async () => {
+    vi.stubGlobal("ClipboardItem", class {});
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write: vi.fn().mockRejectedValue(new DOMException("拒绝", "NotAllowedError")) },
+    });
+    const editorRef: { current: Editor | null } = { current: null };
+    render(
+      <RichTextEditor
+        content={defaultDocument.content}
+        mode="mobile"
+        onChange={vi.fn()}
+        onReady={(editor) => {
+          editorRef.current = editor;
+        }}
+      />,
+    );
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const editor = editorRef.current!;
+    act(() => {
+      editor.commands.setTextSelection({ from: 1, to: 4 });
+    });
+    const content = editor.getJSON();
+    const selection = editor.state.selection.toJSON();
+    const toolbar = await screen.findByRole("toolbar", { name: "选区格式菜单" });
+    fireEvent.click(within(toolbar).getByRole("button", { name: "复制" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "复制失败，请允许剪贴板权限或使用系统复制",
+    );
+    expect(editor.getJSON()).toEqual(content);
+    expect(editor.state.selection.toJSON()).toEqual(selection);
   });
 
   it("章节从空壳异步装载正文时不误弹选区格式菜单", async () => {

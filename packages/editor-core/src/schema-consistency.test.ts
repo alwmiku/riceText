@@ -16,15 +16,24 @@ const compositions = {
 /** 比较持久化结构；函数形式的 HTML 和 NodeView 实现不属于持久化规格。 */
 function summarize(schema: ReturnType<typeof getSchema>) {
   return {
-    nodes: Object.entries(schema.nodes).map(([name, type]) => [name, JSON.parse(JSON.stringify(type.spec))]),
-    marks: Object.entries(schema.marks).map(([name, type]) => [name, JSON.parse(JSON.stringify(type.spec))]),
+    nodes: Object.entries(schema.nodes).map(([name, type]) => [
+      name,
+      JSON.parse(JSON.stringify(type.spec)),
+    ]),
+    marks: Object.entries(schema.marks).map(([name, type]) => [
+      name,
+      JSON.parse(JSON.stringify(type.spec)),
+    ]),
   };
 }
 
 describe("schema 一致性", () => {
-  it.each(Object.entries(compositions))("%s 保留所有持久化属性、默认值和内容约束", (_name, extensions) => {
-    expect(summarize(getSchema(extensions()))).toEqual(summarize(createDocumentSchema()));
-  });
+  it.each(Object.entries(compositions))(
+    "%s 保留所有持久化属性、默认值和内容约束",
+    (_name, extensions) => {
+      expect(summarize(getSchema(extensions()))).toEqual(summarize(createDocumentSchema()));
+    },
+  );
 
   it("遵循 document-core 扩展顺序，且每项增强仅添加一次", () => {
     const canonical = createDocumentExtensions().map((extension) => extension.name);
@@ -32,14 +41,19 @@ describe("schema 一致性", () => {
       expect(extensions.map((extension) => extension.name)).toEqual(canonical);
     }
     const names = editorExtensions().map((extension) => extension.name);
-    expect(names).toEqual([...canonical, "formatPainter"]);
+    expect(names).toEqual([...canonical, "formatPainter", "sharedClipboard"]);
     expect(new Set(names).size).toBe(names.length);
   });
 
   it("保留公开工厂别名和附加扩展顺序", () => {
     const extra = Extension.create({ name: "applicationBehavior" });
     expect(editorExtensions).toBe(createEditorExtensions);
-    for (const factory of [createDocumentExtensions, schemaExtensions, createEditorExtensions, editorExtensions]) {
+    for (const factory of [
+      createDocumentExtensions,
+      schemaExtensions,
+      createEditorExtensions,
+      editorExtensions,
+    ]) {
       expect(factory({ additionalExtensions: [extra] }).at(-1)).toBe(extra);
     }
   });

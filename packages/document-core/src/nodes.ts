@@ -2,11 +2,7 @@ import type { MarkConfig, NodeConfig } from "@tiptap/core";
 import { sanitizeUrl } from "./sanitize.js";
 import { normalizeNovelExcerptVariant } from "./novel-excerpt-variant.js";
 import { parseInteger, parseJsonArray } from "./helpers.js";
-import {
-  readerTop,
-  readerBottom,
-  READER_PLATFORM_POLICY,
-} from "./reader-excerpt.js";
+import { readerTop, readerBottom, READER_PLATFORM_POLICY } from "./reader-excerpt.js";
 
 /**
  * 共享的节点/标记规格（单一权威来源）。
@@ -28,27 +24,22 @@ export const richImageNodeSpec = {
       assetId: {
         default: null,
         parseHTML: (element: HTMLElement) =>
-          element.getAttribute("data-asset-id")?.slice(0, 128) ?? null,
+          element.getAttribute("data-asset-id")?.slice(0, 128) || null,
       },
       src: {
         default: "",
         parseHTML: (element: HTMLElement) =>
-          sanitizeUrl(
-            element.querySelector("img")?.getAttribute("src"),
-            "image",
-          ) ?? "",
+          sanitizeUrl(element.querySelector("img")?.getAttribute("src"), "image") ?? "",
       },
       alt: {
         default: "",
         parseHTML: (element: HTMLElement) =>
-          element.querySelector("img")?.getAttribute("alt")?.slice(0, 500) ??
-          "",
+          element.querySelector("img")?.getAttribute("alt")?.slice(0, 500) ?? "",
       },
       caption: {
         default: "",
         parseHTML: (element: HTMLElement) =>
-          element.querySelector("figcaption")?.textContent?.slice(0, 1_000) ??
-          "",
+          element.querySelector("figcaption")?.textContent?.slice(0, 1_000) ?? "",
       },
       align: {
         default: "center",
@@ -80,9 +71,7 @@ export const richImageNodeSpec = {
           node.attrs.align === "left" || node.attrs.align === "right"
             ? String(node.attrs.align)
             : "center",
-        "data-width": String(
-          parseInteger(String(node.attrs.width), 100, 10, 100),
-        ),
+        "data-width": String(parseInteger(String(node.attrs.width), 100, 10, 100)),
         style: `width: ${parseInteger(String(node.attrs.width), 100, 10, 100)}%;`,
       },
       ["img", { src, alt: String(node.attrs.alt ?? ""), draggable: "false" }],
@@ -122,17 +111,12 @@ export const diceRollNodeSpec = {
       total: {
         default: 0,
         parseHTML: (element: HTMLElement) =>
-          parseInteger(
-            element.getAttribute("data-total"),
-            0,
-            -100_000_000,
-            100_000_000,
-          ),
+          parseInteger(element.getAttribute("data-total"), 0, -100_000_000, 100_000_000),
       },
       rerollOf: {
         default: null,
         parseHTML: (element: HTMLElement) =>
-          element.getAttribute("data-reroll-of")?.slice(0, 128) ?? null,
+          element.getAttribute("data-reroll-of")?.slice(0, 128) || null,
       },
     };
   },
@@ -149,9 +133,7 @@ export const diceRollNodeSpec = {
         "data-expression": String(node.attrs.expression),
         "data-rolls": JSON.stringify(node.attrs.rolls),
         "data-total": String(node.attrs.total),
-        "data-reroll-of": node.attrs.rerollOf
-          ? String(node.attrs.rerollOf)
-          : "",
+        "data-reroll-of": node.attrs.rerollOf ? String(node.attrs.rerollOf) : "",
         contenteditable: "false",
       },
       `${String(node.attrs.expression)} = ${String(node.attrs.total)}`,
@@ -249,9 +231,7 @@ export const novelExcerptNodeSpec = {
         "data-page-label": String(attrs.pageLabel ?? "1/1"),
         "data-progress-label": String(attrs.progressLabel ?? ""),
         "data-header-label": String(attrs.headerLabel ?? ""),
-        "data-empty-bubble": String(
-          READER_PLATFORM_POLICY[variant].emptyBubble,
-        ),
+        "data-empty-bubble": String(READER_PLATFORM_POLICY[variant].emptyBubble),
       },
       [
         "div",
@@ -277,17 +257,15 @@ export const mentionNodeSpec = {
       userId: {
         default: null,
         parseHTML: (element: HTMLElement) =>
-          element.getAttribute("data-user-id")?.slice(0, 128) ?? null,
+          element.getAttribute("data-user-id")?.slice(0, 128) || null,
       },
       name: {
         default: "",
-        parseHTML: (element: HTMLElement) =>
-          element.getAttribute("data-name")?.slice(0, 100) ?? "",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-name")?.slice(0, 100) ?? "",
       },
       resolved: {
         default: false,
-        parseHTML: (element: HTMLElement) =>
-          element.getAttribute("data-resolved") === "true",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-resolved") === "true",
       },
       avatarUrl: {
         default: null,
@@ -333,8 +311,7 @@ export const replyGateNodeSpec = {
       prompt: {
         default: "回复后查看此内容",
         parseHTML: (element: HTMLElement) =>
-          element.getAttribute("data-prompt")?.slice(0, 300) ??
-          "回复后查看此内容",
+          element.getAttribute("data-prompt")?.slice(0, 300) ?? "回复后查看此内容",
       },
     };
   },
@@ -370,34 +347,22 @@ export const attachmentRefNodeSpec = {
       },
       name: {
         default: "",
-        parseHTML: (element: HTMLElement) =>
-          element.getAttribute("data-name")?.slice(0, 300) ?? "",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-name")?.slice(0, 300) ?? "",
       },
       mimeType: {
         default: "application/octet-stream",
         parseHTML: (element: HTMLElement) =>
-          element.getAttribute("data-mime-type")?.slice(0, 120) ??
-          "application/octet-stream",
+          element.getAttribute("data-mime-type")?.slice(0, 120) ?? "application/octet-stream",
       },
       size: {
         default: 0,
         parseHTML: (element: HTMLElement) =>
-          parseInteger(
-            element.getAttribute("data-size"),
-            0,
-            0,
-            Number.MAX_SAFE_INTEGER,
-          ),
+          parseInteger(element.getAttribute("data-size"), 0, 0, Number.MAX_SAFE_INTEGER),
       },
       priceCoins: {
         default: 0,
         parseHTML: (element: HTMLElement) =>
-          parseInteger(
-            element.getAttribute("data-price-coins"),
-            0,
-            0,
-            1_000_000_000,
-          ),
+          parseInteger(element.getAttribute("data-price-coins"), 0, 0, 1_000_000_000),
       },
     };
   },
@@ -442,8 +407,7 @@ export const pollRefNodeSpec = {
       },
       multiple: {
         default: false,
-        parseHTML: (element: HTMLElement) =>
-          element.getAttribute("data-multiple") === "true",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-multiple") === "true",
       },
       options: {
         default: [],
@@ -498,8 +462,7 @@ export const longTextBlockNodeSpec = {
       },
       text: {
         default: "",
-        parseHTML: (element: HTMLElement) =>
-          element.textContent?.slice(0, 100_000_000) ?? "",
+        parseHTML: (element: HTMLElement) => element.textContent?.slice(0, 100_000_000) ?? "",
       },
       order: {
         default: 0,
@@ -509,22 +472,12 @@ export const longTextBlockNodeSpec = {
       start: {
         default: null,
         parseHTML: (element: HTMLElement) =>
-          parseInteger(
-            element.getAttribute("data-start"),
-            null,
-            0,
-            10_000_000_000,
-          ),
+          parseInteger(element.getAttribute("data-start"), null, 0, 10_000_000_000),
       },
       end: {
         default: null,
         parseHTML: (element: HTMLElement) =>
-          parseInteger(
-            element.getAttribute("data-end"),
-            null,
-            0,
-            10_000_000_000,
-          ),
+          parseInteger(element.getAttribute("data-end"), null, 0, 10_000_000_000),
       },
     };
   },

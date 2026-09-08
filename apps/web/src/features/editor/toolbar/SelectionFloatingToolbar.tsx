@@ -99,6 +99,7 @@ function mobileSelectionMenuPosition(editor: Editor): ToolbarPosition {
 
 function FormatControls({ editor, mobile = false }: { editor: Editor; mobile?: boolean }) {
   const spoilerActive = editor.isActive("spoiler");
+  const [clipboardMessage, setClipboardMessage] = useState("");
   // 移动端面板更窄：图标按钮收紧到 26px，保证复制/粘贴/全选与格式按钮同排放下。
   const iconButton = mobile
     ? "h-[26px] w-[26px] min-h-[26px] min-w-[26px] rounded"
@@ -241,8 +242,12 @@ function FormatControls({ editor, mobile = false }: { editor: Editor; mobile?: b
           label="复制"
           className={iconButton}
           onMouseDown={preventSelectionLoss}
-          onClick={() => {
-            void copySelection(editor);
+          onClick={async () => {
+            setClipboardMessage("");
+            const copied = await copySelection(editor);
+            setClipboardMessage(
+              copied ? "已复制，格式已保留" : "复制失败，请允许剪贴板权限或使用系统复制",
+            );
           }}
         >
           <Copy size={15} />
@@ -251,8 +256,10 @@ function FormatControls({ editor, mobile = false }: { editor: Editor; mobile?: b
           label="粘贴"
           className={iconButton}
           onMouseDown={preventSelectionLoss}
-          onClick={() => {
-            void pasteSelection(editor);
+          onClick={async () => {
+            setClipboardMessage("");
+            if (!(await pasteSelection(editor)))
+              setClipboardMessage("粘贴失败，请检查剪贴板权限或使用系统粘贴");
           }}
         >
           <ClipboardPaste size={15} />
@@ -266,6 +273,11 @@ function FormatControls({ editor, mobile = false }: { editor: Editor; mobile?: b
           <TextSelect size={15} />
         </IconButton>
       </div>
+      {clipboardMessage && (
+        <p role="status" className="max-w-[280px] text-xs text-muted-foreground">
+          {clipboardMessage}
+        </p>
+      )}
     </div>
   );
 }
