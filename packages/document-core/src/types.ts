@@ -47,7 +47,7 @@ export interface DiceRollAttributes {
 }
 
 /** 用于可搜索小说摘录的视觉模板。 */
-export type NovelExcerptVariant = "fanqie" | "qidian";
+export type NovelExcerptVariant = "fanqie" | "qidian" | "sfacg" | "ciweimao";
 
 /** 由 `novelExcerpt` 块持久化的元数据。 */
 export interface NovelExcerptAttributes {
@@ -61,7 +61,7 @@ export interface NovelExcerptAttributes {
   sourceUrl: string | null;
   /** 摘录的视觉模板。 */
   variant: NovelExcerptVariant;
-  /** 阅读页显示时间；未设置时为 13:59。 */
+  /** 创建摘录时记录的本地时间；历史数据未设置时保持为空。 */
   readerTime?: string;
   /** 阅读页电量百分比。 */
   batteryLevel?: number;

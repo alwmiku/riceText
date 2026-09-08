@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExcerptDialog } from "./ExcerptDialog";
-import { emptyExcerptValues, excerptParagraphs } from "./excerpt-values";
+import { emptyExcerptValues, excerptAttributes, excerptParagraphs } from "./excerpt-values";
 
-const change = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+const change = (label: string, value: string) =>
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 describe("ExcerptDialog", () => {
   beforeEach(() => {
@@ -14,9 +15,19 @@ describe("ExcerptDialog", () => {
   it("starts empty with Fanqie and requires both book and text", () => {
     const onInsert = vi.fn();
     render(<ExcerptDialog open onOpenChange={vi.fn()} onInsert={onInsert} />);
-    for (const label of ["书名", "章节", "作者", "摘录正文"]) expect(screen.getByLabelText(label)).toHaveValue("");
+    for (const label of ["书名", "章节", "作者", "摘录正文"])
+      expect(screen.getByLabelText(label)).toHaveValue("");
     expect(screen.getByLabelText("排版")).toHaveValue("fanqie");
-    expect(screen.getAllByRole("option").map((option) => (option as HTMLOptionElement).value)).toEqual(["fanqie", "qidian"]);
+    expect(
+      screen
+        .getAllByRole("option")
+        .map((option) => [(option as HTMLOptionElement).value, option.textContent]),
+    ).toEqual([
+      ["fanqie", "番茄轻小说"],
+      ["qidian", "起点读书"],
+      ["sfacg", "菠萝包轻小说"],
+      ["ciweimao", "刺猬猫阅读"],
+    ]);
     const submit = screen.getByRole("button", { name: "插入摘录" });
     change("摘录正文", "First\nSecond".replace("\n", String.fromCharCode(10)));
     expect(submit).toBeDisabled();
@@ -31,7 +42,12 @@ describe("ExcerptDialog", () => {
     expect(preview.getByText("First").tagName).toBe("P");
     expect(preview.getByText("Second").tagName).toBe("P");
     fireEvent.click(submit);
-    expect(onInsert).toHaveBeenCalledWith({ ...emptyExcerptValues, readerTime: "12:34", bookTitle: "Book", text: ["First", "Second"].join(String.fromCharCode(10)) });
+    expect(onInsert).toHaveBeenCalledWith({
+      ...emptyExcerptValues,
+      readerTime: "12:34",
+      bookTitle: "Book",
+      text: ["First", "Second"].join(String.fromCharCode(10)),
+    });
   });
 
   it("rejects non-HTTP URLs and updates the live preset preview", async () => {
@@ -39,7 +55,13 @@ describe("ExcerptDialog", () => {
     change("书名", "Book");
     change("摘录正文", "Text");
     const submit = screen.getByRole("button", { name: "插入摘录" });
-    for (const url of ["javascript:alert(1)", "ftp://example.com", "not-a-url", "/chapter", "https://"]) {
+    for (const url of [
+      "javascript:alert(1)",
+      "ftp://example.com",
+      "not-a-url",
+      "/chapter",
+      "https://",
+    ]) {
       change("来源链接（可选）", url);
       expect(submit).toBeDisabled();
       expect(screen.getByLabelText("来源链接（可选）")).toHaveAttribute("aria-invalid", "true");
@@ -48,9 +70,13 @@ describe("ExcerptDialog", () => {
       change("来源链接（可选）", url);
       expect(submit).toBeEnabled();
     }
-    for (const variant of ["fanqie", "qidian"]) {
+    for (const variant of ["fanqie", "qidian", "sfacg", "ciweimao"]) {
       change("排版", variant);
-      await waitFor(() => expect(screen.getByRole("region", { name: "摘录预览" }).querySelector("[data-variant]")).toHaveAttribute("data-variant", variant));
+      await waitFor(() =>
+        expect(
+          screen.getByRole("region", { name: "摘录预览" }).querySelector("[data-variant]"),
+        ).toHaveAttribute("data-variant", variant),
+      );
     }
   });
 
@@ -64,19 +90,42 @@ describe("ExcerptDialog", () => {
     view.rerender(<ExcerptDialog open {...props} />);
     expect(screen.getByLabelText("书名")).toHaveValue("");
     view.rerender(<ExcerptDialog open={false} {...props} />);
-    view.rerender(<ExcerptDialog open {...props} initial={{ ...emptyExcerptValues, variant: "mobile-book" }} existingContent={[{ type: "paragraph", content: [{ type: "text", text: "Rich text", marks: [{ type: "bold" }] }] }]} />);
+    view.rerender(
+      <ExcerptDialog
+        open
+        {...props}
+        initial={{ ...emptyExcerptValues, variant: "mobile-book" }}
+        existingContent={[
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Rich text", marks: [{ type: "bold" }] }],
+          },
+        ]}
+      />,
+    );
     expect(screen.getByLabelText("排版")).toHaveValue("fanqie");
     expect(screen.queryByLabelText("摘录正文")).not.toBeInTheDocument();
     expect(screen.getByText("Rich text").closest("strong")).not.toBeNull();
     expect(screen.getByRole("button", { name: "保存修改" })).toBeEnabled();
     change("作者", "Author");
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
-    expect(props.onInsert).toHaveBeenCalledWith({ ...emptyExcerptValues, variant: "fanqie", author: "Author" });
+    expect(props.onInsert).toHaveBeenCalledWith({
+      ...emptyExcerptValues,
+      variant: "fanqie",
+      author: "Author",
+    });
   });
 
   it("keeps a failed metadata save open", () => {
     const onOpenChange = vi.fn();
-    render(<ExcerptDialog open initial={emptyExcerptValues} onOpenChange={onOpenChange} onInsert={() => false} />);
+    render(
+      <ExcerptDialog
+        open
+        initial={emptyExcerptValues}
+        onOpenChange={onOpenChange}
+        onInsert={() => false}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
     expect(screen.getByRole("alert")).toHaveTextContent("摘录已发生变化");
     expect(onOpenChange).not.toHaveBeenCalled();
@@ -85,10 +134,13 @@ describe("ExcerptDialog", () => {
   it("hides automatic fields and changes only untouched battery defaults", () => {
     const onInsert = vi.fn();
     render(<ExcerptDialog open onOpenChange={vi.fn()} onInsert={onInsert} />);
-    for (const label of ["时间", "页码", "阅读进度"]) expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    for (const label of ["时间", "页码", "阅读进度"])
+      expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
     expect(screen.getByLabelText("电量（%）")).toHaveValue(100);
+    expect(screen.getByLabelText("顶部信息")).toHaveAttribute("placeholder", "00:24得991金币");
     change("排版", "qidian");
     expect(screen.getByLabelText("电量（%）")).toHaveValue(75);
+    expect(screen.getByLabelText("顶部信息")).toHaveAttribute("placeholder", "起点热评");
     change("顶部信息", "起点热评");
     change("排版", "fanqie");
     expect(screen.getByLabelText("顶部信息")).toHaveValue("起点热评");
@@ -101,7 +153,9 @@ describe("ExcerptDialog", () => {
     change("书名", "Book");
     change("摘录正文", "Text");
     fireEvent.click(screen.getByRole("button", { name: "插入摘录" }));
-    expect(onInsert).toHaveBeenCalledWith(expect.objectContaining({ readerTime: "12:34", pageLabel: "1/1", progressLabel: "" }));
+    expect(onInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ readerTime: "12:34", pageLabel: "1/1", progressLabel: "" }),
+    );
   });
 
   it("validates battery and submits reader metadata", () => {
@@ -118,53 +172,256 @@ describe("ExcerptDialog", () => {
     change("电量（%）", "0");
     change("顶部信息", "00:24得991金币");
     fireEvent.click(submit);
-    expect(onInsert).toHaveBeenCalledWith(expect.objectContaining({ readerTime: "12:34", batteryLevel: "0", pageLabel: "1/1", progressLabel: "", headerLabel: "00:24得991金币" }));
+    expect(onInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        readerTime: "12:34",
+        batteryLevel: "0",
+        pageLabel: "1/1",
+        progressLabel: "",
+        headerLabel: "00:24得991金币",
+      }),
+    );
   });
 
   it("keeps the preview timestamp stable and captures actual insertion time", async () => {
     const onInsert = vi.fn();
     render(<ExcerptDialog open onOpenChange={vi.fn()} onInsert={onInsert} />);
     const preview = screen.getByRole("region", { name: "摘录预览" });
-    await waitFor(() => expect(preview.querySelector("[data-reader-time]")).toHaveAttribute("data-reader-time", "12:34"));
+    await waitFor(() =>
+      expect(preview.querySelector("[data-reader-time]")).toHaveAttribute(
+        "data-reader-time",
+        "12:34",
+      ),
+    );
     vi.setSystemTime(new Date(2026, 8, 7, 13, 7));
     change("书名", "Book");
     change("摘录正文", "Text");
     change("排版", "qidian");
-    await waitFor(() => expect(preview.querySelector("[data-reader-time]")).toHaveAttribute("data-reader-time", "12:34"));
+    await waitFor(() =>
+      expect(preview.querySelector("[data-reader-time]")).toHaveAttribute(
+        "data-reader-time",
+        "12:34",
+      ),
+    );
     fireEvent.click(screen.getByRole("button", { name: "插入摘录" }));
-    expect(onInsert).toHaveBeenCalledWith(expect.objectContaining({ readerTime: "13:07", pageLabel: "1/1", progressLabel: "" }));
+    expect(onInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ readerTime: "13:07", pageLabel: "1/1", progressLabel: "" }),
+    );
   });
 
   it("takes a fresh local timestamp each time a new form is opened", async () => {
     const props = { onOpenChange: vi.fn(), onInsert: vi.fn() };
     const view = render(<ExcerptDialog open {...props} />);
-    await waitFor(() => expect(screen.getByRole("region", { name: "摘录预览" }).querySelector("[data-reader-time]")).toHaveAttribute("data-reader-time", "12:34"));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("region", { name: "摘录预览" }).querySelector("[data-reader-time]"),
+      ).toHaveAttribute("data-reader-time", "12:34"),
+    );
     view.rerender(<ExcerptDialog open={false} {...props} />);
     vi.setSystemTime(new Date(2026, 8, 7, 14, 56));
     view.rerender(<ExcerptDialog open {...props} />);
-    await waitFor(() => expect(screen.getByRole("region", { name: "摘录预览" }).querySelector("[data-reader-time]")).toHaveAttribute("data-reader-time", "14:56"));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("region", { name: "摘录预览" }).querySelector("[data-reader-time]"),
+      ).toHaveAttribute("data-reader-time", "14:56"),
+    );
   });
 
   it("preserves hidden stored clock and legacy page metadata while editing", async () => {
     const onInsert = vi.fn();
-    const initial = { ...emptyExcerptValues, bookTitle: "Old", readerTime: "22:05", pageLabel: "88/100", progressLabel: "88%" };
+    const initial = {
+      ...emptyExcerptValues,
+      bookTitle: "Old",
+      readerTime: "22:05",
+      pageLabel: "88/100",
+      progressLabel: "88%",
+    };
     const content = [{ type: "paragraph", content: [{ type: "text", text: "Stored text" }] }];
-    const view = render(<ExcerptDialog open initial={initial} existingContent={content} onOpenChange={vi.fn()} onInsert={onInsert} />);
+    const view = render(
+      <ExcerptDialog
+        open
+        initial={initial}
+        existingContent={content}
+        onOpenChange={vi.fn()}
+        onInsert={onInsert}
+      />,
+    );
     vi.setSystemTime(new Date(2026, 8, 8, 9, 10));
-    for (const label of ["时间", "页码", "阅读进度"]) expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    for (const label of ["时间", "页码", "阅读进度"])
+      expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
     change("排版", "qidian");
     change("书名", "Renamed");
-    await waitFor(() => expect(screen.getByRole("region", { name: "摘录预览" }).querySelector("[data-reader-time]")).toHaveAttribute("data-reader-time", "22:05"));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("region", { name: "摘录预览" }).querySelector("[data-reader-time]"),
+      ).toHaveAttribute("data-reader-time", "22:05"),
+    );
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
-    expect(onInsert).toHaveBeenCalledWith(expect.objectContaining({ readerTime: "22:05", pageLabel: "88/100", progressLabel: "88%" }));
+    expect(onInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ readerTime: "22:05", pageLabel: "88/100", progressLabel: "88%" }),
+    );
     view.rerender(<ExcerptDialog open={false} onOpenChange={vi.fn()} onInsert={onInsert} />);
-    view.rerender(<ExcerptDialog open initial={onInsert.mock.calls[0]![0]} existingContent={content} onOpenChange={vi.fn()} onInsert={onInsert} />);
+    view.rerender(
+      <ExcerptDialog
+        open
+        initial={onInsert.mock.calls[0]![0]}
+        existingContent={content}
+        onOpenChange={vi.fn()}
+        onInsert={onInsert}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
     expect(onInsert.mock.calls[1]![0].readerTime).toBe("22:05");
   });
 
+  it.each(["sfacg", "ciweimao"])("切换到 %s 使用默认电量并保留插入属性", async (variant) => {
+    const onInsert = vi.fn();
+    render(<ExcerptDialog open onOpenChange={vi.fn()} onInsert={onInsert} />);
+    change("书名", "新作品");
+    change("摘录正文", "第一段\n第二段");
+    change("排版", variant);
+    expect(screen.getByLabelText("电量（%）")).toHaveValue(75);
+    for (const label of ["顶部信息", "时间", "页码", "阅读进度"])
+      expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    const preview = screen.getByRole("region", { name: "摘录预览" });
+    await waitFor(() => {
+      expect(preview.querySelector("[data-variant]")).toHaveAttribute("data-variant", variant);
+      expect(within(preview).getByText("第二段").tagName).toBe("P");
+      expect(within(preview).getByRole("img", { name: "电量 75%" })).toBeInTheDocument();
+    });
+    change("排版", "fanqie");
+    expect(screen.getByLabelText("电量（%）")).toHaveValue(100);
+    change("排版", variant);
+    vi.setSystemTime(new Date(2026, 8, 7, 13, 7));
+    fireEvent.click(screen.getByRole("button", { name: "插入摘录" }));
+    expect(onInsert).toHaveBeenCalledWith({
+      ...emptyExcerptValues,
+      bookTitle: "新作品",
+      text: "第一段\n第二段",
+      variant,
+      batteryLevel: "75",
+      readerTime: "13:07",
+    });
+    expect(excerptAttributes(onInsert.mock.calls[0]![0])).toEqual({
+      bookTitle: "新作品",
+      chapterTitle: "",
+      author: "",
+      sourceUrl: null,
+      variant,
+      batteryLevel: 75,
+      readerTime: "13:07",
+      pageLabel: "1/1",
+      progressLabel: "",
+      headerLabel: "",
+    });
+  });
+
+  it.each(["fanqie", "qidian"])("从 %s 切换新平台再切回保留自定义电量和顶部信息", (variant) => {
+    const onInsert = vi.fn();
+    render(<ExcerptDialog open onOpenChange={vi.fn()} onInsert={onInsert} />);
+    change("排版", variant);
+    change("电量（%）", "42");
+    change("顶部信息", "自定义顶部文字");
+    for (const nextVariant of ["sfacg", "ciweimao"]) {
+      change("排版", nextVariant);
+      expect(screen.queryByLabelText("顶部信息")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("电量（%）")).toHaveValue(42);
+      change("排版", variant);
+      expect(screen.getByLabelText("顶部信息")).toHaveValue("自定义顶部文字");
+      expect(screen.getByLabelText("电量（%）")).toHaveValue(42);
+    }
+    change("书名", "新作品");
+    change("摘录正文", "正文");
+    change("排版", "ciweimao");
+    fireEvent.click(screen.getByRole("button", { name: "插入摘录" }));
+    expect(onInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variant: "ciweimao",
+        batteryLevel: "42",
+        headerLabel: "自定义顶部文字",
+      }),
+    );
+  });
+
+  it.each([
+    ["sfacg", "75"],
+    ["sfacg", "42"],
+    ["ciweimao", "75"],
+    ["ciweimao", "42"],
+  ])("编辑已有 %s 摘录保留电量 %s、时间、正文和隐藏顶部信息", async (variant, batteryLevel) => {
+    const onInsert = vi.fn();
+    const initial = {
+      ...emptyExcerptValues,
+      variant,
+      bookTitle: "原作品",
+      batteryLevel,
+      readerTime: "22:05",
+      pageLabel: "88/100",
+      progressLabel: "88%",
+      headerLabel: "已存顶部文字",
+    };
+    const content = [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "已存富文本", marks: [{ type: "bold" }] }],
+      },
+    ];
+    const originalContent = structuredClone(content);
+    const props = { onOpenChange: vi.fn(), onInsert };
+    const view = render(
+      <ExcerptDialog open initial={initial} existingContent={content} {...props} />,
+    );
+    vi.setSystemTime(new Date(2026, 8, 8, 9, 10));
+    for (const label of ["顶部信息", "时间", "页码", "阅读进度", "摘录正文"])
+      expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    change("排版", "fanqie");
+    expect(screen.getByLabelText("电量（%）")).toHaveValue(Number(batteryLevel));
+    expect(screen.getByLabelText("顶部信息")).toHaveValue("已存顶部文字");
+    change("排版", variant);
+    change("书名", "更名作品");
+    const preview = screen.getByRole("region", { name: "摘录预览" });
+    await waitFor(() => {
+      expect(preview.querySelector("[data-variant]")).toHaveAttribute("data-variant", variant);
+      expect(preview.querySelector("[data-reader-time]")).toHaveAttribute(
+        "data-reader-time",
+        "22:05",
+      );
+      expect(within(preview).getByText("已存富文本").closest("strong")).not.toBeNull();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    expect(onInsert).toHaveBeenCalledWith({ ...initial, bookTitle: "更名作品" });
+    expect(excerptAttributes(onInsert.mock.calls[0]![0])).toEqual(
+      expect.objectContaining({
+        variant,
+        batteryLevel: Number(batteryLevel),
+        readerTime: "22:05",
+        pageLabel: "88/100",
+        progressLabel: "88%",
+        headerLabel: "已存顶部文字",
+      }),
+    );
+    view.rerender(<ExcerptDialog open={false} {...props} />);
+    view.rerender(
+      <ExcerptDialog
+        open
+        initial={onInsert.mock.calls[0]![0]}
+        existingContent={content}
+        {...props}
+      />,
+    );
+    expect(screen.queryByLabelText("顶部信息")).not.toBeInTheDocument();
+    expect(screen.getByText("已存富文本").closest("strong")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    expect(onInsert.mock.calls[1]![0]).toEqual(onInsert.mock.calls[0]![0]);
+    expect(content).toEqual(originalContent);
+  });
+
   it("normalizes newlines, skips blank lines and preserves text indentation", () => {
-    expect(excerptParagraphs("  first" + String.fromCharCode(13, 10, 13) + "second" + String.fromCharCode(10))).toEqual([
+    expect(
+      excerptParagraphs(
+        "  first" + String.fromCharCode(13, 10, 13) + "second" + String.fromCharCode(10),
+      ),
+    ).toEqual([
       { type: "paragraph", content: [{ type: "text", text: "  first" }] },
       { type: "paragraph", content: [{ type: "text", text: "second" }] },
     ]);

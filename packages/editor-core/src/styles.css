@@ -427,8 +427,12 @@
   transform: translateY(-50%);
 }
 
-.rt-rich-image__resize--left { left: -8px; }
-.rt-rich-image__resize--right { right: -8px; }
+.rt-rich-image__resize--left {
+  left: -8px;
+}
+.rt-rich-image__resize--right {
+  right: -8px;
+}
 
 .rt-rich-image__size {
   position: absolute;
@@ -451,9 +455,16 @@
   display: block;
 }
 
-.rt-rich-image--left { margin-right: auto; }
-.rt-rich-image--center { margin-right: auto; margin-left: auto; }
-.rt-rich-image--right { margin-left: auto; }
+.rt-rich-image--left {
+  margin-right: auto;
+}
+.rt-rich-image--center {
+  margin-right: auto;
+  margin-left: auto;
+}
+.rt-rich-image--right {
+  margin-left: auto;
+}
 
 .rt-rich-image__open {
   display: block;
@@ -523,9 +534,13 @@
   box-shadow: 0 0 0 4px rgb(15 118 110 / 12%);
 }
 
-
 /* 截图式阅读页：页面信息和段落节奏遵循平台样式。 */
-.rt-novel-excerpt:is(.rt-novel-excerpt--fanqie, .rt-novel-excerpt--qidian) {
+.rt-novel-excerpt:is(
+  .rt-novel-excerpt--fanqie,
+  .rt-novel-excerpt--qidian,
+  .rt-novel-excerpt--sfacg,
+  .rt-novel-excerpt--ciweimao
+) {
   --reader-paper: #e9e3cd;
   --reader-ink: #17150e;
   --reader-muted: #928e7e;
@@ -559,8 +574,33 @@
   --reader-heading-size: 13px;
   --reader-heading-font: system-ui, sans-serif;
   --reader-leading: 1.48;
-  --reader-gap: .68em;
+  --reader-gap: 0.68em;
   font-family: KaiTi, STKaiti, "Kaiti SC", "Noto Serif SC Variable", serif;
+}
+/* 菠萝包使用灰纸楷体，刺猬猫使用白灰纸和无衬线正文。 */
+.rt-novel-excerpt.rt-novel-excerpt--sfacg {
+  --reader-paper: #ccc;
+  --reader-ink: #171717;
+  --reader-muted: #858585;
+  --reader-title-color: #858585;
+  --reader-heading-size: clamp(10px, 0.62em, 14px);
+  --reader-heading-font: KaiTi, STKaiti, "Kaiti SC", "Noto Serif SC Variable", serif;
+  --reader-leading: 1.8;
+  --reader-gap: 0.8em;
+  --reader-marker-gutter: 1.5em;
+  font-family: var(--reader-heading-font);
+}
+.rt-novel-excerpt.rt-novel-excerpt--ciweimao {
+  --reader-paper: #f8f8f8;
+  --reader-ink: #080808;
+  --reader-muted: #858585;
+  --reader-title-color: #858585;
+  --reader-heading-size: clamp(10px, 0.7em, 15px);
+  --reader-heading-font: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --reader-leading: 1.85;
+  --reader-gap: 0.7em;
+  --reader-marker-gutter: 1.6em;
+  font-family: var(--reader-heading-font);
 }
 .rt-reader-page {
   display: flex;
@@ -580,16 +620,26 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.rt-reader-book-title:empty { display: none; }
+.rt-reader-book-title:empty {
+  display: none;
+}
 .rt-reader-page .rt-reader-book-title a,
 .rt-reader-page .rt-reader-book-title a:is(:hover, :focus, :active, :visited) {
   color: inherit;
   font: inherit;
   text-decoration: none;
 }
-.rt-reader-book-title a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
-.rt-reader-viewport { min-width: 0; }
-.rt-reader-viewport:focus-visible { outline: 1px solid var(--reader-muted); outline-offset: 4px; }
+.rt-reader-book-title a:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.rt-reader-viewport {
+  min-width: 0;
+}
+.rt-reader-viewport:focus-visible {
+  outline: 1px solid var(--reader-muted);
+  outline-offset: 4px;
+}
 .rt-reader-page[data-paginated="true"] > .rt-reader-viewport {
   height: var(--reader-body-height, 420px);
   overflow: hidden;
@@ -608,12 +658,31 @@
   column-gap: var(--reader-column-gap, 24px);
   column-fill: auto;
 }
-.rt-reader-page[data-paginated="true"] .rt-novel-excerpt__content :is(p, li) { orphans: 2; widows: 2; }
-.rt-reader-page[data-paginated="true"] .rt-novel-excerpt__content :is(img, figure, pre) { max-height: var(--reader-body-height, 420px); max-width: 100%; break-inside: avoid; overflow: auto; }
+.rt-reader-page[data-paginated="true"] .rt-novel-excerpt__content :is(p, li) {
+  orphans: 2;
+  widows: 2;
+}
+.rt-reader-page[data-paginated="true"] .rt-novel-excerpt__content :is(img, figure, pre) {
+  max-height: var(--reader-body-height, 420px);
+  max-width: 100%;
+  break-inside: avoid;
+  overflow: auto;
+}
 @media print {
-  .rt-reader-page[data-paginated="true"] > .rt-reader-viewport { height: auto; overflow: visible; }
-  .rt-reader-page[data-paginated="true"] > .rt-reader-viewport > .rt-novel-excerpt__content { transform: none !important; height: auto; }
-  .rt-reader-page[data-paginated="true"] .rt-novel-excerpt__content > [data-node-view-content-react] { height: auto; column-width: auto; }
+  .rt-reader-page[data-paginated="true"] > .rt-reader-viewport {
+    height: auto;
+    overflow: visible;
+  }
+  .rt-reader-page[data-paginated="true"] > .rt-reader-viewport > .rt-novel-excerpt__content {
+    transform: none !important;
+    height: auto;
+  }
+  .rt-reader-page[data-paginated="true"]
+    .rt-novel-excerpt__content
+    > [data-node-view-content-react] {
+    height: auto;
+    column-width: auto;
+  }
 }
 .rt-reader-page > header.rt-reader-topline {
   display: flex;
@@ -634,8 +703,22 @@
   color: inherit;
   font: inherit;
 }
-.rt-reader-back, .rt-reader-next { display: inline-block; width: .55em; height: .55em; border-left: 1px solid; border-bottom: 1px solid; transform: rotate(45deg); vertical-align: .08em; margin-right: .35em; }
-.rt-reader-next { transform: rotate(225deg); margin: 0 0 0 .5em; color: #84957d; }
+.rt-reader-back,
+.rt-reader-next {
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  border-left: 1px solid;
+  border-bottom: 1px solid;
+  transform: rotate(45deg);
+  vertical-align: 0.08em;
+  margin-right: 0.35em;
+}
+.rt-reader-next {
+  transform: rotate(225deg);
+  margin: 0 0 0 0.5em;
+  color: #84957d;
+}
 .rt-reader-topline .rt-reader-header-label {
   display: inline-flex;
   align-items: center;
@@ -655,13 +738,31 @@
   font-size: 11px;
   line-height: 1.7;
 }
-.rt-reader-header-label > .rt-reader-header-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; }
-.rt-reader-header-label > .rt-reader-next { flex: none; margin: 0; }
+.rt-reader-header-label > .rt-reader-header-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+}
+.rt-reader-header-label > .rt-reader-next {
+  flex: none;
+  margin: 0;
+}
 .rt-novel-excerpt--qidian .rt-reader-page > header.rt-reader-topline {
   margin-bottom: 23px;
 }
-.rt-novel-excerpt--qidian .rt-reader-topline .rt-reader-header-label { width: auto; background: #ededed; color: #8d8d8d; border-radius: 5px; padding: 2px 5px; }
-.rt-reader-page .rt-novel-excerpt__content { flex: 1; min-width: 0; }
+.rt-novel-excerpt--qidian .rt-reader-topline .rt-reader-header-label {
+  width: auto;
+  background: #ededed;
+  color: #8d8d8d;
+  border-radius: 5px;
+  padding: 2px 5px;
+}
+.rt-reader-page .rt-novel-excerpt__content {
+  flex: 1;
+  min-width: 0;
+}
 .rt-reader-page .rt-novel-excerpt__content > p,
 .rt-reader-page .rt-novel-excerpt__content > [data-node-view-content-react] > p {
   margin: 0 0 var(--reader-gap);
@@ -669,17 +770,29 @@
   line-height: inherit;
   text-indent: 2em;
 }
-.rt-reader-page .rt-novel-excerpt__content :is(.rt-inline-comment-anchor, .rt-inline-comment-anchor-wrap) { display: none; }
+.rt-reader-page
+  .rt-novel-excerpt__content
+  :is(.rt-inline-comment-anchor, .rt-inline-comment-anchor-wrap) {
+  display: none;
+}
 /* 来源平台的空气泡不是链接，也不是实时论坛评论控件。 */
-.rt-novel-excerpt[data-empty-bubble="true"] .rt-reader-page .rt-novel-excerpt__content > p:not(:empty):not(:has(> br:only-child))::after,
-.rt-novel-excerpt[data-empty-bubble="true"] .rt-reader-page .rt-novel-excerpt__content > [data-node-view-content-react] > p:not(:empty):not(:has(> br:only-child))::after {
+.rt-novel-excerpt[data-empty-bubble="true"]
+  .rt-reader-page
+  .rt-novel-excerpt__content
+  > p:not(:empty):not(:has(> br:only-child))::after,
+.rt-novel-excerpt[data-empty-bubble="true"]
+  .rt-reader-page
+  .rt-novel-excerpt__content
+  > [data-node-view-content-react]
+  > p:not(:empty):not(:has(> br:only-child))::after {
   content: "";
   display: inline-block;
   width: 1.42em;
   height: 1.08em;
-  margin-left: .45em;
-  vertical-align: -.14em;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 70'%3E%3Cpath d='M30 3H78Q87 3 87 12V58Q87 67 78 67H30Q20 67 20 57V48Q20 43 14 40L3 34Q0 32 3 30L14 24Q20 21 20 15V12Q20 3 30 3Z' fill='none' stroke='%239b9b9b' stroke-width='1.4'/%3E%3C/svg%3E") center / contain no-repeat;
+  margin-left: 0.45em;
+  vertical-align: -0.14em;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 70'%3E%3Cpath d='M30 3H78Q87 3 87 12V58Q87 67 78 67H30Q20 67 20 57V48Q20 43 14 40L3 34Q0 32 3 30L14 24Q20 21 20 15V12Q20 3 30 3Z' fill='none' stroke='%239b9b9b' stroke-width='1.4'/%3E%3C/svg%3E")
+    center / contain no-repeat;
   pointer-events: none;
 }
 .rt-reader-page > footer.rt-reader-bottomline {
@@ -694,16 +807,224 @@
   font-size: 14px;
   line-height: 1.4;
 }
-.rt-reader-progress, .rt-reader-clock { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.rt-novel-excerpt--qidian .rt-reader-bottomline { font-family: system-ui, sans-serif; font-size: 12px; }
-.rt-reader-battery { display: inline-flex; position: relative; flex: none; width: 25px; height: 13px; }
-.rt-reader-battery svg { display: block; width: 100%; height: 100%; }
-@media (max-width: 360px) {
-  .rt-novel-excerpt:is(.rt-novel-excerpt--fanqie, .rt-novel-excerpt--qidian) { --reader-heading-size: 12px; }
-  .rt-reader-page > header.rt-reader-topline { gap: 6px; }
-  .rt-reader-topline .rt-reader-header-label { font-size: 9px; padding-inline: 5px; }
+.rt-reader-progress,
+.rt-reader-clock {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.rt-novel-excerpt--qidian .rt-reader-bottomline {
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+}
+.rt-reader-battery {
+  display: inline-flex;
+  position: relative;
+  flex: none;
+  width: 25px;
+  height: 13px;
+}
+.rt-reader-battery svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
+/* 装饰留在栏宽内部，段尾浮动随原生分栏流转，不伸出视口。 */
+.rt-novel-excerpt:is(.rt-novel-excerpt--sfacg, .rt-novel-excerpt--ciweimao)
+  .rt-novel-excerpt__content
+  > p,
+.rt-novel-excerpt:is(.rt-novel-excerpt--sfacg, .rt-novel-excerpt--ciweimao)
+  .rt-novel-excerpt__content
+  > [data-node-view-content-react]
+  > p {
+  box-sizing: border-box;
+  padding-inline-end: var(--reader-marker-gutter);
+}
+.rt-novel-excerpt:is(
+    .rt-novel-excerpt--sfacg,
+    .rt-novel-excerpt--ciweimao
+  )[data-empty-bubble="true"]
+  .rt-reader-page
+  .rt-novel-excerpt__content
+  > p:not(:empty):not(:has(> br:only-child))::after,
+.rt-novel-excerpt:is(
+    .rt-novel-excerpt--sfacg,
+    .rt-novel-excerpt--ciweimao
+  )[data-empty-bubble="true"]
+  .rt-reader-page
+  .rt-novel-excerpt__content
+  > [data-node-view-content-react]
+  > p:not(:empty):not(:has(> br:only-child))::after {
+  float: right;
+  width: 1.1em;
+  height: 0.85em;
+  margin: 0.475em -1.4em 0 0.3em;
+  text-indent: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 70'%3E%3Cpath d='M4 5H76Q86 5 86 15V56Q86 66 76 66H30Q20 66 20 56V19Z' fill='none' stroke='%23858585' stroke-width='2' stroke-linejoin='round'/%3E%3Cg fill='%23858585'%3E%3Ccircle cx='39' cy='37' r='4'/%3E%3Ccircle cx='53' cy='37' r='4'/%3E%3Ccircle cx='67' cy='37' r='4'/%3E%3C/g%3E%3C/svg%3E");
+}
+.rt-novel-excerpt.rt-novel-excerpt--ciweimao[data-empty-bubble="true"]
+  .rt-reader-page
+  .rt-novel-excerpt__content
+  > p:not(:empty):not(:has(> br:only-child))::after,
+.rt-novel-excerpt.rt-novel-excerpt--ciweimao[data-empty-bubble="true"]
+  .rt-reader-page
+  .rt-novel-excerpt__content
+  > [data-node-view-content-react]
+  > p:not(:empty):not(:has(> br:only-child))::after {
+  width: 0.6em;
+  height: 0.6em;
+  margin: 0.625em -1.2em 0 0.6em;
+  border-radius: 50%;
+  background: #d9d9d9;
+}
+.rt-novel-excerpt--ciweimao .rt-reader-viewport {
+  background: linear-gradient(#ebebeb, #ebebeb) right 0.7em top / 1px 100% no-repeat;
+}
+.rt-novel-excerpt:is(.rt-novel-excerpt--sfacg, .rt-novel-excerpt--ciweimao)
+  .rt-reader-page
+  > header.rt-reader-topline {
+  align-items: center;
+  margin-bottom: 0.9em;
+}
+.rt-novel-excerpt--sfacg .rt-reader-page > header.rt-reader-topline {
+  position: relative;
+  justify-content: center;
+  min-height: 1.8em;
+  padding-inline: 2em;
+  text-align: center;
+}
+.rt-novel-excerpt--sfacg .rt-reader-back {
+  position: absolute;
+  left: 0.2em;
+  top: 50%;
+  margin: 0;
+  color: #303030;
+  transform: translateY(-50%) rotate(45deg);
+}
+.rt-novel-excerpt--sfacg .rt-reader-moon {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  box-sizing: border-box;
+  width: 1.5em;
+  height: 1.5em;
+  border: 0.12em solid #159edf;
+  border-radius: 50%;
+  transform: translateY(-50%);
+}
+.rt-novel-excerpt--sfacg .rt-reader-moon::before {
+  content: "";
+  position: absolute;
+  inset: 0.13em;
+  border-radius: 50%;
+  box-shadow: inset -0.28em -0.13em 0 #159edf;
+}
+.rt-novel-excerpt--ciweimao .rt-reader-page > header.rt-reader-topline {
+  justify-content: flex-start;
+  text-align: left;
+}
+.rt-novel-excerpt--ciweimao .rt-reader-back,
+.rt-novel-excerpt:is(.rt-novel-excerpt--sfacg, .rt-novel-excerpt--ciweimao)
+  .rt-reader-header-label {
+  display: none;
+}
+
+/* 页脚字号跟随宿主；各组不换行，长书名只占剩余宽度。 */
+.rt-novel-excerpt:is(.rt-novel-excerpt--sfacg, .rt-novel-excerpt--ciweimao)
+  .rt-reader-page
+  > footer.rt-reader-bottomline {
+  gap: 0.65em;
+  font-family: var(--reader-heading-font);
+  font-size: clamp(9px, 0.62em, 12px);
+  white-space: nowrap;
+}
+.rt-novel-excerpt:is(.rt-novel-excerpt--sfacg, .rt-novel-excerpt--ciweimao)
+  :is(.rt-reader-progress, .rt-reader-clock) {
+  flex: none;
+  gap: 0.6em;
+}
+.rt-novel-excerpt:is(.rt-novel-excerpt--sfacg, .rt-novel-excerpt--ciweimao) .rt-reader-battery {
+  width: 1.9em;
+  height: 1em;
+}
+.rt-novel-excerpt--sfacg .rt-reader-clock {
+  order: -1;
+}
+.rt-novel-excerpt--sfacg .rt-reader-book-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.7em;
+  min-width: 0;
+  margin-inline-start: auto;
+}
+.rt-novel-excerpt--sfacg .rt-reader-book-meta .rt-reader-book-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  font: inherit;
+}
+.rt-novel-excerpt--sfacg .rt-reader-book-meta .rt-reader-book-title > a {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: inherit;
+}
+.rt-novel-excerpt--sfacg .rt-reader-percentage {
+  flex: none;
+}
+.rt-novel-excerpt--sfacg .rt-reader-progress {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.rt-novel-excerpt--ciweimao .rt-reader-page > footer.rt-reader-bottomline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.rt-novel-excerpt--ciweimao .rt-reader-clock {
+  justify-self: end;
+}
+.rt-novel-excerpt--ciweimao .rt-reader-danmaku {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25em;
+  min-width: 0;
+  color: #dc962f;
+}
+.rt-novel-excerpt--ciweimao .rt-reader-chevron-up {
+  display: inline-block;
+  flex: none;
+  width: 0.65em;
+  height: 0.65em;
+  box-sizing: border-box;
+  margin-top: 0.3em;
+  border-top: 1px solid currentColor;
+  border-left: 1px solid currentColor;
+  transform: rotate(45deg);
+}
+@media (max-width: 360px) {
+  .rt-novel-excerpt:is(.rt-novel-excerpt--fanqie, .rt-novel-excerpt--qidian) {
+    --reader-heading-size: 12px;
+  }
+  .rt-reader-page > header.rt-reader-topline {
+    gap: 6px;
+  }
+  .rt-reader-topline .rt-reader-header-label {
+    font-size: 9px;
+    padding-inline: 5px;
+  }
+}
 
 .rt-mention {
   position: relative;
@@ -877,8 +1198,15 @@
   white-space: nowrap;
 }
 
-.rt-attachment small { color: var(--rt-muted); }
-.rt-attachment strong { grid-row: 1 / 3; grid-column: 2; align-self: center; color: var(--rt-primary-strong); }
+.rt-attachment small {
+  color: var(--rt-muted);
+}
+.rt-attachment strong {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  align-self: center;
+  color: var(--rt-primary-strong);
+}
 
 .rt-poll {
   margin: 20px 0;
@@ -1255,7 +1583,8 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 7px max(10px, env(safe-area-inset-right)) max(7px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  padding: 7px max(10px, env(safe-area-inset-right)) max(7px, env(safe-area-inset-bottom))
+    max(10px, env(safe-area-inset-left));
   background: rgb(23 28 26 / 62%);
 }
 

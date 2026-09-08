@@ -1,5 +1,9 @@
 import type { JSONContent } from "@ricetext/editor-core";
-import { currentReaderTime, normalizeNovelExcerptVariant } from "@ricetext/document-core";
+import {
+  currentReaderTime,
+  normalizeNovelExcerptVariant,
+  READER_PLATFORM_POLICY,
+} from "@ricetext/document-core";
 
 export interface ExcerptValues {
   bookTitle: string;
@@ -16,8 +20,16 @@ export interface ExcerptValues {
 }
 
 export const emptyExcerptValues: ExcerptValues = {
-  bookTitle: "", chapterTitle: "", author: "", sourceUrl: "", variant: "fanqie", text: "",
-  readerTime: "", batteryLevel: "100", pageLabel: "1/1", progressLabel: "", headerLabel: "",
+  bookTitle: "",
+  chapterTitle: "",
+  author: "",
+  sourceUrl: "",
+  variant: "fanqie",
+  text: "",
+  readerTime: "",
+  pageLabel: "1/1",
+  progressLabel: "",
+  ...readerDisplayDefaults("fanqie"),
 };
 
 export function createExcerptValues(): ExcerptValues {
@@ -25,9 +37,8 @@ export function createExcerptValues(): ExcerptValues {
 }
 
 export function readerDisplayDefaults(variant: string) {
-  return variant === "qidian"
-    ? { batteryLevel: "75", headerLabel: "" }
-    : { batteryLevel: "100", headerLabel: "" };
+  const policy = READER_PLATFORM_POLICY[normalizeNovelExcerptVariant(variant)];
+  return { batteryLevel: String(policy.defaultBattery), headerLabel: "" };
 }
 
 export function isExcerptBatteryValid(value: string): boolean {
@@ -58,7 +69,9 @@ export function excerptAttributes(values: ExcerptValues) {
     sourceUrl: values.sourceUrl.trim() || null,
     variant: normalizeNovelExcerptVariant(values.variant),
     readerTime: values.readerTime.trim(),
-    batteryLevel: isExcerptBatteryValid(values.batteryLevel) ? Number(values.batteryLevel) : 100,
+    batteryLevel: isExcerptBatteryValid(values.batteryLevel)
+      ? Number(values.batteryLevel)
+      : Number(readerDisplayDefaults(values.variant).batteryLevel),
     pageLabel: values.pageLabel.trim(),
     progressLabel: values.progressLabel.trim(),
     headerLabel: values.headerLabel.trim(),
@@ -66,8 +79,12 @@ export function excerptAttributes(values: ExcerptValues) {
 }
 
 export function excerptParagraphs(text: string): JSONContent[] {
-  return text.replace(/\r\n?/g, "\n").split("\n").filter((line) => line.trim().length > 0).map((line) => ({
-    type: "paragraph",
-    content: line ? [{ type: "text", text: line }] : [],
-  }));
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => ({
+      type: "paragraph",
+      content: line ? [{ type: "text", text: line }] : [],
+    }));
 }
