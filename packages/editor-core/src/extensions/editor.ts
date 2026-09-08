@@ -21,31 +21,38 @@ export interface EditorExtensionsOptions {
 }
 
 /** 通过添加编辑器专用插件和 React NodeView 创建可编辑组合。 */
-export function createEditorExtensions(
-  options: EditorExtensionsOptions = {},
-): Extensions {
-  return schemaExtensions().map((extension) => {
-    switch (extension.name) {
-      case "novelExcerpt":
-        return NovelExcerpt.extend({
-          addNodeView: () => ReactNodeViewRenderer(({ node, editor, getPos, selected }) =>
-            createElement(NovelExcerptNodeView, { attrs: node.attrs as unknown as NovelExcerptAttributes, editable: true, editor, getPos, selected }),
-          ),
-        });
-      case "paragraphIndent":
-        return ParagraphIndent;
-      case "inlineCommentAnchor":
-        return InlineCommentAnchor;
-      case "richImage":
-        return RichImage.configure({ resizable: options.resizableImages === true });
-      case "pollRef":
-        return PollRef;
-      case "longTextBlock":
-        return LongTextBlock;
-      default:
-        return extension;
-    }
-  }).concat(FormatPainter, options.additionalExtensions ?? []);
+export function createEditorExtensions(options: EditorExtensionsOptions = {}): Extensions {
+  return schemaExtensions()
+    .map((extension) => {
+      switch (extension.name) {
+        case "novelExcerpt":
+          return NovelExcerpt.extend({
+            addNodeView: () =>
+              ReactNodeViewRenderer(({ node, editor, getPos, selected }) =>
+                createElement(NovelExcerptNodeView, {
+                  attrs: node.attrs as unknown as NovelExcerptAttributes,
+                  editable: true,
+                  editor,
+                  getPos,
+                  selected,
+                }),
+              ),
+          });
+        case "paragraphIndent":
+          return ParagraphIndent;
+        case "inlineCommentAnchor":
+          return InlineCommentAnchor;
+        case "richImage":
+          return RichImage.configure({ resizable: options.resizableImages === true });
+        case "pollRef":
+          return PollRef;
+        case "longTextBlock":
+          return LongTextBlock;
+        default:
+          return extension;
+      }
+    })
+    .concat(FormatPainter, options.additionalExtensions ?? []);
 }
 
 /** 原有编辑器扩展工厂的兼容别名。 */

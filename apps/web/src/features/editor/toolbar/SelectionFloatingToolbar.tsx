@@ -12,10 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { IconButton } from "../../../components/ui";
-import {
-  ColorPickerPopover,
-  useLastColor,
-} from "../../../components/ui/color-picker";
+import { ColorPickerPopover, useLastColor } from "../../../components/ui/color-picker";
 import { cmd } from "../commands";
 import {
   clearFormatting,
@@ -39,8 +36,7 @@ function preventSelectionLoss(event: MouseEvent<HTMLElement>) {
   event.preventDefault();
 }
 
-const clampX = (x: number) =>
-  Math.min(Math.max(x, 184), window.innerWidth - 184);
+const clampX = (x: number) => Math.min(Math.max(x, 184), window.innerWidth - 184);
 
 function fallbackSelectionPosition(editor: Editor): ToolbarPosition {
   try {
@@ -101,13 +97,7 @@ function mobileSelectionMenuPosition(editor: Editor): ToolbarPosition {
   return position;
 }
 
-function FormatControls({
-  editor,
-  mobile = false,
-}: {
-  editor: Editor;
-  mobile?: boolean;
-}) {
+function FormatControls({ editor, mobile = false }: { editor: Editor; mobile?: boolean }) {
   const spoilerActive = editor.isActive("spoiler");
   // 移动端面板更窄：图标按钮收紧到 26px，保证复制/粘贴/全选与格式按钮同排放下。
   const iconButton = mobile
@@ -221,7 +211,10 @@ function FormatControls({
             align="center"
             triggerClassName="h-[30px] rounded"
             triggerChildren={
-              <span className="h-3 w-3 rounded-sm border border-black/15" style={{ background: lastColor }} />
+              <span
+                className="h-3 w-3 rounded-sm border border-black/15"
+                style={{ background: lastColor }}
+              />
             }
             triggerOnMouseDown={preventSelectionLoss}
           />
@@ -443,12 +436,7 @@ export function SelectionFloatingToolbar({
 
   if (mobile) {
     const mobilePosition = mobileSelectionMenuPosition(editor);
-    return (
-      <MobileSelectionFloatingToolbar
-        editor={editor}
-        position={mobilePosition}
-      />
-    );
+    return <MobileSelectionFloatingToolbar editor={editor} position={mobilePosition} />;
   }
 
   return <DesktopSelectionFloatingToolbar editor={editor} />;

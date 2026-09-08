@@ -1,21 +1,6 @@
 import type { Editor } from "@tiptap/react";
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiModule from "../../lib/api";
 import { validateDocument } from "@ricetext/document-core";
 import { defaultDocument } from "../../lib/seed";
@@ -78,13 +63,8 @@ describe("RichTextEditor presets", () => {
       />,
     );
 
-    expect(
-      await screen.findByRole("toolbar", { name: "富文本工具栏" }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("正文编辑区")).toHaveAttribute(
-      "contenteditable",
-      "true",
-    );
+    expect(await screen.findByRole("toolbar", { name: "富文本工具栏" })).toBeInTheDocument();
+    expect(screen.getByLabelText("正文编辑区")).toHaveAttribute("contenteditable", "true");
     expect(screen.getByLabelText("字号")).toHaveValue("16px");
     expect(screen.getByLabelText("字体")).toHaveValue("");
     for (const label of [
@@ -115,9 +95,7 @@ describe("RichTextEditor presets", () => {
     const noSelectionAlert = await screen.findByRole("alertdialog");
     expect(noSelectionAlert).toHaveTextContent("未选择文字");
     fireEvent.click(screen.getByRole("button", { name: "知道了" }));
-    await waitFor(() =>
-      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "分割线" }));
     await waitFor(() =>
       expect(
@@ -167,22 +145,14 @@ describe("RichTextEditor presets", () => {
       target: { value: "javascript:alert(1)" },
     });
     expect(screen.getByRole("alert")).toHaveTextContent("仅允许 HTTP(S) 链接");
-    expect(
-      within(linkDialog).getByRole("button", { name: "插入链接" }),
-    ).toBeDisabled();
+    expect(within(linkDialog).getByRole("button", { name: "插入链接" })).toBeDisabled();
     fireEvent.change(linkInput, {
       target: { value: "https://ricetext.dev" },
     });
-    fireEvent.click(
-      within(linkDialog).getByRole("button", { name: "插入链接" }),
-    );
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
+    fireEvent.click(within(linkDialog).getByRole("button", { name: "插入链接" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
-    expect(readyEditor.getAttributes("link").href).toBe(
-      "https://ricetext.dev",
-    );
+    expect(readyEditor.getAttributes("link").href).toBe("https://ricetext.dev");
     // 链接 mark 的属性必须落在持久化契约白名单（href/target/rel）内，
     // 否则保存校验 fail-closed 会拒绝整篇文档。
     const validation = validateDocument(readyEditor.getJSON());
@@ -191,31 +161,19 @@ describe("RichTextEditor presets", () => {
   });
 
   it("完整模式可以从工具栏打开骰子、图片与提及对话框", async () => {
-    render(
-      <RichTextEditor
-        content={defaultDocument.content}
-        mode="full"
-        onChange={vi.fn()}
-      />,
-    );
+    render(<RichTextEditor content={defaultDocument.content} mode="full" onChange={vi.fn()} />);
     await screen.findByRole("toolbar");
 
     fireEvent.click(screen.getByRole("button", { name: "骰子" }));
-    expect(
-      screen.getByRole("dialog", { name: "插入骰子" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "插入骰子" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
 
     fireEvent.click(screen.getByRole("button", { name: "图片" }));
-    expect(
-      screen.getByRole("dialog", { name: "插入图片" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "插入图片" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
 
     fireEvent.click(screen.getByRole("button", { name: "@ 用户" }));
-    expect(
-      screen.getByRole("dialog", { name: "提及用户" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "提及用户" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
   });
 
@@ -234,9 +192,7 @@ describe("RichTextEditor presets", () => {
       />,
     );
 
-    await waitFor(() =>
-      expect(screen.getByLabelText("快速回复编辑区")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByLabelText("快速回复编辑区")).toBeInTheDocument());
     expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "发布回复" }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -245,46 +201,28 @@ describe("RichTextEditor presets", () => {
       button: 0,
       ctrlKey: false,
     });
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "切换完整编辑器" }),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "切换完整编辑器" }));
     expect(onExpand).toHaveBeenCalledTimes(1);
 
     fireEvent.pointerDown(screen.getByRole("button", { name: /更多/ }), {
       button: 0,
       ctrlKey: false,
     });
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "插入图片或骰子" }),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "插入图片或骰子" }));
     expect(onModeToolsOpen).toHaveBeenCalledTimes(1);
   });
 
   it("未选中文本时右键仍显示自定义编辑命令", async () => {
-    render(
-      <RichTextEditor
-        content={defaultDocument.content}
-        mode="full"
-        onChange={vi.fn()}
-      />,
-    );
+    render(<RichTextEditor content={defaultDocument.content} mode="full" onChange={vi.fn()} />);
 
     const editorElement = await screen.findByLabelText("正文编辑区");
     fireEvent.contextMenu(editorElement, { clientX: 120, clientY: 140 });
-    expect(
-      await screen.findByRole("menu", { name: "编辑上下文菜单" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("menu", { name: "编辑上下文菜单" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /全选/ })).toBeInTheDocument();
   });
 
   it("右键插入子菜单复用图片对话框", async () => {
-    render(
-      <RichTextEditor
-        content={defaultDocument.content}
-        mode="full"
-        onChange={vi.fn()}
-      />,
-    );
+    render(<RichTextEditor content={defaultDocument.content} mode="full" onChange={vi.fn()} />);
 
     const editorElement = await screen.findByLabelText("正文编辑区");
     fireEvent.contextMenu(editorElement, { clientX: 120, clientY: 140 });
@@ -294,9 +232,7 @@ describe("RichTextEditor presets", () => {
     // Radix 子菜单仅在 pointerType 为 mouse 的指针移动时打开（100ms 定时器）。
     fireEvent.pointerMove(insertTrigger, { pointerType: "mouse" });
     fireEvent.click(await screen.findByRole("menuitem", { name: "图片" }));
-    expect(
-      await screen.findByRole("dialog", { name: "插入图片" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "插入图片" })).toBeInTheDocument();
   });
 
   it("文本选区通过右键菜单提供字体、字号和颜色", async () => {
@@ -319,15 +255,11 @@ describe("RichTextEditor presets", () => {
     const readyEditor = editorRef.current;
     if (!readyEditor) throw new Error("编辑器未初始化");
     readyEditor.commands.setTextSelection({ from: 1, to: 4 });
-    expect(
-      await screen.findByRole("toolbar", { name: "选区浮动工具栏" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("toolbar", { name: "选区浮动工具栏" })).toBeInTheDocument();
     const editorElement = screen.getByLabelText("正文编辑区");
     fireEvent.contextMenu(editorElement, { clientX: 120, clientY: 140 });
 
-    expect(
-      await screen.findByRole("menu", { name: "选区格式菜单" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("menu", { name: "选区格式菜单" })).toBeInTheDocument();
     expect(screen.getByLabelText("选区字体")).toBeInTheDocument();
     expect(screen.getByLabelText("选区字号")).toBeInTheDocument();
     // 右键菜单是 modal，会把浮动工具栏标为 aria-hidden；getByLabelText 不按
@@ -355,21 +287,10 @@ describe("RichTextEditor presets", () => {
       new DOMRect(0, 0, 600, 46),
     );
 
-    render(
-      <RichTextEditor
-        content={defaultDocument.content}
-        mode="full"
-        onChange={vi.fn()}
-      />,
-    );
+    render(<RichTextEditor content={defaultDocument.content} mode="full" onChange={vi.fn()} />);
 
-    expect(
-      await screen.findByRole("button", { name: "更多工具" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "加粗" })).toHaveAttribute(
-      "data-size",
-      "icon-sm",
-    );
+    expect(await screen.findByRole("button", { name: "更多工具" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "加粗" })).toHaveAttribute("data-size", "icon-sm");
   });
 
   it("移动端选中文本后直接显示自定义格式工具栏", async () => {
@@ -389,9 +310,7 @@ describe("RichTextEditor presets", () => {
     const readyEditor = editorRef.current;
     if (!readyEditor) throw new Error("编辑器未初始化");
     readyEditor.commands.setTextSelection({ from: 1, to: 4 });
-    expect(
-      await screen.findByRole("toolbar", { name: "选区格式菜单" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("toolbar", { name: "选区格式菜单" })).toBeInTheDocument();
     expect(screen.getByLabelText("选区字体")).toBeInTheDocument();
     expect(screen.getByLabelText("选区字号")).toBeInTheDocument();
     // 悬浮工具栏的拾色器是紧凑「色块 + 箭头」入口（色块行在展开面板里）
@@ -436,7 +355,12 @@ describe("RichTextEditor presets", () => {
     fireEvent.click(screen.getByRole("button", { name: "全选" }));
     await waitFor(() =>
       expect(
-        editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, "", ""),
+        editor.state.doc.textBetween(
+          editor.state.selection.from,
+          editor.state.selection.to,
+          "",
+          "",
+        ),
       ).toBe(editor.state.doc.textContent),
     );
 
@@ -458,22 +382,15 @@ describe("RichTextEditor presets", () => {
       },
     };
     const { rerender } = render(
-      <RichTextEditor
-        {...props}
-        content={{ type: "doc", content: [] }}
-      />,
+      <RichTextEditor {...props} content={{ type: "doc", content: [] }} />,
     );
     await waitFor(() => expect(editorRef.current).not.toBeNull());
 
-    rerender(
-      <RichTextEditor {...props} content={defaultDocument.content} />,
-    );
+    rerender(<RichTextEditor {...props} content={defaultDocument.content} />);
     await screen.findByText(/潮声越过旧防波堤/);
 
     expect(editorRef.current?.state.selection.empty).toBe(true);
-    expect(
-      screen.queryByRole("toolbar", { name: "选区格式菜单" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("toolbar", { name: "选区格式菜单" })).not.toBeInTheDocument();
   });
 
   it("移动端长按不会打开右键菜单并保留选区工具栏", async () => {
@@ -493,9 +410,7 @@ describe("RichTextEditor presets", () => {
     const readyEditor = editorRef.current;
     if (!readyEditor) throw new Error("编辑器未初始化");
     readyEditor.commands.setTextSelection({ from: 1, to: 4 });
-    expect(
-      await screen.findByRole("toolbar", { name: "选区格式菜单" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("toolbar", { name: "选区格式菜单" })).toBeInTheDocument();
 
     const contextMenuEvent = new MouseEvent("contextmenu", {
       bubbles: true,
@@ -507,9 +422,7 @@ describe("RichTextEditor presets", () => {
 
     expect(contextMenuEvent.defaultPrevented).toBe(true);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("toolbar", { name: "选区格式菜单" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "选区格式菜单" })).toBeInTheDocument();
   });
 
   it("移动模式使用大尺寸底部工具栏并通过菜单展开工具", async () => {
@@ -524,16 +437,9 @@ describe("RichTextEditor presets", () => {
       />,
     );
 
-    await waitFor(() =>
-      expect(screen.getByLabelText("正文编辑区")).toBeInTheDocument(),
-    );
-    expect(
-      screen.getByRole("toolbar", { name: "富文本工具栏" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "加粗" })).toHaveAttribute(
-      "data-size",
-      "icon-lg",
-    );
+    await waitFor(() => expect(screen.getByLabelText("正文编辑区")).toBeInTheDocument());
+    expect(screen.getByRole("toolbar", { name: "富文本工具栏" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "加粗" })).toHaveAttribute("data-size", "icon-lg");
     fireEvent.click(screen.getByRole("button", { name: "发布" }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
     fireEvent.pointerDown(screen.getByRole("button", { name: "插入内容" }), {
@@ -586,15 +492,9 @@ describe("RichTextEditor presets", () => {
     fireEvent.change(within(linkDialog).getByLabelText("链接地址"), {
       target: { value: "https://example.com/mobile" },
     });
-    fireEvent.click(
-      within(linkDialog).getByRole("button", { name: "插入链接" }),
-    );
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
-    expect(readyEditor.getAttributes("link").href).toBe(
-      "https://example.com/mobile",
-    );
+    fireEvent.click(within(linkDialog).getByRole("button", { name: "插入链接" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(readyEditor.getAttributes("link").href).toBe("https://example.com/mobile");
   });
 
   it("只读状态同步到 ProseMirror，空的紧凑插入菜单不渲染", async () => {
@@ -610,10 +510,7 @@ describe("RichTextEditor presets", () => {
       </>,
     );
     await waitFor(() =>
-      expect(screen.getByLabelText("正文编辑区")).toHaveAttribute(
-        "contenteditable",
-        "false",
-      ),
+      expect(screen.getByLabelText("正文编辑区")).toHaveAttribute("contenteditable", "false"),
     );
     expect(container.querySelectorAll('[role="toolbar"]')).toHaveLength(1);
   });
@@ -629,26 +526,15 @@ describe("RichTextEditor presets", () => {
       />,
     );
     await waitFor(() =>
-      expect(screen.getByLabelText("正文编辑区")).toHaveAttribute(
-        "contenteditable",
-        "false",
-      ),
+      expect(screen.getByLabelText("正文编辑区")).toHaveAttribute("contenteditable", "false"),
     );
     onChange.mockClear();
 
     rerender(
-      <RichTextEditor
-        content={defaultDocument.content}
-        mode="full"
-        editable
-        onChange={onChange}
-      />,
+      <RichTextEditor content={defaultDocument.content} mode="full" editable onChange={onChange} />,
     );
     await waitFor(() =>
-      expect(screen.getByLabelText("正文编辑区")).toHaveAttribute(
-        "contenteditable",
-        "true",
-      ),
+      expect(screen.getByLabelText("正文编辑区")).toHaveAttribute("contenteditable", "true"),
     );
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -656,11 +542,7 @@ describe("RichTextEditor presets", () => {
   it("宿主切换版本时无事件地同步受控正文", async () => {
     const onChange = vi.fn();
     const { rerender } = render(
-      <RichTextEditor
-        content={defaultDocument.content}
-        mode="full"
-        onChange={onChange}
-      />,
+      <RichTextEditor content={defaultDocument.content} mode="full" onChange={onChange} />,
     );
     await screen.findByText("雾港来信：第三章讨论与校订");
     onChange.mockClear();
@@ -674,9 +556,7 @@ describe("RichTextEditor presets", () => {
         },
       ],
     };
-    rerender(
-      <RichTextEditor content={replacement} mode="full" onChange={onChange} />,
-    );
+    rerender(<RichTextEditor content={replacement} mode="full" onChange={onChange} />);
 
     expect(await screen.findByText("回滚后的正文")).toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
@@ -735,9 +615,7 @@ describe("RichTextEditor presets", () => {
     // 2. 点「颜色」菜单项 → 独立取色弹层（含 SV 矩形）
     fireEvent.click(within(menu).getByRole("menuitem", { name: /^颜色$/ }));
     const panel = await screen.findByLabelText("拾色器");
-    expect(
-      within(panel).getByRole("slider", { name: "饱和度与亮度" }),
-    ).toBeInTheDocument();
+    expect(within(panel).getByRole("slider", { name: "饱和度与亮度" })).toBeInTheDocument();
     // 3. 面板内已存色块点击应用
     fireEvent.click(within(panel).getByLabelText("文字颜色 #197c73"));
     expect(readyEditor.getAttributes("textStyle").color).toBe("#197c73");
