@@ -46,7 +46,7 @@ const interactiveDocument: JSONContent = {
     },
     {
       type: 'novelExcerpt',
-      attrs: { bookTitle: 'Rice Book', chapterTitle: 'Chapter 1', author: 'Writer', sourceUrl: 'https://example.com/book', variant: 'mobile-book' },
+      attrs: { bookTitle: 'Rice Book', chapterTitle: 'Chapter 1', author: 'Writer', sourceUrl: 'https://example.com/book', variant: 'fanqie' },
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Excerpt body' }] }],
     },
     {
@@ -287,7 +287,7 @@ describe('RichTextViewer', () => {
     await screen.findByText('Hidden chapter')
     expect(screen.getByText('archive.zip').closest('button')).toBeDisabled()
     expect(screen.getByRole('button', { name: /One\s*0 votes/u })).toBeDisabled()
-    expect(screen.getByText('Source')).toHaveAttribute('href', 'https://example.com/book')
+    expect(screen.getByText('《Rice Book》')).toHaveAttribute('href', 'https://example.com/book')
   })
 
   it('opens the gallery and supports toolbar, keyboard, wheel, and drag controls', async () => {

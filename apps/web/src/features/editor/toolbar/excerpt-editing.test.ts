@@ -5,9 +5,9 @@ import { getExcerptEditTarget, updateExcerptMetadata } from "./excerpt-editing";
 
 const editors: Editor[] = [];
 afterEach(() => { editors.splice(0).forEach((editor) => editor.destroy()); });
-function createEditor() {
+function createEditor(variant = "qidian") {
   const editor = new Editor({ extensions: editorExtensions(), content: {
-    type: "doc", content: [{ type: "novelExcerpt", attrs: { bookTitle: "Book", variant: "mobile-book", readerTime: "22:05", batteryLevel: 0, pageLabel: "88/100", progressLabel: "88%", headerLabel: "Custom" }, content: [
+    type: "doc", content: [{ type: "novelExcerpt", attrs: { bookTitle: "Book", variant, readerTime: "22:05", batteryLevel: 0, pageLabel: "88/100", progressLabel: "88%", headerLabel: "Custom" }, content: [
       { type: "paragraph", content: [{ type: "text", text: "Bold", marks: [{ type: "bold" }] }] },
       { type: "paragraph", content: [{ type: "text", text: "Link", marks: [{ type: "link", attrs: { href: "https://example.com" } }] }] },
     ] }, { type: "paragraph", content: [{ type: "text", text: "Outside" }] }],
@@ -22,7 +22,7 @@ describe("excerpt metadata editing", () => {
     editor.commands.setTextSelection(3);
     const target = getExcerptEditTarget(editor)!;
     expect(target.initial.bookTitle).toBe("Book");
-    expect(target.initial.variant).toBe("mobile-book");
+    expect(target.initial.variant).toBe("qidian");
     expect(target.initial).toMatchObject({ readerTime: "22:05", batteryLevel: "0", pageLabel: "88/100", progressLabel: "88%", headerLabel: "Custom" });
     const original = editor.getJSON();
     const content = original.content![0]!.content;
@@ -37,6 +37,17 @@ describe("excerpt metadata editing", () => {
     expect(editor.getJSON()).toEqual(original);
     expect(editor.commands.redo()).toBe(true);
     expect(editor.getJSON()).toEqual(updated);
+  });
+
+  it("normalizes historical variants when reading and saving metadata without replacing content", () => {
+    const editor = createEditor("forum-evidence");
+    editor.commands.setNodeSelection(0);
+    const target = getExcerptEditTarget(editor)!;
+    expect(target.initial.variant).toBe("fanqie");
+    const body = editor.getJSON().content![0]!.content;
+    expect(updateExcerptMetadata(editor, target, { author: "Updated" })).toBe(true);
+    expect(editor.getJSON().content![0]!.attrs).toMatchObject({ variant: "fanqie", bookTitle: "Book", author: "Updated", readerTime: "22:05" });
+    expect(editor.getJSON().content![0]!.content).toEqual(body);
   });
 
   it("recognizes a selected excerpt and ignores cursors outside it", () => {

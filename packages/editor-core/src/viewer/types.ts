@@ -102,8 +102,6 @@ export interface RichTextViewerLabels {
   coins: string;
   /** 附加到票数总计后的投票单位。 */
   votes: string;
-  /** 可选小说摘录来源链接的标签。 */
-  source: string;
   /** 灯箱关闭控件。 */
   closeImage: string;
   /** 灯箱上一张图片控件。 */
@@ -155,7 +153,6 @@ export const defaultLabels: RichTextViewerLabels = {
   purchase: "Purchase",
   coins: "coins",
   votes: "votes",
-  source: "Source",
   closeImage: "Close image",
   previousImage: "Previous image",
   nextImage: "Next image",

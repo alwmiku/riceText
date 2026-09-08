@@ -16,7 +16,7 @@ describe("ExcerptDialog", () => {
     render(<ExcerptDialog open onOpenChange={vi.fn()} onInsert={onInsert} />);
     for (const label of ["书名", "章节", "作者", "摘录正文"]) expect(screen.getByLabelText(label)).toHaveValue("");
     expect(screen.getByLabelText("排版")).toHaveValue("fanqie");
-    expect(screen.getAllByRole("option")).toHaveLength(5);
+    expect(screen.getAllByRole("option").map((option) => (option as HTMLOptionElement).value)).toEqual(["fanqie", "qidian"]);
     const submit = screen.getByRole("button", { name: "插入摘录" });
     change("摘录正文", "First\nSecond".replace("\n", String.fromCharCode(10)));
     expect(submit).toBeDisabled();
@@ -48,7 +48,7 @@ describe("ExcerptDialog", () => {
       change("来源链接（可选）", url);
       expect(submit).toBeEnabled();
     }
-    for (const variant of ["fanqie", "qidian", "desktop-book", "mobile-book", "forum-evidence"]) {
+    for (const variant of ["fanqie", "qidian"]) {
       change("排版", variant);
       await waitFor(() => expect(screen.getByRole("region", { name: "摘录预览" }).querySelector("[data-variant]")).toHaveAttribute("data-variant", variant));
     }
@@ -65,12 +65,13 @@ describe("ExcerptDialog", () => {
     expect(screen.getByLabelText("书名")).toHaveValue("");
     view.rerender(<ExcerptDialog open={false} {...props} />);
     view.rerender(<ExcerptDialog open {...props} initial={{ ...emptyExcerptValues, variant: "mobile-book" }} existingContent={[{ type: "paragraph", content: [{ type: "text", text: "Rich text", marks: [{ type: "bold" }] }] }]} />);
+    expect(screen.getByLabelText("排版")).toHaveValue("fanqie");
     expect(screen.queryByLabelText("摘录正文")).not.toBeInTheDocument();
     expect(screen.getByText("Rich text").closest("strong")).not.toBeNull();
     expect(screen.getByRole("button", { name: "保存修改" })).toBeEnabled();
     change("作者", "Author");
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
-    expect(props.onInsert).toHaveBeenCalledWith({ ...emptyExcerptValues, variant: "mobile-book", author: "Author" });
+    expect(props.onInsert).toHaveBeenCalledWith({ ...emptyExcerptValues, variant: "fanqie", author: "Author" });
   });
 
   it("keeps a failed metadata save open", () => {
@@ -95,8 +96,8 @@ describe("ExcerptDialog", () => {
     change("电量（%）", "42");
     change("排版", "qidian");
     expect(screen.getByLabelText("电量（%）")).toHaveValue(42);
-    change("排版", "desktop-book");
-    expect(screen.queryByLabelText("电量（%）")).not.toBeInTheDocument();
+    change("排版", "fanqie");
+    expect(screen.getByLabelText("电量（%）")).toHaveValue(42);
     change("书名", "Book");
     change("摘录正文", "Text");
     fireEvent.click(screen.getByRole("button", { name: "插入摘录" }));

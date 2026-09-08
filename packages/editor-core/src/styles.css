@@ -517,45 +517,12 @@
   cursor: pointer;
 }
 
-.rt-novel-excerpt {
-  margin: 22px 0;
-  padding: 18px 20px;
-  background: var(--rt-subtle);
-  border-left: 4px solid var(--rt-primary);
-}
-
 .rt-novel-excerpt.ProseMirror-selectednode {
-  background: var(--rt-selected-bg);
-  border-left-color: var(--rt-selected-border);
   outline: 2px solid var(--rt-selected-border);
   outline-offset: 2px;
   box-shadow: 0 0 0 4px rgb(15 118 110 / 12%);
 }
 
-.rt-novel-excerpt header {
-  display: grid;
-  gap: 2px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--rt-border);
-}
-
-.rt-novel-excerpt header span,
-.rt-novel-excerpt header small {
-  color: var(--rt-muted);
-}
-
-.rt-novel-excerpt--mobile-book {
-  max-width: 430px;
-  margin-right: auto;
-  margin-left: auto;
-  font-family: "Noto Serif SC", serif;
-  line-height: 1.95;
-}
-
-.rt-novel-excerpt--forum-evidence {
-  background: #f2f5f8;
-  border-left-color: #536579;
-}
 
 /* 截图式阅读页：页面信息和段落节奏遵循平台样式。 */
 .rt-novel-excerpt:is(.rt-novel-excerpt--fanqie, .rt-novel-excerpt--qidian) {

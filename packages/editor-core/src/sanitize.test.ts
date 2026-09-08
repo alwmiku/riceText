@@ -238,7 +238,7 @@ describe('document sanitization', () => {
     expect(result.document.content?.[3]?.content?.[1]?.attrs).toMatchObject({ rolls: [0, -1_000_000, 4], total: 0, rerollOf: null })
     expect(result.document.content?.[3]?.content?.[2]?.attrs).toMatchObject({ userId: null, resolved: false, avatarUrl: null })
     expect(result.document.content?.[4]?.attrs).toMatchObject({ assetId: null, src: '', align: 'center', width: 10 })
-    expect(result.document.content?.[5]?.attrs).toMatchObject({ sourceUrl: null, variant: 'desktop-book' })
+    expect(result.document.content?.[5]?.attrs).toMatchObject({ sourceUrl: null, variant: 'fanqie' })
     expect(result.document.content?.[6]?.content?.[0]?.type).toBe('paragraph')
     expect(result.document.content?.[7]?.attrs).toMatchObject({ size: 0, priceCoins: 1_000_000_000 })
     expect(result.document.content?.[8]?.attrs).toMatchObject({ multiple: false, options: [{ id: 'yes', label: 'Yes' }] })

@@ -33,7 +33,7 @@ describe('editorExtensions', () => {
     assertInsertion('diceRoll', (editor) => editor.commands.insertDiceRoll({ rollId: 'r1', expression: '3d5', rolls: [3, 4, 5], total: 12, rerollOf: null }))
     assertInsertion('mention', (editor) => editor.commands.insertMention({ userId: 'u1', name: 'Lin', resolved: true, avatarUrl: null }))
     assertInsertion('richImage', (editor) => editor.commands.insertRichImage({ assetId: 'a1', src: '/uploads/a.png', alt: 'A', caption: '', align: 'center', width: 100 }))
-    assertInsertion('novelExcerpt', (editor) => editor.commands.insertNovelExcerpt({ bookTitle: 'Book', chapterTitle: 'Chapter', author: 'Author', sourceUrl: null, variant: 'desktop-book' }))
+    assertInsertion('novelExcerpt', (editor) => editor.commands.insertNovelExcerpt({ bookTitle: 'Book', chapterTitle: 'Chapter', author: 'Author', sourceUrl: null, variant: 'fanqie' }))
     assertInsertion('replyGate', (editor) => editor.commands.insertReplyGate({ gateId: 'g1', prompt: 'Reply first' }))
     assertInsertion('attachmentRef', (editor) => editor.commands.insertAttachmentRef({ attachmentId: 'f1', name: 'file.txt', mimeType: 'text/plain', size: 4, priceCoins: 0 }))
     assertInsertion('pollRef', (editor) => editor.commands.insertPollRef({ pollId: 'p1', question: 'Choose', multiple: false, options: [{ id: 'o1', label: 'One' }] }))
@@ -59,7 +59,7 @@ describe('editorExtensions', () => {
           <span data-node-type="mention" data-user-id="u1" data-name="Lin" data-resolved="true" data-avatar-url="/uploads/avatar.png"></span>
         </p>
         <figure data-node-type="rich-image" data-asset-id="a1" data-align="right" data-width="65"><img src="/uploads/a.png" alt="Alt"><figcaption>Caption</figcaption></figure>
-        <aside data-node-type="novel-excerpt" data-book-title="Book" data-chapter-title="Chapter" data-author="Author" data-source-url="https://example.com/book" data-variant="mobile-book"><p>Excerpt</p></aside>
+        <aside data-node-type="novel-excerpt" data-book-title="Book" data-chapter-title="Chapter" data-author="Author" data-source-url="https://example.com/book" data-variant="fanqie"><p>Excerpt</p></aside>
         <section data-node-type="reply-gate" data-gate-id="g1" data-prompt="Reply first"><p>Secret</p></section>
         <div data-node-type="attachment-ref" data-attachment-id="f1" data-name="file.txt" data-mime-type="text/plain" data-size="2048" data-price-coins="8"></div>
         <section data-node-type="poll-ref" data-poll-id="p1" data-question="Choose" data-multiple="true" data-options='[{"id":"o1","label":"One"}]'></section>
@@ -78,7 +78,7 @@ describe('editorExtensions', () => {
     expect(nodes.get('diceRoll')?.attrs).toMatchObject({ rollId: 'roll-1', rolls: [3, 4, 5], total: 12, rerollOf: 'old-roll' })
     expect(nodes.get('mention')?.attrs).toMatchObject({ userId: 'u1', resolved: true, avatarUrl: '/uploads/avatar.png' })
     expect(nodes.get('richImage')?.attrs).toMatchObject({ assetId: 'a1', src: '/uploads/a.png', caption: 'Caption', align: 'right', width: 65 })
-    expect(nodes.get('novelExcerpt')?.attrs).toMatchObject({ sourceUrl: 'https://example.com/book', variant: 'mobile-book' })
+    expect(nodes.get('novelExcerpt')?.attrs).toMatchObject({ sourceUrl: 'https://example.com/book', variant: 'fanqie' })
     expect(nodes.get('replyGate')?.attrs).toMatchObject({ gateId: 'g1', prompt: 'Reply first' })
     expect(nodes.get('attachmentRef')?.attrs).toMatchObject({ size: 2048, priceCoins: 8 })
     expect(nodes.get('pollRef')?.attrs).toMatchObject({ multiple: true, options: [{ id: 'o1', label: 'One' }] })
@@ -124,7 +124,7 @@ describe('editorExtensions', () => {
     expect(find('diceRoll')?.attrs).toMatchObject({ rolls: [], total: 100_000_000, rerollOf: null })
     expect(find('mention')?.attrs).toMatchObject({ resolved: false, avatarUrl: null })
     expect(find('richImage')?.attrs).toMatchObject({ src: '', align: 'center', width: 10 })
-    expect(find('novelExcerpt')?.attrs).toMatchObject({ sourceUrl: null, variant: 'desktop-book' })
+    expect(find('novelExcerpt')?.attrs).toMatchObject({ sourceUrl: null, variant: 'fanqie' })
     expect(find('replyGate')?.attrs).toMatchObject({ prompt: 'Reply to view this content' })
     expect(find('attachmentRef')?.attrs).toMatchObject({ size: 0, priceCoins: 0 })
     expect(find('pollRef')?.attrs).toMatchObject({ multiple: false, options: [] })

@@ -290,11 +290,6 @@ function ReplyGateNodeView({ node, viewerRef }: ViewerNodeProps) {
   );
 }
 
-function ViewerNovelExcerptNodeView({ node, viewerRef }: ViewerNodeProps) {
-  const viewer = useViewerContext(viewerRef);
-  return <NovelExcerptNodeView attrs={node.attrs as unknown as NovelExcerptAttributes} sourceLabel={viewer.labels.source} />;
-}
-
 /** 为结构组合添加只读 React NodeView 和黑幕渲染。 */
 export function addViewerNodeViews(
   extensions: Extensions,
@@ -363,7 +358,7 @@ export function addViewerNodeViews(
         return NovelExcerpt.extend({
           addNodeView: () =>
             ReactNodeViewRenderer(({ node }) => (
-              <ViewerNovelExcerptNodeView node={node} viewerRef={viewerRef} />
+              <NovelExcerptNodeView attrs={node.attrs as unknown as NovelExcerptAttributes} />
             )),
         });
       case "spoiler":

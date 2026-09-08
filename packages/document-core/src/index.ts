@@ -5,6 +5,7 @@ export * from "./chapters/index.js";
 export { parseInteger, parseJsonArray } from "./helpers.js";
 export * from "./nodes.js";
 export * from "./reader-excerpt.js";
+export * from "./novel-excerpt-variant.js";
 export * from "./paragraph-indent.js";
 export {
   chapterStartExtension,

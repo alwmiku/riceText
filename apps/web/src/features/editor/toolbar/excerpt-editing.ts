@@ -1,5 +1,6 @@
 import type { Editor, JSONContent } from "@ricetext/editor-core";
 import type { Node } from "@tiptap/pm/model";
+import { normalizeNovelExcerptVariant } from "@ricetext/document-core";
 import { NodeSelection } from "@tiptap/pm/state";
 import { emptyExcerptValues, type ExcerptValues } from "../dialogs/excerpt-values";
 
@@ -29,6 +30,7 @@ export function getExcerptEditTarget(editor: Editor): ExcerptEditTarget | null {
   for (const key of ["bookTitle", "chapterTitle", "author", "sourceUrl", "variant", "readerTime", "pageLabel", "progressLabel", "headerLabel"] as const) {
     if (typeof match.node.attrs[key] === "string") initial[key] = match.node.attrs[key];
   }
+  initial.variant = normalizeNovelExcerptVariant(initial.variant);
   if (typeof match.node.attrs.batteryLevel === "number") initial.batteryLevel = String(match.node.attrs.batteryLevel);
   return { ...match, initial, content: match.node.toJSON().content ?? [] };
 }
@@ -37,7 +39,7 @@ export function updateExcerptMetadata(editor: Editor, target: ExcerptEditTarget,
   // 拒绝过期目标，避免文档变化后误改其他节点。
   if (editor.state.doc.nodeAt(target.pos) !== target.node) return false;
   return editor.chain().focus().command(({ tr }) => {
-    tr.setNodeMarkup(target.pos, undefined, { ...target.node.attrs, ...attrs });
+    tr.setNodeMarkup(target.pos, undefined, { ...target.node.attrs, ...attrs, variant: normalizeNovelExcerptVariant("variant" in attrs ? attrs.variant : target.node.attrs.variant) });
     return true;
   }).run();
 }

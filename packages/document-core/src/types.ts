@@ -47,12 +47,7 @@ export interface DiceRollAttributes {
 }
 
 /** 用于可搜索小说摘录的视觉模板。 */
-export type NovelExcerptVariant =
-  | "fanqie"
-  | "qidian"
-  | "mobile-book"
-  | "desktop-book"
-  | "forum-evidence";
+export type NovelExcerptVariant = "fanqie" | "qidian";
 
 /** 由 `novelExcerpt` 块持久化的元数据。 */
 export interface NovelExcerptAttributes {

@@ -57,6 +57,7 @@ async function createExcerpt(page: Page, isMobile: boolean, variant: string, bod
   } else await page.getByRole("button", { name: "小说摘录", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "插入小说摘录", exact: true });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("combobox", { name: "排版", exact: true }).locator("option")).toHaveText(["番茄轻小说", "起点读书"]);
   await expect(dialog.getByRole("button", { name: "插入摘录", exact: true })).toBeDisabled();
   await dialog.getByLabel("书名", { exact: true }).fill(book);
   await dialog.getByLabel("章节", { exact: true }).fill(chapter);

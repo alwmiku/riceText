@@ -1,5 +1,5 @@
 import { useId, useState, type ChangeEvent } from "react";
-import { currentReaderTime } from "@ricetext/document-core";
+import { currentReaderTime, normalizeNovelExcerptVariant } from "@ricetext/document-core";
 import { RichTextViewer, type JSONContent } from "@ricetext/editor-core";
 import { Button, Dialog } from "../../../components/ui";
 import { Input } from "../../../components/ui/input";
@@ -23,19 +23,18 @@ export function ExcerptDialog(props: ExcerptDialogProps) {
 }
 
 function ExcerptDialogForm({ open, onOpenChange, onInsert, initial, existingContent }: ExcerptDialogProps) {
-  const [values, setValues] = useState<ExcerptValues>(() => initial ? { ...emptyExcerptValues, ...initial } : createExcerptValues());
+  const [values, setValues] = useState<ExcerptValues>(() => initial ? { ...emptyExcerptValues, ...initial, variant: normalizeNovelExcerptVariant(initial.variant) } : createExcerptValues());
   const [saveError, setSaveError] = useState(false);
   const id = useId();
   const editing = initial !== undefined;
   const validUrl = isExcerptSourceUrlValid(values.sourceUrl);
-  const readerTemplate = values.variant === "fanqie" || values.variant === "qidian";
-  const validBattery = !readerTemplate || isExcerptBatteryValid(values.batteryLevel);
+  const validBattery = isExcerptBatteryValid(values.batteryLevel);
   const canSubmit = validUrl && validBattery && (editing || Boolean(values.bookTitle.trim() && values.text.trim()));
   const field = (key: keyof ExcerptValues) => ({
     value: values[key],
     onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
       setValues((current) => {
-        const next = { ...current, [key]: event.target.value };
+        const next = { ...current, [key]: key === "variant" ? normalizeNovelExcerptVariant(event.target.value) : event.target.value };
         if (key === "variant" && !editing) {
           const previousDefaults = readerDisplayDefaults(current.variant);
           const nextDefaults = readerDisplayDefaults(event.target.value);
@@ -95,13 +94,10 @@ function ExcerptDialogForm({ open, onOpenChange, onInsert, initial, existingCont
               <select aria-label="排版" className="h-8 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" {...field("variant")}>
                 <option value="fanqie">番茄轻小说</option>
                 <option value="qidian">起点读书</option>
-                <option value="desktop-book">通用书站 · 桌面</option>
-                <option value="mobile-book">通用书站 · 手机</option>
-                <option value="forum-evidence">论坛证据</option>
               </select>
             </label>
           </div>
-          {readerTemplate && <fieldset className="flex min-w-0 flex-col gap-3">
+          <fieldset className="flex min-w-0 flex-col gap-3">
             <legend className="mb-2 text-xs font-semibold">阅读页信息</legend>
             <label className="flex min-w-0 flex-col gap-1.5 text-xs font-semibold" data-invalid={!validBattery || undefined}>
               电量（%）
@@ -112,7 +108,7 @@ function ExcerptDialogForm({ open, onOpenChange, onInsert, initial, existingCont
               顶部信息
               <Input maxLength={80} placeholder={values.variant === "fanqie" ? "00:24得991金币" : "起点热评"} {...field("headerLabel")} />
             </label>
-          </fieldset>}
+          </fieldset>
           <label className="flex flex-col gap-1.5 text-xs font-semibold" data-invalid={!validUrl || undefined}>
             来源链接（可选）
             <Input type="url" maxLength={2048} placeholder="https://example.com/chapter" {...field("sourceUrl")} aria-invalid={!validUrl} aria-describedby={!validUrl ? id + "-url-error" : undefined} />

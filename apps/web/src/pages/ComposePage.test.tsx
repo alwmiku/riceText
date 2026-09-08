@@ -535,7 +535,7 @@ describe('ComposePage', () => {
     expect(await screen.findByText('章节已保存为版本 1')).toBeInTheDocument();
   });
 
-  it('移动章节按钮默认收边，上滑或选中文字时展开，下滑时收起', async () => {
+  it('移动章节按钮默认收边，文字上移时收起，下移或选中文字时展开', async () => {
     Object.defineProperty(window, 'scrollY', {
       configurable: true,
       writable: true,
@@ -548,11 +548,11 @@ describe('ComposePage', () => {
 
     window.scrollY = 160;
     fireEvent.scroll(window);
-    expect(trigger).toHaveAttribute('data-revealed', 'true');
+    expect(trigger).toHaveAttribute('data-revealed', 'false');
 
     window.scrollY = 100;
     fireEvent.scroll(window);
-    expect(trigger).toHaveAttribute('data-revealed', 'false');
+    expect(trigger).toHaveAttribute('data-revealed', 'true');
 
     const editor = screen.getByLabelText('正文编辑区');
     const anchorNode = editor.querySelector('button')?.firstChild ?? editor;

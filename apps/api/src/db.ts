@@ -201,7 +201,7 @@ const seedDocument = {
     { type: "paragraph", content: [{ type: "text", text: "他在抽屉底层找到一张陌生的船票。日期是明天，航线却早已停运多年。票根背面用铅笔写着：如果你看到这封信，请把它送回钟楼。" }] },
     { type: "paragraph", content: [{ type: "text", text: "调查检定 " }, { type: "diceRoll", attrs: { rollId: "roll_seed", expression: "3d5", rolls: [4, 3, 5], total: 12, rerollOf: null } }, { type: "text", text: "，线索足够。" }] },
     { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "第三章 没有寄件人的信" }] },
-    { type: "novelExcerpt", attrs: { variant: "desktop-book", bookTitle: "雾港来信", chapterTitle: "第三章 没有寄件人的信", author: "林见", sourceUrl: "https://example.com/books/mist-harbor" }, content: [{ type: "paragraph", content: [{ type: "text", text: "如果明天仍有雾，就沿着钟声的方向走。" }] }] },
+    { type: "novelExcerpt", attrs: { variant: "fanqie", bookTitle: "雾港来信", chapterTitle: "第三章 没有寄件人的信", author: "林见", sourceUrl: "https://example.com/books/mist-harbor" }, content: [{ type: "paragraph", content: [{ type: "text", text: "如果明天仍有雾，就沿着钟声的方向走。" }] }] },
     { type: "paragraph", content: [{ type: "text", text: "第三扇窗的窗台积着薄灰，玻璃内侧贴着一封没有寄件人的信。这一句包含结局线索，请谨慎查看。", marks: [{ type: "spoiler" }] }] },
     { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "第四章 待发布" }] },
     { type: "paragraph", content: [{ type: "text", text: "这一章还躺在作者的抽屉里，只有一张潮汐表的复印件，和一句没来得及写下的开头。" }] },

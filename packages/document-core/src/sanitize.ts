@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/core'
+import { normalizeNovelExcerptVariant } from './novel-excerpt-variant.js'
 import { isParagraphIndent } from './paragraph-indent.js'
 import {
   ALLOWED_DOCUMENT_FONT_FAMILIES,
@@ -289,7 +290,7 @@ function sanitizeNodeAttributes(type: string, raw: Record<string, unknown>, path
       const attrs: NovelExcerptAttributes = {
         bookTitle: stringValue(raw.bookTitle, 300), chapterTitle: stringValue(raw.chapterTitle, 300), author: stringValue(raw.author, 200),
         sourceUrl: safeLinkUrl(raw.sourceUrl, `${path}.attrs.sourceUrl`),
-        variant: raw.variant === 'fanqie' || raw.variant === 'qidian' || raw.variant === 'mobile-book' || raw.variant === 'forum-evidence' ? raw.variant : 'desktop-book',
+        variant: normalizeNovelExcerptVariant(raw.variant),
         readerTime: stringValue(raw.readerTime, 16),
         batteryLevel: finiteInteger(raw.batteryLevel, 100, 0, 100),
         pageLabel: stringValue(raw.pageLabel, 40, '1/1'),

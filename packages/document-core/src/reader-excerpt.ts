@@ -1,14 +1,12 @@
 import type { DOMOutputSpec } from "@tiptap/pm/model";
 import { sanitizeUrl } from "./sanitize.js";
+import { normalizeNovelExcerptVariant } from "./novel-excerpt-variant.js";
 
 // 空气泡属于平台阅读页装饰，不代表论坛评论或回复数量。
 export const READER_PLATFORM_POLICY = {
   fanqie: { name: "番茄轻小说", emptyBubble: false },
   qidian: { name: "起点读书", emptyBubble: true },
 } as const;
-export function isReaderPlatform(value: unknown): value is keyof typeof READER_PLATFORM_POLICY {
-  return value === "fanqie" || value === "qidian";
-}
 
 export function currentReaderTime(date = new Date()): string {
   return String(date.getHours()).padStart(2, "0") + ":" + String(date.getMinutes()).padStart(2, "0");
@@ -27,7 +25,7 @@ export function readerBookTitle(value: unknown): string {
 }
 
 export function readerDisplay(attrs: Record<string, unknown>) {
-  const qidian = attrs.variant === "qidian";
+  const qidian = normalizeNovelExcerptVariant(attrs.variant) === "qidian";
   const level = Number(attrs.batteryLevel ?? 100);
   return {
     time: String(attrs.readerTime ?? ""),
@@ -53,7 +51,7 @@ export function readerTop(attrs: Record<string, unknown>): DOMOutputSpec[] {
       url ? ["a", { href: url, target: "_blank", rel: "noopener noreferrer nofollow" }, title] : title],
     ["header", { class: "rt-reader-topline", contenteditable: "false" },
       ["span", { class: "rt-reader-chapter" }, ["i", { class: "rt-reader-back", "aria-hidden": "true" }], String(attrs.chapterTitle || attrs.bookTitle || "")],
-      ["span", { class: "rt-reader-header-label", title: display.header }, ["span", { class: "rt-reader-header-text" }, display.header], ...(attrs.variant === "fanqie" ? [["i", { class: "rt-reader-next", "aria-hidden": "true" }] as DOMOutputSpec] : [])],
+      ["span", { class: "rt-reader-header-label", title: display.header }, ["span", { class: "rt-reader-header-text" }, display.header], ...(normalizeNovelExcerptVariant(attrs.variant) === "fanqie" ? [["i", { class: "rt-reader-next", "aria-hidden": "true" }] as DOMOutputSpec] : [])],
     ],
   ];
 }
@@ -63,7 +61,7 @@ export function readerBottom(attrs: Record<string, unknown>, pagination: ReaderP
   return ["footer", { class: "rt-reader-bottomline", contenteditable: "false" },
     ["span", { class: "rt-reader-progress", "aria-live": "polite", "aria-atomic": "true" },
       String(page.index + 1) + "/" + page.count,
-      ...(attrs.variant === "qidian" ? [["span", {}, Math.round((page.index + 1) / page.count * 100) + "%"] as DOMOutputSpec] : [])],
+      ...(normalizeNovelExcerptVariant(attrs.variant) === "qidian" ? [["span", {}, Math.round((page.index + 1) / page.count * 100) + "%"] as DOMOutputSpec] : [])],
     ["span", { class: "rt-reader-clock" }, display.time, battery(display.battery)],
   ];
 }

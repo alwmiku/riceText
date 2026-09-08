@@ -1,5 +1,5 @@
 import type { JSONContent } from "@ricetext/editor-core";
-import { currentReaderTime } from "@ricetext/document-core";
+import { currentReaderTime, normalizeNovelExcerptVariant } from "@ricetext/document-core";
 
 export interface ExcerptValues {
   bookTitle: string;
@@ -56,7 +56,7 @@ export function excerptAttributes(values: ExcerptValues) {
     chapterTitle: values.chapterTitle.trim(),
     author: values.author.trim(),
     sourceUrl: values.sourceUrl.trim() || null,
-    variant: values.variant,
+    variant: normalizeNovelExcerptVariant(values.variant),
     readerTime: values.readerTime.trim(),
     batteryLevel: isExcerptBatteryValid(values.batteryLevel) ? Number(values.batteryLevel) : 100,
     pageLabel: values.pageLabel.trim(),

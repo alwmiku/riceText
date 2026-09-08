@@ -1,13 +1,16 @@
 import "@testing-library/jest-dom/vitest";
 import { Editor, type JSONContent } from "@tiptap/core";
+import { EditorContent } from "@tiptap/react";
+import type { NovelExcerptAttributes } from "@ricetext/document-core";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { editorExtensions } from "./extensions.js";
-import { sanitizeDocument } from "./sanitize.js";
+import { sanitizeDocument, validateDocument } from "./sanitize.js";
 import { RichTextViewer } from "./viewer.js";
 
-const variants = ["fanqie", "qidian", "desktop-book", "mobile-book", "forum-evidence"];
-function document(variant: string): JSONContent {
+const variants = ["fanqie", "qidian"];
+const historicalVariants = ["desktop-book", "mobile-book", "forum-evidence", "unknown", undefined];
+function document(variant: unknown): JSONContent {
   return { type: "doc", content: [{ type: "novelExcerpt", attrs: {
     variant, bookTitle: "Book <script>", chapterTitle: "Chapter 2", author: "Author",
     sourceUrl: "https://example.com/chapter",
@@ -41,10 +44,52 @@ describe("reader excerpts", () => {
     editor.destroy();
   });
 
+  it.each(historicalVariants)("normalizes historical JSON, HTML and insertion variant %s without losing text or source", (variant) => {
+    const original = document(variant);
+    const validation = validateDocument(original);
+    expect(validation.issues).toEqual([]);
+    const safe = validation.document;
+    expect(safe.content?.[0]?.attrs).toMatchObject({ variant: "fanqie", bookTitle: "Book <script>", chapterTitle: "Chapter 2", author: "Author", sourceUrl: "https://example.com/chapter" });
+    expect(safe.content?.[0]?.content).toEqual(sanitizeDocument(document("fanqie")).content?.[0]?.content);
+    expect(original.content?.[0]?.attrs?.variant).toBe(variant);
+    const attr = variant === undefined ? "" : ' data-variant="' + variant + '"';
+    const editor = new Editor({ extensions: editorExtensions(), content:
+      '<aside data-node-type="novel-excerpt"' + attr + ' data-book-title="Archive" data-chapter-title="Chapter" data-author="Writer" data-source-url="https://example.com/original"><header>Old heading</header><div class="rt-novel-excerpt__content"><p><strong>Original</strong></p><p>Second</p></div><footer>Old footer</footer></aside>',
+    });
+    try {
+      expect(editor.getJSON().content?.[0]?.attrs).toMatchObject({ variant: "fanqie", bookTitle: "Archive", chapterTitle: "Chapter", author: "Writer", sourceUrl: "https://example.com/original" });
+      expect(editor.state.doc.textContent).toBe("OriginalSecond");
+      expect((editor.getJSON() as JSONContent).content?.[0]?.content?.[0]?.content?.[0]?.marks).toEqual([{ type: "bold" }]);
+      expect(editor.getHTML()).toContain('data-variant="fanqie"');
+      expect(editor.getHTML()).not.toContain("Old footer");
+      editor.commands.setContent("<p></p>");
+      editor.commands.insertNovelExcerpt({ ...original.content![0]!.attrs } as NovelExcerptAttributes, original.content![0]!.content);
+      expect(editor.getJSON().content?.[0]?.attrs?.variant).toBe("fanqie");
+      expect(editor.state.doc.textContent).toBe("First paragraphSecond paragraph");
+    } finally { editor.destroy(); }
+  });
+
+  it("renders raw historical node attrs through the shared fallback without rewriting the document", async () => {
+    const editor = new Editor({ extensions: editorExtensions(), content: document("forum-evidence") });
+    const view = render(<EditorContent editor={editor} />);
+    try {
+      expect(await screen.findByText("《Book <script>》")).toBeVisible();
+      const excerpt = view.container.querySelector(".rt-novel-excerpt");
+      expect(excerpt).toHaveAttribute("data-variant", "fanqie");
+      expect(excerpt).toHaveAttribute("data-empty-bubble", "false");
+      expect(excerpt?.querySelector(".rt-reader-header-label")).toHaveTextContent("00:24得991金币");
+      expect(excerpt?.querySelector(".rt-reader-book-title a")).toHaveAttribute("href", "https://example.com/chapter");
+      expect(excerpt?.querySelectorAll(".rt-novel-excerpt__content p")).toHaveLength(2);
+      expect(excerpt?.querySelector("footer a")).toBeNull();
+      expect(editor.getJSON().content?.[0]?.attrs?.variant).toBe("forum-evidence");
+      expect(editor.getHTML()).toContain('data-variant="fanqie"');
+    } finally { view.unmount(); editor.destroy(); }
+  });
+
   it("falls back for unknown presets and strips unsafe sources", () => {
     const content = document("unknown");
     content.content![0]!.attrs!.sourceUrl = "javascript:alert(1)";
-    expect(sanitizeDocument(content).content?.[0]?.attrs).toMatchObject({ variant: "desktop-book", sourceUrl: null });
+    expect(sanitizeDocument(content).content?.[0]?.attrs).toMatchObject({ variant: "fanqie", sourceUrl: null });
   });
 
   it.each(["fanqie", "qidian"])("renders %s linked title and selectable paragraphs", async (variant) => {

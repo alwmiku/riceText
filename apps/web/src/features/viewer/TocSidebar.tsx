@@ -1,6 +1,7 @@
-import { ChevronRight, Menu, PanelLeftOpen, X } from "lucide-react";
+import { ChevronRight, Menu, X } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { Button } from "../../components/ui";
+import { MobileChapterTrigger } from "../../components/MobileChapterTrigger";
 import { TextMarquee } from "../../components/ui/text-marquee";
 
 /** 章节导航项（来自文档切分）。 */
@@ -129,16 +130,7 @@ export function TocSidebar({
         />
       </nav>
 
-      <Button
-        variant="outline"
-        size="icon"
-        aria-label="打开章节目录"
-        aria-expanded={mobileOpen}
-        className="mb-3 ml-2 hidden size-11 max-[840px]:inline-flex"
-        onClick={() => setMobileOpen(true)}
-      >
-        <PanelLeftOpen data-icon="inline-start" />
-      </Button>
+      <MobileChapterTrigger open={mobileOpen} onOpen={() => setMobileOpen(true)} />
 
       {mobileOpen ? (
         <div

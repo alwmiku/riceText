@@ -123,7 +123,7 @@ describe("diffDocuments", () => {
       para("第三段"),
       {
         type: "novelExcerpt",
-        attrs: { bookTitle: "雾港来信", chapterTitle: "第一章", author: "林见", sourceUrl: null, variant: "desktop-book" },
+        attrs: { bookTitle: "雾港来信", chapterTitle: "第一章", author: "林见", sourceUrl: null, variant: "fanqie" },
         content: [para("摘录正文")],
       },
     ]);
@@ -134,7 +134,7 @@ describe("diffDocuments", () => {
       para("第三段"),
       {
         type: "novelExcerpt",
-        attrs: { bookTitle: "雾港来信", chapterTitle: "第一章", author: "林见", sourceUrl: null, variant: "desktop-book" },
+        attrs: { bookTitle: "雾港来信", chapterTitle: "第一章", author: "林见", sourceUrl: null, variant: "fanqie" },
         content: [para("摘录正文修改")],
       },
     ]);

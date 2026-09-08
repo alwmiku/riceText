@@ -40,7 +40,7 @@ export function addMissingParagraphAnchors(doc: JSONContent): JSONContent {
     insideReplyGate = false,
   ): void => {
     // 摘录没有来源平台的评论数据，空气泡通过装饰性 CSS 展示。
-    if (node.type === "novelExcerpt" && (node.attrs?.variant === "fanqie" || node.attrs?.variant === "qidian")) return;
+    if (node.type === "novelExcerpt") return;
     const nextInsideReplyGate = insideReplyGate || node.type === "replyGate";
     if (node.type === "paragraph" && !insideReplyGate) {
       const hasEndAnchor =

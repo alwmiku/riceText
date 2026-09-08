@@ -1,7 +1,8 @@
 import type { MarkConfig, NodeConfig } from "@tiptap/core";
 import { sanitizeUrl } from "./sanitize.js";
+import { normalizeNovelExcerptVariant } from "./novel-excerpt-variant.js";
 import { parseInteger, parseJsonArray } from "./helpers.js";
-import { isReaderPlatform, readerTop, readerBottom, READER_PLATFORM_POLICY } from "./reader-excerpt.js";
+import { readerTop, readerBottom, READER_PLATFORM_POLICY } from "./reader-excerpt.js";
 
 /**
  * 共享的节点/标记规格（单一权威来源）。
@@ -198,13 +199,8 @@ export const novelExcerptNodeSpec = {
         parseHTML: (element: HTMLElement) => element.getAttribute("data-header-label")?.slice(0, 80) ?? "",
       },
       variant: {
-        default: "desktop-book",
-        parseHTML: (element: HTMLElement) =>
-          ["fanqie", "qidian", "mobile-book", "forum-evidence"].includes(
-            element.getAttribute("data-variant") ?? "",
-          )
-            ? element.getAttribute("data-variant")
-            : "desktop-book",
+        default: "fanqie",
+        parseHTML: (element: HTMLElement) => normalizeNovelExcerptVariant(element.getAttribute("data-variant")),
       },
     };
   },
@@ -216,35 +212,26 @@ export const novelExcerptNodeSpec = {
     }];
   },
   renderHTML({ node }: { node: { attrs: Record<string, unknown> } }) {
+    const variant = normalizeNovelExcerptVariant(node.attrs.variant);
+    const attrs: Record<string, unknown> = { ...node.attrs, variant };
     return [
       "aside",
       {
-        class: `rt-novel-excerpt rt-novel-excerpt--${String(node.attrs.variant)}`,
+        class: `rt-novel-excerpt rt-novel-excerpt--${variant}`,
         "data-node-type": "novel-excerpt",
-        "data-book-title": String(node.attrs.bookTitle),
-        "data-chapter-title": String(node.attrs.chapterTitle),
-        "data-author": String(node.attrs.author),
-        "data-source-url": sanitizeUrl(node.attrs.sourceUrl, "link") ?? "",
-        "data-variant": String(node.attrs.variant),
-        "data-reader-time": String(node.attrs.readerTime ?? ""),
-        "data-battery-level": String(node.attrs.batteryLevel ?? 100),
-        "data-page-label": String(node.attrs.pageLabel ?? "1/1"),
-        "data-progress-label": String(node.attrs.progressLabel ?? ""),
-        "data-header-label": String(node.attrs.headerLabel ?? ""),
-        "data-empty-bubble": isReaderPlatform(node.attrs.variant) ? String(READER_PLATFORM_POLICY[node.attrs.variant].emptyBubble) : null,
+        "data-book-title": String(attrs.bookTitle),
+        "data-chapter-title": String(attrs.chapterTitle),
+        "data-author": String(attrs.author),
+        "data-source-url": sanitizeUrl(attrs.sourceUrl, "link") ?? "",
+        "data-variant": variant,
+        "data-reader-time": String(attrs.readerTime ?? ""),
+        "data-battery-level": String(attrs.batteryLevel ?? 100),
+        "data-page-label": String(attrs.pageLabel ?? "1/1"),
+        "data-progress-label": String(attrs.progressLabel ?? ""),
+        "data-header-label": String(attrs.headerLabel ?? ""),
+        "data-empty-bubble": String(READER_PLATFORM_POLICY[variant].emptyBubble),
       },
-      ...(isReaderPlatform(node.attrs.variant) ? [
-        ["div", { class: "rt-reader-page" }, ...readerTop(node.attrs), ["div", { class: "rt-novel-excerpt__content" }, 0], readerBottom(node.attrs)],
-      ] : [["header", { contenteditable: "false" },
-        ...(node.attrs.bookTitle ? [["strong", {}, String(node.attrs.bookTitle)]] : []),
-        ...(node.attrs.chapterTitle ? [["span", {}, String(node.attrs.chapterTitle)]] : []),
-        ...(node.attrs.author ? [["small", {}, String(node.attrs.author)]] : []),
-      ],
-      ["div", { class: "rt-novel-excerpt__content" }, 0],
-      ...(sanitizeUrl(node.attrs.sourceUrl, "link") ? [["footer", { contenteditable: "false" },
-        ["a", { href: sanitizeUrl(node.attrs.sourceUrl, "link"), target: "_blank", rel: "noopener noreferrer nofollow" }, "查看来源"],
-      ]] : []),
-      ]),
+      ["div", { class: "rt-reader-page" }, ...readerTop(attrs), ["div", { class: "rt-novel-excerpt__content" }, 0], readerBottom(attrs)],
     ];
   },
 } satisfies NodeConfig;

@@ -162,7 +162,7 @@ describe("editor dialogs", () => {
       target: { value: "青禾" },
     });
     fireEvent.change(screen.getByLabelText("排版"), {
-      target: { value: "mobile-book" },
+      target: { value: "fanqie" },
     });
     fireEvent.change(screen.getByLabelText("来源链接（可选）"), {
       target: { value: "https://books.example/5" },
@@ -177,7 +177,7 @@ describe("editor dialogs", () => {
       chapterTitle: "第五章",
       author: "青禾",
       sourceUrl: "https://books.example/5",
-      variant: "mobile-book",
+      variant: "fanqie",
       text: "潮水漫过了石阶。",
       readerTime: expect.stringMatching(/^\d{2}:\d{2}$/), batteryLevel: "100", pageLabel: "1/1", progressLabel: "", headerLabel: "",
     });

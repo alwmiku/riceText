@@ -73,7 +73,7 @@ export const defaultDocument: DocumentEnvelope = {
           chapterTitle: "第三章 · 没有寄件人的信",
           author: "林稻",
           sourceUrl: null,
-          variant: "desktop-book",
+          variant: "fanqie",
         },
         content: [
           {

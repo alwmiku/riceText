@@ -226,7 +226,6 @@ export default function ReadPage() {
       purchase: "购买",
       coins: "金币",
       votes: "票",
-      source: "来源",
       closeImage: "关闭图片",
       previousImage: "上一张",
       nextImage: "下一张",
