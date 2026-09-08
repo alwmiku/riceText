@@ -28,8 +28,8 @@ export function createEditorExtensions(
     switch (extension.name) {
       case "novelExcerpt":
         return NovelExcerpt.extend({
-          addNodeView: () => ReactNodeViewRenderer(({ node }) =>
-            createElement(NovelExcerptNodeView, { attrs: node.attrs as unknown as NovelExcerptAttributes, editable: true }),
+          addNodeView: () => ReactNodeViewRenderer(({ node, editor, getPos, selected }) =>
+            createElement(NovelExcerptNodeView, { attrs: node.attrs as unknown as NovelExcerptAttributes, editable: true, editor, getPos, selected }),
           ),
         });
       case "paragraphIndent":

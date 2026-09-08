@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { Editor, type JSONContent } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
 import type { NovelExcerptAttributes } from "@ricetext/document-core";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { editorExtensions } from "./extensions.js";
 import { sanitizeDocument, validateDocument } from "./sanitize.js";
@@ -139,6 +139,43 @@ describe("reader excerpts", () => {
       expect(excerpt?.querySelector("footer a")).toBeNull();
       expect(editor.getJSON().content?.[0]?.attrs?.variant).toBe("forum-evidence");
       expect(editor.getHTML()).toContain('data-variant="fanqie"');
+    } finally {
+      view.unmount();
+      editor.destroy();
+    }
+  });
+
+  it("光标进入摘录正文时显示主题色选中态，离开后移除", async () => {
+    const content: JSONContent = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "外侧正文" }] },
+        document("fanqie").content![0]!,
+        { type: "paragraph", content: [{ type: "text", text: "外侧结尾" }] },
+      ],
+    };
+    const editor = new Editor({ extensions: editorExtensions(), content });
+    const view = render(<EditorContent editor={editor} />);
+    try {
+      await screen.findByText("《Book <script>》");
+      const excerpt = view.container.querySelector(".rt-novel-excerpt")!;
+      expect(excerpt).not.toHaveClass("rt-novel-excerpt--active");
+      let excerptPos = -1;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === "novelExcerpt") {
+          excerptPos = pos;
+          return false;
+        }
+        return true;
+      });
+      await act(async () => {
+        editor.commands.setTextSelection(excerptPos + 2);
+      });
+      expect(excerpt).toHaveClass("rt-novel-excerpt--active");
+      await act(async () => {
+        editor.commands.setTextSelection(1);
+      });
+      expect(excerpt).not.toHaveClass("rt-novel-excerpt--active");
     } finally {
       view.unmount();
       editor.destroy();

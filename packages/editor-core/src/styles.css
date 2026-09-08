@@ -528,10 +528,12 @@
   cursor: pointer;
 }
 
-.rt-novel-excerpt.ProseMirror-selectednode {
+/* 选中的小说摘录：整节点被选中，或光标进入摘录正文时显示主题色描边。 */
+.rt-novel-excerpt:is(.ProseMirror-selectednode, .rt-novel-excerpt--active) {
   outline: 2px solid var(--rt-selected-border);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgb(15 118 110 / 12%);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--rt-primary) 14%, transparent);
+  transition: box-shadow 140ms ease;
 }
 
 /* 截图式阅读页：页面信息和段落节奏遵循平台样式。 */

@@ -1,5 +1,7 @@
 import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
-import { createElement, type ReactNode } from "react";
+import type { Editor } from "@tiptap/core";
+import { NodeSelection } from "@tiptap/pm/state";
+import { createElement, useCallback, useRef, useSyncExternalStore, type ReactNode } from "react";
 import type { DOMOutputSpec } from "@tiptap/pm/model";
 import { normalizeNovelExcerptVariant, readerTop, readerBottom, READER_PLATFORM_POLICY } from "@ricetext/document-core";
 import type { NovelExcerptAttributes } from "./types.js";
@@ -17,16 +19,48 @@ function chrome(spec: DOMOutputSpec, key: number): ReactNode {
   ]));
   return createElement((tag as string).split(" ").at(-1)!, { ...props, key }, ...children.map((child, index) => chrome(child as DOMOutputSpec, index)));
 }
-export function NovelExcerptNodeView({ attrs, editable = false }: {
+/** 选区是否落在该摘录内：整节点被选中，或光标在摘录正文里。 */
+function selectionInsideExcerpt(editor: Editor | null, getPos: (() => number | undefined) | undefined): boolean {
+  if (!editor || !getPos) return false;
+  let pos: number | undefined;
+  try { pos = getPos(); } catch { return false; }
+  if (pos === undefined) return false;
+  const node = editor.state.doc.nodeAt(pos);
+  if (!node || node.type.name !== "novelExcerpt") return false;
+  const { selection } = editor.state;
+  if (selection instanceof NodeSelection) return selection.from === pos;
+  return selection.from > pos && selection.to < pos + node.nodeSize;
+}
+
+/** 摘录是带正文的容器节点，点击只会把光标放进正文，因此按选区位置判断选中态。 */
+function useExcerptActive(editor: Editor | null, getPos: (() => number | undefined) | undefined): boolean {
+  const getPosRef = useRef(getPos);
+  getPosRef.current = getPos;
+  const subscribe = useCallback((onStoreChange: () => void) => {
+    if (!editor) return () => {};
+    editor.on("selectionUpdate", onStoreChange);
+    editor.on("update", onStoreChange);
+    return () => { editor.off("selectionUpdate", onStoreChange); editor.off("update", onStoreChange); };
+  }, [editor]);
+  const getSnapshot = useCallback(() => selectionInsideExcerpt(editor, getPosRef.current), [editor]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
+}
+
+export function NovelExcerptNodeView({ attrs, editable = false, editor = null, getPos, selected = false }: {
   attrs: NovelExcerptAttributes;
   editable?: boolean;
+  editor?: Editor | null;
+  getPos?: () => number | undefined;
+  selected?: boolean;
 }) {
   const sourceUrl = sanitizeUrl(attrs.sourceUrl, "link");
   const variant = normalizeNovelExcerptVariant(attrs.variant);
   const raw = { ...attrs, variant };
   const pagination = useReaderPagination(!editable);
+  const inside = useExcerptActive(editor, getPos);
+  const active = editable && (selected || inside);
   return (
-    <NodeViewWrapper as="aside" className={"rt-novel-excerpt rt-novel-excerpt--" + variant}
+    <NodeViewWrapper as="aside" className={"rt-novel-excerpt rt-novel-excerpt--" + variant + (active ? " rt-novel-excerpt--active" : "")}
       data-node-type="novel-excerpt" data-variant={variant}
       data-page-index={pagination.pages.index} data-page-count={pagination.pages.count}
       data-book-title={attrs.bookTitle} data-chapter-title={attrs.chapterTitle}

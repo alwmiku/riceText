@@ -570,6 +570,12 @@ for (const { variant, name } of templates) {
         await assertExcerpt(inserted, variant, paragraphs, time);
         await expect(inserted).toHaveAttribute("data-page-count", "1");
         await expect(inserted.locator(".rt-reader-progress")).toContainText("1/1");
+        // 选中特效：光标进入摘录正文时给出主题色描边。
+        await inserted.locator(".rt-novel-excerpt__content p").first().click();
+        await expect(inserted).toHaveClass(/rt-novel-excerpt--active/);
+        await expect(inserted).toHaveCSS("outline-style", "solid");
+        await expect(inserted).toHaveCSS("outline-width", "2px");
+        await expect(inserted).toHaveCSS("outline-color", "rgb(15, 118, 110)");
         await assertLayout(page, inserted);
         await screenshot(page, info, directory, "editor");
         await saveAndRead(page, isMobile);
