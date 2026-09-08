@@ -454,6 +454,54 @@ async function assertSourceLink(page: Page, reader: Locator) {
   await popup.close();
 }
 
+test("刺猬猫弹幕箭头在不同字体与小数字号下不溢出也不被裁切", async ({ page, isMobile }, info) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: isMobile ? 320 : 1440, height: isMobile ? 844 : 1000 });
+  const { inserted } = await createExcerpt(page, isMobile, "ciweimao", paragraphs, info);
+  const issues = await inserted.evaluate((root) => {
+    const footer = root.querySelector<HTMLElement>(".rt-reader-bottomline")!;
+    const label = root.querySelector<HTMLElement>(".rt-reader-danmaku")!;
+    const arrow = root.querySelector<HTMLElement>(".rt-reader-chevron-up")!;
+    const originalStyle = footer.getAttribute("style");
+    const failures = [];
+    try {
+      // 覆盖不同系统字体及像素取整，直接旋转布局盒的旧实现会多出 2px。
+      for (const font of ["Arial, sans-serif", "serif", "monospace"]) {
+        for (const size of [9, 9.25, 9.875, 10.5, 11.125, 12]) {
+          for (const spacing of [0, 0.2, 0.3]) {
+            footer.style.fontFamily = font;
+            footer.style.fontSize = size + "px";
+            footer.style.letterSpacing = spacing + "px";
+            const labelBox = label.getBoundingClientRect();
+            const arrowBox = arrow.getBoundingClientRect();
+            if (
+              label.scrollWidth > label.clientWidth + 1 ||
+              arrowBox.right > labelBox.right + 1 ||
+              getComputedStyle(label).overflowX !== "visible" ||
+              getComputedStyle(arrow).overflowX !== "visible"
+            ) {
+              failures.push({
+                font,
+                size,
+                spacing,
+                client: label.clientWidth,
+                scroll: label.scrollWidth,
+                arrowOverhang: arrowBox.right - labelBox.right,
+              });
+            }
+          }
+        }
+      }
+    } finally {
+      if (originalStyle === null) footer.removeAttribute("style");
+      else footer.setAttribute("style", originalStyle);
+    }
+    return failures;
+  });
+  expect(issues).toEqual([]);
+  await assertLayout(page, inserted);
+});
+
 for (const { variant, name } of templates) {
   for (const native320 of [false, true]) {
     test(

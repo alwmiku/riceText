@@ -1002,13 +1002,20 @@
   min-width: 0;
   color: #dc962f;
 }
+/* 旋转图形放在预留盒内，避免字体的小数尺寸使绘制边界超出弹幕区域。 */
 .rt-novel-excerpt--ciweimao .rt-reader-chevron-up {
+  position: relative;
   display: inline-block;
   flex: none;
-  width: 0.65em;
-  height: 0.65em;
-  box-sizing: border-box;
+  width: 1em;
+  height: 1em;
   margin-top: 0.3em;
+}
+.rt-novel-excerpt--ciweimao .rt-reader-chevron-up::before {
+  content: "";
+  position: absolute;
+  inset: 0.175em;
+  box-sizing: border-box;
   border-top: 1px solid currentColor;
   border-left: 1px solid currentColor;
   transform: rotate(45deg);

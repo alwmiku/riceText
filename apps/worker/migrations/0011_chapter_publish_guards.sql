@@ -46,13 +46,14 @@ CREATE TABLE chapter_publish_guards (
   upload_id TEXT NOT NULL,
   token TEXT NOT NULL PRIMARY KEY
 );
+-- 与 0004 相同：条件保护使用 WHERE，避免远端 D1 将 CASE 的 END 误当作触发器结束。
 CREATE TRIGGER chapter_publish_guard BEFORE INSERT ON chapter_publish_guards BEGIN
-  SELECT CASE WHEN NOT EXISTS (
+  SELECT RAISE(ABORT, 'CHAPTER_UPLOAD_NOT_ACTIVE') WHERE NOT EXISTS (
     SELECT 1 FROM chapter_uploads WHERE document_id=NEW.document_id AND id=NEW.upload_id
       AND status='uploading' AND publish_token=NEW.token
       AND julianday(publish_expires_at)>julianday('now')
-  ) THEN RAISE(ABORT, 'CHAPTER_UPLOAD_NOT_ACTIVE') END;
-  SELECT CASE WHEN NOT EXISTS (
+  );
+  SELECT RAISE(ABORT, 'CHAPTER_REVISION_CONFLICT') WHERE NOT EXISTS (
     SELECT 1 FROM chapter_uploads upload JOIN chapter_generations live ON live.document_id=upload.document_id
     WHERE upload.document_id=NEW.document_id AND upload.id=NEW.upload_id AND upload.base_generation=live.generation
   ) OR EXISTS (
@@ -60,5 +61,5 @@ CREATE TRIGGER chapter_publish_guard BEFORE INSERT ON chapter_publish_guards BEG
       ON chapter.document_id=item.document_id AND chapter.id=item.chapter_id
     WHERE item.document_id=NEW.document_id AND item.upload_id=NEW.upload_id
       AND COALESCE(chapter.revision,0)<>item.base_revision
-  ) THEN RAISE(ABORT, 'CHAPTER_REVISION_CONFLICT') END;
+  );
 END;
