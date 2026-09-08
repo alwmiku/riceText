@@ -1,8 +1,9 @@
 import js from "@eslint/js";
+import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 import architecture from "./test/architecture/dependency-rules.mjs";
 
-export default tseslint.config(
+export default defineConfig(
   {
     ignores: [
       "**/dist/**",
