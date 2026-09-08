@@ -26,8 +26,14 @@ async function prepare(page: Page, mobile: boolean) {
   await page.keyboard.press("Enter");
   await page.keyboard.insertText("third");
   await expect(editor.locator(":scope > p")).toHaveText(["source", "target", "third"]);
+  const selectionToolbar = page.getByRole("toolbar", { name: mobile ? "选区格式菜单" : "选区浮动工具栏", exact: true });
+  await expect(editor).toBeFocused();
+  await expect(selectionToolbar).toHaveCount(0);
   await page.keyboard.press("Control+Home");
   await page.keyboard.press("Shift+End");
+  // 快捷键返回时 selectionchange 可能尚未处理；同时等待原生选区和编辑器选区状态。
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("source");
+  await expect(selectionToolbar).toBeVisible();
   await page.keyboard.press("Control+b");
   await expect(editor.locator(":scope > p").first().locator("strong")).toHaveText("source");
   return editor;

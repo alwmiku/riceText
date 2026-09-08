@@ -79,10 +79,13 @@ test('作者编辑先自动保存本地，点击保存后才上传最小 revisio
 
 test('移动端向下阅读时收起页头，向上滚动时恢复', async ({ page, isMobile }) => {
   test.skip(!isMobile, '仅验证移动端页头滚动行为');
+  // 目录与校订数据来自同一篇演示文章；不能继承前序用例新建文章的默认排序。
   await page.addInitScript(() => {
+    localStorage.setItem('ricetext:selected-document', 'demo-post');
     localStorage.setItem('ricetext:active-chapter:demo-post', '3');
   });
   await page.goto('/compose');
+  await expect(page.locator('.ProseMirror h2')).toHaveText('第三章 没有寄件人的信');
   const header = page.getByRole('banner');
   const directory = page.getByRole('button', { name: '打开章节目录' });
   await expect(directory).toBeVisible();
@@ -106,6 +109,8 @@ test('移动端向下阅读时收起页头，向上滚动时恢复', async ({ pa
   await location.scrollIntoViewIfNeeded();
   const locationRows = location.locator('dd');
   await expect(locationRows).toHaveCount(3);
+  await expect(locationRows.nth(0)).toHaveText('第三章 · 没有寄件人的信');
+  await expect(locationRows.nth(1)).toHaveText('第 3 行');
   const rowTops = await locationRows.evaluateAll((rows) =>
     rows.map((row) => row.getBoundingClientRect().top),
   );
@@ -140,13 +145,21 @@ test('移动端选择正文后显示浮动修订入口', async ({ page, isMobile
   test.skip(!isMobile, '仅验证移动端 selectionchange 与浮动操作入口');
   await page.addInitScript(() => {
     localStorage.setItem('ricetext:identity', 'user_reader');
+    localStorage.setItem('ricetext:selected-document', 'demo-post');
   });
   await page.goto('/read');
-  const readDirectory = page.getByRole('button', { name: '打开阅读目录' });
+  const readDirectory = page.getByRole('button', { name: '打开章节目录', exact: true });
   await expect(readDirectory).toBeVisible();
   await readDirectory.click();
-  await expect(page.getByRole('dialog', { name: '阅读章节目录' })).toBeVisible();
-  await page.getByRole('button', { name: '关闭阅读目录' }).last().click();
+  const readingDirectory = page.getByRole('dialog', { name: '阅读章节目录' });
+  await expect(readingDirectory).toBeVisible();
+  // 阅读页不使用编辑页的章节键；通过目录选中含“潮声”的第一章。
+  await readingDirectory.getByRole('button', { name: /第一章.*潮汐表/ }).click();
+  await expect(readingDirectory).toBeHidden();
+  await expect(page.locator('.rt-viewer .ProseMirror h2')).toHaveText('第一章 潮汐表');
+  await readDirectory.click();
+  await expect(readingDirectory).toBeVisible();
+  await readingDirectory.getByRole('button', { name: '关闭阅读目录', exact: true }).click();
   const paragraph = page.locator('.rt-viewer .ProseMirror p').filter({ hasText: '潮声' }).first();
   await expect(paragraph).toBeVisible();
   await paragraph.evaluate((element) => {
