@@ -1,12 +1,5 @@
 import type { Editor } from "@tiptap/react";
-import {
-  Bold,
-  Eraser,
-  Italic,
-  Redo2,
-  Underline as UnderlineIcon,
-  Undo2,
-} from "lucide-react";
+import { Bold, Eraser, Italic, Redo2, Underline as UnderlineIcon, Undo2 } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   ContextMenu,
@@ -87,17 +80,11 @@ function TextFormatSubmenu({ editor }: { editor: Editor }) {
     <ContextMenuSub>
       <ContextMenuSubTrigger>文字格式</ContextMenuSubTrigger>
       <ContextMenuSubContent>
-        <ContextMenuItem
-          disabled={spoilerActive}
-          onSelect={() => toggleBold(editor)}
-        >
+        <ContextMenuItem disabled={spoilerActive} onSelect={() => toggleBold(editor)}>
           <Bold />
           加粗
         </ContextMenuItem>
-        <ContextMenuItem
-          disabled={spoilerActive}
-          onSelect={() => toggleItalic(editor)}
-        >
+        <ContextMenuItem disabled={spoilerActive} onSelect={() => toggleItalic(editor)}>
           <Italic />
           斜体
         </ContextMenuItem>
@@ -147,10 +134,7 @@ function TextFormatSubmenu({ editor }: { editor: Editor }) {
                 disabled={spoilerActive}
                 onSelect={() => setColor(editor, color)}
               >
-                <span
-                  className="h-3 w-3 rounded-sm"
-                  style={{ background: color }}
-                />
+                <span className="h-3 w-3 rounded-sm" style={{ background: color }} />
                 {color === textStyle.color ? "当前颜色" : color}
               </ContextMenuItem>
             ))}
@@ -161,27 +145,15 @@ function TextFormatSubmenu({ editor }: { editor: Editor }) {
   );
 }
 
-function EditorContextItems({
-  editor,
-  hasSelection,
-}: {
-  editor: Editor;
-  hasSelection: boolean;
-}) {
+function EditorContextItems({ editor, hasSelection }: { editor: Editor; hasSelection: boolean }) {
   const requestInsert = useInsertRequest();
   return (
     <>
-      <ContextMenuItem
-        disabled={!editor.can().undo()}
-        onSelect={() => undo(editor)}
-      >
+      <ContextMenuItem disabled={!editor.can().undo()} onSelect={() => undo(editor)}>
         <Undo2 />
         撤销<ContextMenuShortcut>Ctrl+Z</ContextMenuShortcut>
       </ContextMenuItem>
-      <ContextMenuItem
-        disabled={!editor.can().redo()}
-        onSelect={() => redo(editor)}
-      >
+      <ContextMenuItem disabled={!editor.can().redo()} onSelect={() => redo(editor)}>
         <Redo2 />
         重做<ContextMenuShortcut>Ctrl+Y</ContextMenuShortcut>
       </ContextMenuItem>
@@ -205,12 +177,14 @@ export function EditorContextMenu({
   hasSelection: boolean;
   children: ReactNode;
 }) {
+  // 只读态不挂载编辑右键菜单：菜单项此时都无效果；同时去掉 ContextMenuTrigger
+  // 自带的 select-none，让只读正文恢复正常的选中与复制。
+  if (!editor.isEditable) return <>{children}</>;
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent
-        aria-label={hasSelection ? "选区格式菜单" : "编辑上下文菜单"}
-      >
+      <ContextMenuContent aria-label={hasSelection ? "选区格式菜单" : "编辑上下文菜单"}>
         <EditorContextItems editor={editor} hasSelection={hasSelection} />
       </ContextMenuContent>
     </ContextMenu>

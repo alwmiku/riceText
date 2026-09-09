@@ -2,13 +2,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { editorExtensions, NodeSelection } from "@ricetext/editor-core";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
-import {
-  ChevronDown,
-  ImagePlus,
-  MoreHorizontal,
-  Send,
-  TextQuote,
-} from "lucide-react";
+import { ChevronDown, ImagePlus, MoreHorizontal, Send, TextQuote } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Button,
@@ -36,10 +30,7 @@ export interface RichTextEditorProps {
   /** 光标处切章：宿主负责把章节拆为两章并重建编辑器。 */
   onSplitChapter?: (before: string, after: string) => void;
   /** 章节编辑（标题/正文）：宿主把修改写回整体数据，节点属性保持不变。 */
-  onChapterEdit?: (
-    chapterId: string,
-    patch: { title?: string; text?: string },
-  ) => void;
+  onChapterEdit?: (chapterId: string, patch: { title?: string; text?: string }) => void;
   onSubmit?: (content: RichTextNode) => void;
   onReady?: (editor: Editor | null) => void;
   /** 最近一次成功保存时间，显示在编辑器底部。 */
@@ -66,9 +57,7 @@ export function RichTextEditor({
   onCommentAnchorOpen,
   onModeToolsOpen,
 }: RichTextEditorProps) {
-  const [lastTransactionAt, setLastTransactionAt] = useState<number | null>(
-    null,
-  );
+  const [lastTransactionAt, setLastTransactionAt] = useState<number | null>(null);
   const [lastAction, setLastAction] = useState("");
   const extensions = useMemo(
     () =>
@@ -139,11 +128,7 @@ export function RichTextEditor({
         longTextBlock?: {
           onSplit?: null | ((before: string, after: string) => void);
           onChapterEdit?:
-            | null
-            | ((
-                chapterId: string,
-                patch: { title?: string; text?: string },
-              ) => void);
+            null | ((chapterId: string, patch: { title?: string; text?: string }) => void);
         };
       }
     ).longTextBlock;
@@ -195,15 +180,9 @@ export function RichTextEditor({
       }
       tr.setSelection(NodeSelection.create(tr.doc, 0));
       editor.view.dispatch(tr);
-      console.warn(
-        "[长文本] 清理后立即 childCount=",
-        editor.state.doc.childCount,
-      );
+      console.warn("[长文本] 清理后立即 childCount=", editor.state.doc.childCount);
       window.setTimeout(() => {
-        console.warn(
-          "[长文本] 清理后 300ms childCount=",
-          editor.state.doc.childCount,
-        );
+        console.warn("[长文本] 清理后 300ms childCount=", editor.state.doc.childCount);
       }, 300);
     };
     editor.on("update", handler);
@@ -223,8 +202,7 @@ export function RichTextEditor({
   // 这里显式构造替换事务并标记为宿主导入以放行，preventUpdate 保持静默同步。
   useEffect(() => {
     if (longTextMode) return;
-    if (!editor || JSON.stringify(editor.getJSON()) === JSON.stringify(content))
-      return;
+    if (!editor || JSON.stringify(editor.getJSON()) === JSON.stringify(content)) return;
     const tr = editor.state.tr;
     tr.setMeta("preventUpdate", true);
     tr.setMeta("hostContentReplace", true);
@@ -239,8 +217,7 @@ export function RichTextEditor({
   useEffect(() => () => editor?.destroy(), [editor]);
 
   const wordCount = useMemo(
-    () =>
-      editor && !longTextMode ? editor.getText().replace(/\s+/g, "").length : 0,
+    () => (editor && !longTextMode ? editor.getText().replace(/\s+/g, "").length : 0),
     [editor, lastTransactionAt, longTextMode],
   );
 
@@ -254,9 +231,8 @@ export function RichTextEditor({
           {onSubmit ? (
             <Button
               size="sm"
-              onClick={() =>
-                editor && onSubmit(editor.getJSON() as RichTextNode)
-              }
+              disabled={!editable}
+              onClick={() => editor && onSubmit(editor.getJSON() as RichTextNode)}
             >
               <Send size={14} />
               保存
@@ -307,9 +283,8 @@ export function RichTextEditor({
           </DropdownMenu>
           <Button
             size="sm"
-            onClick={() =>
-              editor && onSubmit?.(editor.getJSON() as RichTextNode)
-            }
+            disabled={!editable}
+            onClick={() => editor && onSubmit?.(editor.getJSON() as RichTextNode)}
           >
             <Send size={15} />
             发布回复
@@ -332,14 +307,13 @@ export function RichTextEditor({
             </SelectionFormatMenu>
           </div>
           <div className="fixed inset-x-0 bottom-0 z-[35] flex min-h-[66px] items-center justify-between gap-2 border-t border-border bg-white/[0.97] px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] backdrop-blur-xl">
-            <Toolbar editor={editor} condensed />
+            <Toolbar editor={editor} condensed disabled={!editable} />
             <Button
               size="icon"
               className="h-11 w-11 min-h-11 min-w-11"
               aria-label="发布"
-              onClick={() =>
-                editor && onSubmit?.(editor.getJSON() as RichTextNode)
-              }
+              disabled={!editable}
+              onClick={() => editor && onSubmit?.(editor.getJSON() as RichTextNode)}
             >
               <Send size={20} />
             </Button>
@@ -351,7 +325,7 @@ export function RichTextEditor({
   return (
     <ToolbarDialogs editor={editor}>
       <div className="overflow-clip rounded-lg border border-border bg-white shadow-panel max-[430px]:rounded-none max-[430px]:border-x-0">
-        <Toolbar editor={editor} />
+        <Toolbar editor={editor} disabled={!editable} />
         <div className="min-h-[560px] bg-white">
           <SelectionFormatMenu editor={editor}>
             <EditorContent
@@ -383,9 +357,7 @@ export function RichTextEditor({
                 : "—"}
             </strong>
             {lastAction ? (
-              <em className="font-semibold not-italic text-[#14766d]">
-                · {lastAction}
-              </em>
+              <em className="font-semibold not-italic text-[#14766d]">· {lastAction}</em>
             ) : null}
           </span>
         </footer>

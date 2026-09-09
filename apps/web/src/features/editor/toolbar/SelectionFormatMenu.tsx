@@ -26,7 +26,11 @@ export function SelectionFormatMenu({
       <SelectionFloatingToolbar
         editor={editor}
         mobile={mobile}
-        visible={hasSelection && (!editor || getFormatPainterState(editor).mode === "off")}
+        // 只读态正文可以正常选中复制，但不再弹出格式工具栏（其中的操作此时无效）。
+        visible={
+          hasSelection &&
+          (!editor || (editor.isEditable && getFormatPainterState(editor).mode === "off"))
+        }
       />
     </div>
   );

@@ -15,9 +15,12 @@ import {
 export function Toolbar({
   editor,
   condensed = false,
+  disabled = false,
 }: {
   editor: Editor | null;
   condensed?: boolean;
+  /** 只读态整体禁用：保留工具栏外观以标明这是编辑界面，但不接受任何操作。 */
+  disabled?: boolean;
 }) {
   const requestInsert = useInsertRequest();
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -51,6 +54,31 @@ export function Toolbar({
       />
     );
 
+  const groups = compactLayout ? (
+    <>
+      {!condensed && <FormatPainterButton editor={editor} />}
+      <CompactToolbarControls
+        editor={editor}
+        mobile={condensed}
+        wholeDocument={wholeDocument}
+        onWholeDocumentChange={setWholeDocument}
+      />
+    </>
+  ) : (
+    <>
+      <UndoRedoGroup editor={editor} />
+      <FormatPainterButton editor={editor} />
+      <TextFormatGroup editor={editor} condensed={condensed} />
+      <ParagraphGroup editor={editor} condensed={condensed} />
+      <IndentPopover
+        editor={editor}
+        wholeDocument={wholeDocument}
+        onWholeDocumentChange={setWholeDocument}
+      />
+      <BusinessNodeGroup editor={editor} condensed={condensed} />
+    </>
+  );
+
   const content = (
     <div
       ref={toolbarRef}
@@ -61,31 +89,21 @@ export function Toolbar({
       }
       role="toolbar"
       aria-label="富文本工具栏"
+      aria-disabled={disabled || undefined}
     >
-      {compactLayout ? (
-        <>
-          {!condensed && <FormatPainterButton editor={editor} />}
-          <CompactToolbarControls
-            editor={editor}
-            mobile={condensed}
-            wholeDocument={wholeDocument}
-            onWholeDocumentChange={setWholeDocument}
-          />
-        </>
+      {/* 只读态用 fieldset 原生禁用整组控件：指针与键盘都无法触发，外观保持编辑界面。 */}
+      {disabled ? (
+        <fieldset disabled className="contents">
+          {groups}
+        </fieldset>
       ) : (
-        <>
-          <UndoRedoGroup editor={editor} />
-          <FormatPainterButton editor={editor} />
-          <TextFormatGroup editor={editor} condensed={condensed} />
-          <ParagraphGroup editor={editor} condensed={condensed} />
-          <IndentPopover
-            editor={editor}
-            wholeDocument={wholeDocument}
-            onWholeDocumentChange={setWholeDocument}
-          />
-          <BusinessNodeGroup editor={editor} condensed={condensed} />
-        </>
+        groups
       )}
+      {disabled && !condensed ? (
+        <span className="ml-auto shrink-0 rounded bg-[#eef1f2] px-2 py-0.5 text-[11px] font-semibold text-[#68737d]">
+          只读 · 仅预览
+        </span>
+      ) : null}
     </div>
   );
 

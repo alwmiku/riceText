@@ -90,6 +90,43 @@ test("作者编辑先自动保存本地，点击保存后才上传最小 revisio
   expect(await status.textContent()).not.toBe(initialStatus);
 });
 
+test("读者身份进入创作页时工具栏整体禁用，正文可选但不可改", async ({ page, isMobile }) => {
+  test.skip(isMobile, "只读工具栏的完整布局仅在桌面验证");
+  await page.addInitScript(() => {
+    localStorage.setItem("ricetext:identity", "user_reader");
+    localStorage.setItem("ricetext:selected-document", "demo-post");
+  });
+  await page.goto("/compose");
+  const editor = page.locator(".ProseMirror").first();
+  await expect(editor).toHaveAttribute("contenteditable", "false");
+  await expect(page.getByText("只读 · 仅预览")).toBeVisible();
+  await expect(page.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
+
+  // 工具栏整体禁用：所有按钮都进入原生 disabled 状态，指针与键盘都无法触发。
+  const toolbarButtons = page.locator('[role="toolbar"] button');
+  const total = await toolbarButtons.count();
+  expect(total).toBeGreaterThan(0);
+  expect(
+    await toolbarButtons.evaluateAll(
+      (nodes) => nodes.filter((node) => node.matches(":disabled")).length,
+    ),
+  ).toBe(total);
+
+  // 只读正文仍可选中复制（编辑右键菜单不再挂载，其 select-none 随之消失）。
+  const paragraph = page.locator(".ProseMirror p").first();
+  const box = (await paragraph.boundingBox())!;
+  await page.mouse.move(box.x + 30, box.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 200, box.y + 10, { steps: 10 });
+  await page.mouse.up();
+  expect(
+    (await page.evaluate(() => window.getSelection()?.toString() ?? "")).trim().length,
+  ).toBeGreaterThan(0);
+  const before = await editor.textContent();
+  await page.keyboard.type("只读输入");
+  await expect(editor).toHaveText(before ?? "");
+});
+
 test("移动端向下阅读时收起页头，向上滚动时恢复", async ({ page, isMobile }) => {
   test.skip(!isMobile, "仅验证移动端页头滚动行为");
   // 目录与校订数据来自同一篇演示文章；不能继承前序用例新建文章的默认排序。

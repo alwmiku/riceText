@@ -546,7 +546,7 @@ describe("RichTextEditor presets", () => {
     expect(readyEditor.getAttributes("link").href).toBe("https://example.com/mobile");
   });
 
-  it("只读状态同步到 ProseMirror，空的紧凑插入菜单不渲染", async () => {
+  it("只读状态同步到 ProseMirror，工具栏整体禁用并标记只读", async () => {
     const { container } = render(
       <>
         <RichTextEditor
@@ -562,6 +562,25 @@ describe("RichTextEditor presets", () => {
       expect(screen.getByLabelText("正文编辑区")).toHaveAttribute("contenteditable", "false"),
     );
     expect(container.querySelectorAll('[role="toolbar"]')).toHaveLength(1);
+    const toolbar = container.querySelector('[role="toolbar"]')!;
+    expect(toolbar).toHaveAttribute("aria-disabled", "true");
+    expect(toolbar.querySelector("fieldset[disabled]")).not.toBeNull();
+    expect(screen.getByText("只读 · 仅预览")).toBeInTheDocument();
+    // 只读不挂载编辑右键菜单：同时去掉 ContextMenuTrigger 的 select-none，
+    // 正文因此恢复可选可复制。
+    expect(container.querySelector('[data-slot="context-menu-trigger"]')).toBeNull();
+  });
+
+  it("可编辑状态的工具栏不带只读标记，仍挂载编辑右键菜单", async () => {
+    const { container } = render(
+      <RichTextEditor content={defaultDocument.content} mode="full" onChange={vi.fn()} />,
+    );
+    await screen.findByText("雾港来信：第三章讨论与校订");
+    const toolbar = container.querySelector('[role="toolbar"]')!;
+    expect(toolbar).not.toHaveAttribute("aria-disabled");
+    expect(toolbar.querySelector("fieldset")).toBeNull();
+    expect(screen.queryByText("只读 · 仅预览")).not.toBeInTheDocument();
+    expect(container.querySelector('[data-slot="context-menu-trigger"]')).not.toBeNull();
   });
 
   it("切换编辑权限时不把权限事务上报为正文修改", async () => {
