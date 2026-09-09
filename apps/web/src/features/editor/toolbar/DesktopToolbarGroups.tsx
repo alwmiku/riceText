@@ -16,7 +16,6 @@ import {
   Link2,
   List,
   ListOrdered,
-  MessageCirclePlus,
   Quote,
   Redo2,
   SeparatorHorizontal,
@@ -46,11 +45,7 @@ import {
   toggleUnderline,
   undo,
 } from "../editor-actions";
-import {
-  FONT_FAMILIES,
-  FONT_SIZES,
-  INSERT_TOOL_DEFINITIONS,
-} from "../editor-tool-definitions";
+import { FONT_FAMILIES, FONT_SIZES, INSERT_TOOL_DEFINITIONS } from "../editor-tool-definitions";
 import { useInsertRequest } from "./ToolbarDialogs";
 import { ToolbarButton } from "./ToolbarButton";
 
@@ -61,18 +56,10 @@ const groupClassName =
 export function UndoRedoGroup({ editor }: { editor: Editor }) {
   return (
     <span className={groupClassName}>
-      <ToolbarButton
-        label="撤销"
-        onClick={cmd(editor, undo)}
-        disabled={!editor.can().undo()}
-      >
+      <ToolbarButton label="撤销" onClick={cmd(editor, undo)} disabled={!editor.can().undo()}>
         <Undo2 size={16} />
       </ToolbarButton>
-      <ToolbarButton
-        label="重做"
-        onClick={cmd(editor, redo)}
-        disabled={!editor.can().redo()}
-      >
+      <ToolbarButton label="重做" onClick={cmd(editor, redo)} disabled={!editor.can().redo()}>
         <Redo2 size={16} />
       </ToolbarButton>
     </span>
@@ -80,13 +67,7 @@ export function UndoRedoGroup({ editor }: { editor: Editor }) {
 }
 
 /** 文字格式分组：粗体/斜体/下划线/清除样式、标题、字号/字体/颜色。 */
-export function TextFormatGroup({
-  editor,
-  condensed,
-}: {
-  editor: Editor;
-  condensed: boolean;
-}) {
+export function TextFormatGroup({ editor, condensed }: { editor: Editor; condensed: boolean }) {
   const spoilerActive = editor.isActive("spoiler");
   const textStyle = editor.getAttributes("textStyle") as {
     color?: string;
@@ -119,10 +100,7 @@ export function TextFormatGroup({
         >
           <UnderlineIcon size={16} />
         </ToolbarButton>
-        <ToolbarButton
-          label="清除样式"
-          onClick={cmd(editor, clearFormatting)}
-        >
+        <ToolbarButton label="清除样式" onClick={cmd(editor, clearFormatting)}>
           <Eraser size={16} />
         </ToolbarButton>
         {!condensed && (
@@ -184,13 +162,7 @@ export function TextFormatGroup({
 }
 
 /** 段落排版分组：列表、引用与对齐。 */
-export function ParagraphGroup({
-  editor,
-  condensed,
-}: {
-  editor: Editor;
-  condensed: boolean;
-}) {
+export function ParagraphGroup({ editor, condensed }: { editor: Editor; condensed: boolean }) {
   return (
     <>
       {!condensed && (
@@ -243,17 +215,10 @@ export function ParagraphGroup({
   );
 }
 
-/** 业务节点分组：链接、图片/骰子/附件与间贴/黑幕/摘录/回复可见/投票。 */
-export function BusinessNodeGroup({
-  editor,
-  condensed,
-}: {
-  editor: Editor;
-  condensed: boolean;
-}) {
+/** 业务节点分组：链接、图片/骰子/附件与黑幕/摘录/回复可见/投票。 */
+export function BusinessNodeGroup({ editor, condensed }: { editor: Editor; condensed: boolean }) {
   const requestInsert = useInsertRequest();
   const spoilerActive = editor.isActive("spoiler");
-  const comment = INSERT_TOOL_DEFINITIONS.comment;
   const gate = INSERT_TOOL_DEFINITIONS.gate;
   const ungate = INSERT_TOOL_DEFINITIONS.ungate;
   const poll = INSERT_TOOL_DEFINITIONS.poll;
@@ -273,9 +238,7 @@ export function BusinessNodeGroup({
       )}
       <ToolbarButton
         label="分割线"
-        disabled={
-          INSERT_TOOL_DEFINITIONS.horizontalRule.isDisabled?.(editor) ?? false
-        }
+        disabled={INSERT_TOOL_DEFINITIONS.horizontalRule.isDisabled?.(editor) ?? false}
         onClick={() => requestInsert?.("horizontalRule")}
       >
         <SeparatorHorizontal size={16} />
@@ -304,28 +267,13 @@ export function BusinessNodeGroup({
       {!condensed && (
         <>
           <ToolbarButton
-            label="间贴锚点"
-            active={comment.isActive?.(editor) ?? false}
-            disabled={comment.isDisabled?.(editor) ?? false}
-            onClick={() => {
-              if (comment.isDisabled?.(editor)) return;
-              requestInsert?.("comment");
-            }}
-          >
-            <MessageCirclePlus size={16} />
-          </ToolbarButton>
-          <ToolbarButton
             label="@ 用户"
             active={INSERT_TOOL_DEFINITIONS.mention.isActive?.(editor) ?? false}
             onClick={() => requestInsert?.("mention")}
           >
             <AtSign size={16} />
           </ToolbarButton>
-          <ToolbarButton
-            label="黑幕"
-            active={spoilerActive}
-            onClick={cmd(editor, toggleSpoiler)}
-          >
+          <ToolbarButton label="黑幕" active={spoilerActive} onClick={cmd(editor, toggleSpoiler)}>
             <EyeOff size={16} />
           </ToolbarButton>
         </>

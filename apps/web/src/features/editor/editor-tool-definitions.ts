@@ -5,7 +5,6 @@ import {
   FileText,
   ImagePlus,
   Link2,
-  MessageCirclePlus,
   SeparatorHorizontal,
   TextQuote,
   UnlockKeyhole,
@@ -23,7 +22,6 @@ export type InsertTool =
   | "mention"
   | "poll"
   | "excerpt"
-  | "comment"
   | "gate"
   | "ungate"
   | "horizontalRule"
@@ -40,13 +38,7 @@ export interface InsertToolDefinition {
 }
 
 /** 文字颜色面板与右键子菜单共用的固定色板。 */
-export const TOOLBAR_COLORS = [
-  "#20272c",
-  "#197c73",
-  "#b66a0a",
-  "#b63434",
-  "#6b4bb5",
-];
+export const TOOLBAR_COLORS = ["#20272c", "#197c73", "#b66a0a", "#b63434", "#6b4bb5"];
 
 /** 字体下拉与右键子菜单共用的字体选项（空值 = 默认字体）。 */
 export const FONT_FAMILIES = [
@@ -57,16 +49,7 @@ export const FONT_FAMILIES = [
 ] as const;
 
 /** 字号下拉与右键子菜单共用的字号选项。 */
-export const FONT_SIZES = [
-  "12px",
-  "14px",
-  "16px",
-  "18px",
-  "20px",
-  "24px",
-  "28px",
-  "32px",
-] as const;
+export const FONT_SIZES = ["12px", "14px", "16px", "18px", "20px", "24px", "28px", "32px"] as const;
 
 /** 插入内容子菜单/折叠「插入内容」组共用的内容工具。 */
 export const INSERT_CONTENT_TOOLS: readonly InsertToolDefinition[] = [
@@ -114,15 +97,8 @@ export const INSERT_CONTENT_TOOLS: readonly InsertToolDefinition[] = [
   },
 ];
 
-/** 仅工具栏/「更多工具」菜单展示的回复可见与间贴锚点工具。 */
+/** 仅工具栏/「更多工具」菜单展示的回复可见工具。 */
 export const MORE_INSERT_TOOLS: readonly InsertToolDefinition[] = [
-  {
-    tool: "comment",
-    label: "间贴锚点",
-    icon: MessageCirclePlus,
-    isActive: (editor) => isRichNodeActive(editor, "inlineCommentAnchor"),
-    isDisabled: (editor) => isContainerNodeActive(editor, "replyGate"),
-  },
   {
     tool: "gate",
     label: "回复后可见",
@@ -149,11 +125,10 @@ export const LINK_TOOL: InsertToolDefinition = {
 };
 
 /** 全部插入工具按 ID 索引，供业务节点分组直接取用。 */
-export const INSERT_TOOL_DEFINITIONS: Readonly<
-  Record<InsertTool, InsertToolDefinition>
-> = Object.fromEntries(
-  [...INSERT_CONTENT_TOOLS, ...MORE_INSERT_TOOLS, LINK_TOOL].map((definition) => [
-    definition.tool,
-    definition,
-  ]),
-) as Readonly<Record<InsertTool, InsertToolDefinition>>;
+export const INSERT_TOOL_DEFINITIONS: Readonly<Record<InsertTool, InsertToolDefinition>> =
+  Object.fromEntries(
+    [...INSERT_CONTENT_TOOLS, ...MORE_INSERT_TOOLS, LINK_TOOL].map((definition) => [
+      definition.tool,
+      definition,
+    ]),
+  ) as Readonly<Record<InsertTool, InsertToolDefinition>>;

@@ -1,11 +1,5 @@
 import type { Editor } from "@tiptap/react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
 import {
   AlertDialog,
@@ -19,11 +13,7 @@ import {
 } from "../../../components/ui/alert-dialog";
 import { createId } from "../../../lib/utils";
 import { isRichNodeActive, unwrapOutermostReplyGate } from "../commands";
-import {
-  insertCommentAnchor,
-  insertNode,
-  insertReplyGate,
-} from "../editor-actions";
+import { insertNode, insertReplyGate } from "../editor-actions";
 import {
   AttachmentDialog,
   DiceDialog,
@@ -37,13 +27,15 @@ import {
 import type { InsertTool } from "../editor-tool-definitions";
 
 import { excerptAttributes, excerptParagraphs } from "../dialogs/excerpt-values";
-import { getExcerptEditTarget, updateExcerptMetadata, type ExcerptEditTarget } from "./excerpt-editing";
+import {
+  getExcerptEditTarget,
+  updateExcerptMetadata,
+  type ExcerptEditTarget,
+} from "./excerpt-editing";
 
 type InsertRequest = (tool: InsertTool) => void;
 
-const InsertRequestContext = createContext<InsertRequest | undefined>(
-  undefined,
-);
+const InsertRequestContext = createContext<InsertRequest | undefined>(undefined);
 
 /**
  * 读取共享的插入请求通道。没有 ToolbarDialogs 包裹时返回 undefined，
@@ -91,8 +83,7 @@ export function ToolbarDialogs({
   const [excerptTarget, setExcerptTarget] = useState<ExcerptEditTarget | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [attachmentOpen, setAttachmentOpen] = useState(false);
-  const [attachmentInitial, setAttachmentInitial] =
-    useState<AttachmentInitial | null>(null);
+  const [attachmentInitial, setAttachmentInitial] = useState<AttachmentInitial | null>(null);
   const [pollOpen, setPollOpen] = useState(false);
   const [pollInitial, setPollInitial] = useState<PollDialogValues | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -119,8 +110,7 @@ export function ToolbarDialogs({
             node?: { type?: { name?: string } };
           };
           const isImageSelected =
-            editor.isActive("richImage") ||
-            selection.node?.type?.name === "richImage";
+            editor.isActive("richImage") || selection.node?.type?.name === "richImage";
           if (isImageSelected && attrs && typeof attrs.src === "string") {
             setImageInitial({
               src: attrs.src,
@@ -154,8 +144,7 @@ export function ToolbarDialogs({
             node?: { type?: { name?: string } };
           };
           const isAttachmentSelected =
-            editor.isActive("attachmentRef") ||
-            selection.node?.type?.name === "attachmentRef";
+            editor.isActive("attachmentRef") || selection.node?.type?.name === "attachmentRef";
           if (isAttachmentSelected && attrs && typeof attrs.name === "string") {
             setAttachmentInitial({
               name: attrs.name,
@@ -224,16 +213,11 @@ export function ToolbarDialogs({
             break;
           }
           const attrs = editor.getAttributes("link") as { href?: unknown };
-          setLinkInitialHref(
-            typeof attrs.href === "string" ? attrs.href : null,
-          );
+          setLinkInitialHref(typeof attrs.href === "string" ? attrs.href : null);
           setLinkCanRemove(editor.isActive("link"));
           setLinkOpen(true);
           break;
         }
-        case "comment":
-          insertCommentAnchor(editor);
-          break;
         case "gate":
           insertReplyGate(editor);
           break;
@@ -253,9 +237,7 @@ export function ToolbarDialogs({
           <DiceDialog
             open={diceOpen}
             onOpenChange={setDiceOpen}
-            onInsert={(result) =>
-              insertNode(editor, { type: "diceRoll", attrs: result })
-            }
+            onInsert={(result) => insertNode(editor, { type: "diceRoll", attrs: result })}
           />
           <ImageDialog
             open={imageOpen}
@@ -264,8 +246,7 @@ export function ToolbarDialogs({
             onInsert={(asset, values) => {
               if (imageInitial) {
                 const nextAssetId =
-                  asset?.assetId ??
-                  (values.src === imageInitial.src ? imageAssetId : null);
+                  asset?.assetId ?? (values.src === imageInitial.src ? imageAssetId : null);
                 editor
                   .chain()
                   .focus()
@@ -288,11 +269,7 @@ export function ToolbarDialogs({
             {...(attachmentInitial ? { initial: attachmentInitial } : {})}
             onInsert={(values) => {
               if (attachmentInitial) {
-                editor
-                  .chain()
-                  .focus()
-                  .updateAttributes("attachmentRef", values)
-                  .run();
+                editor.chain().focus().updateAttributes("attachmentRef", values).run();
               } else {
                 insertNode(editor, {
                   type: "attachmentRef",
@@ -307,11 +284,7 @@ export function ToolbarDialogs({
             {...(pollInitial ? { initial: pollInitial } : {})}
             onInsert={(values) => {
               if (pollInitial) {
-                editor
-                  .chain()
-                  .focus()
-                  .updateAttributes("pollRef", values)
-                  .run();
+                editor.chain().focus().updateAttributes("pollRef", values).run();
               } else {
                 insertNode(editor, {
                   type: "pollRef",
@@ -323,7 +296,9 @@ export function ToolbarDialogs({
           <ExcerptDialog
             open={excerptOpen}
             onOpenChange={setExcerptOpen}
-            {...(excerptTarget ? { initial: excerptTarget.initial, existingContent: excerptTarget.content } : {})}
+            {...(excerptTarget
+              ? { initial: excerptTarget.initial, existingContent: excerptTarget.content }
+              : {})}
             onInsert={(values) => {
               const attrs = excerptAttributes(values);
               if (excerptTarget) return updateExcerptMetadata(editor, excerptTarget, attrs);
@@ -352,33 +327,17 @@ export function ToolbarDialogs({
           <LinkDialog
             open={linkOpen}
             onOpenChange={setLinkOpen}
-            {...(linkInitialHref !== null
-              ? { initialHref: linkInitialHref }
-              : {})}
+            {...(linkInitialHref !== null ? { initialHref: linkInitialHref } : {})}
             {...(linkCanRemove
               ? {
-                  onRemove: () =>
-                    editor
-                      .chain()
-                      .focus()
-                      .extendMarkRange("link")
-                      .unsetLink()
-                      .run(),
+                  onRemove: () => editor.chain().focus().extendMarkRange("link").unsetLink().run(),
                 }
               : {})}
             onInsert={(href) =>
-              editor
-                .chain()
-                .focus()
-                .extendMarkRange("link")
-                .setLink({ href })
-                .run()
+              editor.chain().focus().extendMarkRange("link").setLink({ href }).run()
             }
           />
-          <AlertDialog
-            open={linkNoSelectionOpen}
-            onOpenChange={setLinkNoSelectionOpen}
-          >
+          <AlertDialog open={linkNoSelectionOpen} onOpenChange={setLinkNoSelectionOpen}>
             <AlertDialogContent size="sm">
               <AlertDialogHeader>
                 <AlertDialogMedia className="bg-[#fff3df] text-[#b66a0a]">

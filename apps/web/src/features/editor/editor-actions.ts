@@ -185,14 +185,6 @@ export function insertNode(editor: Editor, node: Record<string, unknown>): boole
   return editor.chain().focus().insertContent(node).run();
 }
 
-/** 插入间贴锚点（评论线程起点）。 */
-export function insertCommentAnchor(editor: Editor): boolean {
-  return insertNode(editor, {
-    type: "inlineCommentAnchor",
-    attrs: { threadId: createId("thread"), count: 0, placement: "end" },
-  });
-}
-
 /** 插入回复后可见容器（默认占位提示文案）。 */
 export function insertReplyGate(editor: Editor): boolean {
   return insertNode(editor, {

@@ -80,7 +80,6 @@ describe("RichTextEditor presets", () => {
       "左对齐",
       "居中",
       "右对齐",
-      "间贴锚点",
       "@ 用户",
       "黑幕",
     ]) {
@@ -112,7 +111,7 @@ describe("RichTextEditor presets", () => {
     });
     expect(screen.getByLabelText("字体")).toHaveValue("Noto Serif SC Variable");
     fireEvent.click(screen.getByRole("button", { name: "加粗" }));
-    fireEvent.click(screen.getByRole("button", { name: "间贴锚点" }));
+    expect(screen.queryByRole("button", { name: "间贴锚点" })).not.toBeInTheDocument();
     act(() => {
       if (!readyEditor) throw new Error("编辑器未初始化");
       readyEditor.commands.insertContent("真实输入");
