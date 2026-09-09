@@ -15,12 +15,9 @@ import {
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
+  Segmented,
 } from "../../../components/ui";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../../../components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { ToolbarButton } from "./ToolbarButton";
 
 export interface IndentControlsProps {
@@ -35,57 +32,55 @@ export function IndentControls({
   onWholeDocumentChange,
 }: IndentControlsProps) {
   return (
-    <div
-      className="flex w-60 max-w-full flex-col gap-2 p-2"
-      role="group"
-      aria-label="缩进设置"
-    >
+    <div className="flex w-full min-w-0 flex-col gap-2 p-2" role="group" aria-label="缩进设置">
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-muted-foreground">缩进范围</span>
+        <fieldset disabled={!editor.isEditable} onMouseDown={(event) => event.preventDefault()}>
+          <Segmented
+            ariaLabel="缩进范围"
+            value={wholeDocument ? "chapter" : "selection"}
+            options={[
+              { value: "selection", label: editor.state.selection.empty ? "当前段落" : "选中段落" },
+              { value: "chapter", label: "本章全部" },
+            ]}
+            onChange={(value) => onWholeDocumentChange(value === "chapter")}
+          />
+        </fieldset>
+        <p className="text-[11px] leading-4 text-muted-foreground">
+          {wholeDocument ? "调整本章全部段落的缩进" : "仅调整当前或选中段落的缩进"}
+        </p>
+      </div>
       {(
         [
           ["firstLineIndent", "首行缩进", ArrowLeftToLine, ArrowRightFromLine],
           ["leftIndent", "整段缩进", IndentDecrease, IndentIncrease],
         ] as const
       ).map(([attribute, label, Decrease, Increase]) => (
-        <div
-          key={attribute}
-          className="flex items-center justify-between gap-3"
-        >
+        <div key={attribute} className="grid grid-cols-[1fr_auto] items-center gap-2">
           <span className="text-sm">{label}</span>
           <div className="flex gap-1">
             <ToolbarButton
               label={`减少${label}`}
-              disabled={
-                !editor.can().adjustIndent(attribute, -2, wholeDocument)
-              }
+              className="size-9"
+              disabled={!editor.can().adjustIndent(attribute, -2, wholeDocument)}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() =>
-                editor.chain().adjustIndent(attribute, -2, wholeDocument).run()
-              }
+              onClick={() => editor.chain().adjustIndent(attribute, -2, wholeDocument).run()}
             >
               <Decrease />
             </ToolbarButton>
             <ToolbarButton
               label={`增加${label}`}
+              className="size-9"
               disabled={!editor.can().adjustIndent(attribute, 2, wholeDocument)}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() =>
-                editor.chain().adjustIndent(attribute, 2, wholeDocument).run()
-              }
+              onClick={() => editor.chain().adjustIndent(attribute, 2, wholeDocument).run()}
             >
               <Increase />
             </ToolbarButton>
           </div>
         </div>
       ))}
-      <label className="flex min-h-8 cursor-pointer items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={wholeDocument}
-          disabled={!editor.isEditable}
-          onChange={(event) => onWholeDocumentChange(event.target.checked)}
-        />
-        应用到全文
-      </label>
+      <p className="text-[11px] leading-4 text-muted-foreground">每次增减 2 字，不影响列表和对齐</p>
     </div>
   );
 }
@@ -103,6 +98,7 @@ export function IndentPopover(props: IndentControlsProps) {
         </ToolbarButton>
       </PopoverTrigger>
       <PopoverContent
+        className="w-[216px] max-w-[calc(100vw-24px)]"
         align="start"
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
@@ -118,10 +114,7 @@ export function FormatPainterButton({ editor }: { editor: Editor }) {
     <ToolbarButton
       label={mode === "continuous" ? "格式刷（连续）" : "格式刷"}
       active={mode !== "off"}
-      disabled={
-        !editor.isEditable ||
-        (mode === "off" && !editor.can().startFormatPainter())
-      }
+      disabled={!editor.isEditable || (mode === "off" && !editor.can().startFormatPainter())}
       onKeyDown={(event) => {
         if (event.key === "Escape" && mode !== "off") {
           event.preventDefault();
@@ -146,25 +139,18 @@ export function FormatPainterMenu({ editor }: { editor: Editor }) {
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger
-        disabled={
-          !editor.isEditable ||
-          (mode === "off" && !editor.can().startFormatPainter())
-        }
+        disabled={!editor.isEditable || (mode === "off" && !editor.can().startFormatPainter())}
       >
         <Paintbrush />
         格式刷{mode !== "off" && <Check />}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
         <div role="group" aria-label="格式刷操作">
-          <DropdownMenuItem
-            onSelect={() => editor.commands.startFormatPainter("once")}
-          >
+          <DropdownMenuItem onSelect={() => editor.commands.startFormatPainter("once")}>
             <Paintbrush />
             单次格式刷
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => editor.commands.startFormatPainter("continuous")}
-          >
+          <DropdownMenuItem onSelect={() => editor.commands.startFormatPainter("continuous")}>
             <Pin />
             连续格式刷
           </DropdownMenuItem>

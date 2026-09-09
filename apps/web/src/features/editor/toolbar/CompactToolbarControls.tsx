@@ -33,7 +33,12 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "../../../components/ui";
-import { Popover, PopoverAnchor, PopoverContent } from "../../../components/ui/popover";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverTrigger,
+} from "../../../components/ui/popover";
 import { ColorPicker, persistLastColor, useLastColor } from "../../../components/ui/color-picker";
 import { cmd } from "../commands";
 import {
@@ -62,6 +67,7 @@ import {
 import { useInsertRequest } from "./ToolbarDialogs";
 import { ToolbarButton } from "./ToolbarButton";
 import { ToolbarGroup } from "./ToolbarGroup";
+import { Separator } from "../../../components/ui/separator";
 import { FormatPainterMenu, IndentControls, type IndentControlsProps } from "./FormattingTools";
 
 export function CompactToolbarControls({
@@ -187,37 +193,73 @@ export function CompactToolbarControls({
             </div>
           </PopoverAnchor>
         </ToolbarGroup>
-        <ToolbarGroup label="段落排版" icon={AlignLeft} collapsed mobile={mobile}>
-          <IndentControls
-            editor={editor}
-            wholeDocument={wholeDocument}
-            onWholeDocumentChange={onWholeDocumentChange}
-          />
-          <DropdownMenuItem onSelect={cmd(editor, toggleBulletList)}>
-            <List />
-            无序列表
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={cmd(editor, toggleOrderedList)}>
-            <ListOrdered />
-            有序列表
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={cmd(editor, toggleBlockquote)}>
-            <Quote />
-            引用
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setTextAlign(editor, "left")}>
-            <AlignLeft />
-            左对齐
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setTextAlign(editor, "center")}>
-            <AlignCenter />
-            居中
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setTextAlign(editor, "right")}>
-            <AlignRight />
-            右对齐
-          </DropdownMenuItem>
-        </ToolbarGroup>
+        <Popover>
+          <PopoverTrigger asChild>
+            <ToolbarButton label="段落排版" mobile={mobile}>
+              <AlignLeft size={mobile ? 22 : 18} />
+            </ToolbarButton>
+          </PopoverTrigger>
+          <PopoverContent
+            aria-label="段落排版"
+            side={mobile ? "top" : "bottom"}
+            align="center"
+            collisionPadding={12}
+            className="w-[216px] max-w-[calc(100vw-24px)] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto"
+            onOpenAutoFocus={(event) => event.preventDefault()}
+            onCloseAutoFocus={(event) => event.preventDefault()}
+          >
+            <IndentControls
+              editor={editor}
+              wholeDocument={wholeDocument}
+              onWholeDocumentChange={onWholeDocumentChange}
+            />
+            <Separator />
+            <div className="grid grid-cols-3 gap-1 p-1" role="group" aria-label="列表与引用">
+              {(
+                [
+                  ["无序列表", List, toggleBulletList, editor.isActive("bulletList")],
+                  ["有序列表", ListOrdered, toggleOrderedList, editor.isActive("orderedList")],
+                  ["引用", Quote, toggleBlockquote, editor.isActive("blockquote")],
+                ] as const
+              ).map(([label, Icon, action, active]) => (
+                <ToolbarButton
+                  key={label}
+                  label={label}
+                  active={active}
+                  disabled={!editor.isEditable}
+                  className="h-12 w-full flex-col gap-0.5"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={cmd(editor, action)}
+                >
+                  <Icon />
+                  <span className="text-[10px] leading-4">{label}</span>
+                </ToolbarButton>
+              ))}
+            </div>
+            <div className="grid grid-cols-3 gap-1 px-1 pb-1" role="group" aria-label="段落对齐">
+              {(
+                [
+                  ["left", "左对齐", AlignLeft],
+                  ["center", "居中", AlignCenter],
+                  ["right", "右对齐", AlignRight],
+                ] as const
+              ).map(([value, label, Icon]) => (
+                <ToolbarButton
+                  key={value}
+                  label={label}
+                  active={editor.isActive({ textAlign: value })}
+                  disabled={!editor.isEditable}
+                  className="h-12 w-full flex-col gap-0.5"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setTextAlign(editor, value)}
+                >
+                  <Icon />
+                  <span className="text-[10px] leading-4">{label}</span>
+                </ToolbarButton>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
         <ToolbarGroup
           label="插入内容"
           icon={INSERT_CONTENT_TOOLS[0]!.icon}

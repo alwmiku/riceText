@@ -188,7 +188,10 @@ test("desktop painter double-click, repeated drag, undo and indentation", async 
   ).toHaveText("target");
   await page.getByRole("button", { name: "缩进设置", exact: true }).click();
   await page.getByRole("button", { name: "增加首行缩进", exact: true }).click();
-  await page.getByRole("checkbox", { name: "应用到全文" }).check();
+  await page
+    .getByRole("group", { name: "缩进范围", exact: true })
+    .getByRole("button", { name: "本章全部", exact: true })
+    .click();
   await page.getByRole("button", { name: "增加整段缩进", exact: true }).click();
   await expect(editor.locator("p").filter({ hasText: /^third$/u })).toHaveCSS(
     "text-indent",
@@ -290,7 +293,19 @@ test("mobile explicit painter application and compact indentation", async ({
       .locator("strong"),
   ).toHaveText("target");
   await page.getByRole("button", { name: "段落排版", exact: true }).tap();
-  await page.getByRole("checkbox", { name: "应用到全文" }).check();
+  const panel = page.getByRole("dialog", { name: "段落排版", exact: true });
+  await expect(panel).toBeVisible();
+  const bounds = await panel.boundingBox();
+  expect(bounds!.width).toBeLessThanOrEqual(216);
+  expect(bounds!.height).toBeLessThanOrEqual(350);
+  await expect(panel.getByText("每次增减 2 字，不影响列表和对齐")).toBeVisible();
+  await expect(panel.getByRole("group", { name: "列表与引用" })).toBeVisible();
+  await expect(panel.getByRole("group", { name: "段落对齐" })).toBeVisible();
+  await expect(panel.getByRole("checkbox")).toHaveCount(0);
+  await page
+    .getByRole("group", { name: "缩进范围", exact: true })
+    .getByRole("button", { name: "本章全部", exact: true })
+    .click();
   await page.getByRole("button", { name: "增加首行缩进", exact: true }).tap();
   await page.getByRole("button", { name: "增加整段缩进", exact: true }).tap();
   for (const p of await editor.locator("p").all()) {
@@ -300,6 +315,11 @@ test("mobile explicit painter application and compact indentation", async ({
   await page.screenshot({ path: testInfo.outputPath("mobile-indent.png") });
   await page.setViewportSize({ width: 320, height: 740 });
   await expect(page.getByRole("button", { name: "增加整段缩进", exact: true })).toBeInViewport();
+  const narrow = await panel.boundingBox();
+  expect(narrow!.width).toBeLessThanOrEqual(216);
+  expect(narrow!.x).toBeGreaterThanOrEqual(0);
+  expect(narrow!.x + narrow!.width).toBeLessThanOrEqual(320);
+  expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("mobile-narrow.png") });
 });
