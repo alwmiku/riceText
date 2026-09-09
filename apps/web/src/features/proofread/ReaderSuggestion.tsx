@@ -7,6 +7,57 @@ import { submitSuggestion } from "../../lib/api";
 /** 与编辑器浮动工具栏一致，停止交互后再显示，避免按钮追着手势跳动。 */
 const SELECTION_SETTLE_DELAY = 160;
 
+// 原子业务节点、阅读装饰和控件文字不属于可修订的正文。
+const NON_PROSE_SELECTOR = [
+  '[contenteditable="false"]',
+  "button",
+  "input",
+  "select",
+  "textarea",
+  '[role="button"]:not(.rt-spoiler)',
+  '.rt-spoiler:not([aria-expanded="true"])',
+  '[role="radio"]',
+  '[role="checkbox"]',
+  ".rt-poll",
+  ".rt-attachment",
+  ".rt-rich-image",
+  ".rt-dice-roll",
+  ".rt-mention",
+  ".rt-inline-comment-anchor-wrap",
+  ".rt-reply-gate--locked",
+  ".rt-reader-book-title",
+  ".rt-reader-topline",
+  ".rt-reader-bottomline",
+  ".rt-long-text__header",
+  '[data-node-type="poll-ref"]',
+  '[data-node-type="attachment-ref"]',
+  '[data-node-type="rich-image"]',
+  '[data-node-type="dice-roll"]',
+  '[data-node-type="mention"]',
+  '[data-node-type="inline-comment-anchor"]',
+].join(",");
+
+function isNonProseNode(viewer: Element, node: Node): boolean {
+  let element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+  for (; element && element !== viewer; element = element.parentElement) {
+    if (element.matches(NON_PROSE_SELECTOR)) return true;
+  }
+  return false;
+}
+
+function isProseRange(viewer: Element, range: Range): boolean {
+  if (
+    !viewer.contains(range.commonAncestorContainer) ||
+    isNonProseNode(viewer, range.startContainer) ||
+    isNonProseNode(viewer, range.endContainer)
+  )
+    return false;
+  // 起点和终点在正文中，也可能跨过中间的投票、图片或间贴标记。
+  return !Array.from(viewer.querySelectorAll(NON_PROSE_SELECTOR)).some((element) =>
+    range.intersectsNode(element),
+  );
+}
+
 interface SelectionDraft {
   fromText: string;
   lineNo: number;
@@ -64,7 +115,7 @@ export function ReaderSuggestion({
     }
     const range = selection.getRangeAt(0);
     const fromText = selection.toString().trim();
-    if (!viewer.contains(range.commonAncestorContainer) || !fromText) {
+    if (!isProseRange(viewer, range) || !fromText) {
       clearSelectionDraft();
       return;
     }
@@ -165,6 +216,17 @@ export function ReaderSuggestion({
         !viewer?.contains(event.target)
       )
         return;
+      if (isNonProseNode(viewer, event.target)) {
+        clearSelectionDraft();
+        // 单选框等控件可能保留旧正文选区，显式取消以免松手或滚动后入口再次出现。
+        const selection = window.getSelection();
+        if (
+          selection?.rangeCount &&
+          viewer.contains(selection.getRangeAt(0).commonAncestorContainer)
+        )
+          selection.removeAllRanges();
+        return;
+      }
       draggingRef.current = true;
       hold();
     };
@@ -195,7 +257,7 @@ export function ReaderSuggestion({
       viewport?.removeEventListener("scroll", onSelectionChange);
       viewport?.removeEventListener("resize", onSelectionChange);
     };
-  }, [captureSelection]);
+  }, [captureSelection, clearSelectionDraft]);
 
   const setDialogOpen = (next: boolean) => {
     dialogOpenRef.current = next;
@@ -215,7 +277,8 @@ export function ReaderSuggestion({
       !selection ||
       selection.isCollapsed ||
       !selection.rangeCount ||
-      !viewer?.contains(selection.getRangeAt(0).commonAncestorContainer) ||
+      !viewer ||
+      !isProseRange(viewer, selection.getRangeAt(0)) ||
       selection.toString().trim() !== draft.fromText
     ) {
       clearSelectionDraft();

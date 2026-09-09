@@ -298,6 +298,49 @@ test("读者修订入口随滚动隐藏重定位、取消选区后消失且保�
   await expect(action).toBeVisible();
 });
 
+test("读者选择投票文字或点击投票区域时不出现修订入口", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("ricetext:identity", "user_reader");
+    localStorage.setItem("ricetext:selected-document", "demo-post");
+  });
+  await page.goto("/read?chapter=4");
+  const poll = page.locator(".rt-viewer .rt-poll");
+  await expect(poll).toBeVisible();
+  const title = poll.locator("h3");
+  await expect(title).toHaveText("下一章先去哪里？");
+  const actions = page.getByRole("button", { name: /^提交所选文字修订：/ });
+  for (const content of [title, poll.locator(".rt-poll__chart").first()]) {
+    await content.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    // 等待显隐防抖结束，确保没有在下一帧重新显示业务文字的修订按钮。
+    await page.waitForTimeout(220);
+    await expect(actions).toHaveCount(0);
+  }
+  const prose = page.locator(".rt-viewer .ProseMirror > p").first();
+  await prose.scrollIntoViewIfNeeded();
+  await prose.evaluate((element) => {
+    const node = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode()!;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, Math.min(3, node.textContent!.length));
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await expect(actions).toBeVisible();
+  await title.click();
+  await expect(actions).toHaveCount(0);
+  // ProseMirror 可将投票整体选为原子节点；等待后也不能把这种选中态当正文修订。
+  await page.waitForTimeout(220);
+  await expect(actions).toHaveCount(0);
+  await expect(poll.getByRole("group", { name: "投票结果" })).toBeVisible();
+});
+
 test("长文本原文对照基于 pretext 测量与 react-window 虚拟滚动", async ({ page, isMobile }) => {
   test.skip(isMobile, "长文本工作台为桌面三栏布局，移动端不在本次验收范围");
   // 第一章正文 3000 字：跨越 2 个虚拟块，章尾可滚动离开首屏。
