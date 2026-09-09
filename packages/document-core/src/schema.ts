@@ -10,6 +10,7 @@ import { StarterKit } from "@tiptap/starter-kit";
 import { ALLOWED_FONT_FAMILIES, sanitizeColor, sanitizeFontSize, sanitizeUrl } from "./sanitize.js";
 import { sharedMarkSpecs, sharedNodeSpecs } from "./nodes.js";
 import { ParagraphIndentAttributes } from "./paragraph-indent.js";
+import { extensionCapabilities } from "./capabilities.js";
 
 /** {@link createDocumentExtensions} 接受的配置。 */
 export interface DocumentExtensionsOptions {
@@ -155,6 +156,9 @@ export function createDocumentExtensions(options: DocumentExtensionsOptions = {}
     ParagraphIndentAttributes,
     ...sharedNodeSpecs.map((spec) => Node.create(spec)),
     ...sharedMarkSpecs.map((spec) => Mark.create(spec)),
+    // 把每个扩展 config 上的能力声明注入对应 ProseMirror 规格；
+    // 放在附加扩展之前，第三方扩展的能力同样会被注入。
+    extensionCapabilities,
     ...(options.additionalExtensions ?? []),
   ];
 }

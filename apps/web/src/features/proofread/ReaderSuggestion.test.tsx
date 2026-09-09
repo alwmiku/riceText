@@ -1,38 +1,48 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RichTextViewer, type JSONContent } from "@ricetext/editor-core";
+import { chapterTextLines } from "@ricetext/document-core";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReaderSuggestion } from "./ReaderSuggestion";
 import type { ReactNode } from "react";
 
 const mocks = vi.hoisted(() => ({
-  submitSuggestion: vi.fn(),
+  submit: vi.fn(),
 }));
 
-vi.mock("../../lib/api", () => ({
-  submitSuggestion: mocks.submitSuggestion,
-}));
+const DEFAULT_LINES = ["第一章 · 潮汐表", "灯塔正好熄灭。"];
 
-function renderSuggestion(extra?: ReactNode) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+function renderSuggestion(extra?: ReactNode, lines: readonly string[] = DEFAULT_LINES) {
   return render(
-    <QueryClientProvider client={queryClient}>
-      <ReaderSuggestion
-        documentId="demo-post"
-        chapterId="chapter-1"
-        chapterTitle="第一章 · 潮汐表"
-        lines={["第一章 · 潮汐表", "灯塔正好熄灭。"]}
-      >
-        <article className="rt-viewer">
-          <div className="tiptap ProseMirror">
-            <h2>第一章 · 潮汐表</h2>
-            <p>灯塔正好熄灭。</p>
-            {extra}
-          </div>
-        </article>
-      </ReaderSuggestion>
-    </QueryClientProvider>,
+    <ReaderSuggestion
+      documentId="demo-post"
+      chapterId="chapter-1"
+      chapterTitle="第一章 · 潮汐表"
+      lines={lines}
+      onSubmit={mocks.submit}
+    >
+      <article className="rt-viewer">
+        <div className="tiptap ProseMirror">
+          <h2>第一章 · 潮汐表</h2>
+          <p>灯塔正好熄灭。</p>
+          {extra}
+        </div>
+      </article>
+    </ReaderSuggestion>,
+  );
+}
+
+/** 真实查看器集成：装饰区域来自扩展自己的能力声明。 */
+function renderIntegration(content: JSONContent) {
+  return render(
+    <ReaderSuggestion
+      documentId="demo-post"
+      chapterId="chapter-1"
+      chapterTitle="第一章 · 潮汐表"
+      lines={chapterTextLines(content.content ?? [])}
+      onSubmit={mocks.submit}
+    >
+      <RichTextViewer content={content} />
+    </ReaderSuggestion>,
   );
 }
 
@@ -59,7 +69,7 @@ describe("ReaderSuggestion", () => {
       value: 1024,
     });
     window.getSelection()?.removeAllRanges();
-    mocks.submitSuggestion.mockReset().mockResolvedValue({ id: "suggestion-1" });
+    mocks.submit.mockReset().mockResolvedValue(undefined);
   });
 
   it("移动端 selectionchange 后在底部安全区显示修订按钮", async () => {
@@ -141,12 +151,13 @@ describe("ReaderSuggestion", () => {
     fireEvent.click(screen.getByRole("button", { name: "提交给作者" }));
 
     await waitFor(() =>
-      expect(mocks.submitSuggestion).toHaveBeenCalledWith("demo-post", {
+      expect(mocks.submit).toHaveBeenCalledWith({
+        documentId: "demo-post",
+        chapterId: "chapter-1",
+        chapterTitle: "第一章 · 潮汐表",
         fromText: "正好",
         toText: "恰好",
         reason: "避免重复用词",
-        chapterId: "chapter-1",
-        chapterTitle: "第一章 · 潮汐表",
         lineNo: 2,
         lineText: "灯塔正好熄灭。",
       }),
@@ -336,10 +347,9 @@ describe("ReaderSuggestion", () => {
   });
 
   it.each([
-    ["投票标题", "rt-poll", <h3>下一章先去哪里？</h3>],
+    ["投票标题", <h3>下一章先去哪里？</h3>],
     [
       "投票选项和票数",
-      "rt-poll",
       <div>
         <span>28</span>
         <label>
@@ -348,15 +358,15 @@ describe("ReaderSuggestion", () => {
         </label>
       </div>,
     ],
-    ["附件说明", "rt-attachment", <span>附件名称.pdf</span>],
-    ["图片说明", "rt-rich-image", <figcaption>图片说明文字</figcaption>],
-    ["骰子结果", "rt-dice-roll", <span>2d6 = 7</span>],
-    ["提及用户", "rt-mention", <span>@读者</span>],
-    ["阅读页脚", "rt-reader-bottomline", <span>1/2 50%</span>],
-  ])("选择%s不会显示修订入口，也不会留下旧正文入口", (_name, className, content) => {
+    ["附件说明", <span>附件名称.pdf</span>],
+    ["图片说明", <figcaption>图片说明文字</figcaption>],
+    ["骰子结果", <span>2d6 = 7</span>],
+    ["提及用户", <span>@读者</span>],
+    ["阅读页脚", <span>1/2 50%</span>],
+  ])("选择%s不会显示修订入口，也不会留下旧正文入口", (_name, content) => {
     vi.useFakeTimers();
     const { container } = renderSuggestion(
-      <section className={String(className)} data-testid="business">
+      <section data-rt-revise="chrome" data-testid="business">
         {content}
       </section>,
     );
@@ -382,11 +392,11 @@ describe("ReaderSuggestion", () => {
     expect(screen.queryByRole("button", { name: /提交.*修订/ })).not.toBeInTheDocument();
   });
 
-  it("正文起止选区跨过投票组件时不提供修订", () => {
+  it("正文起止选区跨过装饰组件时不提供修订", () => {
     vi.useFakeTimers();
     renderSuggestion(
       <>
-        <section className="rt-poll">
+        <section data-rt-revise="chrome">
           <h3>下一章先去哪里？</h3>
           <label>
             钟楼
@@ -411,10 +421,10 @@ describe("ReaderSuggestion", () => {
     expect(screen.queryByRole("button", { name: /提交.*修订/ })).not.toBeInTheDocument();
   });
 
-  it("点击投票时清理旧正文选区而不拦截投票操作，之后正文仍可修订", async () => {
+  it("点击装饰区域时清理旧正文选区而不拦截操作，之后正文仍可修订", async () => {
     const vote = vi.fn();
     renderSuggestion(
-      <section className="rt-poll">
+      <section data-rt-revise="chrome">
         <h3>下一章先去哪里？</h3>
         <button onClick={vote}>投票</button>
       </section>,
@@ -439,14 +449,14 @@ describe("ReaderSuggestion", () => {
 
   it("普通格式文字和摘录正文可修订，摘录页眉与页脚不能修订", async () => {
     renderSuggestion(
-      <aside className="rt-novel-excerpt">
-        <header className="rt-reader-topline">章节装饰</header>
-        <div className="rt-novel-excerpt__content">
+      <aside data-rt-revise="prose">
+        <header data-rt-revise="chrome">章节装饰</header>
+        <div>
           <p>
             <strong>摘录里的正文</strong>
           </p>
         </div>
-        <footer className="rt-reader-bottomline">12:34</footer>
+        <footer data-rt-revise="chrome">12:34</footer>
       </aside>,
     );
     const text = screen.getByText("摘录里的正文");
@@ -463,7 +473,11 @@ describe("ReaderSuggestion", () => {
     vi.useFakeTimers();
     renderSuggestion(
       <p>
-        <span className="rt-spoiler" role="button" data-spoiler="true" aria-expanded={expanded}>
+        <span
+          data-rt-revise="when"
+          data-rt-revise-when='[aria-expanded="true"]'
+          aria-expanded={expanded}
+        >
           正文里的剧透
         </span>
       </p>,
@@ -477,6 +491,37 @@ describe("ReaderSuggestion", () => {
     const action = screen.queryByRole("button", { name: /提交.*修订/ });
     if (expanded) expect(action).toBeInTheDocument();
     else expect(action).not.toBeInTheDocument();
+  });
+
+  it("真实查看器：装饰区域不提供修订入口，正文仍可修订", async () => {
+    renderIntegration({
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "灯塔正好熄灭。" }] },
+        {
+          type: "pollRef",
+          attrs: {
+            pollId: "p1",
+            question: "下一章先去哪里？",
+            multiple: false,
+            options: [{ id: "a", label: "钟楼" }],
+          },
+        },
+      ],
+    });
+    const pollTitle = await screen.findByText("下一章先去哪里？");
+    selectText(pollTitle.firstChild!, "下一章");
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+    // 等待显隐防抖结束，确认装饰区域不会在下一帧重新出现入口。
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 220)));
+    expect(screen.queryByRole("button", { name: /提交.*修订/ })).not.toBeInTheDocument();
+
+    const paragraph = screen.getByText("灯塔正好熄灭。");
+    selectText(paragraph.firstChild!, "正好");
+    fireEvent.mouseUp(paragraph);
+    await waitFor(() => expect(screen.getByText(/已选择「正好」/)).toBeInTheDocument());
   });
 
   it("允许把修订内容留空以提交删除建议", async () => {
@@ -495,8 +540,7 @@ describe("ReaderSuggestion", () => {
     fireEvent.click(screen.getByRole("button", { name: "提交给作者" }));
 
     await waitFor(() =>
-      expect(mocks.submitSuggestion).toHaveBeenCalledWith(
-        "demo-post",
+      expect(mocks.submit).toHaveBeenCalledWith(
         expect.objectContaining({
           fromText: "正好",
           toText: "",
@@ -517,6 +561,6 @@ describe("ReaderSuggestion", () => {
     fireEvent.click(screen.getByRole("button", { name: "提交给作者" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("请填写与原文不同的修订内容");
-    expect(mocks.submitSuggestion).not.toHaveBeenCalled();
+    expect(mocks.submit).not.toHaveBeenCalled();
   });
 });

@@ -1,37 +1,19 @@
 import { Extension } from "@tiptap/core";
 import type { Node, Slice } from "@tiptap/pm/model";
 import { AllSelection, Plugin, PluginKey, Selection, TextSelection } from "@tiptap/pm/state";
+import { capabilitiesOfSpec } from "@ricetext/document-core";
 
-/** 原子节点的正文存放在属性中，不能依赖 node.textContent。 */
+/**
+ * 原子节点的正文存放在属性中，不能依赖 node.textContent。
+ *
+ * 投影规则由各扩展在规格里声明的 `text.leafText` 能力提供；这里只保留
+ * 结构性兜底（换行）与 ProseMirror 原生 `spec.leafText`，不按扩展名分支。
+ */
 function leafText(node: Node): string {
-  const text = (value: unknown) => String(value ?? "");
-  switch (node.type.name) {
-    case "longTextBlock":
-      return text(node.attrs.text);
-    case "mention":
-      return `@${text(node.attrs.name)}`;
-    case "diceRoll":
-      return `${text(node.attrs.expression)} = ${text(node.attrs.total)}`;
-    case "attachmentRef":
-      return text(node.attrs.name);
-    case "pollRef":
-      return [
-        text(node.attrs.question),
-        ...(Array.isArray(node.attrs.options)
-          ? node.attrs.options.map((option: unknown) =>
-              option && typeof option === "object" && "label" in option ? text(option.label) : "",
-            )
-          : []),
-      ].join("\n");
-    case "richImage":
-      return [text(node.attrs.alt), text(node.attrs.caption)].filter(Boolean).join("\n");
-    case "inlineCommentAnchor":
-      return text(node.attrs.count);
-    case "hardBreak":
-      return "\n";
-    default:
-      return node.type.spec.leafText?.(node) ?? "";
-  }
+  const declared = capabilitiesOfSpec(node.type.spec)?.text?.leafText;
+  if (declared) return declared(node);
+  if (node.type.name === "hardBreak") return "\n";
+  return node.type.spec.leafText?.(node) ?? "";
 }
 
 /** 共享编辑器剪贴板策略，沿用标准 HTML/plain 与 ProseMirror slice 协议。 */

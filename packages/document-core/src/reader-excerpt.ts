@@ -1,6 +1,7 @@
 import type { DOMOutputSpec } from "@tiptap/pm/model";
 import { sanitizeUrl } from "./sanitize.js";
 import { normalizeNovelExcerptVariant } from "./novel-excerpt-variant.js";
+import { chromeSurface } from "./capabilities.js";
 import type { NovelExcerptVariant } from "./types.js";
 
 // 空气泡属于平台阅读页装饰，不代表论坛评论或回复数量。
@@ -108,7 +109,7 @@ function bookTitle(attrs: Record<string, unknown>): DOMOutputSpec {
   const title = readerBookTitle(attrs.bookTitle);
   return [
     "div",
-    { class: "rt-reader-book-title", contenteditable: "false", title },
+    { class: "rt-reader-book-title", contenteditable: "false", title, ...chromeSurface() },
     url
       ? ["a", { href: url, target: "_blank", rel: "noopener noreferrer nofollow" }, title]
       : title,
@@ -140,7 +141,7 @@ export function readerTop(attrs: Record<string, unknown>): DOMOutputSpec[] {
     ...(variant === "sfacg" ? [] : [bookTitle(attrs)]),
     [
       "header",
-      { class: "rt-reader-topline", contenteditable: "false" },
+      { class: "rt-reader-topline", contenteditable: "false", ...chromeSurface() },
       ["span", { class: "rt-reader-chapter" }, ...heading],
       ...trailing,
     ],
@@ -204,5 +205,9 @@ export function readerBottom(
             : []),
           clock,
         ];
-  return ["footer", { class: "rt-reader-bottomline", contenteditable: "false" }, ...children];
+  return [
+    "footer",
+    { class: "rt-reader-bottomline", contenteditable: "false", ...chromeSurface() },
+    ...children,
+  ];
 }

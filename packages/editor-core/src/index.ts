@@ -1,23 +1,27 @@
 /** 规范的 Tiptap 扩展、命令与 schema 工厂。 */
-export * from './extensions.js'
-export { getFormatPainterState } from './extensions/format-painter.js'
+export * from "./extensions.js";
+export { getFormatPainterState } from "./extensions/format-painter.js";
 
 /** 长文本章节切分辅助函数。 */
-export * from './chapter-splitter.js'
+export * from "./chapter-splitter.js";
 
 /** 文档白名单、校验、净化与 JSON 辅助函数。 */
-export * from './sanitize.js'
+export * from "./sanitize.js";
 
 /** 公开的持久化节点属性与可替换适配器契约。 */
-export * from './types.js'
+export * from "./types.js";
 
 /** 查看器界面使用的可配置纵向投票结果图表。 */
-export * from './poll-result-chart.js'
+export * from "./poll-result-chart.js";
 
 /** 纯 React 静态查看器及其交互控制器。 */
-export * from './viewer.js'
+export * from "./viewer.js";
 
-export type { Editor, Extensions, JSONContent } from '@tiptap/core'
+/** 读者修订区域解析：只读 DOM 契约，与具体扩展无关。 */
+export * from "./revision-region.js";
+export { applyRevisionSurfaces } from "./viewer/revision-surface.js";
+
+export type { Editor, Extensions, JSONContent } from "@tiptap/core";
 
 /** 供宿主编辑器清理事务使用的 PM 选择类型。 */
-export { NodeSelection } from '@tiptap/pm/state'
+export { NodeSelection } from "@tiptap/pm/state";

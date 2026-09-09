@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   RichTextViewer,
   type AttachmentReferenceAttributes,
@@ -6,14 +6,7 @@ import {
   type PollReferenceAttributes,
   type RichTextViewerInteractions,
 } from "@ricetext/editor-core";
-import {
-  BookOpen,
-  Clock3,
-  Eye,
-  GitCompareArrows,
-  MessageCircle,
-  UserRound,
-} from "lucide-react";
+import { BookOpen, Clock3, Eye, GitCompareArrows, MessageCircle, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAppContext } from "../app-context";
@@ -32,6 +25,7 @@ import {
   listForumChapters,
   missingDocument,
   listSuggestions,
+  submitSuggestion,
 } from "../lib/api";
 import { chapterTextLines } from "../lib/chapters";
 import { chapterQueryKeys } from "../lib/chapter-query-keys";
@@ -47,33 +41,25 @@ import { formatTime } from "../lib/utils";
 /** 纯阅读页面：只挂载静态 RichTextViewer，不创建 ProseMirror Editor。 */
 export default function ReadPage() {
   const { identity } = useAppContext();
+  const queryClient = useQueryClient();
   const articleSelection = useArticleSelection();
   const documentId = articleSelection.selectedId;
-  const selectedArticle = articleSelection.articles.find(
-    (article) => article.id === documentId,
-  );
+  const selectedArticle = articleSelection.articles.find((article) => article.id === documentId);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [threadId, setThreadId] = useState<string | null>(null);
-  const [proofreading, setProofreading] = useState(
-    () => searchParams.get("proofread") === "1",
-  );
-  const [ownedAttachments, setOwnedAttachments] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [pollVotes, setPollVotes] = useState<Record<string, readonly string[]>>(
-    {},
-  );
+  const [proofreading, setProofreading] = useState(() => searchParams.get("proofread") === "1");
+  const [ownedAttachments, setOwnedAttachments] = useState<ReadonlySet<string>>(() => new Set());
+  const [pollVotes, setPollVotes] = useState<Record<string, readonly string[]>>({});
   // 从「校订章节」入口跳转：chapter 指定章节，proofread 直接进入校订视图。
   const initialChapter = Number.parseInt(searchParams.get("chapter") ?? "", 10);
   const [chapterIndex, setChapterIndex] = useState(() =>
     Number.isFinite(initialChapter) && initialChapter >= 0 ? initialChapter : 0,
   );
-  const [selectedChapter, setSelectedChapter] =
-    useState<ChapterIdentity | null>(() => {
-      const id = searchParams.get("chapterId");
-      return id ? { documentId, id } : null;
-    });
+  const [selectedChapter, setSelectedChapter] = useState<ChapterIdentity | null>(() => {
+    const id = searchParams.get("chapterId");
+    return id ? { documentId, id } : null;
+  });
   const placeholder = useMemo(
     () => missingDocument(documentId || "pending-selection"),
     [documentId],
@@ -111,9 +97,7 @@ export default function ReadPage() {
   );
   const selectedIndex =
     selectedChapter?.documentId === documentId
-      ? visibleChapters.findIndex(
-          (chapter) => chapter.id === selectedChapter.id,
-        )
+      ? visibleChapters.findIndex((chapter) => chapter.id === selectedChapter.id)
       : -1;
   const activeIndex =
     selectedIndex >= 0
@@ -123,18 +107,15 @@ export default function ReadPage() {
   // 只记录一次解析出的实体；之后目录重排只改变其位置。
   if (
     activeChapter &&
-    (selectedChapter?.documentId !== documentId ||
-      selectedChapter.id !== activeChapter.id)
+    (selectedChapter?.documentId !== documentId || selectedChapter.id !== activeChapter.id)
   ) {
     setSelectedChapter({ documentId, id: activeChapter.id });
   }
   const activeChapterStatus = activeChapter?.directory;
   const chapterQuery = useQuery({
     queryKey: chapterQueryKeys.content(documentId, activeChapter?.id),
-    queryFn: ({ signal }) =>
-      getLongTextChapter(documentId, activeChapter!.id, signal),
-    enabled:
-      articleSelection.authenticated && activeChapter?.source === "standalone",
+    queryFn: ({ signal }) => getLongTextChapter(documentId, activeChapter!.id, signal),
+    enabled: articleSelection.authenticated && activeChapter?.source === "standalone",
   });
   const resolvedContent = useMemo(
     () =>
@@ -145,10 +126,8 @@ export default function ReadPage() {
     [activeChapter, chapterQuery.data, chapterQuery.isError],
   );
   const contentReady =
-    resolvedContent.source === "document" ||
-    resolvedContent.source === "standalone";
-  const needsDocument =
-    !activeChapter || activeChapter.source === "placeholder";
+    resolvedContent.source === "document" || resolvedContent.source === "standalone";
+  const needsDocument = !activeChapter || activeChapter.source === "placeholder";
   const contentError =
     directoryQuery.isError ||
     (documentQuery.isError && needsDocument) ||
@@ -180,19 +159,13 @@ export default function ReadPage() {
   const chapterSuggestions = useMemo(
     () =>
       suggestions.filter(
-        (suggestion) =>
-          suggestion.chapterId === chapterId && suggestion.status === "pending",
+        (suggestion) => suggestion.chapterId === chapterId && suggestion.status === "pending",
       ),
     [suggestions, chapterId],
   );
-  const lines = useMemo(
-    () => chapterTextLines(chapterDoc.content ?? []),
-    [chapterDoc],
-  );
+  const lines = useMemo(() => chapterTextLines(chapterDoc.content ?? []), [chapterDoc]);
   const changedLineNos = useMemo(
-    () => [
-      ...new Set(chapterSuggestions.map((suggestion) => suggestion.lineNo)),
-    ],
+    () => [...new Set(chapterSuggestions.map((suggestion) => suggestion.lineNo))],
     [chapterSuggestions],
   );
 
@@ -205,40 +178,27 @@ export default function ReadPage() {
       renderMentionCard: (attrs) => (
         <span>
           <strong className="block">{attrs.name}</strong>
-          <small>
-            {attrs.resolved
-              ? `已确认用户 · ${attrs.userId ?? ""}`
-              : "等待服务器解析"}
-          </small>
+          <small>{attrs.resolved ? `已确认用户 · ${attrs.userId ?? ""}` : "等待服务器解析"}</small>
         </span>
       ),
       getAttachmentState: (attrs: AttachmentReferenceAttributes) => ({
-        available:
-          attrs.priceCoins === 0 || ownedAttachments.has(attrs.attachmentId),
+        available: attrs.priceCoins === 0 || ownedAttachments.has(attrs.attachmentId),
         pending: false,
       }),
       onAttachmentActivate: (attrs: AttachmentReferenceAttributes) => {
         if (attrs.priceCoins > identity.coins) return;
-        setOwnedAttachments((current) =>
-          new Set(current).add(attrs.attachmentId),
-        );
+        setOwnedAttachments((current) => new Set(current).add(attrs.attachmentId));
       },
       getPollState: (attrs: PollReferenceAttributes) => ({
         selectedOptionIds: pollVotes[attrs.pollId] ?? [],
         votesByOption: Object.fromEntries(
-          attrs.options.map((option, index) => [
-            option.id,
-            [28, 19, 11][index] ?? 0,
-          ]),
+          attrs.options.map((option, index) => [option.id, [28, 19, 11][index] ?? 0]),
         ),
         // 本地环境：所有身份均可投票，避免作者身份下选项被禁用。
         canVote: true,
         pending: false,
       }),
-      onPollSubmit: (
-        attrs: PollReferenceAttributes,
-        optionIds: readonly string[],
-      ) =>
+      onPollSubmit: (attrs: PollReferenceAttributes, optionIds: readonly string[]) =>
         setPollVotes((current) => ({
           ...current,
           [attrs.pollId]: [...optionIds],
@@ -319,12 +279,8 @@ export default function ReadPage() {
                   <Eye size={13} />
                   1,284
                 </span>
-                <Badge
-                  tone={document.storage === "local-cache" ? "amber" : "teal"}
-                >
-                  {document.storage === "local-cache"
-                    ? "本地缓存副本"
-                    : `版本 ${headerRevision}`}
+                <Badge tone={document.storage === "local-cache" ? "amber" : "teal"}>
+                  {document.storage === "local-cache" ? "本地缓存副本" : `版本 ${headerRevision}`}
                 </Badge>
               </div>
               {identity.role === "reader" && contentReady ? (
@@ -367,8 +323,7 @@ export default function ReadPage() {
                 size="sm"
                 onClick={() => {
                   if (directoryQuery.isError) void directoryQuery.refetch();
-                  else if (resolvedContent.source === "error")
-                    void chapterQuery.refetch();
+                  else if (resolvedContent.source === "error") void chapterQuery.refetch();
                   else void documentQuery.refetch();
                 }}
               >
@@ -376,11 +331,7 @@ export default function ReadPage() {
               </Button>
             </p>
           ) : contentLoading ? (
-            <Skeleton
-              className="h-32 w-full"
-              role="status"
-              aria-label="正在加载章节正文"
-            />
+            <Skeleton className="h-32 w-full" role="status" aria-label="正在加载章节正文" />
           ) : !contentReady ? (
             <p role="status">本章暂无正文。</p>
           ) : proofreading && canProofread ? (
@@ -401,19 +352,17 @@ export default function ReadPage() {
               chapterId={chapterId}
               chapterTitle={visibleChapters[activeIndex]?.title ?? "正文"}
               lines={lines}
+              onSubmit={async ({ documentId: target, ...input }) => {
+                await submitSuggestion(target, input);
+                await queryClient.invalidateQueries({
+                  queryKey: ["forum", "suggestions", documentId],
+                });
+              }}
             >
-              <RichTextViewer
-                content={chapterDoc}
-                interactions={interactions}
-                labels={labels}
-              />
+              <RichTextViewer content={chapterDoc} interactions={interactions} labels={labels} />
             </ReaderSuggestion>
           ) : (
-            <RichTextViewer
-              content={chapterDoc}
-              interactions={interactions}
-              labels={labels}
-            />
+            <RichTextViewer content={chapterDoc} interactions={interactions} labels={labels} />
           )}
         </article>
         <aside className="sticky top-20">

@@ -34,6 +34,16 @@ steps 保存顺序为鉴权和请求结构校验、幂等结果查询、基线�
 
 单条建议由后端使用建议所属 documentId 和 chapterId 查询真实章节范围，结合行号及完整行上下文唯一定位。旧建议缺定位时仅接受全文唯一匹配。找不到或歧义分别返回 409 `SUGGESTION_SOURCE_NOT_FOUND` / `SUGGESTION_SOURCE_AMBIGUOUS`，失败不写正文或审批状态。当前单条审批仍通过文档 revision 写入；独立章节快照与文档范围不一致（包括空壳文档）时明确拒绝，避免写错正文。独立正文的完整批次校订工作流需要单独演进。
 
+## 扩展能力与修订区域
+
+每个扩展通过自己的 config 声明能力（`capabilities`）。`document-core` 的 `extensionCapabilities` 用 `extendNodeSchema`/`extendMarkSchema` 把声明注入对应 ProseMirror 规格，因此规范扩展与 `additionalExtensions` 注册的第三方扩展被同等对待。新增一种能力时在 `ExtensionCapabilities` 追加字段并提供读取辅助函数，消费方按能力名读取，不为具体扩展名写分支。
+
+「哪些渲染区域可以修订」是第一项能力（`revision`）：`prose` 表示持久化为 text 节点的正文，`chrome` 表示节点属性或视图装饰派生的文本。节点无需提供选择器，`applyRevisionSurfaces` 按 `viewer.nodeDOM` 逐个打点 `data-rt-revise`；标记没有独立节点 DOM，必须自带 `domSelector`；`proseWhen` 表达条件区域（未展开的黑幕）。未声明的原子节点默认装饰，其余默认正文，因此漏声明只会退化到既有行为，不会误放行属性文本。
+
+`resolveRevisionRegion` 是唯一消费者：沿祖先链取**最近**信号（扩展声明优先于平台控件规则，默认正文），返回文本、行号与行文本，不依赖扩展名或 class。声明为 `chrome` 的容器要求整棵子树都是装饰；容器节点应保持 `prose`，只标记自己的装饰子区域——摘录页眉、页脚与书名由 `readerTop`/`readerBottom` 用 `chromeSurface()` 标记，renderHTML 与 React NodeView 两条路径共用同一份声明。
+
+服务端 `applySuggestionText` 仍只按 text 节点定位，装饰文本天然不会被写入正文。新增扩展只要正确声明修订面，读者修订与剪贴板纯文本投影（`text.leafText`）都无需修改共享代码。
+
 ## 业务实体与依赖约束
 
 正文节点保存稳定实体 ID 和必要显示属性。图片、骰子审计、间贴树、投票、附件和用户资料独立于正文；正文修改不隐式删除这些实体。间贴的行首/行末指稳定段落块，不是随视口变化的视觉换行。

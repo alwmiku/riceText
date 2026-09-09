@@ -1,61 +1,25 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  RICH_TEXT_VIEWER_CONTENT_SELECTOR,
+  isRevisionSurfaceProse,
+  resolveRevisionRegion,
+} from "@ricetext/editor-core";
 import { Button, Dialog } from "../../components/ui";
-import { submitSuggestion } from "../../lib/api";
 
 /** 与编辑器浮动工具栏一致，停止交互后再显示，避免按钮追着手势跳动。 */
 const SELECTION_SETTLE_DELAY = 160;
 
-// 原子业务节点、阅读装饰和控件文字不属于可修订的正文。
-const NON_PROSE_SELECTOR = [
-  '[contenteditable="false"]',
-  "button",
-  "input",
-  "select",
-  "textarea",
-  '[role="button"]:not(.rt-spoiler)',
-  '.rt-spoiler:not([aria-expanded="true"])',
-  '[role="radio"]',
-  '[role="checkbox"]',
-  ".rt-poll",
-  ".rt-attachment",
-  ".rt-rich-image",
-  ".rt-dice-roll",
-  ".rt-mention",
-  ".rt-inline-comment-anchor-wrap",
-  ".rt-reply-gate--locked",
-  ".rt-reader-book-title",
-  ".rt-reader-topline",
-  ".rt-reader-bottomline",
-  ".rt-long-text__header",
-  '[data-node-type="poll-ref"]',
-  '[data-node-type="attachment-ref"]',
-  '[data-node-type="rich-image"]',
-  '[data-node-type="dice-roll"]',
-  '[data-node-type="mention"]',
-  '[data-node-type="inline-comment-anchor"]',
-].join(",");
-
-function isNonProseNode(viewer: Element, node: Node): boolean {
-  let element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
-  for (; element && element !== viewer; element = element.parentElement) {
-    if (element.matches(NON_PROSE_SELECTOR)) return true;
-  }
-  return false;
-}
-
-function isProseRange(viewer: Element, range: Range): boolean {
-  if (
-    !viewer.contains(range.commonAncestorContainer) ||
-    isNonProseNode(viewer, range.startContainer) ||
-    isNonProseNode(viewer, range.endContainer)
-  )
-    return false;
-  // 起点和终点在正文中，也可能跨过中间的投票、图片或间贴标记。
-  return !Array.from(viewer.querySelectorAll(NON_PROSE_SELECTOR)).some((element) =>
-    range.intersectsNode(element),
-  );
+/** 一条待提交的读者修订；提交方式由宿主注入。 */
+export interface ReaderSuggestionInput {
+  documentId: string;
+  chapterId: string;
+  chapterTitle: string;
+  fromText: string;
+  toText: string;
+  reason: string;
+  lineNo: number;
+  lineText: string;
 }
 
 interface SelectionDraft {
@@ -66,22 +30,27 @@ interface SelectionDraft {
 
 /**
  * 读者修订入口：捕获阅读器选区、定位章节内行号并提交待审核建议。
- * 组件应以 documentId + chapterId 作为 key，切章时即可丢弃上一章的瞬时选区。
+ *
+ * 可修订区域完全由查看器 DOM 上的修订面标记决定（见 editor-core 的
+ * `resolveRevisionRegion`），本组件不认识任何具体扩展。组件应以
+ * documentId + chapterId 作为 key，切章时即可丢弃上一章的瞬时选区。
  */
 export function ReaderSuggestion({
   documentId,
   chapterId,
   chapterTitle,
   lines,
+  onSubmit,
   children,
 }: {
   documentId: string;
   chapterId: string;
   chapterTitle: string;
   lines: readonly string[];
+  /** 提交一条修订；API 与缓存失效策略由宿主决定。 */
+  onSubmit: (input: ReaderSuggestionInput) => Promise<void>;
   children: ReactNode;
 }) {
-  const queryClient = useQueryClient();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState<SelectionDraft | null>(null);
   const [selectionAnchor, setSelectionAnchor] = useState<{
@@ -108,14 +77,14 @@ export function ReaderSuggestion({
     // 弹窗取得焦点会改变浏览器选区，此时保留已打开的修订草稿。
     if (dialogOpenRef.current || draggingRef.current) return;
     const selection = window.getSelection();
-    const viewer = rootRef.current?.querySelector<HTMLElement>(".rt-viewer .tiptap.ProseMirror");
+    const viewer = rootRef.current?.querySelector<HTMLElement>(RICH_TEXT_VIEWER_CONTENT_SELECTOR);
     if (!selection || selection.isCollapsed || !viewer || selection.rangeCount === 0) {
       clearSelectionDraft();
       return;
     }
     const range = selection.getRangeAt(0);
-    const fromText = selection.toString().trim();
-    if (!isProseRange(viewer, range) || !fromText) {
+    const region = resolveRevisionRegion({ viewer, range, lines });
+    if (!region) {
       clearSelectionDraft();
       return;
     }
@@ -124,11 +93,6 @@ export function ReaderSuggestion({
       range.startContainer.nodeType === Node.ELEMENT_NODE
         ? (range.startContainer as Element)
         : range.startContainer.parentElement;
-    const blocks = viewer ? Array.from(viewer.children) : [];
-    const lineIndex = blocks.findIndex(
-      (block) => block === startElement || (startElement ? block.contains(startElement) : false),
-    );
-    const lineNo = lineIndex >= 0 ? lineIndex + 1 : 0;
     const getRect = (range as Range & { getBoundingClientRect?: () => DOMRect })
       .getBoundingClientRect;
     if (typeof getRect === "function") {
@@ -180,12 +144,8 @@ export function ReaderSuggestion({
         setSelectionAnchor({ top, left, mobile });
       }
     }
-    setDraft({
-      fromText,
-      lineNo,
-      lineText: lineNo > 0 ? (lines[lineNo - 1] ?? "") : "",
-    });
-    setSuggestedText(fromText);
+    setDraft(region);
+    setSuggestedText(region.fromText);
     setNotice("");
   }, [clearSelectionDraft, lines]);
 
@@ -209,14 +169,14 @@ export function ReaderSuggestion({
       release();
     };
     const onPointerDown = (event: PointerEvent) => {
-      const viewer = rootRef.current?.querySelector(".rt-viewer .tiptap.ProseMirror");
+      const viewer = rootRef.current?.querySelector(RICH_TEXT_VIEWER_CONTENT_SELECTOR);
       if (
         dialogOpenRef.current ||
         !(event.target instanceof Node) ||
         !viewer?.contains(event.target)
       )
         return;
-      if (isNonProseNode(viewer, event.target)) {
+      if (!isRevisionSurfaceProse(viewer, event.target)) {
         clearSelectionDraft();
         // 单选框等控件可能保留旧正文选区，显式取消以免松手或滚动后入口再次出现。
         const selection = window.getSelection();
@@ -272,15 +232,17 @@ export function ReaderSuggestion({
     if (!draft) return;
     // 选区事件可能仍在等待动画帧，点击时再核对，不能提交已取消的旧选区。
     const selection = window.getSelection();
-    const viewer = rootRef.current?.querySelector(".rt-viewer .tiptap.ProseMirror");
-    if (
-      !selection ||
-      selection.isCollapsed ||
-      !selection.rangeCount ||
-      !viewer ||
-      !isProseRange(viewer, selection.getRangeAt(0)) ||
-      selection.toString().trim() !== draft.fromText
-    ) {
+    const viewer = rootRef.current?.querySelector<HTMLElement>(RICH_TEXT_VIEWER_CONTENT_SELECTOR);
+    if (!selection || selection.isCollapsed || !selection.rangeCount || !viewer) {
+      clearSelectionDraft();
+      return;
+    }
+    const region = resolveRevisionRegion({
+      viewer,
+      range: selection.getRangeAt(0),
+      lines,
+    });
+    if (!region || region.fromText !== draft.fromText) {
       clearSelectionDraft();
       return;
     }
@@ -302,17 +264,15 @@ export function ReaderSuggestion({
     setSubmitting(true);
     setError("");
     try {
-      await submitSuggestion(documentId, {
+      await onSubmit({
+        documentId,
+        chapterId,
+        chapterTitle,
         fromText: draft.fromText,
         toText: replacement,
         reason: reason.trim(),
-        chapterId,
-        chapterTitle,
         lineNo: draft.lineNo,
         lineText: draft.lineText,
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["forum", "suggestions", documentId],
       });
       setDialogOpen(false);
       setNotice("修订已提交给作者审核");

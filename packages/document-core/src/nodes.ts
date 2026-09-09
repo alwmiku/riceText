@@ -4,6 +4,11 @@ import { normalizeNovelExcerptVariant } from "./novel-excerpt-variant.js";
 import { parseInteger, parseJsonArray } from "./helpers.js";
 import { readerTop, readerBottom, READER_PLATFORM_POLICY } from "./reader-excerpt.js";
 
+/** 属性派生文本的纯文本投影，与剪贴板既有输出逐字一致。 */
+function attrText(value: unknown): string {
+  return String(value ?? "");
+}
+
 /**
  * 共享的节点/标记规格（单一权威来源）。
  *
@@ -19,6 +24,13 @@ export const richImageNodeSpec = {
   atom: true,
   draggable: true,
   selectable: true,
+  capabilities: {
+    revision: { surface: "chrome" },
+    text: {
+      leafText: (node) =>
+        [attrText(node.attrs.alt), attrText(node.attrs.caption)].filter(Boolean).join("\n"),
+    },
+  },
   addAttributes() {
     return {
       assetId: {
@@ -88,6 +100,12 @@ export const diceRollNodeSpec = {
   atom: true,
   selectable: true,
   marks: "_",
+  capabilities: {
+    revision: { surface: "chrome" },
+    text: {
+      leafText: (node) => `${attrText(node.attrs.expression)} = ${attrText(node.attrs.total)}`,
+    },
+  },
   addAttributes() {
     return {
       rollId: {
@@ -148,6 +166,8 @@ export const novelExcerptNodeSpec = {
   content: "block+",
   defining: true,
   isolating: true,
+  // 摘录正文是可修订正文；页眉、页脚与书名由 readerTop/readerBottom 标为装饰。
+  capabilities: { revision: { surface: "prose" } },
   addAttributes() {
     return {
       bookTitle: {
@@ -252,6 +272,10 @@ export const mentionNodeSpec = {
   atom: true,
   selectable: true,
   marks: "_",
+  capabilities: {
+    revision: { surface: "chrome" },
+    text: { leafText: (node) => `@${attrText(node.attrs.name)}` },
+  },
   addAttributes() {
     return {
       userId: {
@@ -301,6 +325,8 @@ export const replyGateNodeSpec = {
   content: "block+",
   defining: true,
   isolating: true,
+  // 门控正文是正文；锁定态由查看器渲染成按钮，由平台控件规则覆盖。
+  capabilities: { revision: { surface: "prose" } },
   addAttributes() {
     return {
       gateId: {
@@ -338,6 +364,10 @@ export const attachmentRefNodeSpec = {
   group: "block",
   atom: true,
   selectable: true,
+  capabilities: {
+    revision: { surface: "chrome" },
+    text: { leafText: (node) => attrText(node.attrs.name) },
+  },
   addAttributes() {
     return {
       attachmentId: {
@@ -393,6 +423,22 @@ export const pollRefNodeSpec = {
   group: "block",
   atom: true,
   selectable: true,
+  capabilities: {
+    revision: { surface: "chrome" },
+    text: {
+      leafText: (node) =>
+        [
+          attrText(node.attrs.question),
+          ...(Array.isArray(node.attrs.options)
+            ? node.attrs.options.map((option: unknown) =>
+                option && typeof option === "object" && "label" in option
+                  ? attrText(option.label)
+                  : "",
+              )
+            : []),
+        ].join("\n"),
+    },
+  },
   addAttributes() {
     return {
       pollId: {
@@ -443,6 +489,11 @@ export const longTextBlockNodeSpec = {
   atom: true,
   selectable: true,
   draggable: true,
+  // 正文保存在属性里而非 text 节点，服务端按行定位必然找不到，因此整块为装饰。
+  capabilities: {
+    revision: { surface: "chrome" },
+    text: { leafText: (node) => attrText(node.attrs.text) },
+  },
   addAttributes() {
     return {
       chapterId: {
@@ -512,6 +563,10 @@ export const inlineCommentAnchorNodeSpec = {
   atom: true,
   selectable: true,
   draggable: false,
+  capabilities: {
+    revision: { surface: "chrome" },
+    text: { leafText: (node) => attrText(node.attrs.count) },
+  },
   addAttributes() {
     return {
       threadId: {
@@ -556,6 +611,15 @@ export const spoilerMarkSpec = {
   name: "spoiler",
   inclusive: false,
   excludes: "bold italic textStyle",
+  // 黑幕文本本身是正文，但只在显式展开后才允许修订；标记没有节点 DOM，
+  // 因此按自己渲染的签名定位。
+  capabilities: {
+    revision: {
+      surface: "prose",
+      domSelector: '[data-spoiler="true"]',
+      proseWhen: '[aria-expanded="true"]',
+    },
+  },
   parseHTML() {
     return [{ tag: "span[data-spoiler]" }];
   },

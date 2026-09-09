@@ -1,4 +1,4 @@
-import { Editor, Extension, type JSONContent } from "@tiptap/core";
+import { Editor, Extension, Node, type Extensions, type JSONContent } from "@tiptap/core";
 import { AllSelection, Plugin, TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vitest";
 import { createEditorExtensions } from "./editor.js";
@@ -11,7 +11,7 @@ const text = (value: string): JSONContent => ({ type: "text", text: value });
 function paragraph(value = "", attrs: Record<string, unknown> = {}): JSONContent {
   return { type: "paragraph", attrs, content: value ? [text(value)] : [] };
 }
-function create(content: JSONContent[] = [paragraph()], additionalExtensions: Extension[] = []) {
+function create(content: JSONContent[] = [paragraph()], additionalExtensions: Extensions = []) {
   const editor = new Editor({
     extensions: createEditorExtensions({ additionalExtensions }),
     content: { type: "doc", content },
@@ -341,6 +341,28 @@ describe("共享剪贴板的纯文本序列化", () => {
     copy(source);
     const slice = TextSelection.create(source.state.doc, 2, 5).content();
     expect(source.view.serializeForClipboard(slice).text).toBe("bcd");
+  });
+
+  it("第三方扩展声明 text.leafText 即被序列化，无需修改共享代码", () => {
+    const Badge = Node.create({
+      name: "badge",
+      group: "inline",
+      inline: true,
+      atom: true,
+      capabilities: { text: { leafText: (node) => `[${String(node.attrs.label ?? "")}]` } },
+      addAttributes: () => ({ label: { default: "" } }),
+      renderHTML: ({ node }) => ["span", { class: "badge" }, `[${String(node.attrs.label ?? "")}]`],
+    });
+    const source = create(
+      [
+        {
+          type: "paragraph",
+          content: [text("前 "), { type: "badge", attrs: { label: "徽章" } }],
+        },
+      ],
+      [Badge],
+    );
+    expect(copy(source).text).toBe("前 [徽章]");
   });
 
   it("追加的自定义序列化插件和直接 editorProps 保持优先", () => {
