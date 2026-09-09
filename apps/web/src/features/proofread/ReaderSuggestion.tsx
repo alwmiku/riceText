@@ -1,15 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Send } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Button, Dialog } from "../../components/ui";
 import { submitSuggestion } from "../../lib/api";
+
+/** 与编辑器浮动工具栏一致，停止交互后再显示，避免按钮追着手势跳动。 */
+const SELECTION_SETTLE_DELAY = 160;
 
 interface SelectionDraft {
   fromText: string;
@@ -43,50 +39,93 @@ export function ReaderSuggestion({
     mobile: boolean;
   } | null>(null);
   const [open, setOpen] = useState(false);
+  const dialogOpenRef = useRef(false);
+  const [selectionSettled, setSelectionSettled] = useState(true);
+  const draggingRef = useRef(false);
   const [suggestedText, setSuggestedText] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
 
-  const captureSelection = useCallback(() => {
-    const selection = window.getSelection();
-    const root = rootRef.current;
-    if (!selection || selection.isCollapsed || !root || selection.rangeCount === 0)
-      return;
-    const range = selection.getRangeAt(0);
-    if (!root.contains(range.commonAncestorContainer)) return;
-    const fromText = selection.toString().trim();
-    if (!fromText) return;
+  const clearSelectionDraft = useCallback(() => {
+    setDraft(null);
+    setSelectionAnchor(null);
+  }, []);
 
-    const viewer = root.querySelector<HTMLElement>(
-      ".rt-viewer .tiptap.ProseMirror",
-    );
+  const captureSelection = useCallback(() => {
+    // 弹窗取得焦点会改变浏览器选区，此时保留已打开的修订草稿。
+    if (dialogOpenRef.current || draggingRef.current) return;
+    const selection = window.getSelection();
+    const viewer = rootRef.current?.querySelector<HTMLElement>(".rt-viewer .tiptap.ProseMirror");
+    if (!selection || selection.isCollapsed || !viewer || selection.rangeCount === 0) {
+      clearSelectionDraft();
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    const fromText = selection.toString().trim();
+    if (!viewer.contains(range.commonAncestorContainer) || !fromText) {
+      clearSelectionDraft();
+      return;
+    }
+    setSelectionAnchor(null);
     const startElement =
       range.startContainer.nodeType === Node.ELEMENT_NODE
         ? (range.startContainer as Element)
         : range.startContainer.parentElement;
     const blocks = viewer ? Array.from(viewer.children) : [];
     const lineIndex = blocks.findIndex(
-      (block) =>
-        block === startElement ||
-        (startElement ? block.contains(startElement) : false),
+      (block) => block === startElement || (startElement ? block.contains(startElement) : false),
     );
     const lineNo = lineIndex >= 0 ? lineIndex + 1 : 0;
-    const getRect = (
-      range as Range & { getBoundingClientRect?: () => DOMRect }
-    ).getBoundingClientRect;
+    const getRect = (range as Range & { getBoundingClientRect?: () => DOMRect })
+      .getBoundingClientRect;
     if (typeof getRect === "function") {
       const rect = getRect.call(range);
       if (rect.width > 0 || rect.height > 0) {
+        const viewport = window.visualViewport;
+        const viewportTop = viewport?.offsetTop ?? 0;
+        const viewportLeft = viewport?.offsetLeft ?? 0;
+        const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+        const viewportRight = viewportLeft + (viewport?.width ?? window.innerWidth);
+        if (
+          rect.bottom <= viewportTop ||
+          rect.top >= viewportBottom ||
+          rect.right <= viewportLeft ||
+          rect.left >= viewportRight
+        ) {
+          clearSelectionDraft();
+          return;
+        }
+        // 内层阅读容器也可能独立滚动，被裁出的选区不应留下浮动入口。
+        for (
+          let parent = startElement;
+          parent && parent !== document.body;
+          parent = parent.parentElement
+        ) {
+          const style = getComputedStyle(parent);
+          const clipsY = /auto|scroll|hidden|clip/.test(style.overflowY);
+          const clipsX = /auto|scroll|hidden|clip/.test(style.overflowX);
+          if (!clipsY && !clipsX) continue;
+          const bounds = parent.getBoundingClientRect();
+          if (
+            (clipsY && (rect.bottom <= bounds.top || rect.top >= bounds.bottom)) ||
+            (clipsX && (rect.right <= bounds.left || rect.left >= bounds.right))
+          ) {
+            clearSelectionDraft();
+            return;
+          }
+        }
         const left = Math.min(
-          window.innerWidth - 72,
-          Math.max(72, rect.left + rect.width / 2),
+          viewportRight - 72,
+          Math.max(viewportLeft + 72, rect.left + rect.width / 2),
         );
-        const top = rect.top >= 52 ? rect.top - 44 : rect.bottom + 8;
+        const top = Math.min(
+          viewportBottom - 44,
+          Math.max(viewportTop + 8, rect.top >= viewportTop + 52 ? rect.top - 44 : rect.bottom + 8),
+        );
         const mobile =
-          window.innerWidth <= 840 ||
-          window.matchMedia?.("(pointer: coarse)").matches === true;
+          window.innerWidth <= 840 || window.matchMedia?.("(pointer: coarse)").matches === true;
         setSelectionAnchor({ top, left, mobile });
       }
     }
@@ -97,29 +136,95 @@ export function ReaderSuggestion({
     });
     setSuggestedText(fromText);
     setNotice("");
-  }, [lines]);
+  }, [clearSelectionDraft, lines]);
 
-  // 桌面主要触发 mouseup，移动端拖动系统选区手柄时主要触发 selectionchange。
-  // 使用动画帧合并连续事件，既跟随最终选区，又不阻止浏览器原生复制/查询菜单。
   useEffect(() => {
-    let frame = 0;
-    const handleSelectionChange = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(captureSelection);
+    let timer = 0;
+    const hold = () => {
+      window.clearTimeout(timer);
+      setSelectionSettled(false);
     };
-    document.addEventListener("selectionchange", handleSelectionChange);
+    const release = () => {
+      window.clearTimeout(timer);
+      if (draggingRef.current) return;
+      timer = window.setTimeout(() => {
+        captureSelection();
+        setSelectionSettled(true);
+      }, SELECTION_SETTLE_DELAY);
+    };
+    const onSelectionChange = () => {
+      if (dialogOpenRef.current) return;
+      hold();
+      release();
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const viewer = rootRef.current?.querySelector(".rt-viewer .tiptap.ProseMirror");
+      if (
+        dialogOpenRef.current ||
+        !(event.target instanceof Node) ||
+        !viewer?.contains(event.target)
+      )
+        return;
+      draggingRef.current = true;
+      hold();
+    };
+    const onPointerUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      release();
+    };
+    // 捕获滚动容器事件；视觉视口变化覆盖手机键盘和缩放，不阻止原生滚动。
+    document.addEventListener("selectionchange", onSelectionChange);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", onPointerUp, true);
+    window.addEventListener("scroll", onSelectionChange, { capture: true, passive: true });
+    window.addEventListener("resize", onSelectionChange);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("scroll", onSelectionChange, { passive: true });
+    viewport?.addEventListener("resize", onSelectionChange);
     return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener("selectionchange", handleSelectionChange);
+      window.clearTimeout(timer);
+      draggingRef.current = false;
+      document.removeEventListener("selectionchange", onSelectionChange);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", onPointerUp, true);
+      window.removeEventListener("scroll", onSelectionChange, true);
+      window.removeEventListener("resize", onSelectionChange);
+      viewport?.removeEventListener("scroll", onSelectionChange);
+      viewport?.removeEventListener("resize", onSelectionChange);
     };
   }, [captureSelection]);
 
+  const setDialogOpen = (next: boolean) => {
+    dialogOpenRef.current = next;
+    setOpen(next);
+    if (!next) {
+      clearSelectionDraft();
+      window.getSelection()?.removeAllRanges();
+    }
+  };
+
   const openDialog = () => {
     if (!draft) return;
+    // 选区事件可能仍在等待动画帧，点击时再核对，不能提交已取消的旧选区。
+    const selection = window.getSelection();
+    const viewer = rootRef.current?.querySelector(".rt-viewer .tiptap.ProseMirror");
+    if (
+      !selection ||
+      selection.isCollapsed ||
+      !selection.rangeCount ||
+      !viewer?.contains(selection.getRangeAt(0).commonAncestorContainer) ||
+      selection.toString().trim() !== draft.fromText
+    ) {
+      clearSelectionDraft();
+      return;
+    }
     setSuggestedText(draft.fromText);
     setReason("");
     setError("");
-    setOpen(true);
+    setDialogOpen(true);
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -146,9 +251,7 @@ export function ReaderSuggestion({
       await queryClient.invalidateQueries({
         queryKey: ["forum", "suggestions", documentId],
       });
-      setOpen(false);
-      setDraft(null);
-      setSelectionAnchor(null);
+      setDialogOpen(false);
       setNotice("修订已提交给作者审核");
       window.getSelection()?.removeAllRanges();
     } catch (cause) {
@@ -165,19 +268,18 @@ export function ReaderSuggestion({
       onKeyUp={captureSelection}
       onTouchEnd={() => window.requestAnimationFrame(captureSelection)}
     >
-      {draft && !selectionAnchor ? (
+      {!open && selectionSettled && draft && !selectionAnchor ? (
         <div className="mb-5 flex items-center gap-3 rounded-md border border-[#add4cb] bg-[#edf8f5] px-3 py-2 text-xs text-[#185f57]">
           <span className="min-w-0 flex-1 truncate">
-            已选择「{draft.fromText}」
-            {draft.lineNo > 0 ? ` · 本章第 ${draft.lineNo} 行` : ""}
+            已选择「{draft.fromText}」{draft.lineNo > 0 ? ` · 本章第 ${draft.lineNo} 行` : ""}
           </span>
-          <Button size="sm" onClick={openDialog}>
+          <Button size="sm" onPointerDown={(event) => event.preventDefault()} onClick={openDialog}>
             <Send size={13} />
             提交修订
           </Button>
         </div>
       ) : null}
-      {draft && selectionAnchor ? (
+      {!open && selectionSettled && draft && selectionAnchor ? (
         <Button
           size="sm"
           className={
@@ -213,19 +315,15 @@ export function ReaderSuggestion({
       {children}
       <Dialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={setDialogOpen}
         title="提交修订"
         description={`发送给作者审核 · ${chapterTitle}${draft?.lineNo ? ` · 第 ${draft.lineNo} 行` : ""}`}
         footer={
           <>
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
               取消
             </Button>
-            <Button
-              type="submit"
-              form="reader-suggestion-form"
-              disabled={submitting}
-            >
+            <Button type="submit" form="reader-suggestion-form" disabled={submitting}>
               <Send size={14} />
               {submitting ? "提交中…" : "提交给作者"}
             </Button>
@@ -269,10 +367,7 @@ export function ReaderSuggestion({
             />
           </label>
           {error ? (
-            <p
-              role="alert"
-              className="rounded bg-[#fdf1f0] px-2 py-1.5 text-xs text-[#8f2b24]"
-            >
+            <p role="alert" className="rounded bg-[#fdf1f0] px-2 py-1.5 text-xs text-[#8f2b24]">
               {error}
             </p>
           ) : null}
