@@ -907,13 +907,13 @@ describe("RiceText Worker", () => {
       content: [
         {
           type: "heading",
-          attrs: { level: 2, chapterStart: true },
+          attrs: { level: 1, chapterStart: true },
           content: [{ type: "text", text: "楔子" }],
         },
         { type: "paragraph", content: [{ type: "text", text: "公开章节" }] },
         {
           type: "heading",
-          attrs: { level: 2, chapterStart: true },
+          attrs: { level: 1, chapterStart: true },
           content: [{ type: "text", text: "第一章" }],
         },
         { type: "paragraph", content: [{ type: "text", text: "隐藏章节正文" }] },
@@ -1004,7 +1004,7 @@ describe("RiceText Worker", () => {
         ...content.content,
         {
           type: "heading",
-          attrs: { level: 2, chapterStart: true },
+          attrs: { level: 1, chapterStart: true },
           content: [{ type: "text", text: "第一章" }],
         },
         { type: "paragraph", content: [{ type: "text", text: "后来新增" }] },
@@ -1299,7 +1299,7 @@ describe("RiceText Worker", () => {
       content: [
         {
           type: "heading",
-          attrs: { textAlign: "left", chapterStart: true, level: 2 },
+          attrs: { textAlign: "left", chapterStart: true, level: 1 },
           content: [{ type: "text", text: "第一章" }],
         },
         {

@@ -249,11 +249,11 @@ describe('document sanitization', () => {
     const result = validateDocument({
       type: 'doc',
       content: [
-        { type: 'heading', attrs: { level: 2, chapterStart: true }, content: [{ type: 'text', text: '第一章' }] },
+        { type: 'heading', attrs: { level: 1, chapterStart: true }, content: [{ type: 'text', text: '第一章' }] },
         { type: 'heading', attrs: { level: 2, chapterStart: 'yes' }, content: [{ type: 'text', text: '第二章' }] },
       ],
     })
-    expect(result.document.content?.[0]?.attrs).toMatchObject({ level: 2, chapterStart: true })
+    expect(result.document.content?.[0]?.attrs).toMatchObject({ level: 1, chapterStart: true })
     expect(result.document.content?.[1]?.attrs).toMatchObject({ level: 2, chapterStart: false })
     expect(result.valid).toBe(true)
   })

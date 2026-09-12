@@ -9,7 +9,7 @@ const chapter: TiptapDocument = {
   content: [
     {
       type: "heading",
-      attrs: { textAlign: "left", chapterStart: true, level: 2 },
+      attrs: { textAlign: "left", chapterStart: true, level: 1 },
       content: [{ type: "text", text: "Chapter" }],
     },
     {

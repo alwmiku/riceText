@@ -1394,7 +1394,7 @@ describe("RiceText API", () => {
           content: [
             {
               type: "heading",
-              attrs: { level: 2, chapterStart: true },
+              attrs: { level: 1, chapterStart: true },
               content: [{ type: "text", text: "第一章" }],
             },
             { type: "paragraph", content: [{ type: "text", text: "正文一" }] },

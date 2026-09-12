@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  containsLongTextBlocks,
-  convertLongTextBlocksToChapters,
-} from "./long-text-conversion";
+import { containsLongTextBlocks, convertLongTextBlocksToChapters } from "./long-text-conversion";
 
 describe("convertLongTextBlocksToChapters", () => {
   it("converts local blocks to standard headings and line-preserving paragraphs", () => {
@@ -24,7 +21,7 @@ describe("convertLongTextBlocksToChapters", () => {
     expect(converted.content).toEqual([
       {
         type: "heading",
-        attrs: { textAlign: "left", chapterStart: true, level: 2 },
+        attrs: { textAlign: "left", chapterStart: true, level: 1 },
         content: [{ type: "text", text: "第一章 起点" }],
       },
       {

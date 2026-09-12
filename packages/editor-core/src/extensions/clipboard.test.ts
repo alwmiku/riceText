@@ -82,7 +82,7 @@ describe("共享剪贴板的 HTML 粘贴", () => {
     const source = create([
       {
         type: "heading",
-        attrs: { ...format, level: 2, chapterStart: true },
+        attrs: { ...format, level: 1, chapterStart: true },
         content: [{ ...text("abcdef"), marks: [{ type: "bold" }, { type: "underline" }] }],
       },
     ]);

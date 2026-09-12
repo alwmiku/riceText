@@ -146,10 +146,11 @@ const twoChapterDoc: DocumentEnvelope = {
   content: {
     type: 'doc',
     content: [
-      { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: '雾港来信' }] },
-      { type: 'heading', attrs: { level: 2, chapterStart: true }, content: [{ type: 'text', text: '第一章 潮汐表' }] },
+      // 书名是章内小标题（H2）；章节标题统一是 H1 + chapterStart。
+      { type: 'heading', attrs: { level: 2, chapterStart: false }, content: [{ type: 'text', text: '雾港来信' }] },
+      { type: 'heading', attrs: { level: 1, chapterStart: true }, content: [{ type: 'text', text: '第一章 潮汐表' }] },
       { type: 'paragraph', content: [{ type: 'text', text: '潮声沿着旧城墙漫上来。' }] },
-      { type: 'heading', attrs: { level: 2, chapterStart: true }, content: [{ type: 'text', text: '第二章 陌生船票' }] },
+      { type: 'heading', attrs: { level: 1, chapterStart: true }, content: [{ type: 'text', text: '第二章 陌生船票' }] },
       { type: 'paragraph', content: [{ type: 'text', text: '他在抽屉底层找到一张陌生的船票。' }] },
     ],
   },
@@ -536,7 +537,7 @@ describe('ComposePage', () => {
       content: [
         {
           type: 'heading',
-          attrs: { level: 2, chapterStart: true, textAlign: 'left' },
+          attrs: { level: 1, chapterStart: true, textAlign: 'left' },
           content: [{ type: 'text', text: '上传章节' }],
         },
         {

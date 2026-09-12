@@ -39,10 +39,11 @@ describe("reader document projection", () => {
   const document = {
     type: "doc" as const,
     content: [
-      { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "作品" }] },
-      { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "公开章" }] },
+      // 书名是章内小标题（H2），章节标题统一是 H1 + chapterStart。
+      { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "作品" }] },
+      { type: "heading", attrs: { level: 1, chapterStart: true }, content: [{ type: "text", text: "公开章" }] },
       { type: "paragraph", content: [{ type: "text", text: "公开正文" }] },
-      { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "隐藏章" }] },
+      { type: "heading", attrs: { level: 1, chapterStart: true }, content: [{ type: "text", text: "隐藏章" }] },
       { type: "paragraph", content: [{ type: "text", text: "隐藏正文" }] },
     ],
   };

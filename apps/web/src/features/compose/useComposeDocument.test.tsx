@@ -65,13 +65,13 @@ const serverDocument: DocumentEnvelope = {
     content: [
       {
         type: "heading",
-        attrs: { level: 2, chapterStart: true },
+        attrs: { level: 1, chapterStart: true },
         content: [{ type: "text", text: "第一章 潮汐表" }],
       },
       { type: "paragraph", content: [{ type: "text", text: "服务器正文" }] },
       {
         type: "heading",
-        attrs: { level: 2, chapterStart: true },
+        attrs: { level: 1, chapterStart: true },
         content: [{ type: "text", text: "第二章 陌生船票" }],
       },
     ],
@@ -87,8 +87,9 @@ function wrapper({ children }: { children: ReactNode }) {
 
 function HydrationRaceHarness() {
   const compose = useComposeDocument("demo-post");
+  // 章节标题是 H1 + chapterStart（H1 是唯一的分章层级）。
   const chapterHeading = compose.content.content?.find(
-    (node) => node.type === "heading" && node.attrs?.level === 2,
+    (node) => node.type === "heading" && node.attrs?.level === 1,
   );
 
   useEffect(() => {

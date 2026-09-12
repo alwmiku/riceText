@@ -5,10 +5,11 @@ import { resolveChapterContent, resolveChapterSources } from "./chapter-source";
 import type { ForumChapterItem, RichTextNode } from "./types";
 
 const empty: RichTextNode = { type: "doc", content: [] };
+/** 历史文档形态：章节标题是 H2 + chapterStart，读取时会被归一化成 H1。 */
 const legacy: RichTextNode = { type: "doc", content: [
-  { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "甲" }] },
+  { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "甲" }] },
   { type: "paragraph", content: [{ type: "text", text: "甲正文" }] },
-  { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "乙" }] },
+  { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "乙" }] },
   { type: "paragraph", content: [{ type: "text", text: "乙正文" }] },
 ] };
 const row = (overrides: Partial<ForumChapterItem> = {}): ForumChapterItem => ({

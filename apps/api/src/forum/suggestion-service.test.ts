@@ -6,7 +6,12 @@ import { DocumentService } from "../document-service.js";
 import { SuggestionService } from "./suggestion-service.js";
 
 const p = (text: string) => ({ type: "paragraph", content: [{ type: "text", text }] });
-const h = (text: string) => ({ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text }] });
+/** 章节标题：H1 + chapterStart（H1 是唯一的分章层级）。 */
+const h = (text: string) => ({
+  type: "heading",
+  attrs: { level: 1, chapterStart: true },
+  content: [{ type: "text", text }],
+});
 const content: TiptapDocument = { type: "doc", content: [h("First"), p("target typo"), h("Second"), p("other typo"), p("target typo"), p("duplicate typo typo"), p("unique source")] };
 const author = { id: "author", role: "author" as const, name: "Author", bio: "", isFriend: true };
 const location = { chapterId: "chapter-0", chapterTitle: "Untrusted title", lineNo: 3, lineText: "target typo" };

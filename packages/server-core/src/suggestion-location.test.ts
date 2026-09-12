@@ -4,7 +4,12 @@ import { applySuggestionText, type SuggestionLocation } from "./suggestions";
 import { replaceFirstText } from "./index";
 
 const p = (text: string): TiptapNode => ({ type: "paragraph", content: [{ type: "text", text }] });
-const h = (text: string): TiptapNode => ({ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text }] });
+/** 章节标题：H1 + chapterStart（H1 是唯一的分章层级）。 */
+const h = (text: string, level = 1): TiptapNode => ({
+  type: "heading",
+  attrs: { level, ...(level === 1 ? { chapterStart: true } : {}) },
+  content: [{ type: "text", text }],
+});
 const doc = (...content: TiptapNode[]): TiptapDocument => ({ type: "doc", content });
 const location: SuggestionLocation = { chapterId: "real-chapter-id", chapterOrder: 1, lineNo: 3, lineText: "target typo" };
 const legacy: SuggestionLocation = { chapterId: "", chapterOrder: null, lineNo: 0, lineText: "" };

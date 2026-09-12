@@ -213,7 +213,7 @@ describe("Compose 使用真实 autosave", () => {
     const creation = deferred<ForumChapterItem>();
     const first = document("a");
     first.content = { type: "doc", content: [
-      { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "chapter" }] },
+      { type: "heading", attrs: { level: 1, chapterStart: true }, content: [{ type: "text", text: "chapter" }] },
       ...content("body").content!,
     ] };
     if (stage === "list") api.listForumChapters.mockReturnValueOnce(listing.promise);

@@ -22,6 +22,7 @@
     "cf:e2e:prepare": "tsx tools/cloudflare/prepare-e2e.ts",
     "cf:export": "tsx packages/cloudflare-migration/src/export-sqlite.ts",
     "db:pack": "tsx scripts/pack-local-data.ts",
+    "db:migrate-chapters": "tsx scripts/migrate-chapter-headings.ts",
     "cf:r2-upload": "tsx packages/cloudflare-migration/src/upload-r2.ts",
     "cf:preflight": "node tools/cloudflare/preflight.mjs",
     "cf:smoke": "node tools/cloudflare/smoke.mjs",

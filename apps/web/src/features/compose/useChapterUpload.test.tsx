@@ -293,7 +293,7 @@ describe("useChapterUpload", () => {
     expect(payload[0]?.content).toMatchObject({
       type: "doc",
       content: [
-        { type: "heading", attrs: { chapterStart: true, level: 2 } },
+        { type: "heading", attrs: { chapterStart: true, level: 1 } },
         { type: "paragraph", content: [{ type: "text", text: "new text" }] },
       ],
     });

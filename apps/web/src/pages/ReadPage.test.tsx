@@ -219,13 +219,13 @@ describe('ReadPage', () => {
         content: [
           {
             type: 'heading',
-            attrs: { level: 2, chapterStart: true },
+            attrs: { level: 1, chapterStart: true },
             content: [{ type: 'text', text: '第一章 潮汐表' }],
           },
           { type: 'paragraph', content: [{ type: 'text', text: '正文一' }] },
           {
             type: 'heading',
-            attrs: { level: 2, chapterStart: true },
+            attrs: { level: 1, chapterStart: true },
             content: [{ type: 'text', text: '第二章 陌生船票' }],
           },
           { type: 'paragraph', content: [{ type: 'text', text: '正文二' }] },
@@ -267,9 +267,9 @@ describe('ReadPage', () => {
       },
     ]);
     renderPage(identities[1]!);
-    // 章节标题由正文自带（H2），头部不再重复。
+    // 章节标题由正文自带（H1 + chapterStart），头部不再重复。
     expect(
-      await screen.findByRole('heading', { name: '第一章 潮汐表', level: 2 }),
+      await screen.findByRole('heading', { name: '第一章 潮汐表', level: 1 }),
     ).toBeInTheDocument();
     // 时间与版本号 = 该章在服务器目录中的真实数据。
     expect(screen.getByText('版本 6')).toBeInTheDocument();
