@@ -14,6 +14,7 @@ import {
   applyStepsToDocument,
   createDocumentSchema,
   describeStepsJson,
+  documentsEqual,
   splitDocumentByChapters,
   type JSONContent,
   type StepJson,
@@ -80,14 +81,20 @@ export class DocumentService {
     savedAt: string;
     canEdit: boolean;
   }> {
-    const rows = this.#db.prepare(
-      "SELECT document.id, document.title, document.current_revision, document.updated_at, " +
-        "CASE WHEN ? = 'moderator' OR document.created_by = ? OR EXISTS (" +
-        "SELECT 1 FROM document_acl acl WHERE acl.document_id = document.id " +
-        "AND acl.user_id = ? AND acl.permission IN ('edit', 'admin')) THEN 1 ELSE 0 END AS can_edit " +
-        "FROM documents document ORDER BY document.updated_at DESC, document.id",
-    ).all(user.role, user.id, user.id) as Array<{
-      id: string; title: string; current_revision: number; updated_at: string; can_edit: number;
+    const rows = this.#db
+      .prepare(
+        "SELECT document.id, document.title, document.current_revision, document.updated_at, " +
+          "CASE WHEN ? = 'moderator' OR document.created_by = ? OR EXISTS (" +
+          "SELECT 1 FROM document_acl acl WHERE acl.document_id = document.id " +
+          "AND acl.user_id = ? AND acl.permission IN ('edit', 'admin')) THEN 1 ELSE 0 END AS can_edit " +
+          "FROM documents document ORDER BY document.updated_at DESC, document.id",
+      )
+      .all(user.role, user.id, user.id) as Array<{
+      id: string;
+      title: string;
+      current_revision: number;
+      updated_at: string;
+      can_edit: number;
     }>;
     return rows.map((row) => ({
       id: row.id,
@@ -118,9 +125,7 @@ export class DocumentService {
       .get(documentId) as unknown as DocumentRow | undefined;
     if (!document) throw new HttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
     const exists = this.#db
-      .prepare(
-        "SELECT 1 AS found FROM document_revisions WHERE document_id = ? AND revision = ?",
-      )
+      .prepare("SELECT 1 AS found FROM document_revisions WHERE document_id = ? AND revision = ?")
       .get(documentId, revision) as { found: number } | undefined;
     if (!exists) throw new HttpError(404, "REVISION_NOT_FOUND", "目标版本不存在");
     return this.#envelope(document, revision);
@@ -170,8 +175,7 @@ export class DocumentService {
           "SELECT request_json, revision FROM document_mutations WHERE document_id = ? AND client_mutation_id = ?",
         )
         .get(documentId, request.clientMutationId) as
-        | { request_json: string; revision: number }
-        | undefined;
+        { request_json: string; revision: number } | undefined;
       if (existing) {
         if (existing.request_json !== requestJson) {
           throw new HttpError(409, "MUTATION_ID_REUSED", "clientMutationId 已被另一请求使用");
@@ -189,27 +193,28 @@ export class DocumentService {
           baseRevision: 0,
         });
       }
-      this.#db.prepare(
-        "INSERT INTO documents(id, title, schema_version, current_revision, created_by, created_at, updated_at) " +
-          "VALUES (?, ?, ?, 1, ?, ?, ?)",
-      ).run(
-        documentId,
-        request.title ?? "未命名文章",
-        request.schemaVersion,
-        authorId,
-        now,
-        now,
-      );
-      this.#db.prepare(
-        "INSERT INTO document_revisions(document_id, revision, schema_version, content_json, steps_json, author_id, operation, target_revision, created_at) " +
-          "VALUES (?, 1, ?, ?, NULL, ?, 'update', NULL, ?)",
-      ).run(documentId, request.schemaVersion, JSON.stringify(content), authorId, now);
-      this.#db.prepare(
-        "INSERT INTO document_mutations(document_id, client_mutation_id, request_json, revision) VALUES (?, ?, ?, 1)",
-      ).run(documentId, request.clientMutationId, requestJson);
-      this.#db.prepare(
-        "INSERT INTO document_acl(document_id, user_id, permission, created_at) VALUES (?, ?, 'admin', ?)",
-      ).run(documentId, authorId, now);
+      this.#db
+        .prepare(
+          "INSERT INTO documents(id, title, schema_version, current_revision, created_by, created_at, updated_at) " +
+            "VALUES (?, ?, ?, 1, ?, ?, ?)",
+        )
+        .run(documentId, request.title ?? "未命名文章", request.schemaVersion, authorId, now, now);
+      this.#db
+        .prepare(
+          "INSERT INTO document_revisions(document_id, revision, schema_version, content_json, steps_json, author_id, operation, target_revision, created_at) " +
+            "VALUES (?, 1, ?, ?, NULL, ?, 'update', NULL, ?)",
+        )
+        .run(documentId, request.schemaVersion, JSON.stringify(content), authorId, now);
+      this.#db
+        .prepare(
+          "INSERT INTO document_mutations(document_id, client_mutation_id, request_json, revision) VALUES (?, ?, ?, 1)",
+        )
+        .run(documentId, request.clientMutationId, requestJson);
+      this.#db
+        .prepare(
+          "INSERT INTO document_acl(document_id, user_id, permission, created_at) VALUES (?, ?, 'admin', ?)",
+        )
+        .run(documentId, authorId, now);
       const chapters = splitDocumentByChapters(content as unknown as JSONContent).chapters;
       const chapterRows = chapters.length > 0 ? chapters : [{ id: "chapter-0", title: "正文" }];
       const insertChapter = this.#db.prepare(
@@ -246,8 +251,7 @@ export class DocumentService {
       )
       .get(documentId, request.targetRevision) as
       { schema_version: number; content_json: string } | undefined;
-    if (!target)
-      throw new HttpError(404, "REVISION_NOT_FOUND", "目标修订不存在");
+    if (!target) throw new HttpError(404, "REVISION_NOT_FOUND", "目标修订不存在");
     const content = sanitizeDocument(JSON.parse(target.content_json));
     return this.#write(
       documentId,
@@ -287,6 +291,14 @@ export class DocumentService {
         throw error;
       }
     };
+    // 空转增量（steps 只是把正文重放回当前内容）按「没有变化」短路，不产生新修订：
+    // 重复点击保存不应该留下内容完全相同的版本，更不该让历史对比充满噪声。
+    const current = this.get(documentId);
+    if (current.revision === request.baseRevision) {
+      const next = content();
+      if (documentsEqual(current.content as unknown as JSONContent, next as unknown as JSONContent))
+        return { envelope: current, created: false };
+    }
     return this.#write(
       documentId,
       request.baseRevision,
@@ -311,13 +323,21 @@ export class DocumentService {
     authorId: string,
     options: { chapterId?: string; beforeCommit?: (createdAt: string) => void } = {},
   ): DocumentEnvelope {
+    const current = this.get(documentId);
+    const next = sanitizeDocument(content);
+    // 建议与当前正文完全一致时同样不落库：审核空转建议不该产生噪声修订。
+    if (
+      current.revision === baseRevision &&
+      documentsEqual(current.content as unknown as JSONContent, next as unknown as JSONContent)
+    )
+      return current;
     return this.#write(
       documentId,
       baseRevision,
       `suggestion-${suggestionId}`,
       JSON.stringify({ baseRevision, suggestionId }),
-      this.get(documentId).schemaVersion,
-      sanitizeDocument(content),
+      current.schemaVersion,
+      next,
       authorId,
       "suggestion",
       null,
@@ -378,6 +398,12 @@ export class DocumentService {
         throw new HttpError(422, "INVALID_STEPS", error.message);
       throw error;
     }
+    // 批量校订把正文重放回原样时同样不落库（例如整章被反复「接受」）。
+    if (
+      current.revision === baseRevision &&
+      documentsEqual(current.content as unknown as JSONContent, content as unknown as JSONContent)
+    )
+      return current;
     return this.#write(
       documentId,
       baseRevision,
@@ -401,14 +427,9 @@ export class DocumentService {
     chapterId?: string,
   ): RevisionPage {
     this.get(documentId);
-    const before =
-      cursor === undefined ? Number.MAX_SAFE_INTEGER : Number(cursor);
+    const before = cursor === undefined ? Number.MAX_SAFE_INTEGER : Number(cursor);
     if (!Number.isSafeInteger(before) || before < 1)
-      throw new HttpError(
-        422,
-        "INVALID_CURSOR",
-        "版本 cursor 必须是正整数 revision",
-      );
+      throw new HttpError(422, "INVALID_CURSOR", "版本 cursor 必须是正整数 revision");
     const rows = this.#db
       .prepare(
         "SELECT r.revision, r.schema_version, r.content_json, r.author_id, u.name AS author_name, r.operation, r.target_revision, r.steps_json, r.created_at FROM document_revisions r JOIN users u ON u.id = r.author_id WHERE r.document_id = ? AND r.revision < ? ORDER BY r.revision DESC",
@@ -417,12 +438,9 @@ export class DocumentService {
     let matchingRows = rows;
     if (chapterId) {
       const chapter = this.#db
-        .prepare(
-          "SELECT sort_order FROM chapters WHERE document_id = ? AND id = ?",
-        )
+        .prepare("SELECT sort_order FROM chapters WHERE document_id = ? AND id = ?")
         .get(documentId, chapterId) as { sort_order: number } | undefined;
-      if (!chapter)
-        throw new HttpError(404, "CHAPTER_NOT_FOUND", "章节不存在");
+      if (!chapter) throw new HttpError(404, "CHAPTER_NOT_FOUND", "章节不存在");
       const snapshot = (contentJson: string | undefined) => {
         if (!contentJson) return null;
         const content = TiptapDocumentSchema.parse(JSON.parse(contentJson));
@@ -439,23 +457,18 @@ export class DocumentService {
           .prepare(
             "SELECT request_json FROM document_mutations WHERE document_id = ? AND revision = ? LIMIT 1",
           )
-          .get(documentId, row.revision) as
-          | { request_json: string }
-          | undefined;
+          .get(documentId, row.revision) as { request_json: string } | undefined;
         if (mutation) {
           const request = JSON.parse(mutation.request_json) as {
             chapterId?: unknown;
           };
-          if (typeof request.chapterId === "string")
-            return request.chapterId === chapterId;
+          if (typeof request.chapterId === "string") return request.chapterId === chapterId;
         }
         // 无 chapterId 的修订（种子、回滚、建议合并等）只把「种子基线」归入：
         // 该章在整篇种子文档中已存在时，修订 1 是它的创建基线；不再采用
         // 「相邻修订内容差异」折叠——章节位置错位（插入/删除/改名）时会把
         // 其他章节的旧修订误算给新建章节（新建章节只点一次保存不该出现若干条无关历史）。
-        return (
-          row.operation === "seed" && snapshot(row.content_json) !== null
-        );
+        return row.operation === "seed" && snapshot(row.content_json) !== null;
       });
     }
     const hasMore = matchingRows.length > limit;
@@ -505,22 +518,16 @@ export class DocumentService {
           "SELECT id, title, schema_version, current_revision, updated_at FROM documents WHERE id = ?",
         )
         .get(documentId) as unknown as DocumentRow | undefined;
-      if (!document)
-        throw new HttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
+      if (!document) throw new HttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
       const existing = this.#db
         .prepare(
           "SELECT request_json, revision FROM document_mutations WHERE document_id = ? AND client_mutation_id = ?",
         )
-        .get(documentId, mutationId) as
-        { request_json: string; revision: number } | undefined;
+        .get(documentId, mutationId) as { request_json: string; revision: number } | undefined;
       if (existing) {
         // 同 mutationId 只允许完全相同的请求重试，防止客户端误复用导致数据混淆。
         if (existing.request_json !== requestJson)
-          throw new HttpError(
-            409,
-            "MUTATION_ID_REUSED",
-            "clientMutationId 已被另一请求使用",
-          );
+          throw new HttpError(409, "MUTATION_ID_REUSED", "clientMutationId 已被另一请求使用");
         const envelope = this.#envelope(document, existing.revision);
         this.#db.exec("COMMIT");
         return { envelope, created: false };

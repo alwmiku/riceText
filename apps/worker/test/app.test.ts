@@ -2,7 +2,7 @@
 import { createExecutionContext } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { contractRoutes } from "@ricetext/contracts";
-import { diffDocuments, sanitizeDocument } from "@ricetext/document-core";
+import { createDocumentSchema, diffDocuments, sanitizeDocument } from "@ricetext/document-core";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { http, HttpResponse } from "msw";
 import { cleanupStaleAssets, D1AssetRepository } from "../src/repositories/asset-repository";
@@ -680,6 +680,98 @@ describe("RiceText Worker", () => {
         .bind("demo-post")
         .first(),
     ).toEqual({ count: 2 });
+    expect(
+      await env.DB.prepare("SELECT revision FROM chapters WHERE id = ?").bind("chapter-0").first(),
+    ).toEqual({ revision: 2 });
+  });
+
+  it("空转 steps（结果与当前正文一致）不推进修订、章节版本与历史", async () => {
+    const patch = (body: unknown) =>
+      exports.default.fetch(
+        new Request("http://example.com/api/documents/demo-post/steps", {
+          method: "PATCH",
+          headers: { "content-type": "application/json", "x-user-id": "author" },
+          body: JSON.stringify(body),
+        }),
+      );
+    // 先把正文改成已知状态，保证基线是真实内容而不是种子 JSON。
+    const changed = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { textAlign: "left" },
+          content: [{ type: "text", text: "空转增量" }],
+        },
+      ],
+    };
+    const saved = await exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post", {
+        method: "PUT",
+        headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({
+          schemaVersion: 1,
+          baseRevision: 1,
+          clientMutationId: "noop-setup",
+          content: changed,
+        }),
+      }),
+    );
+    expect(saved.status).toBe(201);
+    const before = await saved.json();
+    expect(before.revision).toBe(2);
+
+    // 把同一份内容原样替换回来：应用结果与当前修订完全一致，必须按「没有变化」处理。
+    const noop = await patch({
+      schemaVersion: 1,
+      baseRevision: 2,
+      clientMutationId: "noop-replay",
+      chapterId: "chapter-0",
+      steps: [
+        {
+          stepType: "replace",
+          from: 0,
+          to: createDocumentSchema().nodeFromJSON(before.content).content.size,
+          slice: { content: before.content.content, openStart: 0, openEnd: 0 },
+        },
+      ],
+    });
+    expect(noop.status, await noop.clone().text()).toBe(200);
+    expect((await noop.json()).revision).toBe(2);
+
+    const current = await exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    expect(await current.json()).toEqual(before);
+    expect(
+      await env.DB.prepare("SELECT COUNT(*) AS count FROM document_revisions WHERE document_id = ?")
+        .bind("demo-post")
+        .first(),
+    ).toEqual({ count: 2 });
+    // 空转保存连章节版本号都不能推进（目录里的版本号同样属于「内容有变化」的证据）。
+    expect(
+      await env.DB.prepare("SELECT revision FROM chapters WHERE id = ?").bind("chapter-0").first(),
+    ).toEqual({ revision: 1 });
+
+    // 真正变化的 steps 仍然创建修订。
+    const real = await patch({
+      schemaVersion: 1,
+      baseRevision: 2,
+      clientMutationId: "noop-real-change",
+      chapterId: "chapter-0",
+      steps: [
+        {
+          stepType: "replace",
+          from: 1,
+          to: 1 + "空转增量".length,
+          slice: { content: [{ type: "text", text: "真实修改" }] },
+        },
+      ],
+    });
+    expect(real.status, await real.clone().text()).toBe(201);
+    expect((await real.json()).revision).toBe(3);
     expect(
       await env.DB.prepare("SELECT revision FROM chapters WHERE id = ?").bind("chapter-0").first(),
     ).toEqual({ revision: 2 });

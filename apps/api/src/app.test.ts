@@ -16,7 +16,19 @@ import { createApp } from "./app.js";
 
 const validContent = (text = "新的正文") => ({
   type: "doc" as const,
-  content: [{ type: "paragraph", attrs: { textAlign: null }, content: [{ type: "text", text }, { type: "inlineCommentAnchor", attrs: { threadId: "anchor-opening", count: 2, placement: "end" } }] }],
+  content: [
+    {
+      type: "paragraph",
+      attrs: { textAlign: null },
+      content: [
+        { type: "text", text },
+        {
+          type: "inlineCommentAnchor",
+          attrs: { threadId: "anchor-opening", count: 2, placement: "end" },
+        },
+      ],
+    },
+  ],
 });
 
 describe("RiceText API", () => {
@@ -25,7 +37,11 @@ describe("RiceText API", () => {
 
   beforeEach(async () => {
     directory = await mkdtemp(join(tmpdir(), "ricetext-api-"));
-    app = await createApp({ databasePath: join(directory, "test.sqlite"), uploadsDirectory: join(directory, "uploads"), logger: false });
+    app = await createApp({
+      databasePath: join(directory, "test.sqlite"),
+      uploadsDirectory: join(directory, "uploads"),
+      logger: false,
+    });
   });
 
   afterEach(async () => {
@@ -45,23 +61,81 @@ describe("RiceText API", () => {
   });
 
   it("保存编辑器摘录与 orderedList type:null，并保留合法编号模式", async () => {
-    const content = { type: "doc", content: [
-      { type: "orderedList", attrs: { start: 1, type: null as string | null }, content: [{ type: "listItem", attrs: { textAlign: null }, content: [{ type: "paragraph", content: [{ type: "text", text: "List text" }] }] }] },
-      { type: "novelExcerpt", attrs: { variant: "qidian", bookTitle: "Book", chapterTitle: "Chapter", readerTime: "23:00" }, content: [{ type: "paragraph", content: [{ type: "text", text: "Excerpt" }] }] },
-    ] };
-    const payload = { title: "List and excerpt", schemaVersion: 1, baseRevision: 0, clientMutationId: "create-list-excerpt", content };
-    const created = await app.inject({ method: "PUT", url: "/api/documents/list-excerpt", headers: { "x-user-id": "author" }, payload });
+    const content = {
+      type: "doc",
+      content: [
+        {
+          type: "orderedList",
+          attrs: { start: 1, type: null as string | null },
+          content: [
+            {
+              type: "listItem",
+              attrs: { textAlign: null },
+              content: [{ type: "paragraph", content: [{ type: "text", text: "List text" }] }],
+            },
+          ],
+        },
+        {
+          type: "novelExcerpt",
+          attrs: {
+            variant: "qidian",
+            bookTitle: "Book",
+            chapterTitle: "Chapter",
+            readerTime: "23:00",
+          },
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Excerpt" }] }],
+        },
+      ],
+    };
+    const payload = {
+      title: "List and excerpt",
+      schemaVersion: 1,
+      baseRevision: 0,
+      clientMutationId: "create-list-excerpt",
+      content,
+    };
+    const created = await app.inject({
+      method: "PUT",
+      url: "/api/documents/list-excerpt",
+      headers: { "x-user-id": "author" },
+      payload,
+    });
     expect(created.statusCode, created.body).toBe(201);
     expect(created.json().content.content[0].attrs).toEqual({ start: 1, type: null });
     content.content[0]!.attrs = { start: 3, type: "A" };
-    const updated = await app.inject({ method: "PUT", url: "/api/documents/list-excerpt", headers: { "x-user-id": "author" }, payload: { ...payload, baseRevision: 1, clientMutationId: "update-list-excerpt" } });
+    const updated = await app.inject({
+      method: "PUT",
+      url: "/api/documents/list-excerpt",
+      headers: { "x-user-id": "author" },
+      payload: { ...payload, baseRevision: 1, clientMutationId: "update-list-excerpt" },
+    });
     expect(updated.statusCode, updated.body).toBe(201);
-    const loaded = await app.inject({ method: "GET", url: "/api/documents/list-excerpt", headers: { "x-user-id": "author" } });
+    const loaded = await app.inject({
+      method: "GET",
+      url: "/api/documents/list-excerpt",
+      headers: { "x-user-id": "author" },
+    });
     expect(loaded.json().content.content[0].attrs).toEqual({ start: 3, type: "A" });
     expect(loaded.json().content.content[1].attrs.bookTitle).toBe("Book");
-    const invalid = await app.inject({ method: "PUT", url: "/api/documents/list-excerpt", headers: { "x-user-id": "author" }, payload: { ...payload, baseRevision: 2, clientMutationId: "invalid-list-type", content: { type: "doc", content: [{ ...content.content[0], attrs: { type: { toString: {} } } }] } } });
+    const invalid = await app.inject({
+      method: "PUT",
+      url: "/api/documents/list-excerpt",
+      headers: { "x-user-id": "author" },
+      payload: {
+        ...payload,
+        baseRevision: 2,
+        clientMutationId: "invalid-list-type",
+        content: {
+          type: "doc",
+          content: [{ ...content.content[0], attrs: { type: { toString: {} } } }],
+        },
+      },
+    });
     expect(invalid.statusCode, invalid.body).toBe(422);
-    expect(invalid.json().error).toMatchObject({ code: "INVALID_ATTRIBUTE", details: { path: "$.content[0].attrs.type" } });
+    expect(invalid.json().error).toMatchObject({
+      code: "INVALID_ATTRIBUTE",
+      details: { path: "$.content[0].attrs.type" },
+    });
   });
 
   it("作者首次保存可创建空白文章，读者不能创建", async () => {
@@ -124,25 +198,53 @@ describe("RiceText API", () => {
     expect(initial.statusCode).toBe(200);
     expect(initial.json().revision).toBe(1);
 
-    const request = { schemaVersion: 1, baseRevision: 1, clientMutationId: "save-one", content: validContent() };
-    const saved = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: request });
+    const request = {
+      schemaVersion: 1,
+      baseRevision: 1,
+      clientMutationId: "save-one",
+      content: validContent(),
+    };
+    const saved = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: request,
+    });
     expect(saved.statusCode, saved.body).toBe(201);
     expect(saved.json().revision).toBe(2);
 
-    const retried = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: request });
+    const retried = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: request,
+    });
     expect(retried.statusCode).toBe(200);
     expect(retried.json().revision).toBe(2);
 
-    const conflict = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { ...request, clientMutationId: "save-stale" } });
+    const conflict = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: { ...request, clientMutationId: "save-stale" },
+    });
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json().error.details.currentRevision).toBe(2);
 
-    const rolledBack = await app.inject({ method: "POST", url: "/api/documents/demo-post/rollback", headers: { "x-user-id": "moderator" }, payload: { baseRevision: 2, targetRevision: 1, clientMutationId: "rollback-one" } });
+    const rolledBack = await app.inject({
+      method: "POST",
+      url: "/api/documents/demo-post/rollback",
+      headers: { "x-user-id": "moderator" },
+      payload: { baseRevision: 2, targetRevision: 1, clientMutationId: "rollback-one" },
+    });
     expect(rolledBack.statusCode).toBe(201);
     expect(rolledBack.json().revision).toBe(3);
     expect(rolledBack.json().content.content[0].type).toBe("heading");
 
-    const history = await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions?limit=2" });
+    const history = await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post/revisions?limit=2",
+    });
     expect(history.statusCode).toBe(200);
     expect(history.json().items.map((item: { revision: number }) => item.revision)).toEqual([3, 2]);
     expect(history.json().pageInfo.nextCursor).toBe("2");
@@ -163,10 +265,12 @@ describe("RiceText API", () => {
   });
 
   it("版本历史只返回当前章节实际变化的 revision", async () => {
-    const initial = (await app.inject({
-      method: "GET",
-      url: "/api/documents/demo-post",
-    })).json();
+    const initial = (
+      await app.inject({
+        method: "GET",
+        url: "/api/documents/demo-post",
+      })
+    ).json();
     const appendToChapter = (content: JSONContent, index: number, text: string) => {
       const chapter = splitDocumentByChapters(content).chapters[index]!;
       return replaceChapter(content, index, {
@@ -194,11 +298,7 @@ describe("RiceText API", () => {
       },
     });
     expect(revisionTwo.statusCode, revisionTwo.body).toBe(201);
-    const revisionThreeContent = appendToChapter(
-      revisionTwo.json().content,
-      1,
-      "只修改第一章",
-    );
+    const revisionThreeContent = appendToChapter(revisionTwo.json().content, 1, "只修改第一章");
     const revisionThree = await app.inject({
       method: "PUT",
       url: "/api/documents/demo-post",
@@ -213,20 +313,26 @@ describe("RiceText API", () => {
     });
     expect(revisionThree.statusCode, revisionThree.body).toBe(201);
 
-    const chapterZero = (await app.inject({
-      method: "GET",
-      url: "/api/documents/demo-post/revisions?chapterId=chapter-0",
-    })).json();
-    const chapterOne = (await app.inject({
-      method: "GET",
-      url: "/api/documents/demo-post/revisions?chapterId=chapter-1",
-    })).json();
+    const chapterZero = (
+      await app.inject({
+        method: "GET",
+        url: "/api/documents/demo-post/revisions?chapterId=chapter-0",
+      })
+    ).json();
+    const chapterOne = (
+      await app.inject({
+        method: "GET",
+        url: "/api/documents/demo-post/revisions?chapterId=chapter-1",
+      })
+    ).json();
     expect(chapterZero.items.map((item: { revision: number }) => item.revision)).toEqual([2, 1]);
     expect(chapterOne.items.map((item: { revision: number }) => item.revision)).toEqual([3, 1]);
   });
 
   it("保存时仅递增本次编辑章节的版本号", async () => {
-    const directoryBefore = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; revision: number; savedAt: string }>;
+    const directoryBefore = (
+      await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })
+    ).json().items as Array<{ id: string; revision: number; savedAt: string }>;
     const chapterOneBefore = directoryBefore.find((item) => item.id === "chapter-1")!;
     const chapterTwoBefore = directoryBefore.find((item) => item.id === "chapter-2")!;
     expect(chapterOneBefore.revision).toBe(1);
@@ -236,11 +342,19 @@ describe("RiceText API", () => {
       method: "PUT",
       url: "/api/documents/demo-post",
       headers: { "x-user-id": "author" },
-      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "chapter-save", chapterId: "chapter-1", content: validContent() },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "chapter-save",
+        chapterId: "chapter-1",
+        content: validContent(),
+      },
     });
     expect(saved.statusCode).toBe(201);
 
-    const directoryAfter = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; revision: number; savedAt: string }>;
+    const directoryAfter = (
+      await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })
+    ).json().items as Array<{ id: string; revision: number; savedAt: string }>;
     const chapterOneAfter = directoryAfter.find((item) => item.id === "chapter-1")!;
     const chapterTwoAfter = directoryAfter.find((item) => item.id === "chapter-2")!;
     expect(chapterOneAfter.revision).toBe(2);
@@ -254,120 +368,320 @@ describe("RiceText API", () => {
     const appended = appendChapter(initial.content, "第五章 新章节");
 
     // 1. 客户端先调新增章节接口：服务端分配 id 并返回行（同位置重复注册幂等）。
-    const created = await app.inject({ method: "POST", url: "/api/documents/demo-post/chapters", headers: { "x-user-id": "author" }, payload: { title: "第五章 新章节", order: 5 } });
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/documents/demo-post/chapters",
+      headers: { "x-user-id": "author" },
+      payload: { title: "第五章 新章节", order: 5 },
+    });
     expect(created.statusCode, created.body).toBe(201);
-    expect(created.json()).toMatchObject({ id: "chapter-5", title: "第五章 新章节", order: 5, documentId: "demo-post", revision: 0 });
+    expect(created.json()).toMatchObject({
+      id: "chapter-5",
+      title: "第五章 新章节",
+      order: 5,
+      documentId: "demo-post",
+      revision: 0,
+    });
     const chapterId = created.json().id as string;
 
-    const repeated = await app.inject({ method: "POST", url: "/api/documents/demo-post/chapters", headers: { "x-user-id": "author" }, payload: { title: "第五章 新章节", order: 5 } });
+    const repeated = await app.inject({
+      method: "POST",
+      url: "/api/documents/demo-post/chapters",
+      headers: { "x-user-id": "author" },
+      payload: { title: "第五章 新章节", order: 5 },
+    });
     expect(repeated.statusCode).toBe(200);
     expect(repeated.json().id).toBe(chapterId);
 
     // 2. 用服务器返回的 id 保存文档：历史与目录版本号按该 id 归集。
-    const saved = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "save-new-chapter", chapterId, content: appended.document } });
+    const saved = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "save-new-chapter",
+        chapterId,
+        content: appended.document,
+      },
+    });
     expect(saved.statusCode, saved.body).toBe(201);
     expect(saved.json().revision).toBe(2);
 
-    const history = (await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions?chapterId=" + chapterId })).json().items as Array<{ revision: number }>;
+    const history = (
+      await app.inject({
+        method: "GET",
+        url: "/api/documents/demo-post/revisions?chapterId=" + chapterId,
+      })
+    ).json().items as Array<{ revision: number }>;
     // 种子版本不属于新章节；只有创建它的保存可见。
     expect(history.map((item) => item.revision)).toEqual([2]);
 
-    const directory = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; revision: number; title: string }>;
-    expect(directory.find((item) => item.id === chapterId)).toMatchObject({ title: "第五章 新章节", revision: 1 });
+    const directory = (
+      await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })
+    ).json().items as Array<{ id: string; revision: number; title: string }>;
+    expect(directory.find((item) => item.id === chapterId)).toMatchObject({
+      title: "第五章 新章节",
+      revision: 1,
+    });
 
     // 3. 再次编辑新章节：继续产生按章归集的历史记录。
     const existing = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json();
     const chapter = splitDocumentByChapters(existing.content).chapters[5]!;
-    const secondContent = replaceChapter(existing.content, 5, { type: "doc", content: [...chapter.blocks, { type: "paragraph", content: [{ type: "text", text: "新章节正文" }] }] });
-    const second = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 2, clientMutationId: "save-new-chapter-twice", chapterId, content: secondContent } });
+    const secondContent = replaceChapter(existing.content, 5, {
+      type: "doc",
+      content: [
+        ...chapter.blocks,
+        { type: "paragraph", content: [{ type: "text", text: "新章节正文" }] },
+      ],
+    });
+    const second = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 2,
+        clientMutationId: "save-new-chapter-twice",
+        chapterId,
+        content: secondContent,
+      },
+    });
     expect(second.statusCode, second.body).toBe(201);
-    const historyAfter = (await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions?chapterId=" + chapterId })).json().items as Array<{ revision: number }>;
+    const historyAfter = (
+      await app.inject({
+        method: "GET",
+        url: "/api/documents/demo-post/revisions?chapterId=" + chapterId,
+      })
+    ).json().items as Array<{ revision: number }>;
     expect(historyAfter.map((item) => item.revision)).toEqual([3, 2]);
-    const directoryAfter = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; revision: number }>;
+    const directoryAfter = (
+      await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })
+    ).json().items as Array<{ id: string; revision: number }>;
     expect(directoryAfter.find((item) => item.id === chapterId)?.revision).toBe(2);
   });
   it("删除章节目录行幂等，并解除关联校订的章节归属", async () => {
     // 1. 注册一章，并提交一条指向该章的校订建议。
-    const registered = await app.inject({ method: "POST", url: "/api/documents/demo-post/chapters", headers: { "x-user-id": "author" }, payload: { title: "第五章 待删除", order: 5 } });
+    const registered = await app.inject({
+      method: "POST",
+      url: "/api/documents/demo-post/chapters",
+      headers: { "x-user-id": "author" },
+      payload: { title: "第五章 待删除", order: 5 },
+    });
     expect(registered.statusCode).toBe(201);
     const chapterId = registered.json().id as string;
-    const submitted = await app.inject({ method: "POST", url: "/api/forum/documents/demo-post/suggestions", headers: { "x-user-id": "reader" }, payload: { fromText: "潮声", toText: "海潮声", reason: "措辞更清楚", chapterId, chapterTitle: "第五章 待删除", lineNo: 2, lineText: "潮声沿着旧城墙漫上来" } });
+    const submitted = await app.inject({
+      method: "POST",
+      url: "/api/forum/documents/demo-post/suggestions",
+      headers: { "x-user-id": "reader" },
+      payload: {
+        fromText: "潮声",
+        toText: "海潮声",
+        reason: "措辞更清楚",
+        chapterId,
+        chapterTitle: "第五章 待删除",
+        lineNo: 2,
+        lineText: "潮声沿着旧城墙漫上来",
+      },
+    });
     expect(submitted.statusCode, submitted.body).toBe(201);
 
     // 2. 删除目录行成功，且不会因 suggestions.chapter_id 外键而失败。
-    const deleted = await app.inject({ method: "DELETE", url: `/api/documents/demo-post/chapters/${chapterId}`, headers: { "x-user-id": "author" } });
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/api/documents/demo-post/chapters/${chapterId}`,
+      headers: { "x-user-id": "author" },
+    });
     expect(deleted.statusCode, deleted.body).toBe(200);
     expect(deleted.json()).toEqual({ id: chapterId, deleted: true });
 
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(join(directory, "test.sqlite"));
-    const suggestion = db.prepare("SELECT chapter_id FROM suggestions WHERE id = ?").get(submitted.json().id) as { chapter_id: string | null };
+    const suggestion = db
+      .prepare("SELECT chapter_id FROM suggestions WHERE id = ?")
+      .get(submitted.json().id) as { chapter_id: string | null };
     db.close();
     expect(suggestion.chapter_id).toBeNull();
 
-    const catalog = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string }>;
+    const catalog = (
+      await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })
+    ).json().items as Array<{ id: string }>;
     expect(catalog.some((item) => item.id === chapterId)).toBe(false);
 
     // 3. 幂等：重复删除返回 deleted = false。
-    const repeated = await app.inject({ method: "DELETE", url: `/api/documents/demo-post/chapters/${chapterId}`, headers: { "x-user-id": "author" } });
+    const repeated = await app.inject({
+      method: "DELETE",
+      url: `/api/documents/demo-post/chapters/${chapterId}`,
+      headers: { "x-user-id": "author" },
+    });
     expect(repeated.statusCode).toBe(200);
     expect(repeated.json()).toEqual({ id: chapterId, deleted: false });
 
     // 4. 权限：reader 不能删除。
-    const forbidden = await app.inject({ method: "DELETE", url: `/api/documents/demo-post/chapters/chapter-0`, headers: { "x-user-id": "reader" } });
+    const forbidden = await app.inject({
+      method: "DELETE",
+      url: `/api/documents/demo-post/chapters/chapter-0`,
+      headers: { "x-user-id": "reader" },
+    });
     expect(forbidden.statusCode).toBe(403);
   });
   it("新建章节历史只包含按该章节 id 保存的修订，不混入无归属的旧修订", async () => {
     // 旧会话的历史：正文已在位置 5 出现该章，但保存不带 chapterId（模拟改版前的脏数据）。
     const initial = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json();
     const appended = appendChapter(initial.content, "第五章 新章节");
-    const anonymous = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "anonymous-era-save", content: appended.document } });
+    const anonymous = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "anonymous-era-save",
+        content: appended.document,
+      },
+    });
     expect(anonymous.statusCode, anonymous.body).toBe(201);
 
     // 新会话：注册章节并按服务器 id 保存一次。
-    const created = await app.inject({ method: "POST", url: "/api/documents/demo-post/chapters", headers: { "x-user-id": "author" }, payload: { title: "第五章 新章节", order: 5 } });
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/documents/demo-post/chapters",
+      headers: { "x-user-id": "author" },
+      payload: { title: "第五章 新章节", order: 5 },
+    });
     expect(created.statusCode).toBe(201);
     const chapterId = created.json().id as string;
-    const saved = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 2, clientMutationId: "attributed-save", chapterId, content: appended.document } });
+    const saved = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 2,
+        clientMutationId: "attributed-save",
+        chapterId,
+        content: appended.document,
+      },
+    });
     expect(saved.statusCode, saved.body).toBe(201);
 
-    const history = (await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions?chapterId=" + chapterId })).json().items as Array<{ revision: number }>;
+    const history = (
+      await app.inject({
+        method: "GET",
+        url: "/api/documents/demo-post/revisions?chapterId=" + chapterId,
+      })
+    ).json().items as Array<{ revision: number }>;
     // 只有按该章节 id 保存的那一次；无归属旧修订与种子基线都不混入。
     expect(history.map((item) => item.revision)).toEqual([3]);
   });
   it("隐藏/恢复章节：服务器记录读者不可读状态", async () => {
-    const before = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; hidden: boolean }>;
+    const before = (
+      await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })
+    ).json().items as Array<{ id: string; hidden: boolean }>;
     expect(before.find((item) => item.id === "chapter-1")?.hidden).toBe(false);
 
-    const hidden = await app.inject({ method: "PATCH", url: "/api/documents/demo-post/chapters/chapter-1", headers: { "x-user-id": "author" }, payload: { hidden: true } });
+    const hidden = await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/chapters/chapter-1",
+      headers: { "x-user-id": "author" },
+      payload: { hidden: true },
+    });
     expect(hidden.statusCode, hidden.body).toBe(200);
     expect(hidden.json()).toMatchObject({ id: "chapter-1", hidden: true });
 
-    const readerDirectory = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post", headers: { "x-user-id": "reader" } })).json().items as Array<{ id: string; hidden: boolean }>;
+    const readerDirectory = (
+      await app.inject({
+        method: "GET",
+        url: "/api/forum/chapters?documentId=demo-post",
+        headers: { "x-user-id": "reader" },
+      })
+    ).json().items as Array<{ id: string; hidden: boolean }>;
     expect(readerDirectory.some((item) => item.id === "chapter-1")).toBe(false);
-    const readerDocument = (await app.inject({ method: "GET", url: "/api/documents/demo-post", headers: { "x-user-id": "reader" } })).json();
+    const readerDocument = (
+      await app.inject({
+        method: "GET",
+        url: "/api/documents/demo-post",
+        headers: { "x-user-id": "reader" },
+      })
+    ).json();
     expect(JSON.stringify(readerDocument.content)).not.toContain("第一章 潮汐表");
 
-    const authorDirectory = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post", headers: { "x-user-id": "author" } })).json().items as Array<{ id: string; hidden: boolean }>;
+    const authorDirectory = (
+      await app.inject({
+        method: "GET",
+        url: "/api/forum/chapters?documentId=demo-post",
+        headers: { "x-user-id": "author" },
+      })
+    ).json().items as Array<{ id: string; hidden: boolean }>;
     expect(authorDirectory.find((item) => item.id === "chapter-1")?.hidden).toBe(true);
-    const authorDocument = (await app.inject({ method: "GET", url: "/api/documents/demo-post", headers: { "x-user-id": "author" } })).json();
+    const authorDocument = (
+      await app.inject({
+        method: "GET",
+        url: "/api/documents/demo-post",
+        headers: { "x-user-id": "author" },
+      })
+    ).json();
     expect(JSON.stringify(authorDocument.content)).toContain("第一章 潮汐表");
 
-    const restored = await app.inject({ method: "PATCH", url: "/api/documents/demo-post/chapters/chapter-1", headers: { "x-user-id": "author" }, payload: { hidden: false } });
+    const restored = await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/chapters/chapter-1",
+      headers: { "x-user-id": "author" },
+      payload: { hidden: false },
+    });
     expect(restored.statusCode).toBe(200);
     expect(restored.json().hidden).toBe(false);
 
-    const forbidden = await app.inject({ method: "PATCH", url: "/api/documents/demo-post/chapters/chapter-1", headers: { "x-user-id": "reader" }, payload: { hidden: true } });
+    const forbidden = await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/chapters/chapter-1",
+      headers: { "x-user-id": "reader" },
+      payload: { hidden: true },
+    });
     expect(forbidden.statusCode).toBe(403);
 
-    const missing = await app.inject({ method: "PATCH", url: "/api/documents/demo-post/chapters/chapter-999", headers: { "x-user-id": "author" }, payload: { hidden: true } });
+    const missing = await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/chapters/chapter-999",
+      headers: { "x-user-id": "author" },
+      payload: { hidden: true },
+    });
     expect(missing.statusCode).toBe(404);
   });
   it("拒绝 reader 写入和不安全正文", async () => {
-    const forbidden = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "reader" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "reader-save", content: validContent() } });
+    const forbidden = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "reader" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "reader-save",
+        content: validContent(),
+      },
+    });
     expect(forbidden.statusCode).toBe(403);
 
-    const unsafe = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "unsafe-save", content: { type: "doc", content: [{ type: "richImage", attrs: { src: "data:image/png;base64,AAAA", align: "center", width: 80 } }] } } });
+    const unsafe = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "unsafe-save",
+        content: {
+          type: "doc",
+          content: [
+            {
+              type: "richImage",
+              attrs: { src: "data:image/png;base64,AAAA", align: "center", width: 80 },
+            },
+          ],
+        },
+      },
+    });
     expect(unsafe.statusCode).toBe(422);
     expect(unsafe.json().error.code).toBe("UNSAFE_URL");
   });
@@ -382,15 +696,23 @@ describe("RiceText API", () => {
             {
               type: "text",
               text: "文档",
-              marks: [
-                { type: "link", attrs: { href: "https://example.com/docs" } },
-              ],
+              marks: [{ type: "link", attrs: { href: "https://example.com/docs" } }],
             },
           ],
         },
       ],
     };
-    const saved = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "link-save", content: linkContent } });
+    const saved = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "link-save",
+        content: linkContent,
+      },
+    });
     expect(saved.statusCode, saved.body).toBe(201);
     expect(saved.json().content.content[0].content[0].marks[0]).toMatchObject({
       type: "link",
@@ -414,7 +736,17 @@ describe("RiceText API", () => {
   });
 
   it("读取时净化被污染的历史内容（防御 XSS）", async () => {
-    const base = await app.inject({ method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" }, payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "pollute-base", content: validContent("先保存") } });
+    const base = await app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "pollute-base",
+        content: validContent("先保存"),
+      },
+    });
     expect(base.statusCode).toBe(201);
 
     // 模拟绕过写入校验的污染：直接改库，把 javascript: 链接塞进当前修订。
@@ -441,7 +773,9 @@ describe("RiceText API", () => {
         },
       ],
     });
-    db.prepare("UPDATE document_revisions SET content_json = ? WHERE document_id = ? AND revision = ?").run(polluted, "demo-post", 2);
+    db.prepare(
+      "UPDATE document_revisions SET content_json = ? WHERE document_id = ? AND revision = ?",
+    ).run(polluted, "demo-post", 2);
     db.close();
 
     // 读取不 422：交付清洗后的重建文档，危险链接被剥离。
@@ -453,7 +787,11 @@ describe("RiceText API", () => {
   });
 
   it("持久化骰子，只有显式重投才创建新结果", async () => {
-    const created = await app.inject({ method: "POST", url: "/api/dice", payload: { expression: "3d5" } });
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/dice",
+      payload: { expression: "3d5" },
+    });
     expect(created.statusCode).toBe(201);
     const first = created.json();
     const loaded = await app.inject({ method: "GET", url: `/api/dice/${first.rollId}` });
@@ -466,25 +804,49 @@ describe("RiceText API", () => {
   });
 
   it("返回间贴树并支持楼中楼、点赞与排序", async () => {
-    const seeded = await app.inject({ method: "GET", url: "/api/documents/demo-post/comments/anchor-opening?sort=score" });
+    const seeded = await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post/comments/anchor-opening?sort=score",
+    });
     expect(seeded.statusCode).toBe(200);
     expect(seeded.json().items[0].children).toHaveLength(1);
 
-    const reply = await app.inject({ method: "POST", url: "/api/documents/demo-post/comments/anchor-opening/replies", headers: { "x-user-id": "reader" }, payload: { parentId: null, body: "新根回复" } });
+    const reply = await app.inject({
+      method: "POST",
+      url: "/api/documents/demo-post/comments/anchor-opening/replies",
+      headers: { "x-user-id": "reader" },
+      payload: { parentId: null, body: "新根回复" },
+    });
     expect(reply.statusCode).toBe(201);
     const replyId = reply.json().id as string;
-    const vote = await app.inject({ method: "PUT", url: `/api/comments/replies/${replyId}/vote`, headers: { "x-user-id": "author" }, payload: { value: 1 } });
+    const vote = await app.inject({
+      method: "PUT",
+      url: `/api/comments/replies/${replyId}/vote`,
+      headers: { "x-user-id": "author" },
+      payload: { value: 1 },
+    });
     expect(vote.json()).toEqual({ score: 1, viewerVote: 1, upvotes: 1, downvotes: 0, myVote: 1 });
-    const newest = await app.inject({ method: "GET", url: "/api/documents/demo-post/comments/anchor-opening?sort=newest", headers: { "x-user-id": "author" } });
+    const newest = await app.inject({
+      method: "GET",
+      url: "/api/documents/demo-post/comments/anchor-opening?sort=newest",
+      headers: { "x-user-id": "author" },
+    });
     expect(newest.json().items[0].id).toBe(replyId);
   });
 
   it("校验图片签名并从独立文件返回上传内容", async () => {
     const boundary = "----RiceTextBoundary";
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    const prefix = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="pixel.png"\r\nContent-Type: image/png\r\n\r\n`);
+    const prefix = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="pixel.png"\r\nContent-Type: image/png\r\n\r\n`,
+    );
     const suffix = Buffer.from(`\r\n--${boundary}--\r\n`);
-    const uploaded = await app.inject({ method: "POST", url: "/api/assets", headers: { "content-type": `multipart/form-data; boundary=${boundary}` }, payload: Buffer.concat([prefix, png, suffix]) });
+    const uploaded = await app.inject({
+      method: "POST",
+      url: "/api/assets",
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: Buffer.concat([prefix, png, suffix]),
+    });
     expect(uploaded.statusCode).toBe(201);
     const asset = uploaded.json();
     expect(asset.mimeType).toBe("image/png");
@@ -495,33 +857,79 @@ describe("RiceText API", () => {
   });
 
   it("论坛 @、回复可见、附件 70% 分成和实名投票", async () => {
-    const mention = await app.inject({ method: "POST", url: "/api/forum/mentions/resolve", payload: { name: "远舟" } });
+    const mention = await app.inject({
+      method: "POST",
+      url: "/api/forum/mentions/resolve",
+      payload: { name: "远舟" },
+    });
     expect(mention.json().resolved).toBe(true);
 
-    const hidden = await app.inject({ method: "POST", url: "/api/forum/reply-gates/resolve", headers: { "x-user-id": "wanderer" }, payload: { gateId: "gate-bonus", documentId: "demo-post" } });
+    const hidden = await app.inject({
+      method: "POST",
+      url: "/api/forum/reply-gates/resolve",
+      headers: { "x-user-id": "wanderer" },
+      payload: { gateId: "gate-bonus", documentId: "demo-post" },
+    });
     expect(hidden.json().visible).toBe(false);
-    await app.inject({ method: "POST", url: "/api/documents/demo-post/comments/anchor-opening/replies", headers: { "x-user-id": "wanderer" }, payload: { parentId: null, body: "已回复" } });
-    const visible = await app.inject({ method: "POST", url: "/api/forum/reply-gates/resolve", headers: { "x-user-id": "wanderer" }, payload: { gateId: "gate-bonus", documentId: "demo-post" } });
+    await app.inject({
+      method: "POST",
+      url: "/api/documents/demo-post/comments/anchor-opening/replies",
+      headers: { "x-user-id": "wanderer" },
+      payload: { parentId: null, body: "已回复" },
+    });
+    const visible = await app.inject({
+      method: "POST",
+      url: "/api/forum/reply-gates/resolve",
+      headers: { "x-user-id": "wanderer" },
+      payload: { gateId: "gate-bonus", documentId: "demo-post" },
+    });
     expect(visible.json().visible).toBe(true);
 
-    const purchase = await app.inject({ method: "POST", url: "/api/forum/attachments/attachment-sample/purchase", headers: { "x-user-id": "reader" } });
+    const purchase = await app.inject({
+      method: "POST",
+      url: "/api/forum/attachments/attachment-sample/purchase",
+      headers: { "x-user-id": "reader" },
+    });
     expect(purchase.json().authorIncome).toBe(7);
     expect(purchase.json().buyerBalance).toBe(40);
-    const duplicate = await app.inject({ method: "POST", url: "/api/forum/attachments/attachment-sample/purchase", headers: { "x-user-id": "reader" } });
+    const duplicate = await app.inject({
+      method: "POST",
+      url: "/api/forum/attachments/attachment-sample/purchase",
+      headers: { "x-user-id": "reader" },
+    });
     expect(duplicate.json().alreadyPurchased).toBe(true);
     expect(duplicate.json().buyerBalance).toBe(40);
 
-    const voted = await app.inject({ method: "POST", url: "/api/forum/polls/poll-route/votes", headers: { "x-user-id": "reader" }, payload: { optionIds: ["poll-option-tower"] } });
+    const voted = await app.inject({
+      method: "POST",
+      url: "/api/forum/polls/poll-route/votes",
+      headers: { "x-user-id": "reader" },
+      payload: { optionIds: ["poll-option-tower"] },
+    });
     expect(voted.statusCode).toBe(200);
     expect(voted.json().viewerOptionIds).toEqual(["poll-option-tower"]);
-    const voters = await app.inject({ method: "GET", url: "/api/forum/polls/poll-route/votes", headers: { "x-user-id": "author" } });
+    const voters = await app.inject({
+      method: "GET",
+      url: "/api/forum/polls/poll-route/votes",
+      headers: { "x-user-id": "author" },
+    });
     expect(voters.json().items[0].user.id).toBe("reader");
   });
 
   it("审核建议会创建真实 suggestion 修订", async () => {
-    const submitted = await app.inject({ method: "POST", url: "/api/forum/documents/demo-post/suggestions", headers: { "x-user-id": "reader" }, payload: { fromText: "潮声", toText: "海潮声", reason: "措辞更清楚" } });
+    const submitted = await app.inject({
+      method: "POST",
+      url: "/api/forum/documents/demo-post/suggestions",
+      headers: { "x-user-id": "reader" },
+      payload: { fromText: "潮声", toText: "海潮声", reason: "措辞更清楚" },
+    });
     expect(submitted.statusCode).toBe(201);
-    const reviewed = await app.inject({ method: "PATCH", url: `/api/forum/suggestions/${submitted.json().id}`, headers: { "x-user-id": "author" }, payload: { decision: "approve", baseRevision: 1 } });
+    const reviewed = await app.inject({
+      method: "PATCH",
+      url: `/api/forum/suggestions/${submitted.json().id}`,
+      headers: { "x-user-id": "author" },
+      payload: { decision: "approve", baseRevision: 1 },
+    });
     expect(reviewed.statusCode).toBe(200);
     expect(reviewed.json().suggestion.status).toBe("approved");
     expect(reviewed.json().document.revision).toBe(2);
@@ -580,10 +988,12 @@ describe("RiceText API", () => {
   });
 
   it("整章多处修订作为一个批次提交并原子创建一个版本", async () => {
-    const current = (await app.inject({
-      method: "GET",
-      url: "/api/documents/demo-post",
-    })).json();
+    const current = (
+      await app.inject({
+        method: "GET",
+        url: "/api/documents/demo-post",
+      })
+    ).json();
     const after = structuredClone(current.content) as {
       content: Array<{ content?: Array<{ text?: string }> }>;
     };
@@ -663,7 +1073,8 @@ describe("RiceText API", () => {
   });
 
   it("应用最小 steps 创建带溯源的新修订", async () => {
-    const before = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json().content as {
+    const before = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json()
+      .content as {
       content: Array<{ content: Array<{ text: string }> }>;
     };
     const after = structuredClone(before);
@@ -674,7 +1085,13 @@ describe("RiceText API", () => {
       method: "PATCH",
       url: "/api/documents/demo-post/steps",
       headers: { "x-user-id": "author" },
-      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-one", steps, chapterId: "chapter-0" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "steps-one",
+        steps,
+        chapterId: "chapter-0",
+      },
     });
     expect(applied.statusCode, applied.body).toBe(201);
     expect(applied.json().revision).toBe(2);
@@ -685,13 +1102,21 @@ describe("RiceText API", () => {
       method: "PATCH",
       url: "/api/documents/demo-post/steps",
       headers: { "x-user-id": "author" },
-      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-one", steps, chapterId: "chapter-0" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "steps-one",
+        steps,
+        chapterId: "chapter-0",
+      },
     });
     expect(retried.statusCode).toBe(200);
     expect(retried.json().revision).toBe(2);
 
     // 章节独立版本号递增
-    const chapters = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items as Array<{ id: string; revision: number }>;
+    const chapters = (
+      await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })
+    ).json().items as Array<{ id: string; revision: number }>;
     expect(chapters.find((item) => item.id === "chapter-0")?.revision).toBe(2);
     expect(chapters.find((item) => item.id === "chapter-1")?.revision).toBe(1);
 
@@ -703,19 +1128,29 @@ describe("RiceText API", () => {
   });
 
   it("steps 删除成功响应丢失后重试返回原修订，且不绕过鉴权和结构校验", async () => {
-    const before = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json().content;
+    const before = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json()
+      .content;
     const payload = {
-      schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-delete-retry",
-      steps: [{
-        stepType: "replace", from: 0, to: createDocumentSchema().nodeFromJSON(before).content.size,
-        slice: { content: [{ type: "paragraph" }], openStart: 0, openEnd: 0 },
-      }],
+      schemaVersion: 1,
+      baseRevision: 1,
+      clientMutationId: "steps-delete-retry",
+      steps: [
+        {
+          stepType: "replace",
+          from: 0,
+          to: createDocumentSchema().nodeFromJSON(before).content.size,
+          slice: { content: [{ type: "paragraph" }], openStart: 0, openEnd: 0 },
+        },
+      ],
       chapterId: "chapter-0",
     };
-    const patch = (body: unknown, userId = "author") => app.inject({
-      method: "PATCH", url: "/api/documents/demo-post/steps",
-      headers: { "x-user-id": userId }, payload: body as object,
-    });
+    const patch = (body: unknown, userId = "author") =>
+      app.inject({
+        method: "PATCH",
+        url: "/api/documents/demo-post/steps",
+        headers: { "x-user-id": userId },
+        payload: body as object,
+      });
     const saved = await patch(payload);
     expect(saved.statusCode, saved.body).toBe(201);
     const original = saved.json();
@@ -726,13 +1161,23 @@ describe("RiceText API", () => {
 
     expect((await patch(payload, "reader")).statusCode).toBe(403);
     expect((await patch({ ...payload, steps: [] })).statusCode).toBe(422);
-    const reused = await patch({ ...payload, steps: [{ stepType: "replace", from: 9999, to: 10000 }] });
+    const reused = await patch({
+      ...payload,
+      steps: [{ stepType: "replace", from: 9999, to: 10000 }],
+    });
     expect(reused.statusCode).toBe(409);
     expect(reused.json().error.code).toBe("MUTATION_ID_REUSED");
 
     const advanced = await app.inject({
-      method: "PUT", url: "/api/documents/demo-post", headers: { "x-user-id": "author" },
-      payload: { schemaVersion: 1, baseRevision: 2, clientMutationId: "steps-after-delete", content: validContent("后续修订") },
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 2,
+        clientMutationId: "steps-after-delete",
+        content: validContent("后续修订"),
+      },
     });
     expect(advanced.statusCode, advanced.body).toBe(201);
     const lateRetry = await patch(payload);
@@ -741,22 +1186,92 @@ describe("RiceText API", () => {
     const current = await app.inject({ method: "GET", url: "/api/documents/demo-post" });
     expect(current.json()).toEqual(advanced.json());
     const history = await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions" });
-    expect(history.json().items.map((item: { revision: number }) => item.revision)).toEqual([3, 2, 1]);
-    const chapters = (await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })).json().items;
+    expect(history.json().items.map((item: { revision: number }) => item.revision)).toEqual([
+      3, 2, 1,
+    ]);
+    const chapters = (
+      await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })
+    ).json().items;
     expect(chapters.find((item: { id: string }) => item.id === "chapter-0").revision).toBe(2);
   });
 
-  it("steps 在应用前拒绝过期或未来基线，正确基线仍校验非法步骤且失败不占用幂等键", async () => {
-    const patch = (baseRevision: number, steps: unknown[]) => app.inject({
-      method: "PATCH", url: "/api/documents/demo-post/steps", headers: { "x-user-id": "author" },
-      payload: { schemaVersion: 1, baseRevision, clientMutationId: "steps-baseline-check", steps },
+  it("空转 steps（结果与当前正文一致）不创建修订、章节版本和历史记录", async () => {
+    const before = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json()
+      .content;
+    // 客户端可能把正文重放回当前内容（本地草稿与服务器快照结构不一致时的空转增量）：
+    // 整篇替换成同一份 JSON，应用结果与当前修订完全一致。
+    const noop = await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/steps",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "steps-noop-replay",
+        steps: [
+          {
+            stepType: "replace",
+            from: 0,
+            to: createDocumentSchema().nodeFromJSON(before).content.size,
+            slice: { content: before.content, openStart: 0, openEnd: 0 },
+          },
+        ],
+        chapterId: "chapter-0",
+      },
     });
+    expect(noop.statusCode, noop.body).toBe(200);
+    expect(noop.json().revision).toBe(1);
+
+    const current = await app.inject({ method: "GET", url: "/api/documents/demo-post" });
+    expect(current.json().revision).toBe(1);
+    const history = await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions" });
+    expect(history.json().items.map((item: { revision: number }) => item.revision)).toEqual([1]);
+    const chapters = (
+      await app.inject({ method: "GET", url: "/api/forum/chapters?documentId=demo-post" })
+    ).json().items;
+    expect(chapters.find((item: { id: string }) => item.id === "chapter-0").revision).toBe(1);
+
+    // 真正变化的 steps 仍然创建修订，空转短路不能影响正常保存。
+    const changed = (await app.inject({ method: "GET", url: "/api/documents/demo-post" })).json()
+      .content;
+    const after = structuredClone(changed);
+    after.content[0]!.content[0]!.text = "海港来信";
+    const saved = await app.inject({
+      method: "PATCH",
+      url: "/api/documents/demo-post/steps",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "steps-real-change",
+        steps: diffDocuments(changed, after),
+        chapterId: "chapter-0",
+      },
+    });
+    expect(saved.statusCode, saved.body).toBe(201);
+    expect(saved.json().revision).toBe(2);
+  });
+
+  it("steps 在应用前拒绝过期或未来基线，正确基线仍校验非法步骤且失败不占用幂等键", async () => {
+    const patch = (baseRevision: number, steps: unknown[]) =>
+      app.inject({
+        method: "PATCH",
+        url: "/api/documents/demo-post/steps",
+        headers: { "x-user-id": "author" },
+        payload: {
+          schemaVersion: 1,
+          baseRevision,
+          clientMutationId: "steps-baseline-check",
+          steps,
+        },
+      });
     const invalidSteps = [{ stepType: "replace", from: 9999, to: 10000 }];
     for (const baseRevision of [0, 2]) {
       const conflict = await patch(baseRevision, invalidSteps);
       expect(conflict.statusCode, conflict.body).toBe(409);
       expect(conflict.json().error).toMatchObject({
-        code: "REVISION_CONFLICT", details: { currentRevision: 1, baseRevision },
+        code: "REVISION_CONFLICT",
+        details: { currentRevision: 1, baseRevision },
       });
     }
     const invalid = await patch(1, invalidSteps);
@@ -767,21 +1282,52 @@ describe("RiceText API", () => {
     expect(saved.json().revision).toBe(2);
   });
 
-  it.each([true, false])("steps 并发保存保留幂等和基线保护（同幂等键=%s）", async (sameMutation) => {
-    const patch = (clientMutationId: string) => app.inject({
-      method: "PATCH", url: "/api/documents/demo-post/steps", headers: { "x-user-id": "author" },
-      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId, steps: [{ stepType: "replace", from: 1, to: 2 }] },
-    });
-    const responses = await Promise.all([patch("steps-concurrent-one"), patch(sameMutation ? "steps-concurrent-one" : "steps-concurrent-two")]);
-    expect(responses.map((response) => response.statusCode).sort()).toEqual(sameMutation ? [200, 201] : [201, 409]);
-    if (sameMutation) expect(responses[0]!.json()).toEqual(responses[1]!.json());
-    else expect(responses.find((response) => response.statusCode === 409)!.json().error.code).toBe("REVISION_CONFLICT");
-    const history = await app.inject({ method: "GET", url: "/api/documents/demo-post/revisions" });
-    expect(history.json().items.map((item: { revision: number }) => item.revision)).toEqual([2, 1]);
-  });
+  it.each([true, false])(
+    "steps 并发保存保留幂等和基线保护（同幂等键=%s）",
+    async (sameMutation) => {
+      const patch = (clientMutationId: string) =>
+        app.inject({
+          method: "PATCH",
+          url: "/api/documents/demo-post/steps",
+          headers: { "x-user-id": "author" },
+          payload: {
+            schemaVersion: 1,
+            baseRevision: 1,
+            clientMutationId,
+            steps: [{ stepType: "replace", from: 1, to: 2 }],
+          },
+        });
+      const responses = await Promise.all([
+        patch("steps-concurrent-one"),
+        patch(sameMutation ? "steps-concurrent-one" : "steps-concurrent-two"),
+      ]);
+      expect(responses.map((response) => response.statusCode).sort()).toEqual(
+        sameMutation ? [200, 201] : [201, 409],
+      );
+      if (sameMutation) expect(responses[0]!.json()).toEqual(responses[1]!.json());
+      else
+        expect(responses.find((response) => response.statusCode === 409)!.json().error.code).toBe(
+          "REVISION_CONFLICT",
+        );
+      const history = await app.inject({
+        method: "GET",
+        url: "/api/documents/demo-post/revisions",
+      });
+      expect(history.json().items.map((item: { revision: number }) => item.revision)).toEqual([
+        2, 1,
+      ]);
+    },
+  );
 
   it("steps 应用拒绝权限不足、非法步骤与 revision 冲突", async () => {
-    const steps = [{ stepType: "replace", from: 1, to: 2, slice: { content: [{ type: "text", text: "海" }], openStart: 0, openEnd: 0 } }];
+    const steps = [
+      {
+        stepType: "replace",
+        from: 1,
+        to: 2,
+        slice: { content: [{ type: "text", text: "海" }], openStart: 0, openEnd: 0 },
+      },
+    ];
 
     const forbidden = await app.inject({
       method: "PATCH",
@@ -795,7 +1341,19 @@ describe("RiceText API", () => {
       method: "PATCH",
       url: "/api/documents/demo-post/steps",
       headers: { "x-user-id": "author" },
-      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-invalid", steps: [{ stepType: "replace", from: 9999, to: 10000, slice: { content: [], openStart: 0, openEnd: 0 } }] },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "steps-invalid",
+        steps: [
+          {
+            stepType: "replace",
+            from: 9999,
+            to: 10000,
+            slice: { content: [], openStart: 0, openEnd: 0 },
+          },
+        ],
+      },
     });
     expect(invalid.statusCode).toBe(422);
     expect(invalid.json().error.code).toBe("INVALID_STEPS");
@@ -804,7 +1362,12 @@ describe("RiceText API", () => {
       method: "PATCH",
       url: "/api/documents/demo-post/steps",
       headers: { "x-user-id": "author" },
-      payload: { schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-conflict-base", steps },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "steps-conflict-base",
+        steps,
+      },
     });
     const conflict = await app.inject({
       method: "PATCH",
@@ -829,7 +1392,11 @@ describe("RiceText API", () => {
         content: {
           type: "doc",
           content: [
-            { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "第一章" }] },
+            {
+              type: "heading",
+              attrs: { level: 2, chapterStart: true },
+              content: [{ type: "text", text: "第一章" }],
+            },
             { type: "paragraph", content: [{ type: "text", text: "正文一" }] },
           ],
         },
@@ -841,11 +1408,20 @@ describe("RiceText API", () => {
       headers: { "x-user-id": "author" },
     });
     const first = (directory.json().items as Array<{ id: string; revision: number }>)[0]!;
-    const batchItem = (id: string, title: string, order: number, hash: string, baseRevision = 0) => ({
+    const batchItem = (
+      id: string,
+      title: string,
+      order: number,
+      hash: string,
+      baseRevision = 0,
+    ) => ({
       id,
       title,
       order,
-      content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: title }] }] },
+      content: {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: title }] }],
+      },
       hash,
       baseRevision,
     });
@@ -878,7 +1454,15 @@ describe("RiceText API", () => {
     });
     expect(replayed.statusCode).toBe(200);
     expect(replayed.json()).toEqual({
-      chapters: [{ id: first.id, title: "第一章", order: 0, revision: first.revision + 1, status: "unchanged" }],
+      chapters: [
+        {
+          id: first.id,
+          title: "第一章",
+          order: 0,
+          revision: first.revision + 1,
+          status: "unchanged",
+        },
+      ],
     });
     // 整批 409：part-1 baseRevision 过期，part-2 不发生部分提交。
     const conflict = await app.inject({
@@ -964,7 +1548,9 @@ describe("RiceText API", () => {
       method: "POST",
       url: "/api/forum/novels/reorder-novel/chapters/reorder-stage",
       headers: { "x-user-id": "author" },
-      payload: { chapters: [{ id: first.id, temporaryOrder: 3, baseRevision: first.revision + 1 }] },
+      payload: {
+        chapters: [{ id: first.id, temporaryOrder: 3, baseRevision: first.revision + 1 }],
+      },
     });
     expect(idempotent.statusCode).toBe(200);
     expect(idempotent.json()).toEqual({
@@ -981,5 +1567,4 @@ describe("RiceText API", () => {
       chapterId: first.id,
     });
   });
-
 });

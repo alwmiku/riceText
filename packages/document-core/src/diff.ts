@@ -1,10 +1,5 @@
 import type { JSONContent } from "@tiptap/core";
-import {
-  Fragment,
-  Node as ProseMirrorNode,
-  Slice,
-  type Schema,
-} from "@tiptap/pm/model";
+import { Fragment, Node as ProseMirrorNode, Slice, type Schema } from "@tiptap/pm/model";
 import { applyStepsToDocument } from "./apply.js";
 import { createDocumentSchema } from "./schema.js";
 import type { StepJson } from "./steps.js";
@@ -164,11 +159,7 @@ function sliceTextRange(
           const marks = child.marks
             .map((mark) => mark.toJSON())
             .filter((mark) => mark && mark.type);
-          pieces.push(
-            marks.length > 0
-              ? { type: "text", text, marks }
-              : { type: "text", text },
-          );
+          pieces.push(marks.length > 0 ? { type: "text", text, marks } : { type: "text", text });
         }
       }
       offset += length;
@@ -183,16 +174,9 @@ function sliceTextRange(
 }
 
 /** 文本型块对的最小化替换：公共前后缀 + 中间片段；无法精确定位时整块替换。 */
-function minimalReplaceStep(
-  schema: Schema,
-  before: DiffBlock,
-  after: DiffBlock,
-): StepJson {
+function minimalReplaceStep(schema: Schema, before: DiffBlock, after: DiffBlock): StepJson {
   const prefix = commonPrefixLength(before.text, after.text);
-  const suffix = commonSuffixLength(
-    before.text.slice(prefix),
-    after.text.slice(prefix),
-  );
+  const suffix = commonSuffixLength(before.text.slice(prefix), after.text.slice(prefix));
   const from = posAtCharOffset(before, prefix);
   const to = posAtCharOffset(before, Math.max(prefix, before.text.length - suffix));
   const slice = sliceTextRange(
@@ -202,12 +186,7 @@ function minimalReplaceStep(
     Math.max(prefix, after.text.length - suffix),
   );
   // 无法精确定位，或中间片段为空（纯文本相同、差异只在 marks/结构）时整块替换
-  if (
-    from === null ||
-    to === null ||
-    slice === null ||
-    (from === to && slice.content.size === 0)
-  ) {
+  if (from === null || to === null || slice === null || (from === to && slice.content.size === 0)) {
     return {
       stepType: "replace",
       from: before.start,
@@ -228,11 +207,7 @@ function blockSliceJson(node: ProseMirrorNode): StepJson["slice"] {
 }
 
 /** 生成一对同构块的替换步骤（文本型走前后缀最小化，其余整块替换）。 */
-function replaceMatchedPair(
-  schema: Schema,
-  before: DiffBlock,
-  after: DiffBlock,
-): StepJson {
+function replaceMatchedPair(schema: Schema, before: DiffBlock, after: DiffBlock): StepJson {
   if (before.textLike && after.textLike) {
     return minimalReplaceStep(schema, before, after);
   }
@@ -248,10 +223,7 @@ function replaceMatchedPair(
  * 生成把 before 文档变成 after 文档的最小 ReplaceStep 序列（应用顺序）。
  * 相同块不产生步骤；差异全部表达为 replace（from === to 表示插入）。
  */
-export function diffDocuments(
-  before: JSONContent,
-  after: JSONContent,
-): StepJson[] {
+export function diffDocuments(before: JSONContent, after: JSONContent): StepJson[] {
   const schema = sharedSchema();
   const beforeDoc = ProseMirrorNode.fromJSON(schema, before);
   const afterDoc = ProseMirrorNode.fromJSON(schema, after);
@@ -262,17 +234,15 @@ export function diffDocuments(
 
   // 完全匹配（JSON 全等）位置表：同构替换只允许发生在“双方都没有完全匹配”
   // 的块上，否则会偷走 LCS 中更优的配对（例如重复段落被错误替换）。
-  const afterHasExactMatch = afterBlocks.map(
-    (block) => beforeBlocks.some((candidate) => candidate.exact === block.exact),
+  const afterHasExactMatch = afterBlocks.map((block) =>
+    beforeBlocks.some((candidate) => candidate.exact === block.exact),
   );
-  const beforeHasExactMatch = beforeBlocks.map(
-    (block) => afterBlocks.some((candidate) => candidate.exact === block.exact),
+  const beforeHasExactMatch = beforeBlocks.map((block) =>
+    afterBlocks.some((candidate) => candidate.exact === block.exact),
   );
 
   // 块级 LCS（按完整 JSON 指纹匹配）
-  const lcs: number[][] = Array.from({ length: n + 1 }, () =>
-    new Array<number>(m + 1).fill(0),
-  );
+  const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i -= 1) {
     for (let j = m - 1; j >= 0; j -= 1) {
       lcs[i]![j] =
@@ -376,11 +346,24 @@ export function diffDocuments(
   return merged;
 }
 
+/**
+ * 结构化比较两个文档是否等价（忽略 attrs 的键序、缺省字段与 `undefined`）。
+ *
+ * 客户端提交的 steps 有时只是把正文“重放”回服务器已有内容（例如本地草稿与
+ * 服务器快照重建历史不一致时产生的空转增量）。这类写入如果落库，会产生
+ * 内容完全相同的新修订，既污染历史对比，也让版本号无意义地增长；服务端据此
+ * 判定是否真的需要新修订。
+ */
+export function documentsEqual(left: JSONContent, right: JSONContent): boolean {
+  const schema = sharedSchema();
+  return (
+    JSON.stringify(ProseMirrorNode.fromJSON(schema, left).toJSON()) ===
+    JSON.stringify(ProseMirrorNode.fromJSON(schema, right).toJSON())
+  );
+}
+
 /** 生成 steps 并校验：把 steps 应用到 before 必须精确得到 after（测试与调试用）。 */
-export function diffDocumentsVerified(
-  before: JSONContent,
-  after: JSONContent,
-): StepJson[] {
+export function diffDocumentsVerified(before: JSONContent, after: JSONContent): StepJson[] {
   const steps = diffDocuments(before, after);
   const schema = sharedSchema();
   const result = applyStepsToDocument(schema, before, steps);
