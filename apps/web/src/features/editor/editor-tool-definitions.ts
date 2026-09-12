@@ -7,6 +7,7 @@ import {
   Link2,
   SeparatorHorizontal,
   TextQuote,
+  Trash2,
   UnlockKeyhole,
   Vote,
   XCircle,
@@ -22,6 +23,7 @@ export type InsertTool =
   | "mention"
   | "poll"
   | "excerpt"
+  | "deleteExcerpt"
   | "gate"
   | "ungate"
   | "horizontalRule"
@@ -110,6 +112,12 @@ export const MORE_INSERT_TOOLS: readonly InsertToolDefinition[] = [
     label: "取消回复可见",
     icon: XCircle,
     isDisabled: (editor) => !isContainerNodeActive(editor, "replyGate"),
+  },
+  {
+    tool: "deleteExcerpt",
+    label: "删除摘录",
+    icon: Trash2,
+    isDisabled: (editor) => !isContainerNodeActive(editor, "novelExcerpt"),
   },
 ];
 

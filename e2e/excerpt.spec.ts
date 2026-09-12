@@ -779,3 +779,24 @@ for (const { variant, name } of templates) {
     },
   );
 }
+
+test("摘录可以从编辑器整体删除，光标在摘录外时入口禁用", async ({ page, isMobile }, info) => {
+  test.skip(isMobile, "删除入口在桌面工具栏；移动端经「更多工具」菜单，另行验收");
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const { inserted } = await createExcerpt(page, false, "fanqie", paragraphs, info);
+  const editor = page.locator(".ProseMirror[contenteditable=true]");
+  const remove = page.getByRole("button", { name: "删除摘录", exact: true });
+  // 摘录是带正文的容器节点：插入后光标就在摘录内，入口可用。
+  await expect(remove).toBeEnabled();
+  // 光标移出摘录后入口禁用（摘录之外没有可删除的目标）。
+  await editor.locator(":scope > p").first().click();
+  await expect(remove).toBeDisabled();
+  // 回到摘录正文内即可整段删除。
+  await inserted.locator(".rt-novel-excerpt__content p").first().click();
+  await expect(remove).toBeEnabled();
+  await remove.click();
+  await expect(editor.locator(".rt-novel-excerpt")).toHaveCount(0);
+  await expect(editor).not.toContainText(paragraphs[0]!);
+  await expect(remove).toBeDisabled();
+});

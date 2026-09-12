@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
 import { createId } from "../../../lib/utils";
-import { isRichNodeActive, unwrapOutermostReplyGate } from "../commands";
+import { deleteNovelExcerpt, isRichNodeActive, unwrapOutermostReplyGate } from "../commands";
 import { insertNode, insertReplyGate } from "../editor-actions";
 import {
   AttachmentDialog,
@@ -223,6 +223,9 @@ export function ToolbarDialogs({
           break;
         case "ungate":
           unwrapOutermostReplyGate(editor);
+          break;
+        case "deleteExcerpt":
+          deleteNovelExcerpt(editor);
           break;
       }
     },

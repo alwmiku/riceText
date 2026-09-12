@@ -21,6 +21,7 @@ import {
   Paintbrush,
   Quote,
   Redo2,
+  Trash2,
   Underline as UnderlineIcon,
   Undo2,
   UnlockKeyhole,
@@ -318,6 +319,13 @@ export function CompactToolbarControls({
           >
             <XCircle />
             取消回复可见
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={INSERT_TOOL_DEFINITIONS.deleteExcerpt.isDisabled?.(editor) ?? false}
+            onSelect={() => requestInsert?.("deleteExcerpt")}
+          >
+            <Trash2 />
+            删除摘录
           </DropdownMenuItem>
         </ToolbarGroup>
       </div>

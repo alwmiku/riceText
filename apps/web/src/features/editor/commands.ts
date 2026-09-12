@@ -26,9 +26,7 @@ const blockActionLabels: ReadonlyArray<[string, string]> = [
 ];
 
 /** 把最近一次 ProseMirror transform 的步骤描述成用户可读动作。 */
-export function describeSteps(
-  steps: readonly { toJSON(): StepJson }[],
-): string {
+export function describeSteps(steps: readonly { toJSON(): StepJson }[]): string {
   const actions: string[] = [];
   for (const step of steps) {
     const json = step.toJSON();
@@ -63,9 +61,7 @@ export function describeSteps(
       json.stepType === "replaceAround" ||
       json.stepType === "insert"
     ) {
-      const types = new Set(
-        (json.slice?.content ?? []).map((node) => node.type),
-      );
+      const types = new Set((json.slice?.content ?? []).map((node) => node.type));
       if (types.has("text")) actions.push("输入");
       if (types.has("hardBreak")) actions.push("换行");
       let matchedBlock = false;
@@ -87,10 +83,7 @@ export function describeSteps(
 }
 
 /** 把需要 Editor 的命令包装成稳定的按钮回调。 */
-export function cmd(
-  editor: Editor | null,
-  action: (editor: Editor) => boolean,
-): () => void {
+export function cmd(editor: Editor | null, action: (editor: Editor) => boolean): () => void {
   return () => {
     if (editor) action(editor);
   };
@@ -110,14 +103,49 @@ export function isRichNodeActive(editor: Editor, nodeName: string): boolean {
 }
 
 /** 容器节点按钮的激活判定：光标在容器内时也视为激活，但选中子节点时不误亮。 */
-export function isContainerNodeActive(
-  editor: Editor,
-  nodeName: string,
-): boolean {
+export function isContainerNodeActive(editor: Editor, nodeName: string): boolean {
   const selectedNodeName = getSelectedNodeName(editor);
-  return selectedNodeName
-    ? selectedNodeName === nodeName
-    : editor.isActive(nodeName);
+  return selectedNodeName ? selectedNodeName === nodeName : editor.isActive(nodeName);
+}
+
+/**
+ * 删除当前光标/选区所在的整段小说摘录（连同正文）。
+ *
+ * 摘录是带正文的容器节点，点击正文只会把光标放进去，无法像原子节点那样
+ * 选中整块，因此需要一个显式入口；未处于摘录中时返回 false。
+ */
+export function deleteNovelExcerpt(editor: Editor): boolean {
+  const { selection } = editor.state;
+  let from = -1;
+  let to = -1;
+  const selectedNode = (selection as { node?: { type?: { name?: string } } }).node;
+  if (selectedNode?.type?.name === "novelExcerpt") {
+    from = selection.from;
+    to = selection.to;
+  } else {
+    const { $from } = selection;
+    for (let depth = $from.depth; depth > 0; depth -= 1) {
+      const node = $from.node(depth);
+      if (node.type.name !== "novelExcerpt") continue;
+      // 选区必须完整落在该摘录内，避免连带删除摘录之外的正文。
+      if (selection.to > $from.end(depth)) return false;
+      from = $from.before(depth);
+      to = from + node.nodeSize;
+      break;
+    }
+  }
+  if (from < 0) return false;
+  return editor
+    .chain()
+    .focus()
+    .command(({ tr, dispatch }) => {
+      // 摘录是文档唯一内容时用空段落顶替，避免产生非法的空文档。
+      if (tr.doc.childCount === 1) tr.replaceWith(from, to, editor.state.schema.node("paragraph"));
+      else tr.delete(from, to);
+      dispatch?.(tr);
+      return true;
+    })
+    .run();
 }
 
 /** 移除当前光标所在的最外层回复可见容器，保留其内部内容。 */

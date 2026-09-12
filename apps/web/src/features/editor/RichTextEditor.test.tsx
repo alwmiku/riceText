@@ -546,6 +546,49 @@ describe("RichTextEditor presets", () => {
     expect(readyEditor.getAttributes("link").href).toBe("https://example.com/mobile");
   });
 
+  it("删除摘录按钮在摘录外禁用，光标进入摘录后整段移除", async () => {
+    const content: RichTextNode = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "摘录之前" }] },
+        {
+          type: "novelExcerpt",
+          attrs: {
+            bookTitle: "远方来信",
+            chapterTitle: "第三章",
+            author: "林见",
+            variant: "fanqie",
+          },
+          content: [{ type: "paragraph", content: [{ type: "text", text: "待删除的摘录正文" }] }],
+        },
+      ],
+    };
+    let editor: Editor | null = null;
+    render(
+      <RichTextEditor
+        content={content}
+        mode="full"
+        onChange={vi.fn()}
+        onReady={(value) => {
+          editor = value;
+        }}
+      />,
+    );
+    await screen.findByText("待删除的摘录正文");
+    const removeButton = () => screen.getByRole("button", { name: "删除摘录" });
+    expect(removeButton()).toBeDisabled();
+
+    // 摘录是容器节点，点击正文只会把光标放进去；这里直接落光标到摘录正文。
+    act(() => {
+      editor!.commands.setTextSelection(8);
+    });
+    await waitFor(() => expect(removeButton()).toBeEnabled());
+    fireEvent.click(removeButton());
+    await waitFor(() => expect(screen.queryByText("待删除的摘录正文")).not.toBeInTheDocument());
+    expect(removeButton()).toBeDisabled();
+    expect(screen.getByText("摘录之前")).toBeInTheDocument();
+  });
+
   it("只读状态同步到 ProseMirror，工具栏整体禁用并标记只读", async () => {
     const { container } = render(
       <>

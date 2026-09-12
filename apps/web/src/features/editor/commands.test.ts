@@ -1,7 +1,9 @@
-import type { Editor } from "@tiptap/react";
-import { describe, expect, it, vi } from "vitest";
+import { Editor, type JSONContent } from "@tiptap/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { editorExtensions } from "@ricetext/editor-core";
 import {
   cmd,
+  deleteNovelExcerpt,
   describeSteps,
   getSelectedNodeName,
   isContainerNodeActive,
@@ -17,7 +19,12 @@ function mockUnwrapEditor(selection: Record<string, unknown>) {
   const dispatch = vi.fn();
   const run = vi.fn(() => true);
   const command = vi.fn(
-    (callback: (props: { tr: { replaceWith: typeof replaceWith }; dispatch: typeof dispatch }) => boolean) => {
+    (
+      callback: (props: {
+        tr: { replaceWith: typeof replaceWith };
+        dispatch: typeof dispatch;
+      }) => boolean,
+    ) => {
       callback({ tr: { replaceWith }, dispatch });
       return { run };
     },
@@ -87,11 +94,101 @@ describe("describeSteps", () => {
       "输入、换行、回复可见、投票、图片、附件、骰子、提及、小说摘录、间贴锚点、标题、引用、列表、分隔线、删除",
     );
     expect(
-      describeSteps([
-        step({ stepType: "insert", slice: { content: [{ type: "unknown" }] } }),
-      ]),
+      describeSteps([step({ stepType: "insert", slice: { content: [{ type: "unknown" }] } })]),
     ).toBe("编辑");
     expect(describeSteps([])).toBe("编辑");
+  });
+});
+
+const editors: Editor[] = [];
+
+afterEach(() => {
+  for (const editor of editors.splice(0)) editor.destroy();
+});
+
+function createEditor(content: JSONContent): Editor {
+  const editor = new Editor({ extensions: editorExtensions(), content });
+  editors.push(editor);
+  return editor;
+}
+
+const excerptDocument = (extra: JSONContent[] = []): JSONContent => ({
+  type: "doc",
+  content: [
+    { type: "paragraph", content: [{ type: "text", text: "摘录之前" }] },
+    {
+      type: "novelExcerpt",
+      attrs: { bookTitle: "书", chapterTitle: "章", author: "作者", variant: "fanqie" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "摘录正文" }] }],
+    },
+    ...extra,
+  ],
+});
+
+describe("deleteNovelExcerpt", () => {
+  it("删除光标所在的整段摘录并保留前后正文", () => {
+    const editor = createEditor(
+      excerptDocument([{ type: "paragraph", content: [{ type: "text", text: "摘录之后" }] }]),
+    );
+    // 光标进入摘录正文
+    let inside = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === "novelExcerpt") inside = pos + 2;
+    });
+    editor.commands.setTextSelection(inside);
+
+    expect(deleteNovelExcerpt(editor)).toBe(true);
+    const types: string[] = [];
+    editor.state.doc.descendants((node) => {
+      types.push(node.type.name);
+    });
+    expect(types).not.toContain("novelExcerpt");
+    expect(editor.state.doc.textContent).toBe("摘录之前摘录之后");
+  });
+
+  it("删除直接选中的摘录节点", () => {
+    const editor = createEditor(excerptDocument());
+    let excerptPos = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === "novelExcerpt") excerptPos = pos;
+    });
+    editor.commands.setNodeSelection(excerptPos);
+    expect(deleteNovelExcerpt(editor)).toBe(true);
+    const types: string[] = [];
+    editor.state.doc.descendants((node) => {
+      types.push(node.type.name);
+    });
+    expect(types).not.toContain("novelExcerpt");
+    expect(editor.state.doc.textContent).toBe("摘录之前");
+  });
+
+  it("摘录是唯一内容时用空段落顶替，不产生非法空文档", () => {
+    const editor = createEditor({
+      type: "doc",
+      content: [
+        {
+          type: "novelExcerpt",
+          attrs: { bookTitle: "书", chapterTitle: "章", author: "作者", variant: "fanqie" },
+          content: [{ type: "paragraph", content: [{ type: "text", text: "唯一正文" }] }],
+        },
+      ],
+    });
+    editor.commands.setTextSelection(2);
+    expect(deleteNovelExcerpt(editor)).toBe(true);
+    expect(editor.state.doc.childCount).toBe(1);
+    expect(editor.state.doc.firstChild!.type.name).toBe("paragraph");
+    expect(editor.state.doc.textContent).toBe("");
+  });
+
+  it("光标在摘录之外时不删除任何内容", () => {
+    const editor = createEditor(excerptDocument());
+    editor.commands.setTextSelection(2);
+    expect(deleteNovelExcerpt(editor)).toBe(false);
+    const types: string[] = [];
+    editor.state.doc.descendants((node) => {
+      types.push(node.type.name);
+    });
+    expect(types).toContain("novelExcerpt");
   });
 });
 
@@ -127,8 +224,7 @@ describe("editor command helpers", () => {
     const nested = mockUnwrapEditor({
       $from: {
         depth: 2,
-        node: (depth: number) =>
-          depth === 1 ? node : { type: { name: "paragraph" } },
+        node: (depth: number) => (depth === 1 ? node : { type: { name: "paragraph" } }),
         before: () => 4,
         after: () => 10,
       },

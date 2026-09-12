@@ -20,6 +20,7 @@ import {
   Redo2,
   SeparatorHorizontal,
   TextQuote,
+  Trash2,
   Underline as UnderlineIcon,
   Undo2,
   UnlockKeyhole,
@@ -286,6 +287,13 @@ export function BusinessNodeGroup({ editor, condensed }: { editor: Editor; conde
             onClick={() => requestInsert?.("excerpt")}
           >
             <TextQuote size={16} />
+          </ToolbarButton>
+          <ToolbarButton
+            label="删除摘录"
+            disabled={INSERT_TOOL_DEFINITIONS.deleteExcerpt.isDisabled?.(editor) ?? false}
+            onClick={() => requestInsert?.("deleteExcerpt")}
+          >
+            <Trash2 size={16} />
           </ToolbarButton>
           <ToolbarButton
             label="回复后可见"
