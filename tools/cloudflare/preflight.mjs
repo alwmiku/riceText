@@ -1,5 +1,6 @@
-// 部署前硬门禁：占位资源、跨域路由或缺失认证变量都必须在上传前失败。
+// 部署前硬门禁：占位资源、跨域路由、缺失认证变量或尚未创建的 R2 桶都必须在上传前失败。
 import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 
 const [target] = process.argv.slice(2).filter((value) => value !== "--");
 if (target !== "preview" && target !== "production") {
@@ -34,8 +35,34 @@ const routes = selected.routes ?? [];
 if (!routes.some((route) => route.pattern === host + "/api/*")) {
   throw new Error("Wrangler route must declare " + host + "/api/*");
 }
-if (!selected.r2_buckets?.some((item) => item.binding === "UPLOADS")) {
+const uploads = selected.r2_buckets?.find((item) => item.binding === "UPLOADS");
+if (!uploads) {
   throw new Error("Missing UPLOADS R2 binding for " + target);
+}
+// 绑定名写对不等于桶真的存在：漏建桶在运行时只会变成 404，而线上取不出表情图时
+// 很难第一时间想到是桶没建。列表能拉到时做硬校验；拉不到（网络/凭据）不误判，
+// 交给后面的上传步骤去暴露。
+const buckets = spawnSync(
+  process.execPath,
+  [
+    "apps/worker/node_modules/wrangler/bin/wrangler.js",
+    "r2",
+    "bucket",
+    "list",
+    "--cwd",
+    "apps/worker",
+  ],
+  { encoding: "utf8", shell: false },
+);
+const bucketList = String(buckets.stdout ?? "") + String(buckets.stderr ?? "");
+if (buckets.status === 0 && !bucketList.includes("name:" + " ".repeat(11) + uploads.bucket_name)) {
+  throw new Error(
+    "R2 bucket " +
+      uploads.bucket_name +
+      " does not exist in this account; create it with: " +
+      "pnpm --filter @ricetext/worker exec wrangler r2 bucket create " +
+      uploads.bucket_name,
+  );
 }
 const oidc = [process.env.OIDC_ISSUER, process.env.OIDC_CLIENT_ID, process.env.OIDC_CLIENT_SECRET];
 if (oidc.some(Boolean) && !oidc.every(Boolean)) {
@@ -45,4 +72,6 @@ if (process.env.OIDC_ISSUER) {
   const issuer = new URL(process.env.OIDC_ISSUER);
   if (issuer.protocol !== "https:") throw new Error("OIDC_ISSUER must use HTTPS");
 }
-console.log(JSON.stringify({ target, origin, database: database.database_name, ready: true }, null, 2));
+console.log(
+  JSON.stringify({ target, origin, database: database.database_name, ready: true }, null, 2),
+);

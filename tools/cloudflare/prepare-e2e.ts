@@ -6,6 +6,10 @@ import { spawnSync } from "node:child_process";
 import { PASSWORD_HASH_ITERATIONS } from "../../packages/contracts/src/schemas.js";
 import { createDatabase } from "../../apps/api/src/db.js";
 import { exportSqliteToCloudflare } from "../../packages/cloudflare-migration/src/export-sqlite.js";
+import {
+  collectEmojiAssets,
+  uploadR2Manifest,
+} from "../../packages/cloudflare-migration/src/r2-assets.js";
 
 const root = resolve(import.meta.dirname, "../..");
 const data = join(root, ".data", "cloudflare-e2e");
@@ -63,31 +67,57 @@ const hash = await webcrypto.subtle.deriveBits(
 await appendFile(
   exported.sqlPath,
   "INSERT INTO password_credentials(user_id, username, salt, password_hash, iterations, failed_attempts, locked_until, updated_at) VALUES (" +
-    "'author', 'writer', '" + Buffer.from(salt).toString("base64url") + "', '" +
-    Buffer.from(hash).toString("base64url") + "', " + PASSWORD_HASH_ITERATIONS + ", 0, NULL, '2026-09-02T00:00:00.000Z');\n",
+    "'author', 'writer', '" +
+    Buffer.from(salt).toString("base64url") +
+    "', '" +
+    Buffer.from(hash).toString("base64url") +
+    "', " +
+    PASSWORD_HASH_ITERATIONS +
+    ", 0, NULL, '2026-09-02T00:00:00.000Z');\n",
   "utf8",
 );
-const pnpmCli = process.env.npm_execpath;
-const command = pnpmCli ? process.execPath : process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-for (const args of [
-  [
-    "--dir", "apps/worker", "exec", "wrangler", "d1", "migrations", "apply", "DB",
-    "--local", "--persist-to", persistTo,
-  ],
-  [
-    "--dir", "apps/worker", "exec", "wrangler", "d1", "execute", "DB",
-    "--local", "--persist-to", persistTo, "--file", exported.sqlPath,
-  ],
-]) {
-  const result = spawnSync(command, pnpmCli ? [pnpmCli, ...args] : args, {
+/** 跨平台拉起 pnpm；npm_execpath 指向 JS 入口（.cjs/.mjs）时直接交给 node 执行。 */
+function runPnpm(args: readonly string[]): number {
+  const entry = process.env.npm_execpath;
+  const useNode = entry !== undefined && /\.(c?js|mjs)$/u.test(entry);
+  const command = useNode ? process.execPath : (entry ?? "pnpm");
+  const commandArgs = useNode ? [entry!, ...args] : [...args];
+  const result = spawnSync(command, commandArgs, {
     cwd: root,
     stdio: "inherit",
-    shell: !pnpmCli && process.platform === "win32",
+    shell: !useNode && process.platform === "win32",
   });
-  if (result.status !== 0) {
-    throw new Error(
-      "Cloudflare E2E preparation command failed with status " + String(result.status),
-    );
+  return result.status ?? 1;
+}
+
+function runWrangler(args: readonly string[]): number {
+  return runPnpm(["--dir", "apps/worker", "exec", "wrangler", ...args]);
+}
+
+for (const args of [
+  ["d1", "migrations", "apply", "DB", "--local", "--persist-to", persistTo],
+  ["d1", "execute", "DB", "--local", "--persist-to", persistTo, "--file", exported.sqlPath],
+]) {
+  const status = runWrangler(args);
+  if (status !== 0) {
+    throw new Error("Cloudflare E2E preparation command failed with status " + String(status));
   }
 }
-console.log(JSON.stringify({ databasePath, importFile: exported.sqlPath, ready: true }, null, 2));
+// 本地模拟桶同样要放站点表情：Worker 从 R2 取图（Node API 才是读磁盘），
+// 少了这一步工具栏插入的表情会 404，桌面表情用例必然失败。
+const emoji = uploadR2Manifest({
+  manifest: collectEmojiAssets(
+    join(root, "apps", "api", "src", "assets", "emoji"),
+    "2026-09-02T00:00:00.000Z",
+  ),
+  bucket: "ricetext-development-uploads",
+  local: true,
+  runner: (args) => runWrangler([...args, "--persist-to", persistTo]),
+});
+console.log(
+  JSON.stringify(
+    { databasePath, importFile: exported.sqlPath, r2: { emoji }, ready: true },
+    null,
+    2,
+  ),
+);

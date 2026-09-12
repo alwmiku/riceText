@@ -4,3 +4,10 @@ export {
   type ExportOptions,
   type IdentityMapping,
 } from "./export-sqlite";
+export {
+  collectEmojiAssets,
+  uploadR2Manifest,
+  type R2Manifest,
+  type R2ManifestItem,
+} from "./r2-assets";
+export { createWranglerRunner, wranglerCliPath } from "./cli";
