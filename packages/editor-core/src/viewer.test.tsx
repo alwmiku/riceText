@@ -290,6 +290,54 @@ describe("RichTextViewer", () => {
     expect(container.querySelector('[contenteditable="true"]')).not.toBeInTheDocument();
   });
 
+  it("renders persisted emoji nodes as first-party images and rejects forged sources", async () => {
+    const { container } = render(
+      <RichTextViewer
+        enableLightbox={false}
+        content={{
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "emoji",
+                  attrs: {
+                    emojiId: "hug",
+                    name: "抱抱",
+                    src: "/api/emoji/hug/image",
+                    fallback: "🤗",
+                  },
+                },
+                {
+                  // src 被伪造也不该外链：目录命中时一律重建成站点自己的路径。
+                  type: "emoji",
+                  attrs: {
+                    emojiId: "water",
+                    name: "浇水",
+                    src: "https://evil.example.com/x.gif",
+                    fallback: "💧",
+                  },
+                },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelectorAll('[data-node-type="emoji"]').length).toBe(2),
+    );
+    const images = container.querySelectorAll('[data-node-type="emoji"] img');
+    expect(images.length).toBe(2);
+    expect(images[0]!.getAttribute("src")).toBe("/api/emoji/hug/image");
+    expect(images[1]!.getAttribute("src")).toBe("/api/emoji/water/image");
+    expect(images[0]!.getAttribute("alt")).toBe("🤗");
+    expect(container.innerHTML).not.toContain("evil.example.com");
+    expect(container.querySelector('[contenteditable="true"]')).not.toBeInTheDocument();
+  });
+
   it("keeps reply gates locked by default and does not add synthetic anchors inside them", async () => {
     const { container } = render(
       <RichTextViewer

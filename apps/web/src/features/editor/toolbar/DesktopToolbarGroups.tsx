@@ -47,6 +47,7 @@ import {
   undo,
 } from "../editor-actions";
 import { FONT_FAMILIES, FONT_SIZES, INSERT_TOOL_DEFINITIONS } from "../editor-tool-definitions";
+import { EmojiPickerPopover } from "../EmojiPickerPopover";
 import { useInsertRequest } from "./ToolbarDialogs";
 import { ToolbarButton } from "./ToolbarButton";
 
@@ -237,6 +238,8 @@ export function BusinessNodeGroup({ editor, condensed }: { editor: Editor; conde
           <Link2 size={16} />
         </ToolbarButton>
       )}
+      {/* 表情是就地展开的拾取面板，不走 requestInsert 对话框通道。 */}
+      <EmojiPickerPopover editor={editor} disabled={spoilerActive} triggerClassName="size-8" />
       <ToolbarButton
         label="分割线"
         disabled={INSERT_TOOL_DEFINITIONS.horizontalRule.isDisabled?.(editor) ?? false}

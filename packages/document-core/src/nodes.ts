@@ -1,4 +1,5 @@
 import type { MarkConfig, NodeConfig } from "@tiptap/core";
+import { emojiAssetPath } from "@ricetext/contracts";
 import { sanitizeUrl } from "./sanitize.js";
 import { normalizeNovelExcerptVariant } from "./novel-excerpt-variant.js";
 import { parseInteger, parseJsonArray } from "./helpers.js";
@@ -606,6 +607,68 @@ export const inlineCommentAnchorNodeSpec = {
   },
 } satisfies NodeConfig;
 
+/** 站点自定义表情包的行内原子节点；图片由目录派生的同源路径提供。 */
+export const emojiNodeSpec = {
+  name: "emoji",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  marks: "_",
+  addAttributes() {
+    return {
+      emojiId: {
+        default: "",
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("data-emoji-id")?.slice(0, 32) ?? "",
+      },
+      name: {
+        default: "",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-name")?.slice(0, 40) ?? "",
+      },
+      src: {
+        default: "",
+        parseHTML: (element: HTMLElement) =>
+          sanitizeUrl(element.querySelector("img")?.getAttribute("src"), "image") ?? "",
+      },
+      fallback: {
+        default: "",
+        parseHTML: (element: HTMLElement) =>
+          element.querySelector("img")?.getAttribute("alt")?.slice(0, 16) ?? "",
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'span[data-node-type="emoji"]' }];
+  },
+  renderHTML({ node }: { node: { attrs: Record<string, unknown> } }) {
+    const emojiId = String(node.attrs.emojiId ?? "");
+    const name = String(node.attrs.name ?? "");
+    const fallback = String(node.attrs.fallback ?? "");
+    const src = emojiAssetPath(emojiId) ?? sanitizeUrl(node.attrs.src, "image") ?? "";
+    return [
+      "span",
+      {
+        class: "rt-emoji",
+        "data-node-type": "emoji",
+        "data-emoji-id": emojiId,
+        "data-name": name,
+        contenteditable: "false",
+      },
+      [
+        "img",
+        {
+          src,
+          alt: fallback || name,
+          title: name,
+          draggable: "false",
+          loading: "lazy",
+        },
+      ],
+    ];
+  },
+} satisfies NodeConfig;
+
 /** 悬停显示与点击切换剧透文本的标记。 */
 export const spoilerMarkSpec = {
   name: "spoiler",
@@ -639,6 +702,7 @@ export const sharedNodeSpecs: readonly NodeConfig[] = [
   pollRefNodeSpec,
   longTextBlockNodeSpec,
   inlineCommentAnchorNodeSpec,
+  emojiNodeSpec,
 ];
 
 /** 全部共享标记规格。 */

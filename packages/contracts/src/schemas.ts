@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EMOJI_ID_PATTERN } from "./emoji-catalog.js";
 
 /** 编辑器对外提供的三种布局模式。 */
 export const EditorModeSchema = z.enum(["compact", "full", "mobile"]);
@@ -10,19 +11,11 @@ export const EntityIdSchema = z
   .string()
   .min(1)
   .max(128)
-  .regex(
-    /^[A-Za-z0-9][A-Za-z0-9_-]*$/,
-    "标识只能包含字母、数字、下划线和连字符",
-  );
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, "标识只能包含字母、数字、下划线和连字符");
 
 /** 可安全放进 Tiptap JSON 属性中的 JSON 值。 */
 export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 /** Tiptap mark 的最小、可传输表示。 */
 export interface TiptapMark {
@@ -79,11 +72,7 @@ export const TiptapNodeSchema: z.ZodType<TiptapNode> = z.lazy(() =>
     .strict()
     .superRefine((node, context) => {
       // 长文卷名是既有持久化字段；缺省兼容旧文档，显式值必须满足字符串上限。
-      if (
-        node.type !== "longTextBlock" ||
-        node.attrs?.volumeTitle === undefined
-      )
-        return;
+      if (node.type !== "longTextBlock" || node.attrs?.volumeTitle === undefined) return;
       const result = z.string().max(500).safeParse(node.attrs.volumeTitle);
       if (!result.success) {
         context.addIssue({
@@ -104,6 +93,36 @@ export const TiptapDocumentSchema = z
   .strict();
 /** 经过结构校验的 Tiptap 文档。 */
 export type TiptapDocument = z.infer<typeof TiptapDocumentSchema>;
+
+/** 表情目录条目的传输形态；字段与 emoji-catalog 常驻目录一致。 */
+export const EmojiCatalogEntrySchema = z
+  .object({
+    id: z.string().min(1).max(32).regex(EMOJI_ID_PATTERN, "表情标识只能是小写字母、数字与连字符"),
+    groupId: z.string().min(1).max(32),
+    name: z.string().min(1).max(40),
+    keywords: z.array(z.string().max(40)).max(20),
+    text: z.string().min(1).max(16),
+    label: z.string().max(16).optional(),
+    shortcodes: z.array(z.string().max(16)).max(10).optional(),
+    /** 自带图片的文件名（位于 API 静态表情目录内）；纯文本条目没有该字段。 */
+    assetFile: z.string().max(120).optional(),
+  })
+  .strict();
+
+/** 完整表情目录：纯文本条目与自定义表情包同列。 */
+export const EmojiCatalogSchema = z
+  .object({
+    groups: z.array(
+      z.object({ id: z.string().min(1).max(32), label: z.string().min(1).max(40) }).strict(),
+    ),
+    items: z.array(EmojiCatalogEntrySchema),
+  })
+  .strict();
+
+/** 表情图片路由的路径参数。 */
+export const EmojiImageParamsSchema = z
+  .object({ emojiId: EntityIdSchema.describe("表情目录中的稳定 id，同时也是图片文件名") })
+  .strict();
 
 /** RFC 3339 时间字符串。 */
 export const DateTimeSchema = z.string().datetime({ offset: true });
@@ -167,9 +186,7 @@ export const UpdateDocumentStepsRequestSchema = z
   })
   .strict();
 /** 增量更新文档请求。 */
-export type UpdateDocumentStepsRequest = z.infer<
-  typeof UpdateDocumentStepsRequestSchema
->;
+export type UpdateDocumentStepsRequest = z.infer<typeof UpdateDocumentStepsRequestSchema>;
 
 /** 不可变历史版本的摘要。 */
 export const RevisionSummarySchema = z
@@ -207,9 +224,7 @@ export const RevisionQuerySchema = CursorQuerySchema.extend({
 }).strict();
 
 /** 通用游标分页信息。 */
-export const PageInfoSchema = z
-  .object({ nextCursor: z.string().nullable() })
-  .strict();
+export const PageInfoSchema = z.object({ nextCursor: z.string().nullable() }).strict();
 
 /** 历史版本分页结果。 */
 export const RevisionPageSchema = z
@@ -230,9 +245,7 @@ export const RollbackDocumentRequestSchema = z
   })
   .strict();
 /** 文档回滚请求。 */
-export type RollbackDocumentRequest = z.infer<
-  typeof RollbackDocumentRequestSchema
->;
+export type RollbackDocumentRequest = z.infer<typeof RollbackDocumentRequestSchema>;
 
 /** 统一 API 错误响应。 */
 export const ApiErrorSchema = z
@@ -508,9 +521,7 @@ export const SaveNovelChaptersBatchRequestSchema = z
   .object({ chapters: z.array(BatchChapterItemSchema).min(1).max(20) })
   .strict();
 /** 批量章节保存请求。 */
-export type SaveNovelChaptersBatchRequest = z.infer<
-  typeof SaveNovelChaptersBatchRequestSchema
->;
+export type SaveNovelChaptersBatchRequest = z.infer<typeof SaveNovelChaptersBatchRequestSchema>;
 
 /** 批量保存响应中的单个章节结果。 */
 export const SaveNovelChaptersBatchItemResponseSchema = z
@@ -539,9 +550,7 @@ export const SaveNovelChaptersBatchResponseSchema = z
   })
   .strict();
 /** 批量章节保存响应。 */
-export type SaveNovelChaptersBatchResponse = z.infer<
-  typeof SaveNovelChaptersBatchResponseSchema
->;
+export type SaveNovelChaptersBatchResponse = z.infer<typeof SaveNovelChaptersBatchResponseSchema>;
 
 /** 创建整本上传会话；manifestHash 覆盖有序的 id/title/order/hash 清单。 */
 export const CreateChapterUploadRequestSchema = z
@@ -562,8 +571,7 @@ export const ChapterUploadSessionSchema = z
 export const StageChapterUploadBatchRequestSchema = z
   .object({ chapters: z.array(BatchChapterItemSchema).min(1).max(20) })
   .strict();
-export const StageChapterUploadBatchResponseSchema =
-  SaveNovelChaptersBatchResponseSchema;
+export const StageChapterUploadBatchResponseSchema = SaveNovelChaptersBatchResponseSchema;
 export const CompleteChapterUploadResponseSchema = z
   .object({
     uploadId: EntityIdSchema,
@@ -584,9 +592,7 @@ export const StageChapterReorderItemSchema = z
   })
   .strict();
 /** 换序暂存请求项。 */
-export type StageChapterReorderItem = z.infer<
-  typeof StageChapterReorderItemSchema
->;
+export type StageChapterReorderItem = z.infer<typeof StageChapterReorderItemSchema>;
 
 /**
  * 换序暂存：每批最多 40 项（1 条文档查询 + 1 条元数据查询 + 最多 40 条
@@ -596,9 +602,7 @@ export const StageNovelChapterReorderRequestSchema = z
   .object({ chapters: z.array(StageChapterReorderItemSchema).min(1).max(40) })
   .strict();
 /** 换序暂存请求。 */
-export type StageNovelChapterReorderRequest = z.infer<
-  typeof StageNovelChapterReorderRequestSchema
->;
+export type StageNovelChapterReorderRequest = z.infer<typeof StageNovelChapterReorderRequestSchema>;
 
 /** 换序暂存响应中的单个章节结果。 */
 export const StageNovelChapterReorderItemResponseSchema = z
@@ -621,10 +625,7 @@ export type StageNovelChapterReorderItemResponse = z.infer<
 /** 换序暂存响应：与请求顺序一致。 */
 export const StageNovelChapterReorderResponseSchema = z
   .object({
-    chapters: z
-      .array(StageNovelChapterReorderItemResponseSchema)
-      .min(1)
-      .max(40),
+    chapters: z.array(StageNovelChapterReorderItemResponseSchema).min(1).max(40),
   })
   .strict();
 /** 换序暂存响应。 */
@@ -639,9 +640,7 @@ export const CreateDocumentChapterRequestSchema = z
   })
   .strict();
 /** 新增章节请求。 */
-export type CreateDocumentChapterRequest = z.infer<
-  typeof CreateDocumentChapterRequestSchema
->;
+export type CreateDocumentChapterRequest = z.infer<typeof CreateDocumentChapterRequestSchema>;
 
 /** 更新章节目录行（隐藏/恢复可读）的请求体。 */
 export const UpdateDocumentChapterRequestSchema = z
@@ -650,9 +649,7 @@ export const UpdateDocumentChapterRequestSchema = z
   })
   .strict();
 /** 更新章节目录行的请求。 */
-export type UpdateDocumentChapterRequest = z.infer<
-  typeof UpdateDocumentChapterRequestSchema
->;
+export type UpdateDocumentChapterRequest = z.infer<typeof UpdateDocumentChapterRequestSchema>;
 
 /** 删除章节目录行后的响应（幂等：未命中时 deleted = false）。 */
 export const DeleteDocumentChapterResponseSchema = z
@@ -662,9 +659,7 @@ export const DeleteDocumentChapterResponseSchema = z
   })
   .strict();
 /** 删除章节目录行后的响应。 */
-export type DeleteDocumentChapterResponse = z.infer<
-  typeof DeleteDocumentChapterResponseSchema
->;
+export type DeleteDocumentChapterResponse = z.infer<typeof DeleteDocumentChapterResponseSchema>;
 
 /** 保存章节后的版本摘要（不重复传输正文）。 */
 export const SaveNovelChapterResponseSchema = z
@@ -762,9 +757,7 @@ export const CreateSuggestionBatchRequestSchema = z
 export const ReviewSuggestionBatchRequestSchema = ReviewSuggestionRequestSchema;
 
 /** @ 搜索结果。 */
-export const MentionSearchResultSchema = z
-  .object({ items: z.array(ForumUserSchema) })
-  .strict();
+export const MentionSearchResultSchema = z.object({ items: z.array(ForumUserSchema) }).strict();
 /** 服务端解析非好友 @ 的请求体。 */
 export const ResolveMentionRequestSchema = z
   .object({
@@ -880,10 +873,7 @@ export interface CommentAdapter {
     body: string,
     parentId?: string,
   ): Promise<CommentReply>;
-  vote(
-    replyId: string,
-    value: -1 | 0 | 1,
-  ): Promise<{ score: number; viewerVote: -1 | 0 | 1 }>;
+  vote(replyId: string, value: -1 | 0 | 1): Promise<{ score: number; viewerVote: -1 | 0 | 1 }>;
 }
 /** 论坛业务能力的可替换适配器。 */
 export interface ForumBusinessAdapter {
@@ -892,11 +882,6 @@ export interface ForumBusinessAdapter {
     name: string,
     userId?: string,
   ): Promise<z.infer<typeof ResolveMentionResponseSchema>>;
-  purchaseAttachment(
-    id: string,
-  ): Promise<z.infer<typeof PurchaseAttachmentResponseSchema>>;
-  vote(
-    pollId: string,
-    optionIds: string[],
-  ): Promise<z.infer<typeof PollSchema>>;
+  purchaseAttachment(id: string): Promise<z.infer<typeof PurchaseAttachmentResponseSchema>>;
+  vote(pollId: string, optionIds: string[]): Promise<z.infer<typeof PollSchema>>;
 }

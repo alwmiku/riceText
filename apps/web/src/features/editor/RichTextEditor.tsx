@@ -14,6 +14,7 @@ import {
 import type { EditorMode, RichTextNode } from "../../lib/types";
 import { formatTime } from "../../lib/utils";
 import { describeSteps, type StepJson } from "./commands";
+import { EmojiSuggestion } from "./EmojiSuggestion";
 import { SelectionFormatMenu } from "./toolbar/SelectionFormatMenu";
 import { Toolbar } from "./toolbar/Toolbar";
 import { ToolbarDialogs } from "./toolbar/ToolbarDialogs";
@@ -246,6 +247,7 @@ export function RichTextEditor({
               className="tiptap min-h-[560px] px-[clamp(28px,7vw,92px)] py-[52px] pb-[100px] font-serif text-[17px] leading-[1.9] text-[#232a31] outline-none"
             />
           </SelectionFormatMenu>
+          <EmojiSuggestion editor={editor} />
         </div>
       </div>
     );
@@ -260,6 +262,7 @@ export function RichTextEditor({
               className="tiptap min-h-[150px] px-5 py-[18px] font-sans text-[15px] leading-[1.7] outline-none"
             />
           </SelectionFormatMenu>
+          <EmojiSuggestion editor={editor} />
         </div>
         <div className="flex items-center justify-between border-t border-border p-2">
           <DropdownMenu>
@@ -305,6 +308,7 @@ export function RichTextEditor({
                 className="tiptap min-h-[calc(100vh-190px)] px-[18px] py-6 pb-[90px] font-serif text-base leading-[1.9] outline-none"
               />
             </SelectionFormatMenu>
+            <EmojiSuggestion editor={editor} />
           </div>
           <div className="fixed inset-x-0 bottom-0 z-[35] flex min-h-[66px] items-center justify-between gap-2 border-t border-border bg-white/[0.97] px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] backdrop-blur-xl">
             <Toolbar editor={editor} condensed disabled={!editable} />
@@ -333,6 +337,7 @@ export function RichTextEditor({
               className="tiptap min-h-[560px] px-[clamp(28px,7vw,92px)] py-[52px] pb-[100px] font-serif text-[17px] leading-[1.9] text-[#232a31] outline-none"
             />
           </SelectionFormatMenu>
+          <EmojiSuggestion editor={editor} />
         </div>
         <footer className="flex min-h-[34px] flex-wrap items-center justify-end gap-x-5 gap-y-1 border-t border-[#e3e7ea] bg-[#fafbfc] px-3.5 py-1.5 text-xs text-[#68737d]">
           <span>

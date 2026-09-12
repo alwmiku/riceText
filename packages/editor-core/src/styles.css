@@ -1453,6 +1453,182 @@
   color: #ffffff;
 }
 
+/* 站点自定义表情：行内原子节点，图片按行高缩放，加载失败时由 alt 文本兜底。 */
+.rt-emoji {
+  display: inline-block;
+  margin: 0 1px;
+  line-height: 1;
+  vertical-align: -0.28em;
+}
+
+.rt-emoji img {
+  display: inline-block;
+  width: auto;
+  height: 1.35em;
+  vertical-align: baseline;
+  object-fit: contain;
+}
+
+.rt-emoji.ProseMirror-selectednode img {
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--rt-primary);
+}
+
+/* 触发器候选浮层：由 Web 宿主渲染，位置按光标坐标内联给出。 */
+.rt-emoji-suggest {
+  position: fixed;
+  z-index: 70;
+  display: grid;
+  gap: 2px;
+  width: 250px;
+  max-height: min(42vh, 320px);
+  overflow-y: auto;
+  padding: 4px;
+  background: #ffffff;
+  border: 1px solid var(--rt-border, #c9c9c9);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 18%);
+}
+
+.rt-emoji-suggest__item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  padding: 3px 7px;
+  color: var(--rt-text, #20272c);
+  font-size: 13px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.rt-emoji-suggest__item[data-active="true"],
+.rt-emoji-suggest__item:hover {
+  background: #eef4f3;
+}
+
+.rt-emoji-suggest__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+}
+
+.rt-emoji-suggest__name {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rt-emoji-suggest__hint {
+  color: var(--rt-muted, #68737d);
+  font-size: 11px;
+}
+
+/* 表情选择面板：固定高度网格 + 可横向滚动的分类页签，避免移动端撑破视口。 */
+.rt-emoji-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(292px, calc(100vw - 24px));
+}
+
+.rt-emoji-picker__search {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 13px;
+  color: #1f2933;
+  background: #ffffff;
+  border: 1px solid #9fa5aa;
+  border-radius: 5px;
+  outline: none;
+}
+
+.rt-emoji-picker__tabs {
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.rt-emoji-picker__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.rt-emoji-picker__tab {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #54616b;
+  white-space: nowrap;
+  background: #f2f5f6;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.rt-emoji-picker__tab[aria-selected="true"] {
+  color: #ffffff;
+  background: var(--rt-primary, #197c73);
+}
+
+.rt-emoji-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-height: 208px;
+  overflow-y: auto;
+}
+
+.rt-emoji-picker__item {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 2px;
+  font-size: 18px;
+  line-height: 1;
+  background: #f6f9f9;
+  border: 1px solid #e7edec;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.rt-emoji-picker__item:hover,
+.rt-emoji-picker__item:focus-visible {
+  background: #eef4f3;
+  border-color: var(--rt-primary, #197c73);
+}
+
+.rt-emoji-picker__item img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.rt-emoji-picker__text {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.rt-emoji-picker__empty {
+  padding: 14px 0;
+  color: #68737d;
+  font-size: 12px;
+  text-align: center;
+}
+
 .rt-long-text {
   margin: 18px 0;
   padding: 16px;

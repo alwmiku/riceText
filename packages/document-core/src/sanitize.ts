@@ -8,12 +8,14 @@ import {
   DOCUMENT_NODE_ATTRIBUTES,
   MAX_DOCUMENT_DEPTH as POLICY_MAX_DOCUMENT_DEPTH,
   MAX_DOCUMENT_NODES as POLICY_MAX_DOCUMENT_NODES,
+  emojiAssetPath as catalogEmojiAssetPath,
 } from "@ricetext/contracts";
 
 import type {
   AttachmentReferenceAttributes,
   DiceRollAttributes,
   DocumentValidationIssue,
+  EmojiAttributes,
   DocumentValidationResult,
   InlineCommentAnchorAttributes,
   LongTextBlockAttributes,
@@ -39,14 +41,7 @@ export const ALLOWED_FONT_SIZES = ALLOWED_DOCUMENT_FONT_SIZES;
 
 const allowedFontSet = new Set<string>(ALLOWED_FONT_FAMILIES);
 const allowedFontSizeSet = new Set<number>(ALLOWED_FONT_SIZES);
-const allowedSimpleMarks = new Set([
-  "bold",
-  "italic",
-  "underline",
-  "strike",
-  "code",
-  "spoiler",
-]);
+const allowedSimpleMarks = new Set(["bold", "italic", "underline", "strike", "code", "spoiler"]);
 const allowedNodes = new Set(Object.keys(DOCUMENT_NODE_ATTRIBUTES));
 
 const blockNodes = new Set([
@@ -70,6 +65,7 @@ const inlineNodes = new Set([
   "inlineCommentAnchor",
   "diceRoll",
   "mention",
+  "emoji",
 ]);
 const atomNodes = new Set([
   "hardBreak",
@@ -78,6 +74,7 @@ const atomNodes = new Set([
   "richImage",
   "diceRoll",
   "mention",
+  "emoji",
   "attachmentRef",
   "pollRef",
   "longTextBlock",
@@ -97,10 +94,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function addIssue(
-  context: SanitizerContext,
-  value: DocumentValidationIssue,
-): void {
+function addIssue(context: SanitizerContext, value: DocumentValidationIssue): void {
   context.issues.push(value);
 }
 
@@ -131,12 +125,7 @@ function nullableString(value: unknown, maxLength: number): string | null {
   return value.slice(0, maxLength);
 }
 
-function finiteInteger(
-  value: unknown,
-  fallback: number,
-  min: number,
-  max: number,
-): number {
+function finiteInteger(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, Math.round(value)));
 }
@@ -153,35 +142,25 @@ function containsControlCharacter(value: string): boolean {
  * 图片 URL 接受 HTTP(S)、`/uploads/...`、`/api/assets/...` 以及本地
  * `blob:` 对象 URL；链接额外接受 `mailto:`、锚点片段以及普通同源路径。
  */
-export function sanitizeUrl(
-  value: unknown,
-  kind: "image" | "link" = "link",
-): string | null {
+export function sanitizeUrl(value: unknown, kind: "image" | "link" = "link"): string | null {
   if (typeof value !== "string") return null;
   if (containsControlCharacter(value)) return null;
   const candidate = value.trim();
   if (!candidate || candidate.length > 2_048) return null;
+  // /api/emoji/ 与上传目录同级：都是本站自有资源路径，允许写入正文（表情图片）。
   if (
     (candidate.startsWith("/uploads/") ||
-      candidate.startsWith("/api/assets/")) &&
+      candidate.startsWith("/api/assets/") ||
+      candidate.startsWith("/api/emoji/")) &&
     !candidate.includes("\\")
   )
     return candidate;
-  if (
-    kind === "image" &&
-    candidate.startsWith("blob:") &&
-    !candidate.includes("\\")
-  )
+  if (kind === "image" && candidate.startsWith("blob:") && !candidate.includes("\\"))
     return candidate;
-  if (
-    kind === "link" &&
-    (candidate.startsWith("/") || candidate.startsWith("#"))
-  )
-    return candidate;
+  if (kind === "link" && (candidate.startsWith("/") || candidate.startsWith("#"))) return candidate;
   try {
     const url = new URL(candidate);
-    if (url.protocol === "http:" || url.protocol === "https:")
-      return url.toString();
+    if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
     if (kind === "link" && url.protocol === "mailto:") return url.toString();
   } catch {
     return null;
@@ -194,8 +173,7 @@ export function sanitizeColor(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const color = value.trim().toLowerCase();
   // #rgb / #rrggbb / #rrggbbaa：8 位十六进制（CSS Color 4）承载透明度，由拾色器产出。
-  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3}(?:[0-9a-f]{2})?)?$/u.test(color))
-    return color;
+  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3}(?:[0-9a-f]{2})?)?$/u.test(color)) return color;
   if (/^rgb\(\s*(?:\d{1,3}\s*,\s*){2}\d{1,3}\s*\)$/u.test(color)) {
     const channels = color.match(/\d+/gu)?.map(Number) ?? [];
     return channels.length === 3 && channels.every((channel) => channel <= 255)
@@ -241,22 +219,12 @@ function sanitizeMarks(
     }
     const attrs = isRecord(raw.attrs) ? raw.attrs : {};
     if (allowedSimpleMarks.has(raw.type)) {
-      reportUnknownAttributes(
-        context,
-        markPath,
-        attrs,
-        markAttributeAllowlist[raw.type] ?? [],
-      );
+      reportUnknownAttributes(context, markPath, attrs, markAttributeAllowlist[raw.type] ?? []);
       marks.push({ type: raw.type });
       continue;
     }
     if (raw.type === "link") {
-      reportUnknownAttributes(
-        context,
-        markPath,
-        attrs,
-        markAttributeAllowlist.link ?? [],
-      );
+      reportUnknownAttributes(context, markPath, attrs, markAttributeAllowlist.link ?? []);
       const href = sanitizeUrl(attrs.href, "link");
       if (!href) {
         addIssue(context, {
@@ -273,12 +241,7 @@ function sanitizeMarks(
       continue;
     }
     if (raw.type === "textStyle") {
-      reportUnknownAttributes(
-        context,
-        markPath,
-        attrs,
-        markAttributeAllowlist.textStyle ?? [],
-      );
+      reportUnknownAttributes(context, markPath, attrs, markAttributeAllowlist.textStyle ?? []);
       const safeAttrs: Record<string, string> = {};
       const color = sanitizeColor(attrs.color);
       const fontFamily = sanitizeFontFamily(attrs.fontFamily);
@@ -306,8 +269,7 @@ function sanitizeMarks(
       if (color) safeAttrs.color = color;
       if (fontFamily) safeAttrs.fontFamily = fontFamily;
       if (fontSize) safeAttrs.fontSize = fontSize;
-      if (Object.keys(safeAttrs).length > 0)
-        marks.push({ type: "textStyle", attrs: safeAttrs });
+      if (Object.keys(safeAttrs).length > 0) marks.push({ type: "textStyle", attrs: safeAttrs });
       continue;
     }
     addIssue(context, {
@@ -349,12 +311,7 @@ function sanitizeNodeAttributes(
   path: string,
   context: SanitizerContext,
 ): Record<string, unknown> | undefined {
-  reportUnknownAttributes(
-    context,
-    path,
-    raw,
-    nodeAttributeAllowlist[type] ?? [],
-  );
+  reportUnknownAttributes(context, path, raw, nodeAttributeAllowlist[type] ?? []);
   const safeImageUrl = (value: unknown, attrPath: string): string | null => {
     if (value === null || value === undefined || value === "") return null;
     const result = sanitizeUrl(value, "image");
@@ -383,9 +340,7 @@ function sanitizeNodeAttributes(
     case "heading":
     case "listItem": {
       const textAlign =
-        raw.textAlign === "center" ||
-        raw.textAlign === "right" ||
-        raw.textAlign === "justify"
+        raw.textAlign === "center" || raw.textAlign === "right" || raw.textAlign === "justify"
           ? raw.textAlign
           : "left";
       if (type === "listItem") return { textAlign };
@@ -416,8 +371,7 @@ function sanitizeNodeAttributes(
       const listType =
         raw.type == null
           ? null
-          : typeof raw.type === "string" &&
-              ["1", "a", "A", "i", "I"].includes(raw.type)
+          : typeof raw.type === "string" && ["1", "a", "A", "i", "I"].includes(raw.type)
             ? raw.type
             : null;
       if (raw.type != null && listType === null) {
@@ -448,17 +402,14 @@ function sanitizeNodeAttributes(
         src: safeImageUrl(raw.src, `${path}.attrs.src`) ?? "",
         alt: stringValue(raw.alt, 500),
         caption: stringValue(raw.caption, 1_000),
-        align:
-          raw.align === "left" || raw.align === "right" ? raw.align : "center",
+        align: raw.align === "left" || raw.align === "right" ? raw.align : "center",
         width: finiteInteger(raw.width, 100, 10, 100),
       };
       return attrs as unknown as Record<string, unknown>;
     }
     case "diceRoll": {
       const rolls = Array.isArray(raw.rolls)
-        ? raw.rolls
-            .slice(0, 100)
-            .map((roll) => finiteInteger(roll, 0, -1_000_000, 1_000_000))
+        ? raw.rolls.slice(0, 100).map((roll) => finiteInteger(roll, 0, -1_000_000, 1_000_000))
         : [];
       const attrs: DiceRollAttributes = {
         rollId: stringValue(raw.rollId, 128),
@@ -556,6 +507,19 @@ function sanitizeNodeAttributes(
       };
       return attrs as unknown as Record<string, unknown>;
     }
+    case "emoji": {
+      // src 由目录权威重建：正文里的 src 只是渲染缓存，不能作为可信输入。
+      // 未知 emojiId 保留原值且不报 issue——表情包条目下线后，历史正文仍可保存。
+      const emojiId = stringValue(raw.emojiId, 32);
+      const catalogSrc = catalogEmojiAssetPath(emojiId);
+      const attrs: EmojiAttributes = {
+        emojiId,
+        name: stringValue(raw.name, 40),
+        src: catalogSrc ?? safeImageUrl(raw.src, `${path}.attrs.src`) ?? "",
+        fallback: stringValue(raw.fallback, 16),
+      };
+      return attrs as unknown as Record<string, unknown>;
+    }
     default:
       return undefined;
   }
@@ -572,10 +536,8 @@ function childAllowed(parentType: string | null, childType: string): boolean {
     parentType === "listItem"
   )
     return blockNodes.has(childType);
-  if (parentType === "paragraph" || parentType === "heading")
-    return inlineNodes.has(childType);
-  if (parentType === "bulletList" || parentType === "orderedList")
-    return childType === "listItem";
+  if (parentType === "paragraph" || parentType === "heading") return inlineNodes.has(childType);
+  if (parentType === "bulletList" || parentType === "orderedList") return childType === "listItem";
   if (parentType === "codeBlock") return childType === "text";
   return false;
 }
@@ -605,15 +567,8 @@ function sanitizeNode(
     return null;
   }
   context.nodeCount += 1;
-  if (
-    !isRecord(value) ||
-    typeof value.type !== "string" ||
-    !allowedNodes.has(value.type)
-  ) {
-    const type =
-      isRecord(value) && typeof value.type === "string"
-        ? value.type
-        : "malformed";
+  if (!isRecord(value) || typeof value.type !== "string" || !allowedNodes.has(value.type)) {
+    const type = isRecord(value) && typeof value.type === "string" ? value.type : "malformed";
     addIssue(context, {
       code: "unknown-node",
       path,
@@ -642,14 +597,8 @@ function sanitizeNode(
       return null;
     }
     const marks =
-      parentType === "codeBlock"
-        ? undefined
-        : sanitizeMarks(value.marks, path, context);
-    if (
-      parentType === "codeBlock" &&
-      Array.isArray(value.marks) &&
-      value.marks.length > 0
-    ) {
+      parentType === "codeBlock" ? undefined : sanitizeMarks(value.marks, path, context);
+    if (parentType === "codeBlock" && Array.isArray(value.marks) && value.marks.length > 0) {
       addIssue(context, {
         code: "invalid-structure",
         path: `${path}.marks`,
@@ -671,11 +620,7 @@ function sanitizeNode(
     const marks = sanitizeMarks(value.marks, path, context);
     if (marks) node.marks = marks;
   }
-  if (
-    atomNodes.has(value.type) &&
-    Array.isArray(value.content) &&
-    value.content.length > 0
-  ) {
+  if (atomNodes.has(value.type) && Array.isArray(value.content) && value.content.length > 0) {
     addIssue(context, {
       code: "invalid-structure",
       path: `${path}.content`,
@@ -710,10 +655,7 @@ function sanitizeNode(
       },
     ];
   }
-  if (
-    (value.type === "bulletList" || value.type === "orderedList") &&
-    !node.content?.length
-  ) {
+  if ((value.type === "bulletList" || value.type === "orderedList") && !node.content?.length) {
     node.content = [
       {
         type: "listItem",
@@ -736,9 +678,7 @@ function removeInlineCommentAnchorsInsideReplyGate(
   const nextInsideReplyGate = insideReplyGate || node.type === "replyGate";
   if (Array.isArray(node.content)) {
     if (nextInsideReplyGate) {
-      node.content = node.content.filter(
-        (child) => child.type !== "inlineCommentAnchor",
-      );
+      node.content = node.content.filter((child) => child.type !== "inlineCommentAnchor");
     }
     for (const child of node.content)
       removeInlineCommentAnchorsInsideReplyGate(child, nextInsideReplyGate);
@@ -795,9 +735,7 @@ export function validateDocument(value: unknown): DocumentValidationResult {
 }
 
 /** 解析序列化的 JSON；输入无效时返回安全的空文档。 */
-export function parseDocumentJson(
-  serialized: string,
-): DocumentValidationResult {
+export function parseDocumentJson(serialized: string): DocumentValidationResult {
   try {
     return inspectDocument(JSON.parse(serialized) as unknown);
   } catch {

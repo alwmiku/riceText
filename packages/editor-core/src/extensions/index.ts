@@ -3,6 +3,7 @@ import { type JSONContent } from "@tiptap/core";
 import type {
   AttachmentReferenceAttributes,
   DiceRollAttributes,
+  EmojiAttributes,
   InlineCommentAnchorAttributes,
   LongTextBlockAttributes,
   MentionAttributes,
@@ -13,6 +14,8 @@ import type {
 } from "../types.js";
 
 export { AttachmentRef } from "./attachment-ref.js";
+export { Emoji } from "./emoji.js";
+export type { EmojiStorage, EmojiTriggerState } from "./emoji.js";
 export { DiceRoll } from "./dice-roll.js";
 export { createEditorExtensions, editorExtensions } from "./editor.js";
 export type { EditorExtensionsOptions } from "./editor.js";
@@ -40,19 +43,13 @@ declare module "@tiptap/core" {
       insertDiceRoll: (attrs: DiceRollAttributes) => ReturnType;
     };
     novelExcerpt: {
-      insertNovelExcerpt: (
-        attrs: NovelExcerptAttributes,
-        content?: JSONContent[],
-      ) => ReturnType;
+      insertNovelExcerpt: (attrs: NovelExcerptAttributes, content?: JSONContent[]) => ReturnType;
     };
     mention: {
       insertMention: (attrs: MentionAttributes) => ReturnType;
     };
     replyGate: {
-      insertReplyGate: (
-        attrs: ReplyGateAttributes,
-        content?: JSONContent[],
-      ) => ReturnType;
+      insertReplyGate: (attrs: ReplyGateAttributes, content?: JSONContent[]) => ReturnType;
     };
     attachmentRef: {
       insertAttachmentRef: (attrs: AttachmentReferenceAttributes) => ReturnType;
@@ -62,6 +59,12 @@ declare module "@tiptap/core" {
     };
     longTextBlock: {
       insertLongTextBlock: (attrs: LongTextBlockAttributes) => ReturnType;
+    };
+    emoji: {
+      /** 插入一个带目录属性的自定义表情节点。 */
+      insertEmoji: (attrs: EmojiAttributes) => ReturnType;
+      /** 按目录 id 插入：自定义表情插入节点，纯文本表情插入字符。 */
+      insertEmojiFromQuery: (emojiId: string) => ReturnType;
     };
     spoiler: {
       setSpoiler: () => ReturnType;

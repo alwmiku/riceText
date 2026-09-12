@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c yellow,cyan \"pnpm --filter @ricetext/api dev\" \"pnpm --filter @ricetext/web dev\"",
+    "emoji:thumbs": "tsx scripts/generate-emoji-thumbnails.ts",
+    "emoji:r2": "tsx scripts/upload-emoji-assets.ts",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
@@ -19,6 +21,7 @@
     "test:e2e:password": "playwright test --config playwright.password.config.ts",
     "cf:e2e:prepare": "tsx tools/cloudflare/prepare-e2e.ts",
     "cf:export": "tsx packages/cloudflare-migration/src/export-sqlite.ts",
+    "db:pack": "tsx scripts/pack-local-data.ts",
     "cf:r2-upload": "tsx packages/cloudflare-migration/src/upload-r2.ts",
     "cf:preflight": "node tools/cloudflare/preflight.mjs",
     "cf:smoke": "node tools/cloudflare/smoke.mjs",
@@ -29,6 +32,8 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@ricetext/contracts": "workspace:^",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^7.0.1",

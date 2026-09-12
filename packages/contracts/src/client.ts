@@ -10,6 +10,7 @@ import type {
   ForumUser,
   DiceRollResult,
   DocumentEnvelope,
+  EmojiCatalogSchema,
   RevisionPage,
   AttachmentSchema,
   PollSchema,
@@ -32,12 +33,7 @@ export class ApiClientError extends Error {
   readonly details: Record<string, unknown> | undefined;
 
   /** 创建 API 客户端错误。 */
-  constructor(
-    status: number,
-    code: string,
-    message: string,
-    details?: Record<string, unknown>,
-  ) {
+  constructor(status: number, code: string, message: string, details?: Record<string, unknown>) {
     super(message);
     this.name = "ApiClientError";
     this.status = status;
@@ -61,10 +57,7 @@ export interface RiceTextApiClient {
   /** 读取当前登录身份可选择的文章。 */
   listDocuments(signal?: AbortSignal): Promise<{ items: DocumentListItem[] }>;
   /** 读取文档当前 revision 和 Tiptap JSON。 */
-  getDocument(
-    documentId: string,
-    signal?: AbortSignal,
-  ): Promise<DocumentEnvelope>;
+  getDocument(documentId: string, signal?: AbortSignal): Promise<DocumentEnvelope>;
   /** 按 baseRevision 乐观并发更新正文。 */
   updateDocument(
     documentId: string,
@@ -245,6 +238,8 @@ export interface RiceTextApiClient {
   ): Promise<DocumentEnvelope>;
   /** 使用 multipart 上传图片二进制。 */
   uploadAsset(file: File, signal?: AbortSignal): Promise<Asset>;
+  /** 读取站点内置表情目录（分组 + 条目）。 */
+  listEmojiCatalog(signal?: AbortSignal): Promise<z.infer<typeof EmojiCatalogSchema>>;
   /** 创建并持久化一次新骰子结果；传 rerollOf 时服务端创建关联旧结果的重投。 */
   createDice(
     expression: string,
@@ -365,20 +360,14 @@ export interface RiceTextApiClient {
     document: DocumentEnvelope | null;
   }>;
   /** 读取附件价格和当前购买权益。 */
-  getAttachment(
-    id: string,
-    signal?: AbortSignal,
-  ): Promise<z.infer<typeof AttachmentSchema>>;
+  getAttachment(id: string, signal?: AbortSignal): Promise<z.infer<typeof AttachmentSchema>>;
   /** 幂等购买附件并执行金币分账。 */
   purchaseAttachment(
     id: string,
     signal?: AbortSignal,
   ): Promise<z.infer<typeof PurchaseAttachmentResponseSchema>>;
   /** 读取投票资格、选项和汇总计数。 */
-  getPoll(
-    id: string,
-    signal?: AbortSignal,
-  ): Promise<z.infer<typeof PollSchema>>;
+  getPoll(id: string, signal?: AbortSignal): Promise<z.infer<typeof PollSchema>>;
   /** 提交或覆盖当前身份的投票选择。 */
   submitPollVote(
     id: string,
@@ -394,22 +383,16 @@ export interface RiceTextApiClient {
 }
 
 /** 创建零依赖的类型化 fetch 客户端。 */
-export function createApiClient(
-  options: ApiClientOptions = {},
-): RiceTextApiClient {
+export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClient {
   const baseUrl = (options.baseUrl ?? "").replace(/\/$/, "");
   const fetcher = options.fetch ?? fetch;
   type ClientRequestInit = Omit<RequestInit, "signal"> & {
     signal?: AbortSignal | undefined;
   };
   // 所有方法共享错误解包路径，保证调用方只处理 ApiClientError 而非各类 Response。
-  const request = async <T>(
-    path: string,
-    init: ClientRequestInit = {},
-  ): Promise<T> => {
+  const request = async <T>(path: string, init: ClientRequestInit = {}): Promise<T> => {
     const headers = new Headers(init.headers);
-    const userId =
-      typeof options.userId === "function" ? options.userId() : options.userId;
+    const userId = typeof options.userId === "function" ? options.userId() : options.userId;
     if (userId) headers.set("x-user-id", userId);
     if (init.body && !(init.body instanceof FormData))
       headers.set("content-type", "application/json");
@@ -439,9 +422,7 @@ export function createApiClient(
   };
   const json = (value: unknown): string => JSON.stringify(value);
   // 只编码已提供参数，避免把 undefined 传成字符串并破坏游标语义。
-  const query = (
-    entries: Record<string, string | number | boolean | undefined>,
-  ): string => {
+  const query = (entries: Record<string, string | number | boolean | undefined>): string => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(entries))
       if (value !== undefined) params.set(key, String(value));
@@ -507,15 +488,16 @@ export function createApiClient(
         signal,
       }),
     stageChapterUploadBatch: (novelId, uploadId, body, signal) =>
-      request(
-        `/api/forum/novels/${novelId}/chapter-uploads/${uploadId}/batch`,
-        { method: "PUT", body: json(body), signal },
-      ),
+      request(`/api/forum/novels/${novelId}/chapter-uploads/${uploadId}/batch`, {
+        method: "PUT",
+        body: json(body),
+        signal,
+      }),
     completeChapterUpload: (novelId, uploadId, signal) =>
-      request(
-        `/api/forum/novels/${novelId}/chapter-uploads/${uploadId}/complete`,
-        { method: "POST", signal },
-      ),
+      request(`/api/forum/novels/${novelId}/chapter-uploads/${uploadId}/complete`, {
+        method: "POST",
+        signal,
+      }),
     stageNovelChapterReorder: (novelId, body, signal) =>
       request(`/api/forum/novels/${novelId}/chapters/reorder-stage`, {
         method: "POST",
@@ -539,6 +521,7 @@ export function createApiClient(
       form.set("file", file);
       return request("/api/assets", { method: "POST", body: form, signal });
     },
+    listEmojiCatalog: (signal) => request("/api/emoji", { signal }),
     createDice: (expression, rerollOf, signal) =>
       request("/api/dice", {
         method: "POST",
@@ -546,13 +529,11 @@ export function createApiClient(
         signal,
       }),
     getDice: (id, signal) => request(`/api/dice/${id}`, { signal }),
-    rerollDice: (id, signal) =>
-      request(`/api/dice/${id}/reroll`, { method: "POST", signal }),
+    rerollDice: (id, signal) => request(`/api/dice/${id}/reroll`, { method: "POST", signal }),
     getCommentThread: (documentId, anchorId, sort = "score", cursor, signal) =>
-      request(
-        `/api/documents/${documentId}/comments/${anchorId}${query({ sort, cursor })}`,
-        { signal },
-      ),
+      request(`/api/documents/${documentId}/comments/${anchorId}${query({ sort, cursor })}`, {
+        signal,
+      }),
     createCommentReply: (documentId, anchorId, body, parentId, signal) =>
       request(`/api/documents/${documentId}/comments/${anchorId}/replies`, {
         method: "POST",
@@ -584,8 +565,7 @@ export function createApiClient(
         body: json({ gateId, documentId }),
         signal,
       }),
-    listSuggestions: (id, signal) =>
-      request(`/api/forum/documents/${id}/suggestions`, { signal }),
+    listSuggestions: (id, signal) => request(`/api/forum/documents/${id}/suggestions`, { signal }),
     createSuggestion: (id, body, signal) =>
       request(`/api/forum/documents/${id}/suggestions`, {
         method: "POST",
@@ -612,8 +592,7 @@ export function createApiClient(
         body: json(body),
         signal,
       }),
-    getAttachment: (id, signal) =>
-      request(`/api/forum/attachments/${id}`, { signal }),
+    getAttachment: (id, signal) => request(`/api/forum/attachments/${id}`, { signal }),
     purchaseAttachment: (id, signal) =>
       request(`/api/forum/attachments/${id}/purchase`, {
         method: "POST",

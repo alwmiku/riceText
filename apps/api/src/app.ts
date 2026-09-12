@@ -18,6 +18,7 @@ import { forumPollRoutes } from "./routes/forum/polls.js";
 import { forumSessionRoutes } from "./routes/forum/session.js";
 import { forumSuggestionRoutes } from "./routes/forum/suggestions.js";
 import { diceRoutes } from "./routes/dice.js";
+import { emojiRoutes } from "./routes/emoji.js";
 import { documentRoutes } from "./routes/documents.js";
 
 /** 创建 API 实例的可注入选项。 */
@@ -35,9 +36,7 @@ export interface CreateAppOptions {
 }
 
 /** 创建可供测试 inject 或 server.ts 监听的 Fastify 应用。 */
-export async function createApp(
-  options: CreateAppOptions,
-): Promise<FastifyInstance> {
+export async function createApp(options: CreateAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: options.logger ?? false,
     ajv: { customOptions: { coerceTypes: false, useDefaults: false } },
@@ -89,6 +88,7 @@ export async function createApp(
   // 每个插件接收同一组服务实例，路由层不拥有服务生命周期。
   await app.register(documentRoutes, dependencies);
   await app.register(assetRoutes, dependencies);
+  await app.register(emojiRoutes, dependencies);
   await app.register(diceRoutes, dependencies);
   await app.register(commentRoutes, dependencies);
   await app.register(forumSessionRoutes, dependencies);

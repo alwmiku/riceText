@@ -4,4 +4,5 @@ export * from "./routes.js";
 export * from "./openapi.js";
 export * from "./client.js";
 export * from "./document-policy.js";
+export * from "./emoji-catalog.js";
 export * from "./document-traversal.js";

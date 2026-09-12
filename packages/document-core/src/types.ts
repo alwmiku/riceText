@@ -155,6 +155,18 @@ export interface DocumentValidationResult {
   issues: readonly DocumentValidationIssue[];
 }
 
+/** 由 `emoji` 行内原子节点持久化的属性。 */
+export interface EmojiAttributes {
+  /** 站点表情目录中的稳定 id；未知 id 依旧保留以便渲染降级。 */
+  emojiId: string;
+  /** 表情中文名，用于 aria-label 与图片 `alt`。 */
+  name: string;
+  /** 表情图片 URL；正文只保存由目录派生的同源路径。 */
+  src: string;
+  /** 图片不可用或需要纯文本时的降级文本。 */
+  fallback: string;
+}
+
 /** 由长文本章节块持久化的属性。 */
 export interface LongTextBlockAttributes {
   /** 稳定的章节标识。 */

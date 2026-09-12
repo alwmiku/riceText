@@ -1,6 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { Bold, Eraser, Italic, Redo2, Underline as UnderlineIcon, Undo2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -31,6 +31,7 @@ import {
   TOOLBAR_COLORS,
   type InsertTool,
 } from "../editor-tool-definitions";
+import { EmojiPickerPopover } from "../EmojiPickerPopover";
 import { useInsertRequest } from "./ToolbarDialogs";
 
 /** 右键菜单的插入请求延迟一拍派发：等菜单完全关闭后再打开对话框。 */
@@ -43,10 +44,14 @@ function deferredInsertRequest(
 }
 
 function InsertContentSubmenu({
+  editor,
   requestInsert,
 }: {
+  editor: Editor;
   requestInsert: ((tool: InsertTool) => void) | undefined;
 }) {
+  // 表情是面板而不是对话框：菜单关闭后再挂载受控弹层，入口与工具栏完全一致。
+  const [emojiOpen, setEmojiOpen] = useState(false);
   return (
     <ContextMenuSub>
       <ContextMenuSubTrigger>插入内容</ContextMenuSubTrigger>
@@ -56,13 +61,29 @@ function InsertContentSubmenu({
           return (
             <ContextMenuItem
               key={item.tool}
-              onSelect={() => deferredInsertRequest(requestInsert, item.tool)}
+              onSelect={() => {
+                if (item.surface === "panel") {
+                  window.setTimeout(() => setEmojiOpen(true), 0);
+                  return;
+                }
+                deferredInsertRequest(requestInsert, item.tool);
+              }}
             >
               <Icon />
               {item.label}
             </ContextMenuItem>
           );
         })}
+        <EmojiPickerPopover
+          editor={editor}
+          open={emojiOpen}
+          onOpenChange={(next) => {
+            if (!next) setEmojiOpen(false);
+          }}
+          align="start"
+          side="right"
+          triggerClassName="hidden size-0"
+        />
       </ContextMenuSubContent>
     </ContextMenuSub>
   );
@@ -162,7 +183,7 @@ function EditorContextItems({ editor, hasSelection }: { editor: Editor; hasSelec
       </ContextMenuItem>
       <ContextMenuSeparator />
       {hasSelection ? <TextFormatSubmenu editor={editor} /> : null}
-      <InsertContentSubmenu requestInsert={requestInsert} />
+      <InsertContentSubmenu editor={editor} requestInsert={requestInsert} />
     </>
   );
 }

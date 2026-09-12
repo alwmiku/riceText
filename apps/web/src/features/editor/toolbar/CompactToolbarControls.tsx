@@ -65,6 +65,7 @@ import {
   INSERT_CONTENT_TOOLS,
   INSERT_TOOL_DEFINITIONS,
 } from "../editor-tool-definitions";
+import { CompactEmojiPanel } from "../CompactEmojiPanel";
 import { useInsertRequest } from "./ToolbarDialogs";
 import { ToolbarButton } from "./ToolbarButton";
 import { ToolbarGroup } from "./ToolbarGroup";
@@ -272,6 +273,10 @@ export function CompactToolbarControls({
             链接
           </DropdownMenuItem>
           {INSERT_CONTENT_TOOLS.map((definition) => {
+            // 表情面板就地展开（CompactEmojiPanel 自带菜单项），其余工具走对话框。
+            if (definition.surface === "panel") {
+              return <CompactEmojiPanel key={definition.tool} editor={editor} mobile={mobile} />;
+            }
             const Icon = definition.icon;
             return (
               <DropdownMenuItem

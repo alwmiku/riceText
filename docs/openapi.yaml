@@ -4478,6 +4478,247 @@ paths:
                 error:
                   code: EXAMPLE_ERROR
                   message: Range 超出资产范围。
+  /api/emoji:
+    get:
+      operationId: listEmojiCatalog
+      tags:
+        - 表情
+      summary: 读取站点表情目录
+      description: |-
+        返回全站内置分组与全部表情条目（纯文本 Unicode 表情、颜文字与自定义表情包）。目录是站点常量，不随用户变化，客户端可长期缓存。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: 分组与条目清单；自定义条目的图片地址为 /api/emoji/:emojiId/image。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 32
+                        label:
+                          type: string
+                          minLength: 1
+                          maxLength: 40
+                      required:
+                        - id
+                        - label
+                      additionalProperties: false
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 32
+                          pattern: ^[a-z][a-z0-9-]{0,31}$
+                        groupId:
+                          type: string
+                          minLength: 1
+                          maxLength: 32
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 40
+                        keywords:
+                          maxItems: 20
+                          type: array
+                          items:
+                            type: string
+                            maxLength: 40
+                        text:
+                          type: string
+                          minLength: 1
+                          maxLength: 16
+                        label:
+                          type: string
+                          maxLength: 16
+                        shortcodes:
+                          maxItems: 10
+                          type: array
+                          items:
+                            type: string
+                            maxLength: 16
+                        assetFile:
+                          type: string
+                          maxLength: 120
+                      required:
+                        - id
+                        - groupId
+                        - name
+                        - keywords
+                        - text
+                      additionalProperties: false
+                required:
+                  - groups
+                  - items
+                additionalProperties: false
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+      x-implementation-status: implemented
+  /api/emoji/{emojiId}/image:
+    get:
+      operationId: readEmojiImage
+      tags:
+        - 表情
+      summary: 读取自定义表情图片
+      description: |-
+        按表情 id 返回内置 PNG 二进制并设置 immutable 缓存头；id 必须存在于站点表情目录且自带图片资源，否则返回 404。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: emojiId
+          in: path
+          required: true
+          description: 表情目录中的稳定 id，同时也是图片文件名
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 表情目录中的稳定 id，同时也是图片文件名
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: PNG 图片二进制。
+          content:
+            application/json:
+              schema: {}
+        "401":
+          description: 未登录或会话已过期。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+        "404":
+          description: 表情不存在或没有图片资源。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 表情不存在或没有图片资源。
+      x-implementation-status: implemented
   /api/dice:
     post:
       operationId: createDiceRoll
@@ -5959,10 +6200,8 @@ paths:
       tags:
         - 论坛业务
       summary: 提交纠错建议
-      description: >-
-        读者提交待审核文字替换；未审核内容不会写入正文。chapterId 使用服务端章节目录身份；lineNo 为章内顶层块行号（1-based，0 表示未知），lineText 为该行完整文本，chapterTitle
-        仅供展示。
-
+      description: |-
+        读者提交待审核文字替换；未审核内容不会写入正文。chapterId 使用服务端章节目录身份；lineNo 为章内顶层块行号（从 1 开始，0 表示未知），lineText 为该行完整文本，chapterTitle 仅供展示。
 
         生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
       parameters:

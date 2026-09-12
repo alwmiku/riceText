@@ -3,6 +3,7 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import { createElement } from "react";
 import { NovelExcerptNodeView } from "../novel-excerpt-node-view.js";
 import type { NovelExcerptAttributes } from "../types.js";
+import { Emoji } from "./emoji.js";
 import { NovelExcerpt } from "./novel-excerpt.js";
 
 import { InlineCommentAnchor } from "./inline-comment-anchor.js";
@@ -66,6 +67,10 @@ export function createEditorExtensions(options: EditorExtensionsOptions = {}): E
           return PollRef;
         case "longTextBlock":
           return LongTextBlock;
+        case "emoji":
+          // 节点规格来自 document-core；这里换成带命令与输入触发插件的版本，
+          // 与 schemaExtensions() 的增强顺序一致，不会重复注册节点。
+          return Emoji;
         default:
           return extension;
       }

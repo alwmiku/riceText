@@ -64,6 +64,23 @@ pnpm.cmd test:e2e
 
 以下能力全部由真实 API 与 SQLite 驱动：文档与不可变版本、图片上传、稳定骰子、间贴回复树与赞踩、章节目录与差异同步、纠错建议、@ 解析、回复可见、附件金币购买与投票。
 
+表情：工具栏/折叠菜单/右键菜单/选区浮动栏都可插入，正文中敲 `hh` 或 `:` 会弹出候选浮层。
+Unicode 表情与颜文字存为普通文本；站点自定义表情是行内原子节点 `emoji`，图片由
+`GET /api/emoji/:emojiId/image` 提供。
+
+新增一个站点表情：
+
+1. 把图片放进 `apps/api/src/assets/emoji/`（支持 PNG/GIF，沿用原文件名即可）；
+2. 在 `packages/contracts/src/emoji-catalog.ts` 的 `CUSTOM_EMOJI_ENTRIES` 里加一条，
+   `assetFile` 填文件名，`text` 填图片加载失败时的降级字符；
+3. 若是动图，执行一次 `pnpm.cmd run emoji:thumbs` 生成面板用的首帧缩略图并提交。
+
+动图只在正文里播放；面板与候选浮层走 `/api/emoji/:id/image?frame=first` 的静态首帧
+（48×48 PNG），避免一次解码十几张 500×500 动图。
+
+`id` 会写进正文与 URL，属于持久化契约：发布后不可改名或复用，下线只会让历史正文降级为
+`text` 里的字符。
+
 身份是开发用适配器：请求头 `x-user-id` 选择种子身份（author / reader / moderator），`AuthProvider` 抽象可在生产环境替换为 JWT/SSO。附件账务与投票为单机演示级实现，生产接入前必须替换鉴权、账务与通知服务。
 
 ## 项目内部复制粘贴

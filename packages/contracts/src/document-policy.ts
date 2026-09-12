@@ -4,13 +4,7 @@ export const DOCUMENT_NODE_ATTRIBUTES = {
   doc: [],
   paragraph: ["textAlign", "firstLineIndent", "leftIndent"],
   text: [],
-  heading: [
-    "level",
-    "textAlign",
-    "chapterStart",
-    "firstLineIndent",
-    "leftIndent",
-  ],
+  heading: ["level", "textAlign", "chapterStart", "firstLineIndent", "leftIndent"],
   bulletList: [],
   orderedList: ["start", "type"],
   listItem: ["textAlign"],
@@ -37,15 +31,8 @@ export const DOCUMENT_NODE_ATTRIBUTES = {
   replyGate: ["gateId", "prompt"],
   attachmentRef: ["attachmentId", "name", "mimeType", "size", "priceCoins"],
   pollRef: ["pollId", "question", "multiple", "options"],
-  longTextBlock: [
-    "chapterId",
-    "title",
-    "volumeTitle",
-    "text",
-    "order",
-    "start",
-    "end",
-  ],
+  longTextBlock: ["chapterId", "title", "volumeTitle", "text", "order", "start", "end"],
+  emoji: ["emojiId", "name", "src", "fallback"],
 } as const;
 
 export const DOCUMENT_MARK_ATTRIBUTES = {
@@ -71,9 +58,7 @@ export const ALLOWED_DOCUMENT_FONT_FAMILIES = [
   "SimSun",
 ] as const;
 
-export const ALLOWED_DOCUMENT_FONT_SIZES = [
-  12, 14, 16, 18, 20, 24, 28, 32, 36, 48,
-] as const;
+export const ALLOWED_DOCUMENT_FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 36, 48] as const;
 
 export const MAX_DOCUMENT_NODES = 10_000;
 export const MAX_DOCUMENT_DEPTH = 32;

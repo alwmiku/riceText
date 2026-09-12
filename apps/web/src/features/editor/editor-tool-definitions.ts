@@ -6,6 +6,7 @@ import {
   ImagePlus,
   Link2,
   SeparatorHorizontal,
+  Smile,
   TextQuote,
   Trash2,
   UnlockKeyhole,
@@ -17,6 +18,7 @@ import { isContainerNodeActive, isRichNodeActive } from "./commands";
 
 /** 插入类工具的稳定标识，工具栏按钮、折叠菜单与右键菜单共享。 */
 export type InsertTool =
+  | "emoji"
   | "image"
   | "dice"
   | "attachment"
@@ -33,6 +35,11 @@ export interface InsertToolDefinition {
   tool: InsertTool;
   label: string;
   icon: LucideIcon;
+  /**
+   * 交互形态：`dialog` 走 ToolbarDialogs 的 requestInsert 通道；
+   * `panel`（表情）是就地展开的拾取面板，需要编辑器实例直接渲染。
+   */
+  surface?: "dialog" | "panel";
   /** 激活判定：当前选中节点即该工具对应节点时高亮。 */
   isActive?: (editor: Editor) => boolean;
   /** 禁用判定：选区/光标状态不允许使用该工具时置灰。 */
@@ -55,6 +62,12 @@ export const FONT_SIZES = ["12px", "14px", "16px", "18px", "20px", "24px", "28px
 
 /** 插入内容子菜单/折叠「插入内容」组共用的内容工具。 */
 export const INSERT_CONTENT_TOOLS: readonly InsertToolDefinition[] = [
+  {
+    tool: "emoji",
+    label: "表情",
+    icon: Smile,
+    surface: "panel",
+  },
   {
     tool: "image",
     label: "图片",
