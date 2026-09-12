@@ -1,5 +1,5 @@
 import Placeholder from "@tiptap/extension-placeholder";
-import { editorExtensions, NodeSelection } from "@ricetext/editor-core";
+import { editorExtensions, NodeSelection, RangeSelectionHighlight } from "@ricetext/editor-core";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { ChevronDown, ImagePlus, MoreHorizontal, Send, TextQuote } from "lucide-react";
@@ -68,6 +68,9 @@ export function RichTextEditor({
           Placeholder.configure({
             placeholder: mode === "compact" ? "写下回复…" : "开始写作…",
           }),
+          // 文本选区跨过表情/骰子等原子节点时，浏览器不会给 contenteditable=false
+          // 的节点画 ::selection；这里补一层装饰，避免「文字选中了、原子节点像没选中」。
+          RangeSelectionHighlight,
         ],
       }),
     [mode],

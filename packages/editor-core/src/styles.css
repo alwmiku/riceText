@@ -1453,6 +1453,20 @@
   color: #ffffff;
 }
 
+/*
+ * 跨选区选中行内/块级原子节点（表情、骰子、提及、评论计数、图片…）。
+ *
+ * 浏览器原生 ::selection 不会绘制 contenteditable="false" 的原子节点，
+ * 只靠 ProseMirror-selectednode（整块选中）会留下「文字选中了、表情没选中」的错觉；
+ * 装饰属性由 extensions/range-selection.ts 负责添加。
+ */
+/* 编辑器可能不带 .rt-editor 外层（宿主直接挂 .tiptap），因此按内容根选择。 */
+.ProseMirror [data-rt-range-selected] {
+  /* 与浏览器原生 ::selection 的浅蓝同一观感；用标准关键字而非 color-mix，
+     避免个别环境解析失败导致整条声明失效。 */
+  background-color: rgba(59, 130, 246, 0.28);
+  border-radius: 4px;
+}
 /* 站点自定义表情：行内原子节点，图片按行高缩放，加载失败时由 alt 文本兜底。 */
 .rt-emoji {
   display: inline-block;

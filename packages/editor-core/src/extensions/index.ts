@@ -24,6 +24,11 @@ export { LongTextBlock } from "./long-text-block.js";
 export { Mention } from "./mention.js";
 export { NovelExcerpt } from "./novel-excerpt.js";
 export { PollRef } from "./poll-ref.js";
+export {
+  RANGE_SELECTION_ATTRIBUTE,
+  RangeSelectionHighlight,
+  rangeSelectionKey,
+} from "./range-selection.js";
 export { ReplyGate } from "./reply-gate.js";
 export { RichImage } from "./rich-image.js";
 export { schemaExtensions } from "./schema.js";

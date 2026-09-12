@@ -36,6 +36,41 @@ test("桌面：工具栏表情面板插入自定义表情并把图片渲染出�
     .toBeGreaterThan(0);
 });
 
+/**
+ * 跨选区选中原子节点的高亮回归。
+ *
+ * 站点正文里的表情是 contenteditable="false" 的行内原子节点，浏览器原生的
+ * ::selection 不会绘制它们；只靠 ProseMirror-selectednode（整块选中）会留下
+ * 「文字选到、表情没选到」的错觉。这里锁定住针对文本选区的装饰。
+ */
+test("桌面：文本选区跨过表情时表情也显示选中背景", async ({ page, isMobile }) => {
+  test.skip(isMobile, "仅桌面");
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto("/compose");
+  await page.getByRole("button", { name: /完整/ }).click();
+  const editor = page.locator(".ProseMirror");
+  await expect(editor).toBeVisible();
+  const emoji = editor.locator('[data-node-type="emoji"]').first();
+  await expect(emoji).toBeVisible();
+
+  // 选中包含该表情的整段，让 ProseMirror 走文本选区（而不是整块选中）。
+  await emoji.evaluate((element) => {
+    const block = element.closest("p, h1, h2, h3, li");
+    if (!block) throw new Error("表情不在块级节点内");
+    const range = document.createRange();
+    range.selectNodeContents(block);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+
+  // 装饰属性必须落在表情节点自身上，并且真的画出了背景色。
+  await expect(emoji).toHaveAttribute("data-rt-range-selected", "emoji");
+  await expect
+    .poll(() => emoji.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .not.toBe("rgba(0, 0, 0, 0)");
+});
 test("桌面：输入 hh 弹出候选浮层，回车插入并吃掉前缀", async ({ page, isMobile }) => {
   test.skip(isMobile, "仅桌面");
   await page.setViewportSize({ width: 1600, height: 1000 });
