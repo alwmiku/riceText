@@ -46,7 +46,13 @@ import {
   toggleUnderline,
   undo,
 } from "../editor-actions";
-import { FONT_FAMILIES, FONT_SIZES, INSERT_TOOL_DEFINITIONS } from "../editor-tool-definitions";
+import { FontSizeControl } from "../../../components/ui/font-size-control";
+import {
+  FONT_FAMILIES,
+  FONT_SIZE_RANGE,
+  FONT_SIZES,
+  INSERT_TOOL_DEFINITIONS,
+} from "../editor-tool-definitions";
 import { EmojiPickerPopover } from "../EmojiPickerPopover";
 import { useInsertRequest } from "./ToolbarDialogs";
 import { ToolbarButton } from "./ToolbarButton";
@@ -126,17 +132,14 @@ export function TextFormatGroup({ editor, condensed }: { editor: Editor; condens
       </span>
       {!condensed && (
         <span className={groupClassName}>
-          <select
-            aria-label="字号"
-            disabled={spoilerActive}
-            className="h-8 w-[72px] rounded border border-input bg-white px-1 text-xs"
+          <FontSizeControl
             value={textStyle.fontSize ?? "16px"}
-            onChange={(event) => setFontSize(editor, event.target.value)}
-          >
-            {FONT_SIZES.map((fontSize) => (
-              <option key={fontSize}>{fontSize}</option>
-            ))}
-          </select>
+            sizes={FONT_SIZES}
+            min={FONT_SIZE_RANGE.min}
+            max={FONT_SIZE_RANGE.max}
+            disabled={spoilerActive}
+            onCommit={(size) => setFontSize(editor, `${size}px`)}
+          />
           <select
             aria-label="字体"
             disabled={spoilerActive}

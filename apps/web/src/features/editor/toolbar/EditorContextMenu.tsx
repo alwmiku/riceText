@@ -19,6 +19,7 @@ import {
   setColor,
   setFontFamily,
   setFontSize,
+  setFontSizeFromInput,
   toggleBold,
   toggleItalic,
   toggleUnderline,
@@ -26,6 +27,7 @@ import {
 } from "../editor-actions";
 import {
   FONT_FAMILIES,
+  FONT_SIZE_RANGE,
   FONT_SIZES,
   INSERT_CONTENT_TOOLS,
   TOOLBAR_COLORS,
@@ -135,6 +137,19 @@ function TextFormatSubmenu({ editor }: { editor: Editor }) {
         <ContextMenuSub>
           <ContextMenuSubTrigger>字号</ContextMenuSubTrigger>
           <ContextMenuSubContent>
+            <ContextMenuItem
+              onSelect={() => {
+                const current = Number.parseInt(textStyle.fontSize ?? "16px", 10);
+                const input = window.prompt(
+                  `自定义字号（${FONT_SIZE_RANGE.min}–${FONT_SIZE_RANGE.max}px）`,
+                  String(Number.isFinite(current) ? current : 16),
+                );
+                if (input !== null) setFontSizeFromInput(editor, input);
+              }}
+            >
+              自定义字号…
+            </ContextMenuItem>
+            <ContextMenuSeparator />
             {FONT_SIZES.map((fontSize) => (
               <ContextMenuItem
                 key={fontSize}

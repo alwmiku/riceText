@@ -585,7 +585,13 @@ function sanitizeNode(
     return null;
   }
 
+  // emoji 曾经有过 `size` 属性，后来改成完全由字号控制；旧正文里的该字段
+  // 静默丢弃，避免把已经存过的正文判成「未知属性」而拒绝保存。
   const rawAttrs = isRecord(value.attrs) ? value.attrs : {};
+  const attrsForSanitizing =
+    value.type === "emoji"
+      ? Object.fromEntries(Object.entries(rawAttrs).filter(([name]) => name !== "size"))
+      : rawAttrs;
   if (value.type === "text") {
     reportUnknownAttributes(context, path, rawAttrs, []);
     if (typeof value.text !== "string") {
@@ -614,7 +620,7 @@ function sanitizeNode(
   }
 
   const node: JSONContent = { type: value.type };
-  const attrs = sanitizeNodeAttributes(value.type, rawAttrs, path, context);
+  const attrs = sanitizeNodeAttributes(value.type, attrsForSanitizing, path, context);
   if (attrs && Object.keys(attrs).length > 0) node.attrs = attrs;
   if (value.type === "diceRoll" || value.type === "mention") {
     const marks = sanitizeMarks(value.marks, path, context);

@@ -27,6 +27,15 @@ export const EMOJI_ASSET_MIME_TYPES: Readonly<
 /** 触发浮层默认展示的候选条目数量，避免面板一次渲染过多条目。 */
 export const DEFAULT_EMOJI_QUERY_LIMIT = 8;
 
+/**
+ * 站点表情相对字号的显示倍率。
+ *
+ * 表情按 em 渲染，大小**完全由正文字号决定**：素材是 500×500 的动图，2 倍字号
+ * 既能看清细节又不至于顶开行距；想更大就把字号调到 128/256/512px。
+ * 因此不再为表情维护独立的尺寸属性。
+ */
+export const EMOJI_FONT_SCALE = 2;
+
 /** 表情条目标识：与 {@link EntityIdSchema} 兼容，可在 URL 路径中直接使用。 */
 export const EMOJI_ID_PATTERN = /^[a-z][a-z0-9-]{0,31}$/;
 

@@ -1,7 +1,8 @@
 import { Editor, type JSONContent } from "@tiptap/core";
 import { editorExtensions, sanitizeDocument } from "@ricetext/editor-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { copySelection, pasteSelection } from "./editor-actions";
+import { FONT_SIZE_RANGE } from "./editor-tool-definitions";
+import { copySelection, pasteSelection, setFontSize, setFontSizeFromInput } from "./editor-actions";
 
 const editors: Editor[] = [];
 const write = vi.fn();
@@ -44,6 +45,83 @@ afterEach(() => {
   editors.splice(0).forEach((editor) => editor.destroy());
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe("字号应用", () => {
+  it("光标状态作用到整段，让贴着表情改字号也能放大它", () => {
+    const editor = makeEditor({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "前文" },
+            {
+              type: "emoji",
+              attrs: { emojiId: "hug", name: "抱抱", src: "/api/emoji/hug/image", fallback: "🤗" },
+            },
+          ],
+        },
+      ],
+    });
+    // 光标停在段落末尾（插入表情后的自然位置），选区为空。
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    expect(editor.state.selection.empty).toBe(true);
+
+    expect(setFontSize(editor, "400px")).toBe(true);
+    // 字号是 textStyle mark，落在段内文本上；表情靠 em 继承同一字号放大。
+    const paragraph = editor.state.doc.firstChild!;
+    const sizeMarks: (string | undefined)[] = [];
+    paragraph.descendants((node) => {
+      if (node.isText)
+        sizeMarks.push(node.marks.find((m) => m.type.name === "textStyle")?.attrs.fontSize);
+      return true;
+    });
+    expect(sizeMarks).toContain("400px");
+    expect(editor.getHTML()).toContain("font-size: 400px");
+
+    // 之后继续输入的文字也沿用这个字号。
+    editor.commands.insertContent("后续");
+    expect(editor.getHTML()).toContain("font-size: 400px");
+  });
+
+  it("有选区时只作用于选中文字，不改变整段字号", () => {
+    const editor = makeEditor({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "前半后半" }],
+        },
+      ],
+    });
+    editor.commands.setTextSelection({ from: 1, to: 3 });
+    expect(setFontSize(editor, "32px")).toBe(true);
+    const first = editor.state.doc.firstChild?.firstChild;
+    expect(first?.marks[0]?.attrs.fontSize).toBe("32px");
+    // 段落本身不该被整段标记。
+    expect(editor.state.doc.firstChild?.attrs.fontSize).toBeUndefined();
+  });
+
+  it("自定义输入按白名单区间收窄，无法解析时保留原值", () => {
+    // 需要段内已有文本节点：字号是 textStyle mark，空段落无处落笔。
+    const editor = makeEditor({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "正文" }] }],
+    });
+    editor.commands.setTextSelection(1);
+    const fontSizeInDoc = () =>
+      editor.state.doc.firstChild?.firstChild?.marks.find((mark) => mark.type.name === "textStyle")
+        ?.attrs.fontSize as string | undefined;
+    expect(setFontSizeFromInput(editor, "400")).toBe(400);
+    expect(fontSizeInDoc()).toBe("400px");
+    expect(setFontSizeFromInput(editor, "9999")).toBe(FONT_SIZE_RANGE.max);
+    expect(setFontSizeFromInput(editor, "1")).toBe(FONT_SIZE_RANGE.min);
+    expect(setFontSizeFromInput(editor, "0")).toBe(FONT_SIZE_RANGE.min);
+    expect(setFontSizeFromInput(editor, "abc")).toBeNull();
+    // 上一次生效的值保持不变（未解析的值不落库）。
+    expect(fontSizeInDoc()).toBe("12px");
+  });
 });
 
 describe("浮动工具栏富文本复制", () => {

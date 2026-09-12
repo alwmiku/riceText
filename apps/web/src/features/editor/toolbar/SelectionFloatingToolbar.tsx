@@ -28,7 +28,8 @@ import {
   toggleOrderedList,
   toggleUnderline,
 } from "../editor-actions";
-import { FONT_FAMILIES, FONT_SIZES } from "../editor-tool-definitions";
+import { FontSizeControl } from "../../../components/ui/font-size-control";
+import { FONT_FAMILIES, FONT_SIZE_RANGE, FONT_SIZES } from "../editor-tool-definitions";
 
 export type ToolbarPosition = { x: number; y: number };
 
@@ -133,20 +134,16 @@ function FormatControls({ editor, mobile = false }: { editor: Editor; mobile?: b
             ))}
           </select>
         </label>
-        <label className="block [&_span]:hidden">
-          <span>字号</span>
-          <select
-            aria-label="选区字号"
-            disabled={spoilerActive}
-            value={textStyle.fontSize ?? "16px"}
-            onChange={(event) => setFontSize(editor, event.target.value)}
-            className="h-[30px] w-[78px] rounded border border-[#9fa5aa] bg-white px-1.5 text-[13px] text-[#1f2933]"
-          >
-            {FONT_SIZES.map((fontSize) => (
-              <option key={fontSize}>{fontSize}</option>
-            ))}
-          </select>
-        </label>
+        <FontSizeControl
+          ariaLabel="选区字号"
+          value={textStyle.fontSize ?? "16px"}
+          sizes={FONT_SIZES}
+          min={FONT_SIZE_RANGE.min}
+          max={FONT_SIZE_RANGE.max}
+          disabled={spoilerActive}
+          className="[&_input]:h-[30px] [&_select]:h-[30px] [&_select]:w-[72px] [&_input]:w-[58px]"
+          onCommit={(size) => setFontSize(editor, `${size}px`)}
+        />
         <IconButton
           label="清除样式"
           className={iconButton}

@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/react";
+import { Smile } from "lucide-react";
 import { DismissableLayer } from "radix-ui/internal";
 import { useState } from "react";
 import type { EmojiCatalogEntry } from "@ricetext/contracts";
@@ -32,6 +33,7 @@ export function CompactEmojiPanel({
           setOpen(true);
         }}
       >
+        <Smile />
         表情
       </DropdownMenuItem>
       <Popover open={open} onOpenChange={setOpen}>

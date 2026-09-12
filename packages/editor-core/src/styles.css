@@ -1464,7 +1464,8 @@
 .rt-emoji img {
   display: inline-block;
   width: auto;
-  height: 1.35em;
+  /* 大小随正文字号缩放（2 倍字号）；要整屏大小的表情就把字号调到 128/256/512px。 */
+  height: 2em;
   vertical-align: baseline;
   object-fit: contain;
 }

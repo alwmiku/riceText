@@ -58,7 +58,23 @@ export const ALLOWED_DOCUMENT_FONT_FAMILIES = [
   "SimSun",
 ] as const;
 
-export const ALLOWED_DOCUMENT_FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 36, 48] as const;
+/**
+ * 可持久化的字号（px）。
+ *
+ * 上界放到 512：表情与图片都按 em 渲染，把字号调大就能得到整屏大小的表情，
+ * 因此不需要再为表情单独维护一套尺寸属性。仍是白名单，避免任意数值导致
+ * 每篇正文的呈现不可预期。
+ */
+export const ALLOWED_DOCUMENT_FONT_SIZES = [
+  12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 44, 48, 56, 64, 72, 80, 96, 112, 128, 160, 192,
+  256, 320, 400, 512,
+] as const;
+
+/** 字号白名单的上界；UI 自定义输入按它收窄。 */
+export const MAX_DOCUMENT_FONT_SIZE = 512;
+
+/** 字号白名单的下界。 */
+export const MIN_DOCUMENT_FONT_SIZE = 12;
 
 export const MAX_DOCUMENT_NODES = 10_000;
 export const MAX_DOCUMENT_DEPTH = 32;

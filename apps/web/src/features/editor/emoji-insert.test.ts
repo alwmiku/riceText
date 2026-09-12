@@ -52,6 +52,28 @@ describe("表情插入动作", () => {
     expect(JSON.parse(window.localStorage.getItem("ricetext:recent-emoji")!)).toEqual(["water"]);
   });
 
+  it("表情不带尺寸属性：大小由字号决定", () => {
+    const instance = createEditor();
+    insertEmojiEntry(instance, findEmojiEntry("hug")!);
+    const node = instance.state.doc.firstChild?.firstChild;
+    // 节点只保留目录派生的四个属性，schema 里没有 size 这一项。
+    expect(Object.keys(node?.attrs ?? {}).sort()).toEqual(["emojiId", "fallback", "name", "src"]);
+    expect(instance.getHTML()).not.toContain("data-size");
+  });
+
+  it("字号直接放大表情：段落字号 128px 时表情渲染为 256px 高", () => {
+    const instance = createEditor();
+    insertEmojiEntry(instance, findEmojiEntry("hug")!);
+    // 选中后设字号会套到行内原子节点上不生效，因此按真实用法把字号设在段落上。
+    const emojiPos = instance.state.doc.firstChild?.firstChild;
+    expect(emojiPos?.type.name).toBe("emoji");
+    instance.commands.selectAll();
+    instance.commands.setMark("textStyle", { fontSize: "128px" });
+    instance.commands.setTextSelection(instance.state.doc.content.size - 1);
+    const mark = instance.state.doc.firstChild?.firstChild?.marks[0];
+    expect(mark?.attrs.fontSize).toBe("128px");
+  });
+
   it("Unicode 表情与颜文字写入纯文本节点", () => {
     const instance = createEditor();
     insertEmojiEntry(instance, findEmojiEntry("smile")!);

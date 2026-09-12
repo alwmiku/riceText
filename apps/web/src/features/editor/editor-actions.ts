@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { createId } from "../../lib/utils";
+import { FONT_SIZE_RANGE } from "./editor-tool-definitions";
 
 /**
  * 共享命令层：工具栏、选区浮动工具栏、右键菜单与折叠菜单
@@ -161,8 +162,45 @@ export function setColor(editor: Editor, color: string): boolean {
   return editor.chain().focus().setColor(color).run();
 }
 
-/** 设置选区字号；基于当前 textStyle 属性增量更新。 */
+/**
+ * 应用字号。
+ *
+ * - 有选区：按当前 `textStyle` 属性增量更新，保留颜色/字体；
+ * - 光标状态：作用到**整段**。否则光标贴着行内原子节点输入时没有任何文本被
+ *   标记，字号看起来"点了没反应"，而想让表情变大恰恰就发生在这种位置。
+ *   整段标记会覆盖段内已有的字号（保留颜色/字体），避免"选中 40% 文字改字号"
+ *   这种意外结果。
+ */
+function applyFontSizeToBlock(editor: Editor, fontSize: string): boolean {
+  const { state, view } = editor;
+  const { $from } = state.selection;
+  let depth = $from.depth;
+  while (depth > 0 && !$from.node(depth).isTextblock) depth -= 1;
+  if (depth === 0) return false;
+  const type = state.schema.marks.textStyle;
+  if (!type) return false;
+  const sizeAttr = { fontSize };
+  const start = $from.start(depth);
+  const end = $from.end(depth);
+  const tr = state.tr;
+  tr.removeMark(start, end, type);
+  tr.addMark(start, end, type.create(sizeAttr));
+  // 段内已有的颜色/字体按原样保留，只重置字号。
+  state.doc.nodesBetween(start, end, (node, position) => {
+    if (!node.isText) return;
+    for (const mark of node.marks) {
+      if (mark.type !== type) continue;
+      const attrs = { ...mark.attrs, ...sizeAttr };
+      tr.removeMark(position, position + node.nodeSize, mark);
+      tr.addMark(position, position + node.nodeSize, type.create(attrs));
+    }
+  });
+  view.dispatch(tr);
+  return true;
+}
+
 export function setFontSize(editor: Editor, fontSize: string): boolean {
+  if (editor.state.selection.empty) applyFontSizeToBlock(editor, fontSize);
   return editor
     .chain()
     .focus()
@@ -171,6 +209,18 @@ export function setFontSize(editor: Editor, fontSize: string): boolean {
       fontSize,
     })
     .run();
+}
+
+/**
+ * 字号自定义输入：把纯数字（16、400、512）收窄到白名单区间后套用。
+ * 返回实际生效的 px 值；无法解析时返回 null，调用方保留原值。
+ */
+export function setFontSizeFromInput(editor: Editor, value: string): number | null {
+  const parsed = Number.parseInt(value.trim().replace(/px$/iu, ""), 10);
+  if (!Number.isFinite(parsed)) return null;
+  const clamped = Math.min(FONT_SIZE_RANGE.max, Math.max(FONT_SIZE_RANGE.min, parsed));
+  setFontSize(editor, `${clamped}px`);
+  return clamped;
 }
 
 /** 设置选区字体；空值表示恢复默认字体。 */

@@ -14,6 +14,11 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react";
+import {
+  ALLOWED_DOCUMENT_FONT_SIZES,
+  MAX_DOCUMENT_FONT_SIZE,
+  MIN_DOCUMENT_FONT_SIZE,
+} from "@ricetext/contracts";
 import { isContainerNodeActive, isRichNodeActive } from "./commands";
 
 /** 插入类工具的稳定标识，工具栏按钮、折叠菜单与右键菜单共享。 */
@@ -57,8 +62,19 @@ export const FONT_FAMILIES = [
   { value: "monospace", label: "等宽" },
 ] as const;
 
-/** 字号下拉与右键子菜单共用的字号选项。 */
-export const FONT_SIZES = ["12px", "14px", "16px", "18px", "20px", "24px", "28px", "32px"] as const;
+/**
+ * 字号下拉与右键子菜单共用的预设。
+ *
+ * 由契约的持久化白名单派生，保证 UI 只提供能存下来的值；上界 512px 是为了
+ * 「整屏大小的表情」——表情按 em 渲染，把字号调大就能把它一起放大。
+ */
+export const FONT_SIZES = ALLOWED_DOCUMENT_FONT_SIZES.map((size) => `${size}px`);
+
+/** 字号白名单区间；自定义输入按它收窄。 */
+export const FONT_SIZE_RANGE = {
+  min: MIN_DOCUMENT_FONT_SIZE,
+  max: MAX_DOCUMENT_FONT_SIZE,
+} as const;
 
 /** 插入内容子菜单/折叠「插入内容」组共用的内容工具。 */
 export const INSERT_CONTENT_TOOLS: readonly InsertToolDefinition[] = [
