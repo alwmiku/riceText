@@ -15,6 +15,39 @@ import type { StepJson } from "./steps.js";
  * 回溯从文档末尾向前进行，位置基于原始（before）文档，应用时不漂移。
  */
 
+/**
+ * mark 属性的规范形式：按 mark 类型在 schema 里注册的属性顺序补全缺省值。
+ *
+ * 服务端净化器会丢弃未设置的 null 属性，只留 fontSize；而 Tiptap/ProseMirror
+ * 序列化 mark 时会把 color/fontFamily 写成 null 带回来。两者是同一个 mark 的
+ * 两种写法，直接用 JSON.stringify 比较会把「颜色/字体没设」当成内容差异：
+ * 块级比较把整段标成修改，diff 也会生成把正文重写一遍的步骤。
+ * 统一补齐成 schema 顺序后，比较只反映真实差异。
+ */
+export function canonicalMarkAttrs(node: JSONContent, schema: Schema): JSONContent {
+  return {
+    ...node,
+    ...(node.marks
+      ? {
+          marks: node.marks.map((mark) => {
+            const type = mark.type ? schema.marks[mark.type] : undefined;
+            if (!type) return mark;
+            const attrs: Record<string, unknown> = {};
+            for (const [name, spec] of Object.entries(type.spec.attrs ?? {})) {
+              attrs[name] = mark.attrs?.[name] ?? spec.default ?? null;
+            }
+            return { ...mark, attrs };
+          }),
+        }
+      : {}),
+    ...(node.content
+      ? {
+          content: node.content.map((child) => canonicalMarkAttrs(child, schema)),
+        }
+      : {}),
+  };
+}
+
 /** 顶级块（doc.content 中的每个节点）。 */
 interface DiffBlock {
   /** 块起始 pos（含）。 */
@@ -64,7 +97,7 @@ function isTextLikeBlock(node: ProseMirrorNode): boolean {
   return textLike;
 }
 
-function collectBlocks(doc: ProseMirrorNode): DiffBlock[] {
+function collectBlocks(schema: Schema, doc: ProseMirrorNode): DiffBlock[] {
   const blocks: DiffBlock[] = [];
   let pos = 0;
   doc.forEach((node) => {
@@ -75,7 +108,8 @@ function collectBlocks(doc: ProseMirrorNode): DiffBlock[] {
       node,
       text: blockText(node),
       loose: `${node.type.name}:${JSON.stringify(node.attrs)}`,
-      exact: JSON.stringify(node.toJSON()),
+      // 指纹用 mark 规范形式：与编辑器往返后的 mark 属性写法保持一致。
+      exact: JSON.stringify(canonicalMarkAttrs(node.toJSON(), schema)),
       textLike,
     });
     pos += node.nodeSize;
@@ -227,8 +261,8 @@ export function diffDocuments(before: JSONContent, after: JSONContent): StepJson
   const schema = sharedSchema();
   const beforeDoc = ProseMirrorNode.fromJSON(schema, before);
   const afterDoc = ProseMirrorNode.fromJSON(schema, after);
-  const beforeBlocks = collectBlocks(beforeDoc);
-  const afterBlocks = collectBlocks(afterDoc);
+  const beforeBlocks = collectBlocks(schema, beforeDoc);
+  const afterBlocks = collectBlocks(schema, afterDoc);
   const n = beforeBlocks.length;
   const m = afterBlocks.length;
 
@@ -347,7 +381,12 @@ export function diffDocuments(before: JSONContent, after: JSONContent): StepJson
 }
 
 /**
- * 结构化比较两个文档是否等价（忽略 attrs 的键序、缺省字段与 `undefined`）。
+ * 结构化比较两个文档是否等价。
+ *
+ * 双方都先过共享 schema 解析（归一化 attrs 的键序与 NODE 缺省字段），再用
+ * {@link canonicalMarkAttrs} 补齐 mark 属性的缺省写法：服务端存储会丢掉未设置的
+ * `null`（只留 fontSize），编辑器序列化则把 color/fontFamily 写成 null 带回来，
+ * 不补齐就会把同一个 mark 判成差异。
  *
  * 客户端提交的 steps 有时只是把正文“重放”回服务器已有内容（例如本地草稿与
  * 服务器快照重建历史不一致时产生的空转增量）。这类写入如果落库，会产生
@@ -356,9 +395,16 @@ export function diffDocuments(before: JSONContent, after: JSONContent): StepJson
  */
 export function documentsEqual(left: JSONContent, right: JSONContent): boolean {
   const schema = sharedSchema();
-  return (
-    JSON.stringify(ProseMirrorNode.fromJSON(schema, left).toJSON()) ===
-    JSON.stringify(ProseMirrorNode.fromJSON(schema, right).toJSON())
+  const normalize = (value: JSONContent) =>
+    JSON.stringify(canonicalMarkAttrs(ProseMirrorNode.fromJSON(schema, value).toJSON(), schema));
+  return normalize(left) === normalize(right);
+}
+
+/** 文档的规范 JSON：NODE 默认属性与 mark 缺省属性都已归一化，可直接字符串比较。 */
+export function canonicalDocumentJson(value: JSONContent): string {
+  const schema = sharedSchema();
+  return JSON.stringify(
+    canonicalMarkAttrs(ProseMirrorNode.fromJSON(schema, value).toJSON(), schema),
   );
 }
 

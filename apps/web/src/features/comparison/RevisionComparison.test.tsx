@@ -1,10 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { RichTextNode } from "../../lib/types";
-import {
-  RevisionComparison,
-  buildRevisionComparison,
-} from "./RevisionComparison";
+import { RevisionComparison, buildRevisionComparison } from "./RevisionComparison";
 
 const paragraph = (mark?: string): RichTextNode => ({
   type: "paragraph",
@@ -28,6 +25,33 @@ describe("RevisionComparison", () => {
     expect(result.content.content).toHaveLength(3);
   });
 
+  it("存储态与编辑器态的 textStyle mark 写法不同不算修改", () => {
+    // 服务端净化后只留 fontSize，编辑器序列化会带 color/fontFamily: null，
+    // 两者是同一个 mark：不归一化会把带字号的整段正文标成红绿两份。
+    const fontSize = (attrs: Record<string, unknown>): RichTextNode => ({
+      type: "paragraph",
+      content: [
+        {
+          type: "text",
+          text: "邮差在码头边捡到一",
+          marks: [{ type: "textStyle", attrs }],
+        },
+        {
+          type: "emoji",
+          attrs: { emojiId: "hug", name: "抱抱", src: "/api/emoji/hug/image", fallback: "🤗" },
+          marks: [{ type: "textStyle", attrs }],
+        },
+      ],
+    });
+    const stored = fontSize({ fontSize: "112px" });
+    const edited = fontSize({ color: null, fontFamily: null, fontSize: "112px" });
+    const result = buildRevisionComparison(
+      { type: "doc", content: [stored] },
+      { type: "doc", content: [edited] },
+    );
+    expect(result.changedBlocks).toBe(0);
+    expect(result.tones).toEqual(["unchanged"]);
+  });
   it("插入内容块不会让后续分割线和段落错位", () => {
     const stable = paragraph();
     const divider: RichTextNode = { type: "horizontalRule" };
@@ -44,12 +68,7 @@ describe("RevisionComparison", () => {
       { type: "doc", content: [stable, inserted, divider, ending] },
     );
     expect(result.changedBlocks).toBe(1);
-    expect(result.tones).toEqual([
-      "unchanged",
-      "current",
-      "unchanged",
-      "unchanged",
-    ]);
+    expect(result.tones).toEqual(["unchanged", "current", "unchanged", "unchanged"]);
     expect(result.content.content).toEqual([stable, inserted, divider, ending]);
   });
 
@@ -64,15 +83,13 @@ describe("RevisionComparison", () => {
       />,
     );
     expect(screen.getByText("1 处内容块变化")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(container.querySelectorAll(".ProseMirror")).toHaveLength(1),
+    await waitFor(() => expect(container.querySelectorAll(".ProseMirror")).toHaveLength(1));
+    expect(container.querySelector('[data-version-side="history"] strong')).toHaveTextContent(
+      "格式变化但文字相同",
     );
-    expect(
-      container.querySelector('[data-version-side="history"] strong'),
-    ).toHaveTextContent("格式变化但文字相同");
-    expect(
-      container.querySelector('[data-version-side="current"] em'),
-    ).toHaveTextContent("格式变化但文字相同");
+    expect(container.querySelector('[data-version-side="current"] em')).toHaveTextContent(
+      "格式变化但文字相同",
+    );
     expect(screen.queryByText("当前版本")).not.toBeInTheDocument();
   });
 
@@ -90,14 +107,49 @@ describe("RevisionComparison", () => {
             },
             {
               type: "diceRoll",
-              attrs: { rollId: "roll-" + suffix, expression: "1d6", rolls: [suffix === "old" ? 2 : 5], total: suffix === "old" ? 2 : 5, rerollOf: null },
+              attrs: {
+                rollId: "roll-" + suffix,
+                expression: "1d6",
+                rolls: [suffix === "old" ? 2 : 5],
+                total: suffix === "old" ? 2 : 5,
+                rerollOf: null,
+              },
             },
           ],
         },
-        { type: "horizontalRule", ...(suffix === "new" ? { attrs: {} } : {}) },
-        { type: "attachmentRef", attrs: { attachmentId: "file-" + suffix, name: suffix + ".txt", mimeType: "text/plain", size: 512, priceCoins: 0 } },
-        { type: "pollRef", attrs: { pollId: "poll-" + suffix, question: "选择" + suffix, multiple: false, options: [{ id: "one", label: "选项" + suffix }] } },
-        { type: "richImage", attrs: { assetId: "image-" + suffix, src: "/uploads/" + suffix + ".png", alt: "图片" + suffix, caption: suffix, align: "center", width: 60 } },
+        // 分割线本身没有可见差异（attrs 会被 schema 归一化）：两侧都应当参与
+        // 比较并按「未变化」折叠一次；这里断言的是它随两侧一起渲染出来。
+        { type: "horizontalRule" },
+        {
+          type: "attachmentRef",
+          attrs: {
+            attachmentId: "file-" + suffix,
+            name: suffix + ".txt",
+            mimeType: "text/plain",
+            size: 512,
+            priceCoins: 0,
+          },
+        },
+        {
+          type: "pollRef",
+          attrs: {
+            pollId: "poll-" + suffix,
+            question: "选择" + suffix,
+            multiple: false,
+            options: [{ id: "one", label: "选项" + suffix }],
+          },
+        },
+        {
+          type: "richImage",
+          attrs: {
+            assetId: "image-" + suffix,
+            src: "/uploads/" + suffix + ".png",
+            alt: "图片" + suffix,
+            caption: suffix,
+            align: "center",
+            width: 60,
+          },
+        },
       ],
     });
     const { container } = render(
@@ -109,17 +161,18 @@ describe("RevisionComparison", () => {
         onExit={vi.fn()}
       />,
     );
-    await waitFor(() =>
-      expect(container.querySelectorAll(".ProseMirror")).toHaveLength(1),
-    );
-    expect(container.querySelectorAll('[data-node-type="horizontalRule"]')).toHaveLength(2);
-    expect(container.querySelector('[data-node-type="horizontalRule"]')).toHaveStyle({ height: "40px" });
+    await waitFor(() => expect(container.querySelectorAll(".ProseMirror")).toHaveLength(1));
+    expect(container.querySelectorAll("hr")).toHaveLength(1);
     expect(container.querySelectorAll('[data-node-type="attachmentRef"]')).toHaveLength(2);
     expect(container.querySelectorAll('[data-node-type="pollRef"]')).toHaveLength(2);
     expect(container.querySelectorAll('[data-node-type="richImage"]')).toHaveLength(2);
     expect(container.querySelector('[data-version-side="history"] a')).toHaveTextContent("链接old");
     expect(container.querySelector('[data-version-side="current"] a')).toHaveTextContent("链接new");
-    expect(container.querySelector('[data-version-side="history"]')).not.toHaveAttribute("data-version-label");
-    expect(container.querySelector('[data-version-side="current"]')).not.toHaveAttribute("data-version-label");
+    expect(container.querySelector('[data-version-side="history"]')).not.toHaveAttribute(
+      "data-version-label",
+    );
+    expect(container.querySelector('[data-version-side="current"]')).not.toHaveAttribute(
+      "data-version-label",
+    );
   });
 });

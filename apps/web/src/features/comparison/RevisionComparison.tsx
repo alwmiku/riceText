@@ -1,3 +1,4 @@
+import { canonicalDocumentJson } from "@ricetext/document-core";
 import { type Extensions, RichTextViewer, type JSONContent } from "@ricetext/editor-core";
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
@@ -15,12 +16,19 @@ export function buildRevisionComparison(
 ): { content: RichTextNode; tones: ComparisonTone[]; changedBlocks: number } {
   const historicalBlocks = historicalContent.content ?? [];
   const currentBlocks = currentContent.content ?? [];
-  const historicalKeys = historicalBlocks.map((block) => JSON.stringify(block));
-  const currentKeys = currentBlocks.map((block) => JSON.stringify(block));
+  // 块级配对按规范 JSON 比较：服务端存储的 mark 会丢掉未设置的 null（只留
+  // fontSize），编辑器序列化会把 color/fontFamily 写成 null 带回来。不归一化会把
+  // 同一段带字号/表情的正文当成「历史」和「当前」两份，整段标红。
+  const historicalKeys = historicalBlocks.map(canonicalDocumentJson);
+  const currentKeys = currentBlocks.map(canonicalDocumentJson);
   const rows = historicalBlocks.length + 1;
   const columns = currentBlocks.length + 1;
   const lcs = Array.from({ length: rows }, () => Array<number>(columns).fill(0));
-  for (let historicalIndex = historicalBlocks.length - 1; historicalIndex >= 0; historicalIndex -= 1) {
+  for (
+    let historicalIndex = historicalBlocks.length - 1;
+    historicalIndex >= 0;
+    historicalIndex -= 1
+  ) {
     for (let currentIndex = currentBlocks.length - 1; currentIndex >= 0; currentIndex -= 1) {
       lcs[historicalIndex]![currentIndex] =
         historicalKeys[historicalIndex] === currentKeys[currentIndex]
@@ -34,17 +42,13 @@ export function buildRevisionComparison(
   const anchors: Array<[number, number]> = [];
   let historicalIndex = 0;
   let currentIndex = 0;
-  while (
-    historicalIndex < historicalBlocks.length &&
-    currentIndex < currentBlocks.length
-  ) {
+  while (historicalIndex < historicalBlocks.length && currentIndex < currentBlocks.length) {
     if (historicalKeys[historicalIndex] === currentKeys[currentIndex]) {
       anchors.push([historicalIndex, currentIndex]);
       historicalIndex += 1;
       currentIndex += 1;
     } else if (
-      lcs[historicalIndex + 1]![currentIndex]! >=
-      lcs[historicalIndex]![currentIndex + 1]!
+      lcs[historicalIndex + 1]![currentIndex]! >= lcs[historicalIndex]![currentIndex + 1]!
     ) {
       historicalIndex += 1;
     } else {
@@ -58,10 +62,7 @@ export function buildRevisionComparison(
   let historicalStart = 0;
   let currentStart = 0;
   const appendChangedRange = (historicalEnd: number, currentEnd: number) => {
-    const length = Math.max(
-      historicalEnd - historicalStart,
-      currentEnd - currentStart,
-    );
+    const length = Math.max(historicalEnd - historicalStart, currentEnd - currentStart);
     changedBlocks += length;
     for (let offset = 0; offset < length; offset += 1) {
       const historical = historicalBlocks[historicalStart + offset];
@@ -118,7 +119,11 @@ function comparisonDecorations(tones: readonly ComparisonTone[]): Extensions {
                               "border: 0",
                               "border-radius: 0.25rem",
                               "background-color: " + background,
-                              "background-image: linear-gradient(to right, transparent 14%, " + divider + " 14%, " + divider + " 86%, transparent 86%)",
+                              "background-image: linear-gradient(to right, transparent 14%, " +
+                                divider +
+                                " 14%, " +
+                                divider +
+                                " 86%, transparent 86%)",
                               "background-position: center",
                               "background-repeat: no-repeat",
                               "background-size: 100% 1px",
@@ -156,12 +161,12 @@ export function RevisionComparison({
     () => buildRevisionComparison(historicalContent, currentContent),
     [historicalContent, currentContent],
   );
-  const extensions = useMemo(
-    () => comparisonDecorations(comparison.tones),
-    [comparison.tones],
-  );
+  const extensions = useMemo(() => comparisonDecorations(comparison.tones), [comparison.tones]);
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-[#fbfcfc] shadow-panel" aria-label="版本格式比较视图">
+    <section
+      className="overflow-hidden rounded-lg border border-border bg-[#fbfcfc] shadow-panel"
+      aria-label="版本格式比较视图"
+    >
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-white px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <GitCompareArrows size={15} className="shrink-0 text-primary" aria-hidden="true" />
