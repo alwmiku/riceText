@@ -81,6 +81,60 @@ describe("表情路由", () => {
     expect(response.json().error.code).toBe("EMOJI_NOT_FOUND");
   });
 
+  it("表情连字号一起保存后能读回：mark 不被净化器丢弃", async () => {
+    handle = await createTestApp();
+    // 字号是表情显示大小的唯一来源，落在 textStyle mark 上；
+    // 若净化器把 emoji 上的 mark 剥掉，"放大表情"保存后就会失效。
+    const content = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { textAlign: "left" },
+          content: [
+            {
+              type: "text",
+              text: "前文",
+              marks: [{ type: "textStyle", attrs: { fontSize: "400px" } }],
+            },
+            {
+              type: "emoji",
+              attrs: {
+                emojiId: "hug",
+                name: "抱抱",
+                src: "/api/emoji/hug/image",
+                fallback: "🤗",
+              },
+              marks: [{ type: "textStyle", attrs: { fontSize: "400px" } }],
+            },
+          ],
+        },
+      ],
+    };
+    const saved = await handle.app.inject({
+      method: "PUT",
+      url: "/api/documents/demo-post",
+      headers: { "x-user-id": "author" },
+      payload: {
+        schemaVersion: 1,
+        baseRevision: 1,
+        clientMutationId: "emoji-with-size",
+        content,
+      },
+    });
+    expect(saved.statusCode, saved.body).toBe(201);
+
+    const loaded = await handle.app.inject({ method: "GET", url: "/api/documents/demo-post" });
+    expect(loaded.statusCode).toBe(200);
+    const emoji = (
+      loaded.json().content as {
+        content: Array<{ content?: Array<{ type: string; marks?: unknown }> }>;
+      }
+    ).content[0]?.content?.[1];
+    expect(emoji?.type).toBe("emoji");
+    expect(emoji?.marks).toEqual([{ type: "textStyle", attrs: { fontSize: "400px" } }]);
+  });
+
   it("未知 id 与纯文本表情返回 404，非法 id 被请求校验挡在路由之前", async () => {
     handle = await createTestApp();
     for (const url of ["/api/emoji/no-such-emoji/image", "/api/emoji/smile/image"]) {

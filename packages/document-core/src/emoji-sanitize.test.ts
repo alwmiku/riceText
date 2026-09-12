@@ -103,6 +103,29 @@ describe("emoji 节点的净化规则", () => {
     expect(firstInlineAttrs(result).src).toBe("");
   });
 
+  it("保留 emoji 上的 textStyle mark：字号就是表情大小，丢 mark 会让放大失效", () => {
+    const result = validateDocument(
+      paragraph([
+        {
+          type: "text",
+          text: "前文",
+          marks: [{ type: "textStyle", attrs: { fontSize: "400px" } }],
+        },
+        {
+          type: "emoji",
+          attrs: { emojiId: "hug", name: "抱抱", src: "/api/emoji/hug/image", fallback: "🤗" },
+          marks: [{ type: "textStyle", attrs: { fontSize: "400px" } }],
+        },
+      ]),
+    );
+    expect(result.valid).toBe(true);
+    expect(result.issues).toEqual([]);
+    const emoji = (
+      result.document.content?.[0] as { content?: Array<{ type: string; marks?: unknown }> }
+    )?.content?.[1];
+    expect(emoji?.marks).toEqual([{ type: "textStyle", attrs: { fontSize: "400px" } }]);
+  });
+
   it("遗留的 size 属性被静默丢弃，不影响保存", () => {
     // 表情大小改由字号控制后，旧正文里可能还留着 size：必须丢弃而不是报
     // unknown-attribute，否则作者打不开自己以前存过的文档。

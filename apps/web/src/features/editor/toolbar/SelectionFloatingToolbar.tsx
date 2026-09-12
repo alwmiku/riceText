@@ -141,7 +141,7 @@ function FormatControls({ editor, mobile = false }: { editor: Editor; mobile?: b
           min={FONT_SIZE_RANGE.min}
           max={FONT_SIZE_RANGE.max}
           disabled={spoilerActive}
-          className="[&_input]:h-[30px] [&_select]:h-[30px] [&_select]:w-[72px] [&_input]:w-[58px]"
+          className="[&_button]:h-[30px] [&_input]:h-[30px] [&_input]:w-[54px]"
           onCommit={(size) => setFontSize(editor, `${size}px`)}
         />
         <IconButton

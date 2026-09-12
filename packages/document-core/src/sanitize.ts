@@ -622,7 +622,9 @@ function sanitizeNode(
   const node: JSONContent = { type: value.type };
   const attrs = sanitizeNodeAttributes(value.type, attrsForSanitizing, path, context);
   if (attrs && Object.keys(attrs).length > 0) node.attrs = attrs;
-  if (value.type === "diceRoll" || value.type === "mention") {
+  // 行内原子节点上的 mark 是有效数据：`emoji` 靠 `textStyle.fontSize` 决定显示大小
+  // （表情按 em 渲染，字号就是它的大小），丢弃 mark 会让"放大表情"在保存后失效。
+  if (value.type === "diceRoll" || value.type === "mention" || value.type === "emoji") {
     const marks = sanitizeMarks(value.marks, path, context);
     if (marks) node.marks = marks;
   }
