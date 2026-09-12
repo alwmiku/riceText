@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import type { WranglerRunner } from "./cli.js";
 
 /** R2 迁移 manifest 的一条记录（与 export-sqlite 输出的 r2-manifest.json 同构）。 */
 export interface R2ManifestItem {
@@ -16,8 +17,8 @@ export interface R2Manifest {
   items: R2ManifestItem[];
 }
 
-/** 调用 wrangler 的 host 回调：负责跨平台地拉起 pnpm。 */
-export type WranglerRunner = (args: readonly string[]) => number;
+/** 调用 wrangler 的 host 回调：负责跨平台地拉起 CLI，并回传状态码与输出。 */
+export type { WranglerResult, WranglerRunner } from "./cli.js";
 
 /**
  * 收集站点表情资源，生成与本地目录一致的 R2 对象键。
@@ -67,8 +68,18 @@ export interface UploadR2ManifestOptions {
   runner: WranglerRunner;
   /** true 走本地模拟桶（--local），false 走远端真实桶（--remote）。 */
   local: boolean;
-  /** 远端桶不存在时附加的排查提示（本地模拟桶不会出现这种情况）。 */
-  missingBucketHint?: string;
+  /**
+   * 失败时根据 wrangler 的实际输出生成排查提示（可区分「桶不存在」与
+   * 「网络/凭据问题」——这两类失败的排查方向完全不同，不能一律按桶不存在解释）。
+   */
+  failureHint?: (context: { bucket: string; objectKey: string; output: string }) => string | null;
+  /**
+   * 判断某个对象是否已经在目标桶里且内容一致（`--resume` 用）。
+   *
+   * 远端上传可能因网络中断半途失败，重跑时逐个探测就能只补缺失的那些，不用把
+   * 已经传成功的几十兆动图再传一遍。探测由调用方实现：这一层只关心「跳过与否」。
+   */
+  alreadyUploaded?: (item: R2ManifestItem) => boolean;
 }
 
 /**
@@ -83,7 +94,7 @@ export function uploadR2Manifest(options: UploadR2ManifestOptions): {
   uploaded: number;
   skipped: number;
 } {
-  const { manifest, bucket, runner, local, missingBucketHint } = options;
+  const { manifest, bucket, runner, local, failureHint, alreadyUploaded } = options;
   let planned = 0;
   let uploaded = 0;
   let skipped = 0;
@@ -93,9 +104,14 @@ export function uploadR2Manifest(options: UploadR2ManifestOptions): {
       continue;
     }
     verifyManifestItem(item);
+    if (alreadyUploaded?.(item)) {
+      console.log("跳过已存在且一致的对象 " + bucket + "/" + item.objectKey);
+      skipped += 1;
+      continue;
+    }
     planned += 1;
     console.log("上传 " + bucket + "/" + item.objectKey + " <- " + item.localPath);
-    const status = runner([
+    const result = runner([
       "r2",
       "object",
       "put",
@@ -105,14 +121,13 @@ export function uploadR2Manifest(options: UploadR2ManifestOptions): {
       item.localPath,
       ...(local ? ["--local"] : ["--remote"]),
     ]);
-    if (status !== 0) {
-      throw new Error(
-        "R2 上传失败：" +
-          bucket +
-          "/" +
-          item.objectKey +
-          (!local && missingBucketHint ? "\n" + missingBucketHint : ""),
-      );
+    if (result.status !== 0) {
+      const hint = failureHint?.({
+        bucket,
+        objectKey: item.objectKey,
+        output: result.output,
+      });
+      throw new Error("R2 上传失败：" + bucket + "/" + item.objectKey + (hint ? "\n" + hint : ""));
     }
     uploaded += 1;
   }

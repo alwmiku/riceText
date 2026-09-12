@@ -59,6 +59,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm cf:preflight -- preview
       - run: pnpm --filter @ricetext/worker run d1:migrate:preview
+      - run: node scripts/upload-emoji-assets.ts --bucket ricetext-preview-uploads
       - name: Configure Worker secrets
         shell: bash
         run: |
@@ -95,6 +96,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm cf:preflight -- production
       - run: pnpm --filter @ricetext/worker run d1:migrate:production
+      # 站点表情是仓库里的静态资源，Worker 从 R2 取图：部署时必须一起同步，
+      # 否则 /api/emoji/:id/image 在线上全是 404（Node API 读磁盘，本地看不出来）。
+      - run: node scripts/upload-emoji-assets.ts --bucket ricetext-production-uploads
       - name: Configure Worker secrets
         shell: bash
         run: |
