@@ -124,6 +124,8 @@ if (dryRun) {
     bucket,
     local,
     runner,
+    // 远端上传是逐个对象走 API，代理/网络抖动很常见：默认重试 4 次。
+    attempts: local ? 1 : 4,
     ...(local
       ? {}
       : {

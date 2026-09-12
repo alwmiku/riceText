@@ -80,6 +80,8 @@ export interface UploadR2ManifestOptions {
    * 已经传成功的几十兆动图再传一遍。探测由调用方实现：这一层只关心「跳过与否」。
    */
   alreadyUploaded?: (item: R2ManifestItem) => boolean;
+  /** 单次对象的失败重试次数（默认 1，即不重试）：网络抖动时多试几次能救回整批上传。 */
+  attempts?: number;
 }
 
 /**
@@ -95,6 +97,7 @@ export function uploadR2Manifest(options: UploadR2ManifestOptions): {
   skipped: number;
 } {
   const { manifest, bucket, runner, local, failureHint, alreadyUploaded } = options;
+  const attempts = Math.max(1, options.attempts ?? 1);
   let planned = 0;
   let uploaded = 0;
   let skipped = 0;
@@ -111,7 +114,7 @@ export function uploadR2Manifest(options: UploadR2ManifestOptions): {
     }
     planned += 1;
     console.log("上传 " + bucket + "/" + item.objectKey + " <- " + item.localPath);
-    const result = runner([
+    let result = runner([
       "r2",
       "object",
       "put",
@@ -121,6 +124,19 @@ export function uploadR2Manifest(options: UploadR2ManifestOptions): {
       item.localPath,
       ...(local ? ["--local"] : ["--remote"]),
     ]);
+    // wrangler 走远端 API，偶发 fetch failed/连接重置；同一对象重试比整批重跑便宜。
+    for (let attempt = 2; result.status !== 0 && attempt <= attempts; attempt += 1) {
+      console.log("重试第 " + attempt + " 次：" + bucket + "/" + item.objectKey);
+      result = runner([
+        "r2",
+        "object",
+        "put",
+        bucket + "/" + item.objectKey,
+        "--file",
+        item.localPath,
+        ...(local ? ["--local"] : ["--remote"]),
+      ]);
+    }
     if (result.status !== 0) {
       const hint = failureHint?.({
         bucket,

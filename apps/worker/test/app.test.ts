@@ -131,6 +131,13 @@ describe("RiceText Worker", () => {
     expect(chineseName.headers.get("content-type")).toBe("image/gif");
     expect(new Uint8Array(await chineseName.arrayBuffer())).toEqual(bytes);
 
+    // 历史上传把原始文件名当成对象键（不编码）时也要能读到：两种写法都必须兜底，
+    // 否则换一种上传路径就会让整批中文名表情 404。
+    await env.UPLOADS.put("emoji/害羞.gif", bytes);
+    const rawKey = await exports.default.fetch("http://example.com/api/emoji/shy-sticker/image");
+    expect(rawKey.status).toBe(200);
+    expect(new Uint8Array(await rawKey.arrayBuffer())).toEqual(bytes);
+
     // 纯文本表情没有图片资源。
     const textOnly = await exports.default.fetch("http://example.com/api/emoji/smile/image");
     expect(textOnly.status).toBe(404);

@@ -272,8 +272,15 @@ export function createWorkerApp(): Hono<AppBindings> {
     // 对象键与本地资源目录保持一致（thumbs/ 下是构建期生成的首帧缩略图）。
     // 站点表情的原文件名含中文，而 `wrangler r2 object put` 会先做 URL 编码再写入，
     // 因此查询时统一编码，ASCII 文件名不受影响。
-    const objectKey = encodeURI(`emoji/${wantsStaticFrame ? "thumbs/" : ""}${fileName}`);
-    const object = await context.env.UPLOADS.get(objectKey);
+    const relativeKey = `emoji/${wantsStaticFrame ? "thumbs/" : ""}${fileName}`;
+    // 不同上传路径写下的键不完全一致（历史上传写的是原始文件名，脚本现在写
+    // URL 编码后的键），逐个候选兜底，避免某一种写法让整批表情 404。
+    const candidates = [...new Set([encodeURI(relativeKey), relativeKey])];
+    let object = null;
+    for (const candidate of candidates) {
+      object = await context.env.UPLOADS.get(candidate);
+      if (object) break;
+    }
     if (!object) {
       throw new WorkerHttpError(404, "EMOJI_NOT_FOUND", "表情不存在或没有图片资源");
     }
