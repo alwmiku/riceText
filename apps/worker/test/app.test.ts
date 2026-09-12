@@ -5,10 +5,7 @@ import { contractRoutes } from "@ricetext/contracts";
 import { diffDocuments, sanitizeDocument } from "@ricetext/document-core";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { http, HttpResponse } from "msw";
-import {
-  cleanupStaleAssets,
-  D1AssetRepository,
-} from "../src/repositories/asset-repository";
+import { cleanupStaleAssets, D1AssetRepository } from "../src/repositories/asset-repository";
 import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../src/index";
 import { createWorkerApp } from "../src/app";
@@ -73,7 +70,17 @@ beforeEach(async () => {
     ).bind("demo-post", 1, 1, JSON.stringify(content), null, "author", "seed", null, now),
     env.DB.prepare(
       "INSERT OR IGNORE INTO chapters(id, title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).bind("chapter-0", "楔子 · 雨季之前", 0, "demo-post", 1, JSON.stringify(content), "hash", now, 0),
+    ).bind(
+      "chapter-0",
+      "楔子 · 雨季之前",
+      0,
+      "demo-post",
+      1,
+      JSON.stringify(content),
+      "hash",
+      now,
+      0,
+    ),
   ]);
 });
 
@@ -85,6 +92,48 @@ describe("RiceText Worker", () => {
     for (const route of contractRoutes) {
       expect(registered.has(route.method + " " + route.path)).toBe(true);
     }
+  });
+
+  it("返回表情目录并从 R2 提供表情图片", async () => {
+    const catalog = await exports.default.fetch("http://example.com/api/emoji");
+    expect(catalog.status).toBe(200);
+    expect(catalog.headers.get("cache-control")).toBe("public, max-age=3600");
+    const body = (await catalog.json()) as {
+      groups: Array<{ id: string }>;
+      items: Array<{ id: string }>;
+    };
+    expect(body.groups.map((group) => group.id)).toContain("custom");
+    expect(body.items.length).toBeGreaterThan(100);
+
+    // 未上传时严格 404，不静默返回占位图。
+    const missing = await exports.default.fetch("http://example.com/api/emoji/hug/image");
+    expect(missing.status).toBe(404);
+
+    // 部署时会把表情资源上传到 R2（scripts/upload-emoji-assets.ts 复用同一套对象键）。
+    const bytes = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+    const thumbnail = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    // 抱抱.gif 是中文名：wrangler 上传后会写成 URL 编码的键，读取必须用同一套键。
+    await env.UPLOADS.put("emoji/%E6%8A%B1%E6%8A%B1.gif", bytes);
+    await env.UPLOADS.put("emoji/thumbs/hug.png", thumbnail);
+    const animated = await exports.default.fetch("http://example.com/api/emoji/hug/image");
+    expect(animated.status).toBe(200);
+    expect(animated.headers.get("content-type")).toBe("image/gif");
+    expect(animated.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(new Uint8Array(await animated.arrayBuffer())).toEqual(bytes);
+    const still = await exports.default.fetch("http://example.com/api/emoji/hug/image?frame=first");
+    expect(still.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await still.arrayBuffer())).toEqual(thumbnail);
+
+    // 站点表情原文件名含中文，wrangler 上传时会写成 URL 编码后的对象键；
+    // 读取必须用同一套键，否则会静默退回缩略图（类型对、内容错）。
+    await env.UPLOADS.put("emoji/%E5%96%9D%E5%A5%B6%E8%8C%B6.gif", bytes);
+    const chineseName = await exports.default.fetch("http://example.com/api/emoji/milk-tea/image");
+    expect(chineseName.headers.get("content-type")).toBe("image/gif");
+    expect(new Uint8Array(await chineseName.arrayBuffer())).toEqual(bytes);
+
+    // 纯文本表情没有图片资源。
+    const textOnly = await exports.default.fetch("http://example.com/api/emoji/smile/image");
+    expect(textOnly.status).toBe(404);
   });
 
   it("应用 D1 基线并提供健康检查", async () => {
@@ -234,20 +283,81 @@ describe("RiceText Worker", () => {
   });
 
   it("接受编辑器摘录与 orderedList type:null，拒绝非法编号格式", async () => {
-    const list = { type: "orderedList", attrs: { start: 1, type: null as string | null }, content: [{ type: "listItem", attrs: { textAlign: null }, content: [{ type: "paragraph", content: [{ type: "text", text: "List text" }] }] }] };
-    const document = { type: "doc", content: [list, { type: "novelExcerpt", attrs: { variant: "fanqie", bookTitle: "Book", chapterTitle: "Chapter", readerTime: "23:00" }, content: [{ type: "paragraph", content: [{ type: "text", text: "Excerpt" }] }] }] };
-    const save = (baseRevision: number, clientMutationId: string, value: unknown) => exports.default.fetch(new Request("http://example.com/api/documents/list-excerpt", { method: "PUT", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ title: "List and excerpt", schemaVersion: 1, baseRevision, clientMutationId, content: value }) }));
+    const list = {
+      type: "orderedList",
+      attrs: { start: 1, type: null as string | null },
+      content: [
+        {
+          type: "listItem",
+          attrs: { textAlign: null },
+          content: [{ type: "paragraph", content: [{ type: "text", text: "List text" }] }],
+        },
+      ],
+    };
+    const document = {
+      type: "doc",
+      content: [
+        list,
+        {
+          type: "novelExcerpt",
+          attrs: {
+            variant: "fanqie",
+            bookTitle: "Book",
+            chapterTitle: "Chapter",
+            readerTime: "23:00",
+          },
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Excerpt" }] }],
+        },
+      ],
+    };
+    const save = (baseRevision: number, clientMutationId: string, value: unknown) =>
+      exports.default.fetch(
+        new Request("http://example.com/api/documents/list-excerpt", {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-user-id": "author" },
+          body: JSON.stringify({
+            title: "List and excerpt",
+            schemaVersion: 1,
+            baseRevision,
+            clientMutationId,
+            content: value,
+          }),
+        }),
+      );
     const created = await save(0, "create-list-excerpt", document);
     expect(created.status).toBe(201);
-    await expect(created.json()).resolves.toMatchObject({ content: { content: [ { type: "orderedList", attrs: { start: 1, type: null } }, { type: "novelExcerpt", attrs: { bookTitle: "Book" } } ] } });
+    await expect(created.json()).resolves.toMatchObject({
+      content: {
+        content: [
+          { type: "orderedList", attrs: { start: 1, type: null } },
+          { type: "novelExcerpt", attrs: { bookTitle: "Book" } },
+        ],
+      },
+    });
     list.attrs = { start: 3, type: "I" };
     const updated = await save(1, "update-list-excerpt", document);
     expect(updated.status).toBe(201);
-    const loaded = await exports.default.fetch(new Request("http://example.com/api/documents/list-excerpt", { headers: { "x-user-id": "author" } }));
-    await expect(loaded.json()).resolves.toMatchObject({ content: { content: [ { type: "orderedList", attrs: { start: 3, type: "I" } }, { type: "novelExcerpt", attrs: { bookTitle: "Book" } } ] } });
-    const invalid = await save(2, "invalid-list-type", { type: "doc", content: [{ ...list, attrs: { type: { toString: {} } } }] });
+    const loaded = await exports.default.fetch(
+      new Request("http://example.com/api/documents/list-excerpt", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    await expect(loaded.json()).resolves.toMatchObject({
+      content: {
+        content: [
+          { type: "orderedList", attrs: { start: 3, type: "I" } },
+          { type: "novelExcerpt", attrs: { bookTitle: "Book" } },
+        ],
+      },
+    });
+    const invalid = await save(2, "invalid-list-type", {
+      type: "doc",
+      content: [{ ...list, attrs: { type: { toString: {} } } }],
+    });
     expect(invalid.status).toBe(422);
-    await expect(invalid.json()).resolves.toMatchObject({ error: { code: "INVALID_ATTRIBUTE", details: { path: "$.content[0].attrs.type" } } });
+    await expect(invalid.json()).resolves.toMatchObject({
+      error: { code: "INVALID_ATTRIBUTE", details: { path: "$.content[0].attrs.type" } },
+    });
   });
 
   it("仅在作者显式保存时创建尚不存在的文档", async () => {
@@ -278,12 +388,14 @@ describe("RiceText Worker", () => {
       "SELECT d.created_by, a.permission, c.title, c.revision " +
         "FROM documents d JOIN document_acl a ON a.document_id = d.id " +
         "JOIN chapters c ON c.document_id = d.id WHERE d.id = ?",
-    ).bind("empty-post").first<{
-      created_by: string;
-      permission: string;
-      title: string;
-      revision: number;
-    }>();
+    )
+      .bind("empty-post")
+      .first<{
+        created_by: string;
+        permission: string;
+        title: string;
+        revision: number;
+      }>();
     expect(stored).toEqual({
       created_by: "author",
       permission: "admin",
@@ -426,7 +538,13 @@ describe("RiceText Worker", () => {
       content: [
         {
           type: "richImage",
-          attrs: { src: "javascript:alert(1)", alt: "bad", caption: "", align: "center", width: 100 },
+          attrs: {
+            src: "javascript:alert(1)",
+            alt: "bad",
+            caption: "",
+            align: "center",
+            width: 100,
+          },
         },
       ],
     });
@@ -476,7 +594,12 @@ describe("RiceText Worker", () => {
       }),
     );
     const historyBody = (await history.json()) as {
-      items: Array<{ revision: number; operation: string; summary: string; stepsSummary: string | null }>;
+      items: Array<{
+        revision: number;
+        operation: string;
+        summary: string;
+        stepsSummary: string | null;
+      }>;
     };
     expect(historyBody.items[0]).toMatchObject({
       revision: 2,
@@ -492,14 +615,22 @@ describe("RiceText Worker", () => {
 
   it("steps 删除响应丢失后重试返回原修订，且不绕过校验", async () => {
     const payload = {
-      schemaVersion: 1, baseRevision: 1, clientMutationId: "steps-delete-retry", chapterId: "chapter-0",
-      steps: [{ stepType: "replace", from: 1, to: content.content[0]!.content[0]!.text.length + 1 }],
+      schemaVersion: 1,
+      baseRevision: 1,
+      clientMutationId: "steps-delete-retry",
+      chapterId: "chapter-0",
+      steps: [
+        { stepType: "replace", from: 1, to: content.content[0]!.content[0]!.text.length + 1 },
+      ],
     };
-    const patch = (body: unknown, userId = "author") => exports.default.fetch(
-      new Request("http://example.com/api/documents/demo-post/steps", {
-        method: "PATCH", headers: { "content-type": "application/json", "x-user-id": userId }, body: JSON.stringify(body),
-      }),
-    );
+    const patch = (body: unknown, userId = "author") =>
+      exports.default.fetch(
+        new Request("http://example.com/api/documents/demo-post/steps", {
+          method: "PATCH",
+          headers: { "content-type": "application/json", "x-user-id": userId },
+          body: JSON.stringify(body),
+        }),
+      );
     const saved = await patch(payload);
     expect(saved.status).toBe(201);
     const original = await saved.json();
@@ -509,65 +640,119 @@ describe("RiceText Worker", () => {
     expect(await retry.json()).toEqual(original);
     expect((await patch(payload, "reader")).status).toBe(403);
     expect((await patch({ ...payload, steps: [] })).status).toBe(422);
-    const reused = await patch({ ...payload, steps: [{ stepType: "replace", from: 9999, to: 10000 }] });
+    const reused = await patch({
+      ...payload,
+      steps: [{ stepType: "replace", from: 9999, to: 10000 }],
+    });
     expect(reused.status).toBe(409);
     expect(await reused.json()).toMatchObject({ error: { code: "MUTATION_ID_REUSED" } });
 
-    const advanced = await exports.default.fetch(new Request("http://example.com/api/documents/demo-post", {
-      method: "PUT", headers: { "content-type": "application/json", "x-user-id": "author" },
-      body: JSON.stringify({ schemaVersion: 1, baseRevision: 2, clientMutationId: "steps-after-delete", content }),
-    }));
+    const advanced = await exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post", {
+        method: "PUT",
+        headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({
+          schemaVersion: 1,
+          baseRevision: 2,
+          clientMutationId: "steps-after-delete",
+          content,
+        }),
+      }),
+    );
     expect(advanced.status).toBe(201);
     const latest = await advanced.json();
     const lateRetry = await patch(payload);
     expect(lateRetry.status).toBe(200);
     expect(await lateRetry.json()).toEqual(original);
-    const current = await exports.default.fetch(new Request("http://example.com/api/documents/demo-post", {
-      headers: { "x-user-id": "author" },
-    }));
+    const current = await exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
     expect(await current.json()).toEqual(latest);
-    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM document_revisions WHERE document_id = ?").bind("demo-post").first()).toEqual({ count: 3 });
-    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM document_mutations WHERE document_id = ?").bind("demo-post").first()).toEqual({ count: 2 });
-    expect(await env.DB.prepare("SELECT revision FROM chapters WHERE id = ?").bind("chapter-0").first()).toEqual({ revision: 2 });
+    expect(
+      await env.DB.prepare("SELECT COUNT(*) AS count FROM document_revisions WHERE document_id = ?")
+        .bind("demo-post")
+        .first(),
+    ).toEqual({ count: 3 });
+    expect(
+      await env.DB.prepare("SELECT COUNT(*) AS count FROM document_mutations WHERE document_id = ?")
+        .bind("demo-post")
+        .first(),
+    ).toEqual({ count: 2 });
+    expect(
+      await env.DB.prepare("SELECT revision FROM chapters WHERE id = ?").bind("chapter-0").first(),
+    ).toEqual({ revision: 2 });
   });
 
   it("应用 steps 前检查基线，失败时不占用幂等键", async () => {
-    const patch = (baseRevision: number, steps: unknown[]) => exports.default.fetch(
-      new Request("http://example.com/api/documents/demo-post/steps", {
-        method: "PATCH", headers: { "content-type": "application/json", "x-user-id": "author" },
-        body: JSON.stringify({ schemaVersion: 1, baseRevision, clientMutationId: "steps-baseline-check", steps }),
-      }),
-    );
+    const patch = (baseRevision: number, steps: unknown[]) =>
+      exports.default.fetch(
+        new Request("http://example.com/api/documents/demo-post/steps", {
+          method: "PATCH",
+          headers: { "content-type": "application/json", "x-user-id": "author" },
+          body: JSON.stringify({
+            schemaVersion: 1,
+            baseRevision,
+            clientMutationId: "steps-baseline-check",
+            steps,
+          }),
+        }),
+      );
     const invalidSteps = [{ stepType: "replace", from: 9999, to: 10000 }];
     for (const baseRevision of [0, 2]) {
       const conflict = await patch(baseRevision, invalidSteps);
       expect(conflict.status).toBe(409);
-      expect(await conflict.json()).toMatchObject({ error: {
-        code: "REVISION_CONFLICT", details: { currentRevision: 1, baseRevision },
-      } });
+      expect(await conflict.json()).toMatchObject({
+        error: {
+          code: "REVISION_CONFLICT",
+          details: { currentRevision: 1, baseRevision },
+        },
+      });
     }
     const invalid = await patch(1, invalidSteps);
     expect(invalid.status).toBe(422);
     expect(await invalid.json()).toMatchObject({ error: { code: "INVALID_STEPS" } });
-    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM document_mutations").first()).toEqual({ count: 0 });
+    expect(
+      await env.DB.prepare("SELECT COUNT(*) AS count FROM document_mutations").first(),
+    ).toEqual({ count: 0 });
     const saved = await patch(1, [{ stepType: "replace", from: 1, to: 2 }]);
     expect(saved.status).toBe(201);
     expect(await saved.json()).toMatchObject({ revision: 2 });
   });
 
   it.each([true, false])("并发 steps 写入保留保护机制（同幂等键：%s）", async (sameMutation) => {
-    const patch = (clientMutationId: string) => exports.default.fetch(
-      new Request("http://example.com/api/documents/demo-post/steps", {
-        method: "PATCH", headers: { "content-type": "application/json", "x-user-id": "author" },
-        body: JSON.stringify({ schemaVersion: 1, baseRevision: 1, clientMutationId, steps: [{ stepType: "replace", from: 1, to: 2 }] }),
-      }),
+    const patch = (clientMutationId: string) =>
+      exports.default.fetch(
+        new Request("http://example.com/api/documents/demo-post/steps", {
+          method: "PATCH",
+          headers: { "content-type": "application/json", "x-user-id": "author" },
+          body: JSON.stringify({
+            schemaVersion: 1,
+            baseRevision: 1,
+            clientMutationId,
+            steps: [{ stepType: "replace", from: 1, to: 2 }],
+          }),
+        }),
+      );
+    const responses: Response[] = await Promise.all([
+      patch("steps-concurrent-one"),
+      patch(sameMutation ? "steps-concurrent-one" : "steps-concurrent-two"),
+    ]);
+    expect(responses.map((response) => response.status).sort()).toEqual(
+      sameMutation ? [200, 201] : [201, 409],
     );
-    const responses: Response[] = await Promise.all([patch("steps-concurrent-one"), patch(sameMutation ? "steps-concurrent-one" : "steps-concurrent-two")]);
-    expect(responses.map((response) => response.status).sort()).toEqual(sameMutation ? [200, 201] : [201, 409]);
     if (sameMutation) expect(await responses[0]!.json()).toEqual(await responses[1]!.json());
-    else expect(await responses.find((response) => response.status === 409)!.json()).toMatchObject({ error: { code: "REVISION_CONFLICT" } });
-    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM document_revisions").first()).toEqual({ count: 2 });
-    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM document_mutations").first()).toEqual({ count: 1 });
+    else
+      expect(await responses.find((response) => response.status === 409)!.json()).toMatchObject({
+        error: { code: "REVISION_CONFLICT" },
+      });
+    expect(
+      await env.DB.prepare("SELECT COUNT(*) AS count FROM document_revisions").first(),
+    ).toEqual({ count: 2 });
+    expect(
+      await env.DB.prepare("SELECT COUNT(*) AS count FROM document_mutations").first(),
+    ).toEqual({ count: 1 });
   });
 
   it("在写入批次中归档和恢复行内评论锚点", async () => {
@@ -621,15 +806,25 @@ describe("RiceText Worker", () => {
     const chapteredContent = {
       type: "doc",
       content: [
-        { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "楔子" }] },
+        {
+          type: "heading",
+          attrs: { level: 2, chapterStart: true },
+          content: [{ type: "text", text: "楔子" }],
+        },
         { type: "paragraph", content: [{ type: "text", text: "公开章节" }] },
-        { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "第一章" }] },
+        {
+          type: "heading",
+          attrs: { level: 2, chapterStart: true },
+          content: [{ type: "text", text: "第一章" }],
+        },
         { type: "paragraph", content: [{ type: "text", text: "隐藏章节正文" }] },
       ],
     };
     await env.DB.prepare(
       "UPDATE document_revisions SET content_json = ? WHERE document_id = 'demo-post' AND revision = 1",
-    ).bind(JSON.stringify(chapteredContent)).run();
+    )
+      .bind(JSON.stringify(chapteredContent))
+      .run();
     const register = (title: string) =>
       exports.default.fetch(
         new Request("http://example.com/api/documents/demo-post/chapters", {
@@ -708,7 +903,11 @@ describe("RiceText Worker", () => {
       type: "doc",
       content: [
         ...content.content,
-        { type: "heading", attrs: { level: 2, chapterStart: true }, content: [{ type: "text", text: "第一章" }] },
+        {
+          type: "heading",
+          attrs: { level: 2, chapterStart: true },
+          content: [{ type: "text", text: "第一章" }],
+        },
         { type: "paragraph", content: [{ type: "text", text: "后来新增" }] },
       ],
     };
@@ -727,10 +926,9 @@ describe("RiceText Worker", () => {
     );
     expect(saved.status).toBe(201);
     const history = await exports.default.fetch(
-      new Request(
-        "http://example.com/api/documents/demo-post/revisions?chapterId=chapter-1",
-        { headers: { "x-user-id": "author" } },
-      ),
+      new Request("http://example.com/api/documents/demo-post/revisions?chapterId=chapter-1", {
+        headers: { "x-user-id": "author" },
+      }),
     );
     const page = (await history.json()) as { items: Array<{ revision: number }> };
     expect(page.items.map((item) => item.revision)).toEqual([2]);
@@ -802,10 +1000,9 @@ describe("RiceText Worker", () => {
 
   it("按文档和章节 ID 读取已上传章节正文", async () => {
     const response = await exports.default.fetch(
-      new Request(
-        "http://example.com/api/forum/novels/demo-post/chapters/chapter-0",
-        { headers: { "x-user-id": "reader" } },
-      ),
+      new Request("http://example.com/api/forum/novels/demo-post/chapters/chapter-0", {
+        headers: { "x-user-id": "reader" },
+      }),
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -981,9 +1178,7 @@ describe("RiceText Worker", () => {
 
     const responses: Response[] = await Promise.all([review("approve"), review("reject")]);
     expect(responses.map((item) => item.status).sort()).toEqual([200, 409]);
-    const row = await env.DB.prepare(
-      "SELECT status FROM suggestions WHERE id = ?",
-    )
+    const row = await env.DB.prepare("SELECT status FROM suggestions WHERE id = ?")
       .bind(suggestion.id)
       .first<{ status: "approved" | "rejected" }>();
     const counts = await env.DB.prepare(
@@ -1404,7 +1599,14 @@ describe("RiceText Worker", () => {
       env.DB.prepare(
         "INSERT INTO attachments(id, name, mime_type, price, author_id, asset_id, legacy_download_url) " +
           "VALUES (?, ?, ?, ?, ?, NULL, ?)",
-      ).bind("attachment-worker", "设定集.txt", "text/plain", 30, "author", "/downloads/setting.txt"),
+      ).bind(
+        "attachment-worker",
+        "设定集.txt",
+        "text/plain",
+        30,
+        "author",
+        "/downloads/setting.txt",
+      ),
     ]);
     const before = await exports.default.fetch(
       new Request("http://example.com/api/forum/attachments/attachment-worker", {
@@ -1425,7 +1627,7 @@ describe("RiceText Worker", () => {
       );
     const responses: Response[] = await Promise.all([purchase(), purchase()]);
     expect(responses.map((item) => item.status)).toEqual([200, 200]);
-    const payloads = await Promise.all(responses.map((item) => item.json())) as Array<{
+    const payloads = (await Promise.all(responses.map((item) => item.json()))) as Array<{
       alreadyPurchased: boolean;
       buyerBalance: number;
       authorIncome: number;
@@ -1506,9 +1708,7 @@ describe("RiceText Worker", () => {
     expect(loaded.status).toBe(200);
     expect(new Uint8Array(await loaded.arrayBuffer())).toEqual(png);
     expect(loaded.headers.get("content-type")).toBe("image/png");
-    expect(loaded.headers.get("cache-control")).toBe(
-      "public, max-age=31536000, immutable",
-    );
+    expect(loaded.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     const etag = loaded.headers.get("etag")!;
 
     const notModified = await exports.default.fetch(
@@ -1670,17 +1870,7 @@ describe("RiceText Worker", () => {
         "created_by, created_at, updated_at" +
         ") VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
     )
-      .bind(
-        "stale-worker",
-        "stale.png",
-        objectKey,
-        "image/png",
-        3,
-        "checksum",
-        "reader",
-        old,
-        old,
-      )
+      .bind("stale-worker", "stale.png", objectKey, "image/png", 3, "checksum", "reader", old, old)
       .run();
     expect(await cleanupStaleAssets(env.DB, env.UPLOADS, now)).toBe(1);
     expect(await env.UPLOADS.head(objectKey)).toBeNull();
@@ -1709,9 +1899,7 @@ describe("RiceText Worker", () => {
     expect(first.total).toBeGreaterThanOrEqual(2);
     expect(first.total).toBeLessThanOrEqual(12);
 
-    const loaded = await exports.default.fetch(
-      "http://example.com/api/dice/" + first.rollId,
-    );
+    const loaded = await exports.default.fetch("http://example.com/api/dice/" + first.rollId);
     await expect(loaded.json()).resolves.toEqual(first);
 
     const rerolled = await exports.default.fetch(
@@ -1742,12 +1930,17 @@ describe("RiceText Worker", () => {
 
   it("使用 D1 密码凭证登录，并对重复失败限流", async () => {
     const salt = new TextEncoder().encode("1234567890abcdef");
-    const encodedSalt = btoa(String.fromCharCode(...salt)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+    const encodedSalt = btoa(String.fromCharCode(...salt))
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replace(/=+$/, "");
     const hash = await derivePasswordHash("correct-password", salt, 100_000);
     await env.DB.prepare(
       "INSERT INTO password_credentials(user_id, username, salt, password_hash, iterations, failed_attempts, locked_until, updated_at) " +
         "VALUES (?, ?, ?, ?, ?, 0, NULL, ?)",
-    ).bind("author", "writer", encodedSalt, hash, 100_000, now).run();
+    )
+      .bind("author", "writer", encodedSalt, hash, 100_000, now)
+      .run();
 
     const login = await exports.default.fetch(
       new Request("http://example.com/api/auth/password/login", {
@@ -1789,14 +1982,16 @@ describe("RiceText Worker", () => {
     await env.DB.prepare(
       "INSERT INTO password_credentials(user_id, username, salt, password_hash, iterations, failed_attempts, locked_until, updated_at) " +
         "VALUES (?, ?, ?, ?, ?, 0, NULL, ?)",
-    ).bind(
-      "author",
-      "legacy-writer",
-      "MTIzNDU2Nzg5MGFiY2RlZg",
-      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      120_000,
-      now,
-    ).run();
+    )
+      .bind(
+        "author",
+        "legacy-writer",
+        "MTIzNDU2Nzg5MGFiY2RlZg",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        120_000,
+        now,
+      )
+      .run();
     const response = await exports.default.fetch(
       new Request("http://example.com/api/auth/password/login", {
         method: "POST",
@@ -1832,9 +2027,7 @@ describe("RiceText Worker", () => {
     );
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get("access-control-allow-headers")).not.toContain("x-user-id");
-    expect(preflight.headers.get("access-control-allow-origin")).toBe(
-      "https://app.example.com",
-    );
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("https://app.example.com");
 
     const forbiddenOrigin = await worker.fetch(
       new Request("https://app.example.com/api/documents/demo-post", {
@@ -1977,9 +2170,9 @@ describe("RiceText Worker", () => {
       context,
     );
     expect(logout.status).toBe(204);
-    const sessions = await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM auth_sessions",
-    ).first<{ count: number }>();
+    const sessions = await env.DB.prepare("SELECT COUNT(*) AS count FROM auth_sessions").first<{
+      count: number;
+    }>();
     expect(sessions?.count).toBe(0);
   });
 

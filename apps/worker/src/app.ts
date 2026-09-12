@@ -30,6 +30,14 @@ import {
   type StageNovelChapterReorderRequest,
 } from "@ricetext/contracts";
 import { DomainError, projectDocumentForReader } from "@ricetext/server-core";
+import {
+  EMOJI_CATALOG,
+  EMOJI_GROUPS,
+  emojiAssetFileName,
+  emojiAssetMimeType,
+  emojiThumbnailFileName,
+  emojiThumbnailMimeType,
+} from "@ricetext/contracts";
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import {
@@ -74,10 +82,7 @@ async function limitedBatchBody<T>(
   schema: { parse(value: unknown): T },
 ): Promise<T> {
   const contentLength = context.req.header("content-length");
-  if (
-    contentLength !== undefined &&
-    Number(contentLength) > MAX_BATCH_BODY_BYTES
-  ) {
+  if (contentLength !== undefined && Number(contentLength) > MAX_BATCH_BODY_BYTES) {
     throw new WorkerHttpError(
       413,
       "CHAPTER_BATCH_TOO_LARGE",
@@ -118,7 +123,10 @@ function response(operationId: string, status: number, value: unknown): JsonObje
   return schema.parse(value) as JsonObject;
 }
 
-async function body(operationId: string, context: { req: { json: () => Promise<unknown> } }): Promise<unknown> {
+async function body(
+  operationId: string,
+  context: { req: { json: () => Promise<unknown> } },
+): Promise<unknown> {
   const schema = getContractRoute(operationId).body;
   if (!schema) throw new Error("Missing request schema for " + operationId);
   try {
@@ -192,19 +200,13 @@ export function createWorkerApp(): Hono<AppBindings> {
           "access-control-allow-credentials": "true",
           "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
           "access-control-allow-headers":
-          context.env.ALLOW_DEMO_AUTH === "true"
-            ? "content-type, x-user-id"
-            : "content-type",
+            context.env.ALLOW_DEMO_AUTH === "true" ? "content-type, x-user-id" : "content-type",
           vary: "Origin",
         },
       });
     }
     const unsafe = !["GET", "HEAD", "OPTIONS"].includes(context.req.method);
-    if (
-      unsafe &&
-      context.env.ENVIRONMENT !== "development" &&
-      (!origin || !allowed.has(origin))
-    ) {
+    if (unsafe && context.env.ENVIRONMENT !== "development" && (!origin || !allowed.has(origin))) {
       throw new WorkerHttpError(403, "ORIGIN_FORBIDDEN", "请求来源不在允许列表中");
     }
     await next();
@@ -220,7 +222,7 @@ export function createWorkerApp(): Hono<AppBindings> {
     const sourceAddress =
       context.req.header("cf-connecting-ip") ??
       (context.env.ENVIRONMENT === "development"
-        ? context.req.header("x-forwarded-for") ?? "local"
+        ? (context.req.header("x-forwarded-for") ?? "local")
         : "unknown");
     return passwordLogin(request, context.env, sourceAddress);
   });
@@ -240,15 +242,49 @@ export function createWorkerApp(): Hono<AppBindings> {
     const form = await context.req.raw.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
-      throw new WorkerHttpError(
-        422,
-        "ASSET_FILE_REQUIRED",
-        "multipart 请求必须提供 file 字段",
-      );
+      throw new WorkerHttpError(422, "ASSET_FILE_REQUIRED", "multipart 请求必须提供 file 字段");
     }
     const repository = new D1AssetRepository(context.env.DB, context.env.UPLOADS);
     const result = await repository.upload(file, principal);
     return context.json(response("uploadAsset", 201, result), 201);
+  });
+
+  // 表情：目录是站点常量，图片是随仓库提交的静态资源，部署时上传到 R2。
+  app.get("/api/emoji", (context) => {
+    context.header("cache-control", "public, max-age=3600");
+    return context.json(
+      response("listEmojiCatalog", 200, { groups: EMOJI_GROUPS, items: EMOJI_CATALOG }),
+    );
+  });
+
+  app.get("/api/emoji/:emojiId/image", async (context) => {
+    const input = params("readEmojiImage", context.req.param()) as { emojiId: string };
+    const wantsStaticFrame = context.req.query("frame") === "first";
+    const fileName = wantsStaticFrame
+      ? emojiThumbnailFileName(input.emojiId)
+      : emojiAssetFileName(input.emojiId);
+    const mimeType = wantsStaticFrame
+      ? emojiThumbnailMimeType(input.emojiId)
+      : emojiAssetMimeType(input.emojiId);
+    if (!fileName || !mimeType) {
+      throw new WorkerHttpError(404, "EMOJI_NOT_FOUND", "表情不存在或没有图片资源");
+    }
+    // 对象键与本地资源目录保持一致（thumbs/ 下是构建期生成的首帧缩略图）。
+    // 站点表情的原文件名含中文，而 `wrangler r2 object put` 会先做 URL 编码再写入，
+    // 因此查询时统一编码，ASCII 文件名不受影响。
+    const objectKey = encodeURI(`emoji/${wantsStaticFrame ? "thumbs/" : ""}${fileName}`);
+    const object = await context.env.UPLOADS.get(objectKey);
+    if (!object) {
+      throw new WorkerHttpError(404, "EMOJI_NOT_FOUND", "表情不存在或没有图片资源");
+    }
+    return new Response(object.body, {
+      headers: {
+        "content-type": mimeType,
+        "content-length": String(object.size),
+        "cache-control": "public, max-age=31536000, immutable",
+        "content-disposition": `inline; filename="${encodeURIComponent(fileName)}"`,
+      },
+    });
   });
 
   app.get("/api/assets/:assetId", async (context) => {
@@ -301,15 +337,17 @@ export function createWorkerApp(): Hono<AppBindings> {
         updated_at: string;
         can_edit: number;
       }>();
-    return context.json(response("listDocuments", 200, {
-      items: rows.results.map((row) => ({
-        id: row.id,
-        title: row.title,
-        revision: row.current_revision,
-        savedAt: row.updated_at,
-        canEdit: row.can_edit === 1,
-      })),
-    }));
+    return context.json(
+      response("listDocuments", 200, {
+        items: rows.results.map((row) => ({
+          id: row.id,
+          title: row.title,
+          revision: row.current_revision,
+          savedAt: row.updated_at,
+          canEdit: row.can_edit === 1,
+        })),
+      }),
+    );
   });
 
   app.get("/api/documents/:documentId", async (context) => {
@@ -367,11 +405,7 @@ export function createWorkerApp(): Hono<AppBindings> {
       await body("updateDocumentChapter", context),
     );
     const repository = new D1ChapterRepository(context.env.DB);
-    const result = await repository.updateHidden(
-      input.documentId,
-      input.chapterId,
-      request.hidden,
-    );
+    const result = await repository.updateHidden(input.documentId, input.chapterId, request.hidden);
     return context.json(response("updateDocumentChapter", 200, result));
   });
 
@@ -403,9 +437,7 @@ export function createWorkerApp(): Hono<AppBindings> {
   app.post("/api/documents/:documentId/rollback", async (context) => {
     const input = params("rollbackDocument", context.req.param()) as { documentId: string };
     const principal = await requireDocumentEditor(context, input.documentId);
-    const request = RollbackDocumentRequestSchema.parse(
-      await body("rollbackDocument", context),
-    );
+    const request = RollbackDocumentRequestSchema.parse(await body("rollbackDocument", context));
     const repository = new D1WriteRepository(context.env.DB);
     const result = await repository.rollback(input.documentId, request, principal.id);
     const status = result.created ? 201 : 200;
@@ -445,9 +477,7 @@ export function createWorkerApp(): Hono<AppBindings> {
   app.post("/api/forum/novels/:novelId/chapters/sync", async (context) => {
     const input = params("syncNovelChapters", context.req.param()) as { novelId: string };
     await requireDocumentEditor(context, input.novelId);
-    const request = SyncNovelChaptersRequestSchema.parse(
-      await body("syncNovelChapters", context),
-    );
+    const request = SyncNovelChaptersRequestSchema.parse(await body("syncNovelChapters", context));
     const repository = new D1ChapterRepository(context.env.DB);
     const result = await repository.syncHashes(input.novelId, request.chapters);
     return context.json(response("syncNovelChapters", 200, result));
@@ -461,10 +491,7 @@ export function createWorkerApp(): Hono<AppBindings> {
     const principal = await requirePrincipal(context);
     const repository = new D1ChapterRepository(context.env.DB);
     const chapter = await repository.content(input.novelId, input.chapterId);
-    if (
-      chapter.hidden &&
-      !(await canEditDocument(context, chapter.documentId, principal))
-    )
+    if (chapter.hidden && !(await canEditDocument(context, chapter.documentId, principal)))
       throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节正文不存在");
     return context.json(chapter);
   });
@@ -475,9 +502,7 @@ export function createWorkerApp(): Hono<AppBindings> {
       chapterId: string;
     };
     await requireDocumentEditor(context, input.novelId);
-    const request = SaveNovelChapterRequestSchema.parse(
-      await body("saveNovelChapter", context),
-    );
+    const request = SaveNovelChapterRequestSchema.parse(await body("saveNovelChapter", context));
     const repository = new D1ChapterRepository(context.env.DB);
     const result = await repository.save(input.novelId, input.chapterId, request);
     return context.json(response("saveNovelChapter", 201, result), 201);
@@ -495,22 +520,29 @@ export function createWorkerApp(): Hono<AppBindings> {
     );
     const repository = new D1ChapterRepository(context.env.DB);
     const result = await repository.saveBatch(input.novelId, request.chapters);
-    return context.json(
-      response("saveNovelChaptersBatch", 200, { chapters: result }),
-    );
+    return context.json(response("saveNovelChaptersBatch", 200, { chapters: result }));
   });
 
   app.post("/api/forum/novels/:novelId/chapter-uploads", async (context) => {
     const input = params("createChapterUpload", context.req.param()) as { novelId: string };
     await requireDocumentEditor(context, input.novelId);
-    const request = CreateChapterUploadRequestSchema.parse(await body("createChapterUpload", context));
+    const request = CreateChapterUploadRequestSchema.parse(
+      await body("createChapterUpload", context),
+    );
     const repository = new D1ChapterRepository(context.env.DB);
-    const result = await repository.createUpload(input.novelId, request.manifestHash, request.totalChapters);
+    const result = await repository.createUpload(
+      input.novelId,
+      request.manifestHash,
+      request.totalChapters,
+    );
     return context.json(response("createChapterUpload", 200, result));
   });
 
   app.put("/api/forum/novels/:novelId/chapter-uploads/:uploadId/batch", async (context) => {
-    const input = params("stageChapterUploadBatch", context.req.param()) as { novelId: string; uploadId: string };
+    const input = params("stageChapterUploadBatch", context.req.param()) as {
+      novelId: string;
+      uploadId: string;
+    };
     await requireDocumentEditor(context, input.novelId);
     const request = await limitedBatchBody<SaveNovelChaptersBatchRequest>(
       "stageChapterUploadBatch",
@@ -530,32 +562,30 @@ export function createWorkerApp(): Hono<AppBindings> {
   });
 
   app.post("/api/forum/novels/:novelId/chapter-uploads/:uploadId/complete", async (context) => {
-    const input = params("completeChapterUpload", context.req.param()) as { novelId: string; uploadId: string };
+    const input = params("completeChapterUpload", context.req.param()) as {
+      novelId: string;
+      uploadId: string;
+    };
     await requireDocumentEditor(context, input.novelId);
     const repository = new D1ChapterRepository(context.env.DB);
     const result = await repository.completeUpload(input.novelId, input.uploadId);
     return context.json(response("completeChapterUpload", 200, result));
   });
 
-  app.post(
-    "/api/forum/novels/:novelId/chapters/reorder-stage",
-    async (context) => {
-      const input = params("stageNovelChapterReorder", context.req.param()) as {
-        novelId: string;
-      };
-      await requireDocumentEditor(context, input.novelId);
-      const request = await limitedBatchBody<StageNovelChapterReorderRequest>(
-        "stageNovelChapterReorder",
-        context,
-        StageNovelChapterReorderRequestSchema,
-      );
-      const repository = new D1ChapterRepository(context.env.DB);
-      const result = await repository.stageReorder(input.novelId, request.chapters);
-      return context.json(
-        response("stageNovelChapterReorder", 200, { chapters: result }),
-      );
-    },
-  );
+  app.post("/api/forum/novels/:novelId/chapters/reorder-stage", async (context) => {
+    const input = params("stageNovelChapterReorder", context.req.param()) as {
+      novelId: string;
+    };
+    await requireDocumentEditor(context, input.novelId);
+    const request = await limitedBatchBody<StageNovelChapterReorderRequest>(
+      "stageNovelChapterReorder",
+      context,
+      StageNovelChapterReorderRequestSchema,
+    );
+    const repository = new D1ChapterRepository(context.env.DB);
+    const result = await repository.stageReorder(input.novelId, request.chapters);
+    return context.json(response("stageNovelChapterReorder", 200, { chapters: result }));
+  });
 
   app.get("/api/documents/:documentId/comments/:anchorId", async (context) => {
     const input = params("getCommentThread", context.req.param()) as {
@@ -631,15 +661,9 @@ export function createWorkerApp(): Hono<AppBindings> {
 
   app.post("/api/forum/reply-gates/resolve", async (context) => {
     const principal = await requirePrincipal(context);
-    const request = ResolveReplyGateRequestSchema.parse(
-      await body("resolveReplyGate", context),
-    );
+    const request = ResolveReplyGateRequestSchema.parse(await body("resolveReplyGate", context));
     const repository = new D1ForumRepository(context.env.DB);
-    const result = await repository.resolveReplyGate(
-      request.gateId,
-      request.documentId,
-      principal,
-    );
+    const result = await repository.resolveReplyGate(request.gateId, request.documentId, principal);
     return context.json(response("resolveReplyGate", 200, result));
   });
 
@@ -672,9 +696,7 @@ export function createWorkerApp(): Hono<AppBindings> {
   app.post("/api/forum/polls/:pollId/votes", async (context) => {
     const input = params("submitPollVote", context.req.param()) as { pollId: string };
     const principal = await requirePrincipal(context);
-    const request = SubmitPollVoteRequestSchema.parse(
-      await body("submitPollVote", context),
-    );
+    const request = SubmitPollVoteRequestSchema.parse(await body("submitPollVote", context));
     const repository = new D1PollRepository(context.env.DB);
     const result = await repository.submit(input.pollId, request.optionIds, principal);
     return context.json(response("submitPollVote", 200, result));
@@ -700,9 +722,7 @@ export function createWorkerApp(): Hono<AppBindings> {
   app.post("/api/forum/documents/:documentId/suggestions", async (context) => {
     const input = params("createSuggestion", context.req.param()) as { documentId: string };
     const principal = await requirePrincipal(context);
-    const request = CreateSuggestionRequestSchema.parse(
-      await body("createSuggestion", context),
-    );
+    const request = CreateSuggestionRequestSchema.parse(await body("createSuggestion", context));
     const repository = new D1SuggestionRepository(context.env.DB);
     const result = await repository.createSuggestion(input.documentId, request, principal);
     return context.json(response("createSuggestion", 201, result), 201);
@@ -736,9 +756,7 @@ export function createWorkerApp(): Hono<AppBindings> {
     const repository = new D1SuggestionRepository(context.env.DB);
     const documentId = await repository.suggestionDocument(input.suggestionId);
     const reviewer = await requireDocumentEditor(context, documentId);
-    const request = ReviewSuggestionRequestSchema.parse(
-      await body("reviewSuggestion", context),
-    );
+    const request = ReviewSuggestionRequestSchema.parse(await body("reviewSuggestion", context));
     const result = await repository.reviewSuggestion(
       input.suggestionId,
       request.decision,
