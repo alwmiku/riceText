@@ -3,26 +3,32 @@
  *
  * 背景：历史文档用 `level: 2 + chapterStart: true` 标注章节。层级规则改成
  * 「只有 H1 分章」之后，读取路径（`repairDocumentForRead`）已经会做实时归一化，
- * 所以**目录不会丢**；跑这个脚本只是为了把库里存的内容也改干净，让版式、比对与
- * 编辑器之间不再存在两种写法。
+ * 所以**目录不会丢**；跑这个脚本只是为了把库里存的内容也改干净，让编辑器、版式与
+ * 版本比对之间不再存在两种写法。
  *
- * 变换规则（与 packages/document-core 的 normalizeChapterHeadings 一致）：
- * - 带 `chapterStart` 的标题 → `level: 1`（属性顺序保持 level 在前）；
- * - 其它标题按「相对章节标题的深度」下移一级：H1 书名 → H2、原 H2 → H3，
- *   深于 H4 收敛到 H4，并写入显式 `chapterStart: false`。
+ * 变换由 `normalizeChapterHeadings()`（packages/document-core）完成——**不重写一份
+ * SQL 版本**：章节标记的判定（`chapterStart === true`）与深度映射很容易在 SQL 里
+ * 写成另一套语义（实测就会把章节标题降级、丢掉标记），因此只做「读 → 归一化 → 写」。
  *
- * 只改 `document_revisions.content_json`（修订本该不可变，这里是层级迁移的例外），
- * 不新增修订、不动 `documents.current_revision`。幂等，可重复执行。
+ * 只改 `document_revisions.content_json` 里**当前修订**的那一行（修订本该不可变，
+ * 这里是层级迁移的例外），不新增修订、不动 `documents.current_revision`。幂等。
  *
  * 用法：
- *   pnpm.cmd db:migrate-chapters -- --d1                       # 本地 D1（apps/worker/.wrangler/state）
- *   pnpm.cmd db:migrate-chapters -- --d1 --dry-run             # 只看会改哪些文档
- *   pnpm.cmd db:migrate-chapters -- --sqlite .data/ricetext.sqlite
+ *   pnpm.cmd db:migrate-chapters                      # Node API 库 .data/ricetext.sqlite
+ *   pnpm.cmd db:migrate-chapters -- --sqlite <path>   # 指定 SQLite 库
+ *   pnpm.cmd db:migrate-chapters -- --d1              # 本地 D1（wrangler 模拟）
+ *   pnpm.cmd db:migrate-chapters -- --d1 --remote     # 远端 D1（默认 production）
+ *   pnpm.cmd db:migrate-chapters -- --d1 --remote --env preview
+ *   ……追加 `--dry-run` 只统计会改几行
+ *
+ * 远端需要凭据：`CLOUDFLARE_API_TOKEN`（+ `CLOUDFLARE_ACCOUNT_ID`），或在已登录的
+ * 终端里跑。默认只动本地，必须显式加 `--remote` 才会写远端库。
  */
-import { DatabaseSync } from "node:sqlite";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { normalizeChapterHeadings, type JSONContent } from "../packages/document-core/src/index.js";
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -30,124 +36,144 @@ function argument(name: string): string | undefined {
   return process.argv[index + 1];
 }
 
+interface StoredRevision {
+  documentId: string;
+  revision: number;
+  content: JSONContent;
+}
+
+interface Store {
+  label: string;
+  read(): StoredRevision[];
+  write(row: StoredRevision, next: JSONContent): void;
+}
+
+/**
+ * SQL 字符串字面量。
+ *
+ * 只用于「写回」：写入前的 JSON 已由编辑器/服务端净化过一次（普通 JSON，没有
+ * NUL 或代理对残缺），这里仍然显式处理单引号，避免拼接出无效语句。
+ */
+function sqlLiteral(value: string): string {
+  return "'" + value.replace(/'/gu, "''") + "'";
+}
+
 const root = resolve(import.meta.dirname, "..");
-const dryRun = process.argv.includes("--dry-run");
-const sqlitePath = argument("--sqlite");
 
-/** 与 normalizeChapterHeadings 一致的层级映射，用 SQL 的 json_* 函数表达。 */
-const NORMALIZE_SQL = `(
-  WITH heading_positions AS (
-    SELECT key AS position, value AS node FROM json_each(content_json, '$.content')
-  ),
-  chapter_level AS (
-    SELECT COALESCE(MIN(json_extract(node, '$.attrs.level')), 1) AS level
-    FROM heading_positions
-    WHERE json_extract(node, '$.type') = 'heading'
-      AND json_extract(node, '$.attrs.chapterStart') = 1
-  ),
-  rewritten AS (
-    SELECT
-      position,
-      CASE
-        WHEN json_extract(node, '$.type') <> 'heading' THEN node
-        WHEN json_extract(node, '$.attrs.chapterStart') = 1 THEN
-          json_set(node, '$.attrs', json_object(
-            'level', 1,
-            'chapterStart', json('true'),
-            'textAlign', json_extract(node, '$.attrs.textAlign'),
-            'firstLineIndent', json_extract(node, '$.attrs.firstLineIndent'),
-            'leftIndent', json_extract(node, '$.attrs.leftIndent')
-          ))
-        ELSE
-          json_set(node, '$.attrs', json_object(
-            'level', MIN(2 + MAX(0, json_extract(node, '$.attrs.level') - (SELECT level FROM chapter_level)), 4),
-            'chapterStart', json('false'),
-            'textAlign', json_extract(node, '$.attrs.textAlign'),
-            'firstLineIndent', json_extract(node, '$.attrs.firstLineIndent'),
-            'leftIndent', json_extract(node, '$.attrs.leftIndent')
-          ))
-      END AS node
-    FROM heading_positions
-  )
-  SELECT json_set(
-    content_json,
-    '$.content',
-    json_group_array(json(node) ORDER BY position)
-  )
-  FROM rewritten
-)`;
-
-function migrateSqlite(path: string): void {
+/** Node API 的 SQLite 库。 */
+function sqliteStore(path: string): Store {
   if (!existsSync(path)) throw new Error("找不到数据库：" + path);
   const db = new DatabaseSync(path);
-  try {
-    const rows = db
-      .prepare(
-        "SELECT r.document_id, r.revision, r.content_json FROM document_revisions r " +
-          "JOIN documents d ON d.id = r.document_id AND d.current_revision = r.revision",
-      )
-      .all() as Array<{ document_id: string; revision: number; content_json: string }>;
-    let changed = 0;
-    for (const row of rows) {
-      const next = db.prepare("SELECT " + NORMALIZE_SQL + " AS content").get() as {
-        content: string;
-      };
-      if (next.content === row.content_json) continue;
-      changed += 1;
-      console.log(
-        (dryRun ? "[dry-run] " : "") +
-          row.document_id +
-          " rev " +
-          row.revision +
-          "：章节标题层级已归一化",
-      );
-      if (!dryRun) {
-        db.prepare(
-          "UPDATE document_revisions SET content_json = ? WHERE document_id = ? AND revision = ?",
-        ).run(next.content, row.document_id, row.revision);
-      }
-    }
-    console.log("SQLite 迁移完成：扫描 " + rows.length + " 个当前修订，改写 " + changed + " 个。");
-  } finally {
-    db.close();
-  }
+  return {
+    label: "SQLite " + path,
+    read() {
+      const rows = db
+        .prepare(
+          "SELECT r.document_id, r.revision, r.content_json FROM document_revisions r " +
+            "JOIN documents d ON d.id = r.document_id AND d.current_revision = r.revision",
+        )
+        .all() as Array<{ document_id: string; revision: number; content_json: string }>;
+      return rows.map((row) => ({
+        documentId: row.document_id,
+        revision: row.revision,
+        content: JSON.parse(row.content_json) as JSONContent,
+      }));
+    },
+    write(row, next) {
+      db.prepare(
+        "UPDATE document_revisions SET content_json = ? WHERE document_id = ? AND revision = ?",
+      ).run(JSON.stringify(next), row.documentId, row.revision);
+    },
+  };
 }
 
-/** 本地 D1 走 wrangler：D1 的 SQLite 文件被 miniflare 持有，不能直接打开。 */
-function migrateD1(): void {
+/** D1：库文件被 miniflare（或远端服务）持有，只能通过 wrangler 读写。 */
+function d1Store(remote: boolean, database: string): Store {
   const wrangler = resolve(root, "apps/worker/node_modules/wrangler/bin/wrangler.js");
   if (!existsSync(wrangler)) throw new Error("找不到 wrangler CLI：" + wrangler);
-  const statement =
-    "UPDATE document_revisions SET content_json = " +
-    NORMALIZE_SQL +
-    " WHERE (document_id, revision) IN " +
-    "(SELECT d.id, d.current_revision FROM documents d) AND content_json <> " +
-    NORMALIZE_SQL +
-    "; SELECT changes() AS changed;";
-  console.log(dryRun ? "[dry-run] 只统计会被改写的行数" : "开始改写本地 D1 的当前修订…");
-  const result = spawnSync(
-    process.execPath,
-    [
-      wrangler,
-      "d1",
-      "execute",
-      "ricetext-development",
-      "--local",
-      "--json",
-      "--command",
-      dryRun
-        ? "SELECT COUNT(*) AS changed FROM document_revisions r JOIN documents d " +
-          "ON d.id = r.document_id AND d.current_revision = r.revision " +
-          "WHERE r.content_json <> " +
-          NORMALIZE_SQL +
-          ";"
-        : statement,
-    ],
-    { cwd: resolve(root, "apps/worker"), encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
-  );
-  if (result.status !== 0) throw new Error("wrangler d1 execute 失败");
-  console.log(result.stdout.trim());
+  const run = (sql: string): string => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        wrangler,
+        "d1",
+        "execute",
+        database,
+        ...(remote ? ["--remote"] : ["--local"]),
+        "--json",
+        "--command",
+        sql,
+      ],
+      { cwd: resolve(root, "apps/worker"), encoding: "utf8" },
+    );
+    if (result.status !== 0) {
+      // 去掉 wrangler 输出里的 ANSI 颜色码，只留可读的错误正文。
+      const plain = String(result.stderr ?? "").replaceAll(String.fromCharCode(27), "");
+      throw new Error("wrangler d1 execute 失败：" + plain.slice(-400));
+    }
+    return result.stdout;
+  };
+  return {
+    label: (remote ? "远端 D1 " : "本地 D1 ") + database,
+    read() {
+      const parsed = JSON.parse(
+        run(
+          "SELECT r.document_id, r.revision, r.content_json FROM document_revisions r " +
+            "JOIN documents d ON d.id = r.document_id AND d.current_revision = r.revision;",
+        ),
+      ) as Array<{
+        results: Array<{ document_id: string; revision: number; content_json: string }>;
+      }>;
+      return (parsed[0]?.results ?? []).map((row) => ({
+        documentId: row.document_id,
+        revision: row.revision,
+        content: JSON.parse(row.content_json) as JSONContent,
+      }));
+    },
+    write(row, next) {
+      // 带上原内容做条件：并发写入后不会用旧快照覆盖新修订。
+      run(
+        "UPDATE document_revisions SET content_json = " +
+          sqlLiteral(JSON.stringify(next)) +
+          " WHERE document_id = " +
+          sqlLiteral(row.documentId) +
+          " AND revision = " +
+          String(row.revision) +
+          " AND content_json = " +
+          sqlLiteral(JSON.stringify(row.content)) +
+          ";",
+      );
+    },
+  };
 }
 
-if (process.argv.includes("--d1")) migrateD1();
-else migrateSqlite(sqlitePath ?? resolve(root, ".data/ricetext.sqlite"));
+const dryRun = process.argv.includes("--dry-run");
+const useD1 = process.argv.includes("--d1");
+const remote = process.argv.includes("--remote");
+const environment = argument("--env") ?? "production";
+const store = useD1
+  ? d1Store(remote, remote ? "ricetext-" + environment : "ricetext-development")
+  : sqliteStore(argument("--sqlite") ?? resolve(root, ".data/ricetext.sqlite"));
+
+console.log((dryRun ? "[dry-run] 只统计会被改写的文档：" : "开始改写当前修订：") + store.label);
+const rows = store.read();
+let changed = 0;
+for (const row of rows) {
+  const next = normalizeChapterHeadings(row.content);
+  if (JSON.stringify(next) === JSON.stringify(row.content)) continue;
+  changed += 1;
+  const chapters = (next.content ?? []).filter(
+    (node) => node.type === "heading" && node.attrs?.chapterStart === true,
+  ).length;
+  console.log(
+    (dryRun ? "[dry-run] " : "") +
+      row.documentId +
+      " rev " +
+      row.revision +
+      "：章节标题 " +
+      chapters +
+      " 个，层级已归一化",
+  );
+  if (!dryRun) store.write(row, next);
+}
+console.log("迁移完成：扫描 " + rows.length + " 个当前修订，改写 " + changed + " 个。");
