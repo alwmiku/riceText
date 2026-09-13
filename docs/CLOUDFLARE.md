@@ -30,6 +30,26 @@ pnpm --filter @ricetext/web dev:session
 
 本地请求通过 Vite 的同源 `/api` 代理访问 Worker，不需要设置 `VITE_API_ROOT`.
 
+`pnpm test:e2e:cloudflare` 用的是**独立的模拟状态目录** `.data/cloudflare-e2e-state`
+（见 `playwright.cloudflare.config.ts`）：测试准备每次都要重建 D1，所以它不会碰
+`apps/worker/.wrangler/state`——既不会把上面这个 dev 服务的本地库清掉，也不会因为
+文件被占用报 `EBUSY`。代价是跑 e2e 时 8787/5173 仍要空着（playwright 会明确提示端口被占用），
+dev 服务先停一下就好。
+
+本地模拟 R2 桶里的站点表情是**一次性种子**：`pnpm cf:e2e:prepare` 只重建 D1、不碰 R2，
+上传一次就一直在，不会每次测试重传：
+
+```bash
+# dev 服务（默认状态目录 apps/worker/.wrangler/state）
+pnpm emoji:r2 -- --bucket ricetext-development-uploads --local
+
+# 想让 e2e 的图片字节断言真跑，再给 e2e 的独立目录种一份
+pnpm emoji:r2 -- --bucket ricetext-development-uploads --local --persist-to .data/cloudflare-e2e-state
+```
+
+没做 e2e 那份时，`pnpm test:e2e:cloudflare` 的表情用例只断言图片地址、跳过字节断言；
+「对象键写错导致线上 404」的回归由 `apps/worker/test/app.test.ts` 覆盖。
+
 ## Cloudflare 资源
 
 `apps/worker/wrangler.jsonc` 中使用：
@@ -38,6 +58,20 @@ pnpm --filter @ricetext/web dev:session
 - R2：`ricetext-production-uploads`
 - API 路由：`editor.bianbai.org/api/*`
 
+## 站点表情同步（一次性）
+
+站点表情是仓库里的静态资源（`apps/api/src/assets/emoji`），部署后由 Worker 从 R2 提供
+`GET /api/emoji/:emojiId/image`。上传只在**新增或替换表情之后**手动做一次，部署工作流里不再跑
+（32 个对象、约 26MB，逐个走 Cloudflare API，失败一次整个部署就挂了）：
+
+```bash
+# 生产 / 预览各一次，密钥用部署时那套 CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN
+node scripts/upload-emoji-assets.ts --bucket ricetext-production-uploads
+node scripts/upload-emoji-assets.ts --bucket ricetext-preview-uploads
+```
+
+传了一半断网就加 `--resume` 重跑，只会补缺失/过期的对象。没传过的桶先建：
+`pnpm --filter @ricetext/worker exec wrangler r2 bucket create <bucket>`。
 
 ## 部署 Worker
 

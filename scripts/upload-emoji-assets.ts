@@ -7,10 +7,12 @@
  * packages/cloudflare-migration 里的同一份实现，Cloudflare E2E 的种子也走它。
  *
  * 用法：
- *   pnpm.cmd emoji:r2 -- --bucket ricetext-development-uploads --local      # 本地模拟桶
+ *   pnpm.cmd emoji:r2 -- --bucket ricetext-development-uploads --local      # 本地模拟桶（dev 服务用）
  *   pnpm.cmd emoji:r2 -- --bucket ricetext-production-uploads               # 远端真实桶
  *   pnpm.cmd emoji:r2 -- --bucket <bucket> --dry-run                        # 只预演对象键
  *   pnpm.cmd emoji:r2 -- --bucket <bucket> --resume                         # 只补缺失/过期的对象
+ *   pnpm.cmd emoji:r2 -- --bucket <bucket> --local --persist-to .data/cloudflare-e2e-state
+ *                                                                          # 指定 miniflare 持久化目录（E2E 用独立目录）
  *
  * 远端上传中途断网时用 `--resume` 重跑：逐个探测桶里已有的对象，只补真正缺的那些。
  */
@@ -22,7 +24,10 @@ import {
   uploadR2Manifest,
   type R2ManifestItem,
 } from "../packages/cloudflare-migration/src/r2-assets.js";
-import { createWranglerRunner } from "../packages/cloudflare-migration/src/cli.js";
+import {
+  createWranglerRunner,
+  type WranglerRunner,
+} from "../packages/cloudflare-migration/src/cli.js";
 
 /**
  * 远端上传失败时按 wrangler 的实际输出给出排查方向。
@@ -105,6 +110,8 @@ const dryRun = process.argv.includes("--dry-run");
 const local = process.argv.includes("--local");
 // 断网重跑时只补缺失/过期的对象，不把已经传成功的动图再传一遍。
 const resume = process.argv.includes("--resume");
+// 本地模拟桶可以指定持久化目录：Cloudflare E2E 用的是独立目录，不是 dev 服务那份。
+const persistTo = process.argv.includes("--persist-to") ? argument("--persist-to") : null;
 const root = resolve(import.meta.dirname, "..");
 const manifest = collectEmojiAssets(
   join(root, "apps", "api", "src", "assets", "emoji"),
@@ -118,7 +125,11 @@ if (dryRun) {
   console.log(`已完成预演（${manifest.items.length} 个对象，未上传）。`);
 } else {
   console.log(`准备上传 ${manifest.items.length} 个表情资源到 ${bucket}：`);
-  const runner = createWranglerRunner(root);
+  const baseRunner = createWranglerRunner(root);
+  // wrangler 的 --persist-to 相对 apps/worker 解析，命令行里写仓库相对路径更顺手。
+  const runner: WranglerRunner = persistTo
+    ? (args) => baseRunner([...args, "--persist-to", resolve(root, persistTo)])
+    : baseRunner;
   const report = uploadR2Manifest({
     manifest,
     bucket,
