@@ -29,8 +29,10 @@ function richDocument(marker: string): JSONContent {
     content: [
       {
         type: "heading",
+        // 章节标题必须是 H1（H2/H3/H4 是章内小标题）：宿主的章节合并会按章节规则
+        // 归一化层级，fixture 写成 H2 会在编辑器里立刻变成 H1，往返 JSON 就对不上了。
         attrs: {
-          level: 2,
+          level: 1,
           chapterStart: true,
           textAlign: "center",
           firstLineIndent: 2,

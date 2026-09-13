@@ -50,7 +50,21 @@ test("桌面：文本选区跨过表情时表情也显示选中背景", async ({
   await page.getByRole("button", { name: /完整/ }).click();
   const editor = page.locator(".ProseMirror");
   await expect(editor).toBeVisible();
-  const emoji = editor.locator('[data-node-type="emoji"]').first();
+
+  // 正文里有没有表情取决于数据库内容：CI 的全新数据库里演示正文没有任何表情，
+  // 直接断言「已有的表情」会让这条用例在 CI 必失败。这里自己插入表情，并在同一个
+  // 块里补一段唯一文字，保证下面选中的是「文字 + 表情」而不是整块选中。
+  await page.getByRole("button", { name: "表情", exact: true }).click();
+  await expect(page.getByRole("group", { name: "表情选择器" })).toBeVisible();
+  await page.getByLabel("搜索表情").fill("hh");
+  const picker = page.getByRole("listbox", { name: "表情列表" });
+  await expect(picker.getByRole("option").first()).toHaveAttribute("aria-label", "害羞");
+  await picker.getByRole("option").first().click();
+  const marker = "选区标记";
+  await page.keyboard.type(marker);
+
+  const block = editor.locator("p, h1, h2, h3, li").filter({ hasText: marker }).first();
+  const emoji = block.locator('[data-node-type="emoji"]').first();
   await expect(emoji).toBeVisible();
 
   // 选中包含该表情的整段，让 ProseMirror 走文本选区（而不是整块选中）。
