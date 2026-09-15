@@ -30,8 +30,8 @@ pnpm --filter @ricetext/web dev:session
 
 本地请求通过 Vite 的同源 `/api` 代理访问 Worker，不需要设置 `VITE_API_ROOT`.
 
-`pnpm test:e2e:cloudflare` 用的是**独立的模拟状态目录** `.data/cloudflare-e2e-state`
-（见 `playwright.cloudflare.config.ts`）：测试准备每次都要重建 D1，所以它不会碰
+`pnpm test:e2e` 用的是**独立的模拟状态目录** `.data/cloudflare-e2e-state`
+（见 `playwright.config.ts`）：测试准备每次都要重建 D1，所以它不会碰
 `apps/worker/.wrangler/state`——既不会把上面这个 dev 服务的本地库清掉，也不会因为
 文件被占用报 `EBUSY`。代价是跑 e2e 时 8787/5173 仍要空着（playwright 会明确提示端口被占用），
 dev 服务先停一下就好。
@@ -47,7 +47,7 @@ pnpm emoji:r2 -- --bucket ricetext-development-uploads --local
 pnpm emoji:r2 -- --bucket ricetext-development-uploads --local --persist-to .data/cloudflare-e2e-state
 ```
 
-没做 e2e 那份时，`pnpm test:e2e:cloudflare` 的表情用例只断言图片地址、跳过字节断言；
+没做 e2e 那份时，`pnpm test:e2e` 的表情用例只断言图片地址、跳过字节断言；
 「对象键写错导致线上 404」的回归由 `apps/worker/test/app.test.ts` 覆盖。
 
 ## Cloudflare 资源
@@ -60,7 +60,7 @@ pnpm emoji:r2 -- --bucket ricetext-development-uploads --local --persist-to .dat
 
 ## 站点表情同步（一次性）
 
-站点表情是仓库里的静态资源（`apps/api/src/assets/emoji`），部署后由 Worker 从 R2 提供
+站点表情是仓库里的静态资源（`assets/emoji`），部署后由 Worker 从 R2 提供
 `GET /api/emoji/:emojiId/image`。上传只在**新增或替换表情之后**手动做一次，部署工作流里不再跑
 （32 个对象、约 26MB，逐个走 Cloudflare API，失败一次整个部署就挂了）：
 
@@ -109,22 +109,17 @@ OIDC 是可选功能，不使用时无需配置 `OIDC_ISSUER`、`OIDC_CLIENT_ID`
 pnpm db:reset-articles -- --env production --confirm ricetext-production
 ```
 
-本地 Node API 使用 `--sqlite .data/ricetext.sqlite --confirm ricetext-development`；本地 D1 使用 `--local --confirm ricetext-development`。命令会删除文章、章节、修订、校订和评论，并在结束后检查文章计数与数据库外键；不会删除用户、登录凭据、身份映射、钱包、附件或投票资源。
+本地 D1 使用 `--local --confirm ricetext-development`。命令会删除文章、章节、修订、校订和评论，并在结束后检查文章计数与数据库外键；不会删除用户、登录凭据、身份映射、钱包、附件或投票资源。
 
-检查本地 Node API 的章节主键、数量和顺序连续性：
+## 本地演示数据
 
-```bash
-pnpm db:inspect-chapters
-pnpm db:inspect-chapters -- --document <文章ID> --from 50 --limit 30
-```
-
-## 可选数据导入
-
-需要把旧 SQLite 数据导入 D1 时：
+E2E 与本地联调用的演示数据（文章、五章目录、间贴、校订建议、投票、附件与钱包）
+由 `tools/cloudflare/d1-seed.ts` 生成，写入方式是先应用 D1 migrations 再执行种子 SQL：
 
 ```bash
-pnpm cf:export -- --db .data/ricetext.sqlite --uploads .data/uploads --out .data/cloudflare-export
-pnpm --filter @ricetext/worker exec wrangler d1 execute DB --remote --env production --file ../../.data/cloudflare-export/d1-import.sql
+pnpm cf:e2e:prepare                                   # 重建 .data/cloudflare-e2e-state 并播种
+pnpm --filter @ricetext/worker exec wrangler d1 execute DB --local --file <种子 SQL>
 ```
 
-测试项目没有旧数据时可跳过这一节。
+schema 只有 `apps/worker/migrations` 一份来源：种子只写数据、不建表，因此不会出现两套
+schema 各自漂移。

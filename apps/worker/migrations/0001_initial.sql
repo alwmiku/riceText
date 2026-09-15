@@ -1,4 +1,4 @@
--- D1 基线：一次建立与 Node SQLite 对齐的业务表，并补齐生产认证和 R2 元数据。
+-- D1 基线：一次建立全部业务表，并包含生产认证与 R2 对象元数据。
 CREATE TABLE users (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,

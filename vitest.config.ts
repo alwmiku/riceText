@@ -1,3 +1,5 @@
+// 根配置只服务 @ricetext/web 的 jsdom 测试；Worker 测试跑在 workerd 里，
+// 由 apps/worker/vitest.config.ts 自己配置（`pnpm test` 先跑 web，再跑 worker）。
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vitest/config";
 
@@ -21,10 +23,9 @@ export default defineConfig({
       exclude: [
         "apps/worker/**",
         // 远端 Wrangler/R2 副作用 CLI 由 preview 部署与 checksum smoke 覆盖。
-        "packages/cloudflare-migration/src/upload-r2.ts",
+        "scripts/**",
         "**/*.d.ts",
         "**/main.tsx",
-        "**/server.ts",
         // shadcn 以源码形式 vendored 的基础 UI 组件：仅用于定制样式，不写测试、不计入覆盖率。
         // 注意 color-picker.tsx 是项目自研组件且有配套测试，保留在覆盖率内。
         "**/components/ui/{alert-dialog,button,context-menu,input,popover,scroll-area,separator,sheet,sidebar,skeleton,slider,tooltip}.tsx",

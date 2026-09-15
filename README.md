@@ -1,17 +1,19 @@
 # RiceText
 
-RiceText 是面向论坛帖子与小说章节的富文本编辑器/显示器。前端使用 Vite、React、Tiptap 与 shadcn/ui 风格组件，服务端使用 Fastify 与 Node 24 原生 SQLite；项目不依赖 Next.js，以 pnpm monorepo 组织。
+RiceText 是面向论坛帖子与小说章节的富文本编辑器/显示器。前端使用 Vite、React、Tiptap 与 shadcn/ui 风格组件，服务端是 Cloudflare Worker + D1 + R2；项目不依赖 Next.js，以 pnpm monorepo 组织。
+
+生产与本地只有**一套后端**：本地开发同样跑 Wrangler 的 Worker 与本地 D1/R2，不再维护第二套 Node API 实现。
 
 ## 项目结构
 
 - `apps/web` — Vite + React 编辑器与阅读器，部署到 Cloudflare Pages
-- `apps/api` — Fastify + Node 24 原生 SQLite，本地开发与切流前回滚基线
-- `apps/worker` — Hono Cloudflare Worker，使用 D1、R2、OIDC 与 Cron
+- `apps/worker` — Hono Cloudflare Worker，使用 D1、R2、OIDC 与 Cron；`migrations/` 是数据库 schema 的唯一来源
 - `packages/contracts` — 接口与类型的单一来源：Zod 契约、OpenAPI 生成、类型化客户端
 - `packages/document-core` — 无 React 依赖的 Tiptap schema、文档净化、diff 与 steps 应用
 - `packages/editor-core` — 带 React NodeView 的 Tiptap 扩展与只读 Viewer
-- `packages/server-core` — Node/Worker 共用的服务端文档、建议与资产规则
-- `packages/cloudflare-migration` — SQLite 到 D1/R2 的导出、身份映射与校验工具
+- `packages/server-core` — 与后端实现无关的服务端文档、建议与资产规则
+- `packages/r2-assets` — 站点表情到 R2 的资源清单、校验和上传工具
+- `assets/emoji` — 随仓库提交的站点表情原图与构建期缩略图
 
 工作区包通过 `exports` 直接导出源码，由 TSX、Vite 和 Wrangler 消费。`pnpm build` 同时构建 Pages 前端和执行 Worker 部署 dry-run。
 
@@ -28,7 +30,15 @@ pnpm.cmd dev
 - API：`http://127.0.0.1:8787/api`
 - OpenAPI：`docs/openapi.yaml`
 
-首次启动会在 `.data/` 创建 SQLite 数据库和上传目录，并写入演示文档、间贴与作者/读者/版主身份。该目录不会提交到 Git。
+前端通过 Vite 的同源 `/api` 代理访问 Worker，浏览器侧不需要配置 API 地址。
+首次运行先给本地 D1 应用 migrations 并写入演示数据（命令幂等，可反复执行）：
+
+```powershell
+pnpm.cmd cf:seed:local
+```
+
+本地模拟状态位于 `apps/worker/.wrangler/state`（或 `--persist-to` 指定的目录），
+不会提交到 Git。演示数据由 `tools/cloudflare/d1-seed.ts` 生成，只写数据、不建表。
 
 ## 项目文字规范
 
@@ -62,7 +72,7 @@ pnpm.cmd test:e2e
 
 ## 功能状态
 
-以下能力全部由真实 API 与 SQLite 驱动：文档与不可变版本、图片上传、稳定骰子、间贴回复树与赞踩、章节目录与差异同步、纠错建议、@ 解析、回复可见、附件金币购买与投票。
+以下能力全部由真实 Worker API 与本地 D1 驱动：文档与不可变版本、图片上传、稳定骰子、间贴回复树与赞踩、章节目录与差异同步、纠错建议、@ 解析、回复可见、附件金币购买与投票。
 
 表情：工具栏/折叠菜单/右键菜单/选区浮动栏都可插入，正文中敲 `hh` 或 `:` 会弹出候选浮层。
 Unicode 表情与颜文字存为普通文本；站点自定义表情是行内原子节点 `emoji`，图片由
@@ -74,7 +84,7 @@ Unicode 表情与颜文字存为普通文本；站点自定义表情是行内原
 
 新增一个站点表情：
 
-1. 把图片放进 `apps/api/src/assets/emoji/`（支持 PNG/GIF，沿用原文件名即可）；
+1. 把图片放进 `assets/emoji/`（支持 PNG/GIF，沿用原文件名即可）；
 2. 在 `packages/contracts/src/emoji-catalog.ts` 的 `CUSTOM_EMOJI_ENTRIES` 里加一条，
    `assetFile` 填文件名，`text` 填图片加载失败时的降级字符；
 3. 若是动图，执行一次 `pnpm.cmd run emoji:thumbs` 生成面板用的首帧缩略图并提交。
@@ -85,7 +95,7 @@ Unicode 表情与颜文字存为普通文本；站点自定义表情是行内原
 `id` 会写进正文与 URL，属于持久化契约：发布后不可改名或复用，下线只会让历史正文降级为
 `text` 里的字符。
 
-身份是开发用适配器：请求头 `x-user-id` 选择种子身份（author / reader / moderator），`AuthProvider` 抽象可在生产环境替换为 JWT/SSO。附件账务与投票为单机演示级实现，生产接入前必须替换鉴权、账务与通知服务。
+身份分两套且互不干扰：生产只信任 `GET /api/auth/login` 的 OIDC 登录或密码登录写下的 HttpOnly session cookie；请求头 `x-user-id` 只在 `ALLOW_DEMO_AUTH=true` 时生效，且部署前的 `pnpm cf:preflight` 会拒绝 preview/production 打开该开关。附件账务与投票为演示级实现，生产接入前必须替换账务与通知服务。
 
 ## 项目内部复制粘贴
 

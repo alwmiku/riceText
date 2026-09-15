@@ -1022,7 +1022,7 @@ export const EXTRA_EMOJI_ENTRIES: readonly EmojiCatalogEntry[] = [
 
 /**
  * 站点自定义表情包：正文里持久化为 `emoji` 原子节点，图片由
- * `GET /api/emoji/:emojiId/image` 从 `apps/api/src/assets/emoji/` 提供。
+ * `GET /api/emoji/:emojiId/image` 由 Worker 从 R2 提供（源文件在 `assets/emoji/`）。
  *
  * `id` 是持久化契约的一部分，发布后不可改名或复用；`assetFile` 指向仓库里
  * 的实际文件（沿用表情包原文件名），`fallback` 是图片加载失败时的降级文本。

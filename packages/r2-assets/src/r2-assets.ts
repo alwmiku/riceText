@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { WranglerRunner } from "./cli.js";
 
-/** R2 迁移 manifest 的一条记录（与 export-sqlite 输出的 r2-manifest.json 同构）。 */
+/** R2 站点资源 manifest 的一条记录。 */
 export interface R2ManifestItem {
   localPath: string;
   objectKey: string;
@@ -25,7 +25,7 @@ export type { WranglerResult, WranglerRunner } from "./cli.js";
  *
  * 键必须与 Worker 的读取路径（apps/worker/src/app.ts 中 `emoji/<文件>` 与
  * `emoji/thumbs/<id>.png`）以及 scripts/upload-emoji-assets.ts 完全一致，
- * 否则部署环境取不到图片（Node API 直接读磁盘，会掩盖这个问题）。
+ * 否则部署环境取不到图片。
  */
 export function collectEmojiAssets(assetsRoot: string, exportedAt: string): R2Manifest {
   const items: R2ManifestItem[] = [];
@@ -50,7 +50,7 @@ export function collectEmojiAssets(assetsRoot: string, exportedAt: string): R2Ma
     }
   };
   walk(assetsRoot, "");
-  if (items.length === 0) throw new Error("表情目录为空，先确认 apps/api/src/assets/emoji 已提交");
+  if (items.length === 0) throw new Error("表情目录为空，先确认 assets/emoji 已提交");
   return { exportedAt, items };
 }
 

@@ -1,42 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { buildOpenApiDocument } from "./openapi.js";
-import {
-  contractRoutes,
-  getContractRoute,
-  getFastifySchema,
-} from "./routes.js";
+import { contractRoutes, getContractRoute } from "./routes.js";
 
 describe("契约路由 helpers", () => {
-  it("返回已知路由及 Fastify JSON Schema", () => {
+  it("按 operationId 返回已知路由契约", () => {
     expect(getContractRoute("getDocument")).toMatchObject({
       method: "GET",
       path: "/api/documents/:documentId",
     });
-
-    const schema = getFastifySchema("submitPollVote") as {
-      operationId: string;
-      body: { type: string; required: string[] };
-      response: Record<string, unknown>;
-      "x-implementation-status": string;
-    };
-    expect(schema.operationId).toBe("submitPollVote");
-    expect(schema.body.type).toBe("object");
-    expect(schema.body.required).toContain("optionIds");
-    expect(schema.response).toHaveProperty("200");
-    expect(schema["x-implementation-status"]).toBe("implemented");
-
-    const querySchema = getFastifySchema("listRevisions") as {
-      querystring: { properties: Record<string, unknown> };
-    };
-    expect(querySchema.querystring.properties).toHaveProperty("cursor");
-    expect(querySchema.querystring.properties).toHaveProperty("limit");
+    expect(getContractRoute("listRevisions").query).toBeDefined();
+    expect(getContractRoute("submitPollVote").body).toBeDefined();
+    expect(getContractRoute("updateDocumentChapter")).toMatchObject({
+      method: "PATCH",
+      implementationStatus: "implemented",
+    });
   });
 
   it("拒绝未知 operationId", () => {
     expect(() => getContractRoute("missing-operation")).toThrow(
-      "未知契约 operationId: missing-operation",
-    );
-    expect(() => getFastifySchema("missing-operation")).toThrow(
       "未知契约 operationId: missing-operation",
     );
   });
@@ -55,7 +36,7 @@ describe("buildOpenApiDocument", () => {
 
     expect(document.openapi).toBe("3.1.0");
     expect(document.info.title).toContain("RiceText");
-    expect(document.info.description).toContain("由 SQLite 服务持久化实现");
+    expect(document.info.description).toContain("由 Cloudflare Worker 与 D1 持久化实现");
     expect(document.servers).toEqual([
       { url: "http://localhost:8787", description: "本地开发 API" },
     ]);

@@ -10,7 +10,7 @@
 
 表情分两类，共用同一份目录（`packages/contracts/src/emoji-catalog.ts`，schema 与渲染共享的常量）：纯文本表情（Unicode 字符、颜文字）直接写成普通 `text` 节点，不占用新 schema；站点自定义表情写成行内原子节点 `emoji`（`emojiId` + `name` + 相对 `src` + `fallback`），图片由 `GET /api/emoji/:emojiId/image` 提供，正文不携带二进制。
 
-`src` 是渲染缓存：净化器命中目录时一律用目录派生的 `/api/emoji/<id>/image` 覆盖正文里的值，目录里查不到的 `emojiId` 则保留原值且不报错——表情包条目下线后，历史正文仍能保存与降级渲染。图片是随仓库提交的静态资源（`apps/api/src/assets/emoji/`，沿用表情包原文件名，可含动图），由目录条目的 `assetFile` 显式指向而不是从 `id` 推导：站点表情包用中文文件名，而 `id` 要留给 URL 与持久化契约。
+`src` 是渲染缓存：净化器命中目录时一律用目录派生的 `/api/emoji/<id>/image` 覆盖正文里的值，目录里查不到的 `emojiId` 则保留原值且不报错——表情包条目下线后，历史正文仍能保存与降级渲染。图片是随仓库提交的静态资源（`assets/emoji/`，沿用表情包原文件名，可含动图），由目录条目的 `assetFile` 显式指向而不是从 `id` 推导：站点表情包用中文文件名，而 `id` 要留给 URL 与持久化契约。
 
 表情包是**站点内置的只读资源**：没有用户上传、后台管理与自定义分组，新增表情需要同时提交图片资源与目录条目。`emojiId` 属于持久化契约，发布后不可改名或复用；动图只在正文里播放，面板与候选浮层用构建期生成的首帧缩略图，避免一次解码十几张 500×500 动图。
 
@@ -30,15 +30,28 @@
 
 编辑页优先自身尚未保存的文档正文，阅读页优先已确认的独立正文；权限和可编辑性仍由页面处理。独立正文请求失败不能退回同位置的其他章节。目录与正文查询统一使用 `chapter-query-keys.ts`；选中章节按实体保持，旧数字位置存储保留兼容。
 
-## 双后端与提交边界
+## 后端与提交边界
 
-Node 使用 SQLite（WAL、外键），Worker 使用 D1 batch；身份和资源访问以及数据库事务由各自适配器负责。`server-core` 共享纯规则：章节上传清单的规范化与稳定序列化、暂存版本决策、建议定位与净化。它不提供通用 Repository。
+生产与本地都只有 Cloudflare Worker + D1 一套后端：路由在 `apps/worker/src/app.ts`，
+业务规则下沉到 `src/repositories` 与共享的 `server-core`，身份和资源访问由各自适配器负责。
+`server-core` 共享纯规则：章节上传清单的规范化与稳定序列化、暂存版本决策、建议定位与净化，
+它不提供通用 Repository，也不依赖具体数据库。
 
-steps 保存顺序为鉴权和请求结构校验、幂等结果查询、基线校验、应用 steps、原子提交。Node 将正文计算延迟到 `BEGIN IMMEDIATE` 事务内；Worker 在应用前查询幂等结果并验证读取的基线，提交层仍保留冲突与重复请求保护。成功请求重试返回原 revision，回滚复制历史正文并创建新 revision，历史记录只增不减。
+steps 保存顺序为鉴权和请求结构校验、幂等结果查询、基线校验、应用 steps、原子提交。
+Worker 在应用前查询幂等结果并验证读取的基线，提交层仍保留冲突与重复请求保护。
+成功请求重试返回原 revision，回滚复制历史正文并创建新 revision，历史记录只增不减。
 
-章节整套发布在 Node 写事务内读取并校验会话和版本；D1 最终同一批次先执行数据库 guard，再替换章节并写入发布回执。整套章节 generation 保护更新、新增和清单遗漏而将被删除的章节；逐章 revision 继续校验。发布占用为 uploading 会话上的 60 秒令牌，aborted 仅表示暂停；过期占用可恢复，旧请求只能释放自己的令牌。暂存触发器禁止占用期间改变清单。
+章节整套发布在 D1 同一批次内先执行数据库 guard，再替换章节并写入发布回执。整套章节
+generation 保护更新、新增和清单遗漏而将被删除的章节；逐章 revision 继续校验。发布占用为
+uploading 会话上的 60 秒令牌，aborted 仅表示暂停；过期占用可恢复，旧请求只能释放自己的令牌。
+暂存触发器禁止占用期间改变清单。
 
-数据库变更只追加 Node V15 与 Worker `0011_chapter_publish_guards.sql`。旧已发布回执保持可重放；旧未完成会话因没有整套 generation 基线，保留暂存数据但必须新建会话重新暂存，不能直接发布。HTTP 路由、既有章节 ID、历史 revision 及清单哈希序列化顺序保持兼容。
+数据库变更只追加 `apps/worker/migrations`（当前到 `0011_chapter_publish_guards.sql`）。
+旧已发布回执保持可重放；旧未完成会话因没有整套 generation 基线，保留暂存数据但必须新建会话
+重新暂存，不能直接发布。HTTP 路由、既有章节 ID、历史 revision 及清单哈希序列化顺序保持兼容。
+
+本地演示数据由 `tools/cloudflare/d1-seed.ts` 生成 SQL 后写入 D1，它只写数据不建表，
+schema 的唯一来源仍是 migrations。
 
 单条建议由后端使用建议所属 documentId 和 chapterId 查询真实章节范围，结合行号及完整行上下文唯一定位。旧建议缺定位时仅接受全文唯一匹配。找不到或歧义分别返回 409 `SUGGESTION_SOURCE_NOT_FOUND` / `SUGGESTION_SOURCE_AMBIGUOUS`，失败不写正文或审批状态。当前单条审批仍通过文档 revision 写入；独立章节快照与文档范围不一致（包括空壳文档）时明确拒绝，避免写错正文。独立正文的完整批次校订工作流需要单独演进。
 
@@ -58,4 +71,4 @@ steps 保存顺序为鉴权和请求结构校验、幂等结果查询、基线�
 
 `eslint.config.js` 接入定向依赖规则：纯领域模块不能直接依赖 UI；document-core/server-core 不能依赖 Web、React 或具体后端；页面外跨 feature 内部依赖仅保留精确文件对基线。规则随现有 lint 在 CI 执行，维护方式和直接依赖检查的边界见 `test/architecture/README.md`。禁止为新增越界依赖扩大目录级豁免。
 
-回归按行为覆盖 Node 与 D1，schema 往返、普通与长文真实 Hook 协作、检查点迁移、暂停恢复、413 拆批、迟到响应、v0/占位/隐藏章节和重复文字定位。架构规则另有 Node 内建测试。各批通过相关回归后执行 `pnpm check` 与受影响 Playwright；源码检查通过不能代替运行时与真实 D1 验证。
+回归按行为覆盖 Web 与 D1：schema 往返、普通与长文真实 Hook 协作、检查点迁移、暂停恢复、413 拆批、迟到响应、v0/占位/隐藏章节和重复文字定位；Worker 侧跑在 workerd 里，用真实 D1 与 R2 绑定。架构规则另有 Node 内建测试。各批通过相关回归后执行 `pnpm check` 与受影响 Playwright；源码检查通过不能代替运行时与真实 D1 验证。

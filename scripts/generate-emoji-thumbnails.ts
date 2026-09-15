@@ -16,7 +16,7 @@ import { CUSTOM_EMOJI_ENTRIES } from "@ricetext/contracts";
 /** 缩略图边长（像素）。 */
 const THUMBNAIL_SIZE = 48;
 
-const sourceDirectory = join(import.meta.dirname, "..", "apps", "api", "src", "assets", "emoji");
+const sourceDirectory = join(import.meta.dirname, "..", "assets", "emoji");
 const outputDirectory = join(sourceDirectory, "thumbs");
 
 /** 调色板档位：低频颜色会先映射到未使用档位，避免越界。 */

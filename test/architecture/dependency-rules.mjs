@@ -104,7 +104,7 @@ function isBackend(specifier, target) {
     /^(?:fastify|hono|express|wrangler|better-sqlite3|sqlite3|pg|mysql2|drizzle-orm|@prisma\/client|@cloudflare\/[^/]+)(?:\/|$)/.test(
       specifier,
     ) ||
-    /^(?:apps\/(?:api|worker)(?:\/|$)|packages\/cloudflare-migration(?:\/|$))/.test(
+    /^(?:apps\/(?:api|worker)(?:\/|$)|packages\/r2-assets(?:\/|$))/.test(
       target ?? "",
     )
   );

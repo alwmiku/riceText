@@ -1,24 +1,24 @@
 // 每次浏览器测试都重建本地 D1，避免上一次运行产生的 revision 污染结果。
 //
+// 数据来源是「D1 migrations + 演示种子」：schema 只有 apps/worker/migrations 一份，
+// 种子由 tools/cloudflare/d1-seed.ts 生成 SQL 后通过 `d1 execute --file` 写入。
 // 站点表情不在这里准备：把仓库里的图片上传到 R2 是一次性动作
 // （pnpm emoji:r2 -- --bucket <桶> --local），放进测试准备里逐个对象跑 wrangler
 // 既慢又会因为一次失败让整批测试起不来（CI 曾经每跑必崩）。
-// E2E 的持久化目录由 playwright.cloudflare.config.ts 指定（.data/cloudflare-e2e-state），
+// E2E 的持久化目录由 playwright.config.ts 指定（.data/cloudflare-e2e-state），
 // 不再动开发者本地 dev 服务正在用的 apps/worker/.wrangler/state。
 // 这里只清「必须每次重建」的模拟状态，`v3/r2` 原样保留，让一次性种子跨测试复用；
 // e2e/emoji.spec.ts 只在桶里真的有图时才断言图片字节。
 import { webcrypto } from "node:crypto";
-import { appendFile, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { PASSWORD_HASH_ITERATIONS } from "../../packages/contracts/src/schemas.js";
-import { createDatabase } from "../../apps/api/src/db.js";
-import { exportSqliteToCloudflare } from "../../packages/cloudflare-migration/src/export-sqlite.js";
+import { demoSeedStatements, seedSql } from "./d1-seed.js";
 
 const root = resolve(import.meta.dirname, "../..");
 const data = join(root, ".data", "cloudflare-e2e");
-const databasePath = join(data, "source.sqlite");
-const outputDirectory = join(data, "export");
+const seedPath = join(data, "seed.sql");
 const persistTo = process.env.CF_E2E_PERSIST_TO
   ? resolve(root, process.env.CF_E2E_PERSIST_TO)
   : join(root, "apps", "worker", ".wrangler", "state");
@@ -54,64 +54,6 @@ async function resetLocalState(): Promise<void> {
   }
 }
 
-await rm(data, { recursive: true, force: true });
-await resetLocalState();
-const sourceDatabase = createDatabase({ path: databasePath });
-if (process.env.CF_E2E_EMPTY_DOCUMENTS === "true") {
-  // 在导出前清空文章域，生成的 D1 SQL 从一开始就满足外键约束。
-  sourceDatabase.exec(`
-    DELETE FROM comment_votes;
-    DELETE FROM comment_replies;
-    DELETE FROM comment_threads;
-    DELETE FROM suggestion_batches;
-    DELETE FROM suggestions;
-    DELETE FROM reply_receipts;
-    DELETE FROM reply_gates;
-    DELETE FROM chapters;
-    DELETE FROM document_mutations;
-    DELETE FROM document_revisions;
-    DELETE FROM document_acl;
-    DELETE FROM documents;
-  `);
-}
-sourceDatabase.close();
-const exported = await exportSqliteToCloudflare({
-  databasePath,
-  uploadsDirectory: join(data, "uploads"),
-  outputDirectory,
-  identityMappings: [
-    { issuer: "https://e2e.invalid", subject: "author", userId: "author" },
-    { issuer: "https://e2e.invalid", subject: "moderator", userId: "moderator" },
-  ],
-  exportedAt: "2026-09-02T00:00:00.000Z",
-});
-// 同源密码登录 E2E 使用固定测试凭据；只写入被忽略的临时 D1 导入文件。
-const password = "local-test-password";
-const salt = new TextEncoder().encode("ricetext-e2e-salt");
-const key = await webcrypto.subtle.importKey(
-  "raw",
-  new TextEncoder().encode(password),
-  "PBKDF2",
-  false,
-  ["deriveBits"],
-);
-const hash = await webcrypto.subtle.deriveBits(
-  { name: "PBKDF2", hash: "SHA-256", salt, iterations: PASSWORD_HASH_ITERATIONS },
-  key,
-  256,
-);
-await appendFile(
-  exported.sqlPath,
-  "INSERT INTO password_credentials(user_id, username, salt, password_hash, iterations, failed_attempts, locked_until, updated_at) VALUES (" +
-    "'author', 'writer', '" +
-    Buffer.from(salt).toString("base64url") +
-    "', '" +
-    Buffer.from(hash).toString("base64url") +
-    "', " +
-    PASSWORD_HASH_ITERATIONS +
-    ", 0, NULL, '2026-09-02T00:00:00.000Z');\n",
-  "utf8",
-);
 /** 跨平台拉起 pnpm；npm_execpath 指向 JS 入口（.cjs/.mjs）时直接交给 node 执行。 */
 function runPnpm(args: readonly string[]): number {
   const entry = process.env.npm_execpath;
@@ -132,7 +74,7 @@ function runWrangler(args: readonly string[]): number {
 
 /**
  * wrangler 本地模式偶发起不来（一次性报 "bad port" 之类，重跑就好）。
- * 迁移可重放（已应用的会跳过）；导入失败重跑时会因主键冲突继续失败，不会静默留下半份数据。
+ * 迁移可重放（已应用的会跳过）；种子语句幂等，导入失败重跑也不会留下影响断言的数据。
  */
 function runWranglerWithRetry(args: readonly string[], attempts = 3): number {
   let status = runWrangler(args);
@@ -143,9 +85,61 @@ function runWranglerWithRetry(args: readonly string[], attempts = 3): number {
   return status;
 }
 
+await rm(data, { recursive: true, force: true });
+await resetLocalState();
+await mkdir(data, { recursive: true });
+
+// 同源密码登录 E2E 使用固定测试凭据；只写入被忽略的临时 D1。
+const password = "local-test-password";
+const salt = new TextEncoder().encode("ricetext-e2e-salt");
+const key = await webcrypto.subtle.importKey(
+  "raw",
+  new TextEncoder().encode(password),
+  "PBKDF2",
+  false,
+  ["deriveBits"],
+);
+const hash = await webcrypto.subtle.deriveBits(
+  { name: "PBKDF2", hash: "SHA-256", salt, iterations: PASSWORD_HASH_ITERATIONS },
+  key,
+  256,
+);
+
+const statements = demoSeedStatements({
+  now: "2026-09-02T00:00:00.000Z",
+  password: {
+    userId: "author",
+    username: "writer",
+    salt: Buffer.from(salt).toString("base64url"),
+    passwordHash: Buffer.from(hash).toString("base64url"),
+  },
+});
+if (process.env.CF_E2E_EMPTY_DOCUMENTS === "true") {
+  // 密码登录用例要求「没有任何文章」：种子照常写入账号与凭据，文章域清空。
+  statements.unshift(
+    "PRAGMA defer_foreign_keys = TRUE;",
+    "DELETE FROM chapter_upload_items;",
+    "DELETE FROM chapter_uploads;",
+    "DELETE FROM suggestion_review_guards;",
+    "DELETE FROM suggestion_batches;",
+    "DELETE FROM suggestions;",
+    "DELETE FROM comment_votes;",
+    "DELETE FROM comment_replies;",
+    "DELETE FROM comment_threads;",
+    "DELETE FROM reply_receipts;",
+    "DELETE FROM reply_gates;",
+    "DELETE FROM chapters;",
+    "DELETE FROM document_mutations;",
+    "DELETE FROM document_revisions;",
+    "DELETE FROM document_acl;",
+    "DELETE FROM documents;",
+  );
+}
+await writeFile(seedPath, seedSql(statements), "utf8");
+
 for (const args of [
   ["d1", "migrations", "apply", "DB", "--local", "--persist-to", persistTo],
-  ["d1", "execute", "DB", "--local", "--persist-to", persistTo, "--file", exported.sqlPath],
+  ["d1", "execute", "DB", "--local", "--persist-to", persistTo, "--file", seedPath],
 ]) {
   const status = runWranglerWithRetry(args);
   if (status !== 0) {
@@ -157,4 +151,4 @@ for (const args of [
     );
   }
 }
-console.log(JSON.stringify({ databasePath, importFile: exported.sqlPath, ready: true }, null, 2));
+console.log(JSON.stringify({ seedPath, persistTo, ready: true }, null, 2));

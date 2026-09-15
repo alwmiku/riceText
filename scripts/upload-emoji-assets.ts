@@ -1,10 +1,8 @@
 /**
- * 把站点表情资源上传到 R2，供 Cloudflare Worker 提供
- * `GET /api/emoji/:emojiId/image`（Node 侧读的是本地文件，不需要这一步）。
+ * 把站点表情资源上传到 R2，供 Worker 提供 `GET /api/emoji/:emojiId/image`。
  *
- * 对象键与本地目录保持一致：`emoji/<文件>` 与 `emoji/thumbs/<id>.png`，
- * 与 apps/worker/src/app.ts 里的读取路径一一对应；收集与上传逻辑复用
- * packages/cloudflare-migration 里的同一份实现，Cloudflare E2E 的种子也走它。
+ * 对象键与仓库目录 assets/emoji 保持一致：`emoji/<文件>` 与
+ * `emoji/thumbs/<id>.png`，与 apps/worker/src/app.ts 里的读取路径一一对应。
  *
  * 用法：
  *   pnpm.cmd emoji:r2 -- --bucket ricetext-development-uploads --local      # 本地模拟桶（dev 服务用）
@@ -23,11 +21,11 @@ import {
   collectEmojiAssets,
   uploadR2Manifest,
   type R2ManifestItem,
-} from "../packages/cloudflare-migration/src/r2-assets.js";
+} from "../packages/r2-assets/src/r2-assets.js";
 import {
   createWranglerRunner,
   type WranglerRunner,
-} from "../packages/cloudflare-migration/src/cli.js";
+} from "../packages/r2-assets/src/cli.js";
 
 /**
  * 远端上传失败时按 wrangler 的实际输出给出排查方向。
@@ -114,7 +112,7 @@ const resume = process.argv.includes("--resume");
 const persistTo = process.argv.includes("--persist-to") ? argument("--persist-to") : null;
 const root = resolve(import.meta.dirname, "..");
 const manifest = collectEmojiAssets(
-  join(root, "apps", "api", "src", "assets", "emoji"),
+  join(root, "assets", "emoji"),
   new Date().toISOString(),
 );
 

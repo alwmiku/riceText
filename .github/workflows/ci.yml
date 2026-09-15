@@ -23,6 +23,5 @@ jobs:
       - run: pnpm --filter @ricetext/worker test
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e --project=chromium
-      - run: pnpm test:e2e:cloudflare
+      - run: pnpm test:e2e
       - run: pnpm test:e2e:password

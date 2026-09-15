@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: RiceText 论坛与小说富文本 API
   version: 0.1.0
-  description: 文档、章节、用户互动、附件权益和投票均使用共享契约，并由 SQLite 服务持久化实现。
+  description: 文档、章节、用户互动、附件权益和投票均使用共享契约，并由 Cloudflare Worker 与 D1 持久化实现。
 servers:
   - url: http://localhost:8787
     description: 本地开发 API

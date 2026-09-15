@@ -32,7 +32,7 @@ jobs:
       - run: pnpm --filter @ricetext/worker test
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e:cloudflare
+      - run: pnpm test:e2e
       - run: pnpm test:e2e:password
 
   # 数据库迁移先于 Worker 和 Pages；最终 smoke 从同源公网入口检查路由。
