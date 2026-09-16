@@ -1,4 +1,4 @@
-import { Maximize2, Save, X } from "lucide-react";
+import { Maximize2, RefreshCw, Save, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "../../components/ui";
 import { MobileChapterTrigger } from "../../components/MobileChapterTrigger";
@@ -34,6 +34,9 @@ export function StandardComposeWorkspace({
   onSelectChapter,
   onSave,
   onRestore,
+  onSync,
+  syncing,
+  syncDisabled,
   onExpand,
 }: {
   mode: EditorMode;
@@ -67,6 +70,10 @@ export function StandardComposeWorkspace({
   onSelectChapter: (index: number) => void;
   onSave: () => void;
   onRestore: (revision: number) => void;
+  /** 拉取服务器最新内容覆盖编辑器（审核合并、别处保存后使用）。 */
+  onSync?: () => void;
+  syncing?: boolean;
+  syncDisabled?: boolean;
   onExpand: () => void;
 }) {
   const [mobileChapterRailOpen, setMobileChapterRailOpen] = useState(false);
@@ -98,10 +105,24 @@ export function StandardComposeWorkspace({
               <p className="min-w-0 truncate text-[15px] font-bold">{unit.chapter.title}</p>
               {saveStatus}
             </div>
-            <Button size="sm" disabled={saveDisabled} onClick={onSave}>
-              <Save size={14} />
-              保存
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              {onSync ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label="同步服务器内容"
+                  disabled={syncDisabled || syncing}
+                  onClick={onSync}
+                >
+                  <RefreshCw size={14} className={syncing ? "animate-spin" : undefined} />
+                  同步
+                </Button>
+              ) : null}
+              <Button size="sm" disabled={saveDisabled} onClick={onSave}>
+                <Save size={14} />
+                保存
+              </Button>
+            </div>
           </div>
           {comparison ?? editor}
         </section>
@@ -185,14 +206,28 @@ export function StandardComposeWorkspace({
           ) : null}
         </>
       ) : null}
-      <div className="mx-auto mb-2 flex max-w-[860px] items-center justify-between px-1">
+      <div className="mx-auto mb-2 flex max-w-[860px] items-center justify-between gap-2 px-1">
         {saveStatus}
-        {mode === "compact" ? (
-          <Button variant="ghost" size="sm" onClick={onExpand}>
-            <Maximize2 size={14} />
-            展开
-          </Button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {onSync ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="同步服务器内容"
+              disabled={syncDisabled || syncing}
+              onClick={onSync}
+            >
+              <RefreshCw size={14} className={syncing ? "animate-spin" : undefined} />
+              同步
+            </Button>
+          ) : null}
+          {mode === "compact" ? (
+            <Button variant="ghost" size="sm" onClick={onExpand}>
+              <Maximize2 size={14} />
+              展开
+            </Button>
+          ) : null}
+        </div>
       </div>
       {comparison ?? editor}
     </section>

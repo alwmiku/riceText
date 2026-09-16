@@ -13,6 +13,17 @@ import {
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useAppContext } from "../app-context";
 import { Button, Dialog, Segmented } from "../components/ui";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import { CommentThread } from "../features/comments/CommentThread";
 import { ArticleSelector } from "../features/documents/ArticleSelector";
 import { useArticleSelection } from "../features/documents/useArticleSelection";
@@ -631,6 +642,8 @@ function ComposeDocumentSession({
     }
   };
 
+  const [syncing, setSyncing] = useState(false);
+  const [syncConfirmOpen, setSyncConfirmOpen] = useState(false);
   const publishingRef = useRef<object | null>(null);
   const [publishingScope, setPublishingScope] = useState<object | null>(null);
   const publish = async (latestContent?: RichTextNode) => {
@@ -705,6 +718,48 @@ function ComposeDocumentSession({
         if (isCurrentView()) setPublishingScope(null);
       }
     }
+  };
+
+  /**
+   * 同步服务器内容。
+   *
+   * 审核合并、别处保存都会推进服务器修订，而本地编辑期间不会自动接纳新的服务器正文，
+   * 于是编辑器停留在旧内容、再保存还会撞 409。这个入口把服务器内容取回编辑器：
+   * 整篇快照章节走 syncFromServer（同时重建保存基线），独立章节重新拉取该章节正文。
+   */
+  const applyServerSync = async () => {
+    setSyncing(true);
+    try {
+      if (activeChapter?.source === "standalone") {
+        const result = await chapterQuery.refetch();
+        if (!isCurrentView()) return;
+        if (result.error) throw result.error;
+        void queryClient.invalidateQueries({
+          queryKey: chapterQueryKeys.directory(activeDocumentId),
+        });
+        setNotice("已同步服务器上的章节正文");
+        return;
+      }
+      const ok = await compose.syncFromServer();
+      if (!isCurrentView()) return;
+      setNotice(ok ? "已同步服务器最新内容" : "服务器上还没有可同步的内容");
+    } catch (cause) {
+      if (isCurrentView())
+        setNotice(cause instanceof Error ? "同步失败：" + cause.message : "同步失败");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const syncFromServer = () => {
+    if (syncing || compose.isPlaceholderData || !compose.articleStarted) return;
+    // 会丢弃尚未保存到服务器的本地修改：独立章节的本地修改不进入 autosave 状态机，
+    // 因此这类章节一律先确认。
+    if (activeChapter?.source === "standalone" || compose.autosave.state !== "saved") {
+      setSyncConfirmOpen(true);
+      return;
+    }
+    void applyServerSync();
   };
 
   const editor = (
@@ -908,7 +963,8 @@ function ComposeDocumentSession({
               >
                 复制本地副本
               </Button>
-              <Button size="sm" onClick={() => window.location.reload()}>
+              {/* 冲突时用户已明确选择服务器版本：直接同步，不再二次确认、也不整页刷新。 */}
+              <Button size="sm" disabled={syncing} onClick={() => void applyServerSync()}>
                 加载最新版
               </Button>
             </>
@@ -982,6 +1038,9 @@ function ComposeDocumentSession({
           comparison={comparisonView}
           identity={identity}
           saveDisabled={!canWriteChapter || publishingScope === viewScope}
+          syncing={syncing}
+          syncDisabled={compose.isPlaceholderData || !compose.articleStarted}
+          {...(canEditSelected ? { onSync: syncFromServer } : {})}
           activeCharCount={activeCharCount}
           comparingRevision={comparingRevision}
           onCompareRevision={(revision) => void compareRevision(revision)}
@@ -1007,6 +1066,33 @@ function ComposeDocumentSession({
           onExpand={() => setMode("full")}
         />
       )}
+
+      <AlertDialog open={syncConfirmOpen} onOpenChange={setSyncConfirmOpen}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-destructive/10 text-destructive">
+              <AlertTriangle />
+            </AlertDialogMedia>
+            <AlertDialogTitle>确认同步服务器内容</AlertDialogTitle>
+            <AlertDialogDescription>
+              同步会用服务器上的最新正文替换编辑器内容，尚未保存到服务器的本地修改会被丢弃
+              （可先「保存」，或先复制本地副本）。接受校订建议后需要同步才能看到正文变化。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setSyncConfirmOpen(false);
+                void applyServerSync();
+              }}
+            >
+              确认同步
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog
         open={threadId !== null}

@@ -38,6 +38,14 @@ export interface ComposeDocumentController {
   replaceContent: (next: RichTextNode) => void;
   createLocalArticle: () => void;
   ensureServerDocument: () => Promise<"created" | "existing" | false>;
+  /**
+   * 拉取服务器最新整篇快照并替换本地正文与保存基线。
+   *
+   * 本地编辑期间不会自动接纳新的服务器正文（见水合规则），于是审核合并、别处保存
+   * 之后编辑器会停留在旧内容、保存还会撞 409。这个显式入口把服务器内容取回来，
+   * 未保存的本地修改会被丢弃。
+   */
+  syncFromServer: () => Promise<boolean>;
   /** 按稳定章节 ID 合并一章正文；正文里找不到该身份时不改动任何内容。 */
   updateChapter: (chapterId: string, chapter: RichTextNode) => void;
   publishChapter: (chapterId: string, latestChapter?: RichTextNode) => Promise<boolean>;
@@ -563,6 +571,25 @@ export function useComposeDocument(
     ],
   );
 
+  const syncFromServer = useCallback(async (): Promise<boolean> => {
+    if (!isCurrent()) return false;
+    const fresh = await getDocument(documentId);
+    // 只有真正拿到服务器内容才替换本地正文：missing/local-cache 都表示服务器不可用。
+    if (!isCurrent() || fresh.storage === "missing" || fresh.storage === "local-cache") {
+      return false;
+    }
+    setDocument(fresh);
+    queryClient.setQueryData<DocumentEnvelope>(["document", documentId], fresh);
+    contentRef.current = fresh.content;
+    generationRef.current += 1;
+    setContent(fresh.content);
+    setGeneration(generationRef.current);
+    // 走一次「服务器已确认」的接纳路径：基线、revision、草稿与保存状态一起复位。
+    autosave.acceptSaved(fresh, fresh.content, generationRef.current);
+    clearLocalDocumentDraft(documentId);
+    return true;
+  }, [autosave, documentId, isCurrent, queryClient]);
+
   const rollback = useCallback(
     async (chapterId: string, revision: number, isOperationCurrent?: () => boolean) => {
       const operation = ++rollbackEpochRef.current;
@@ -613,6 +640,7 @@ export function useComposeDocument(
     ensureServerDocument,
     updateChapter,
     publishChapter,
+    syncFromServer,
     rollback,
   };
 }

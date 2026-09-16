@@ -725,6 +725,79 @@ describe("ComposePage", () => {
     ).toBeInTheDocument();
   });
 
+  it("「同步」按钮拉取服务器最新内容并替换编辑器正文", async () => {
+    mocks.getDocument.mockResolvedValueOnce({ ...defaultDocument, storage: "server" });
+    // 接受校订/别处保存之后服务器已前进：本地的正文与保存基线都还是旧的。
+    mocks.getDocument.mockResolvedValueOnce({
+      ...defaultDocument,
+      storage: "server" as const,
+      revision: 30,
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 1, chapterStart: true },
+            content: [{ type: "text", text: "第一章 潮汐表" }],
+          },
+          { type: "paragraph", content: [{ type: "text", text: "服务器最新正文" }] },
+        ],
+      },
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByTestId("editor")).toHaveAttribute("data-editable", "true"),
+    );
+    expect(screen.getByTestId("editor").dataset.content).not.toContain("服务器最新正文");
+
+    fireEvent.click(screen.getByRole("button", { name: "同步服务器内容" }));
+
+    await waitFor(() => expect(mocks.getDocument).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByTestId("editor").dataset.content).toContain("服务器最新正文"),
+    );
+    expect(screen.getByText("已同步服务器最新内容")).toBeInTheDocument();
+  });
+
+  it("有未保存的本地修改时先确认再同步", async () => {
+    mocks.autosave.mockReturnValue(autosaveValue("local-saved"));
+    mocks.getDocument.mockResolvedValueOnce({ ...defaultDocument, storage: "server" });
+    mocks.getDocument.mockResolvedValueOnce({
+      ...defaultDocument,
+      storage: "server" as const,
+      revision: 30,
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 1, chapterStart: true },
+            content: [{ type: "text", text: "第一章 潮汐表" }],
+          },
+          { type: "paragraph", content: [{ type: "text", text: "服务器最新正文" }] },
+        ],
+      },
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByTestId("editor")).toHaveAttribute("data-editable", "true"),
+    );
+
+    // 取消：不请求服务器，正文保持本地内容。
+    fireEvent.click(screen.getByRole("button", { name: "同步服务器内容" }));
+    fireEvent.click(await screen.findByRole("button", { name: "取消" }));
+    expect(mocks.getDocument).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("editor").dataset.content).not.toContain("服务器最新正文");
+
+    // 确认：拉取服务器内容并替换编辑器。
+    fireEvent.click(screen.getByRole("button", { name: "同步服务器内容" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认同步" }));
+    await waitFor(() => expect(mocks.getDocument).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByTestId("editor").dataset.content).toContain("服务器最新正文"),
+    );
+  });
+
   it("回退失败时显示接口错误", async () => {
     mocks.getDocument.mockResolvedValueOnce(twoChapterDoc);
     mocks.listForumChapters.mockResolvedValueOnce(chapterRows());

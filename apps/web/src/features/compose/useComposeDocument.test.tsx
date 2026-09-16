@@ -336,6 +336,55 @@ describe("useComposeDocument 水合", () => {
     });
   });
 
+  it("同步服务器内容会替换本地正文并推进保存基线", async () => {
+    const { result } = renderHook(() => useComposeDocument("demo-post"), { wrapper });
+    await waitFor(() => expect(result.current.content).toBe(serverDocument.content));
+
+    // 本地先有未保存编辑：水合规则不会自动接纳新的服务器正文。
+    act(() => {
+      result.current.replaceContent({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "本地未保存" }] }],
+      });
+    });
+    const freshContent: RichTextNode = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "服务器最新" }] }],
+    };
+    mocks.getDocument.mockResolvedValueOnce({
+      ...serverDocument,
+      revision: 7,
+      savedAt: "2026-09-05T00:00:00.000Z",
+      content: freshContent,
+    });
+
+    await act(async () => {
+      expect(await result.current.syncFromServer()).toBe(true);
+    });
+    expect(result.current.content).toBe(freshContent);
+    expect(result.current.document.revision).toBe(7);
+    expect(mocks.getDocument).toHaveBeenCalledTimes(2);
+  });
+
+  it("服务器没有可同步内容时同步不改变本地正文", async () => {
+    const { result } = renderHook(() => useComposeDocument("demo-post"), { wrapper });
+    await waitFor(() => expect(result.current.content).toBe(serverDocument.content));
+    mocks.getDocument.mockResolvedValueOnce({
+      id: "demo-post",
+      title: "未命名文章",
+      schemaVersion: 1,
+      revision: 0,
+      savedAt: new Date(0).toISOString(),
+      content: { type: "doc", content: [] },
+      storage: "missing",
+    });
+
+    await act(async () => {
+      expect(await result.current.syncFromServer()).toBe(false);
+    });
+    expect(result.current.content).toBe(serverDocument.content);
+  });
+
   it("保存前注册新增章节并把服务器 id 同步回本地目录，再用它保存", async () => {
     const appended = appendChapter(serverDocument.content, "第三章 新章节");
     const client = new QueryClient({
