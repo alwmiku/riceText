@@ -28,17 +28,13 @@ export function PollDialog({
 }) {
   const [question, setQuestion] = useState("");
   const [multiple, setMultiple] = useState(false);
-  const [options, setOptions] = useState<Array<{ id: string; label: string }>>(
-    initialOptions,
-  );
+  const [options, setOptions] = useState<Array<{ id: string; label: string }>>(initialOptions);
 
   useEffect(() => {
     if (!open) return;
     setQuestion(initial?.question ?? "");
     setMultiple(initial?.multiple ?? false);
-    setOptions(
-      initial?.options.map((option) => ({ ...option })) ?? initialOptions(),
-    );
+    setOptions(initial?.options.map((option) => ({ ...option })) ?? initialOptions());
   }, [open, initial]);
 
   const validOptions = options
@@ -104,9 +100,7 @@ export function PollDialog({
                 onChange={(event) =>
                   setOptions((current) =>
                     current.map((item) =>
-                      item.id === option.id
-                        ? { ...item, label: event.target.value }
-                        : item,
+                      item.id === option.id ? { ...item, label: event.target.value } : item,
                     ),
                   )
                 }
@@ -118,9 +112,7 @@ export function PollDialog({
                 title="删除选项"
                 disabled={options.length <= 2}
                 onClick={() =>
-                  setOptions((current) =>
-                    current.filter((item) => item.id !== option.id),
-                  )
+                  setOptions((current) => current.filter((item) => item.id !== option.id))
                 }
               >
                 <Trash2 size={16} />

@@ -52,11 +52,16 @@ async function hiddenPassword(): Promise<string> {
 const local = process.argv.includes("--local");
 const environment = local ? "local" : argument("--env");
 const username = argument("--username");
+// 显式 ID 用于维护兼容种子用户；普通建号默认铸造与认证来源无关的 user_<uuid>。
 const userIdIndex = process.argv.indexOf("--user-id");
-const userId = userIdIndex >= 0 && process.argv[userIdIndex + 1] ? process.argv[userIdIndex + 1]! : createEntityId("user");
+const userId =
+  userIdIndex >= 0 && process.argv[userIdIndex + 1]
+    ? process.argv[userIdIndex + 1]!
+    : createEntityId("user");
 const name = argument("--name");
 const role = argument("--role");
-if (!/^[A-Za-z0-9._-]{3,64}$/.test(username)) throw new Error("账号只能包含字母、数字、点、下划线和短横线");
+if (!/^[A-Za-z0-9._-]{3,64}$/.test(username))
+  throw new Error("账号只能包含字母、数字、点、下划线和短横线");
 if (!/^[A-Za-z0-9._-]{1,128}$/.test(userId)) throw new Error("user-id 格式不正确");
 if (role !== "author" && role !== "reader" && role !== "moderator") {
   throw new Error("role 必须是 author、reader 或 moderator");
@@ -66,7 +71,13 @@ if (password.length < 10 || password.length > 128) throw new Error("密码长度
 
 const iterations = PASSWORD_HASH_ITERATIONS;
 const salt = randomBytes(16);
-const key = await webcrypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+const key = await webcrypto.subtle.importKey(
+  "raw",
+  new TextEncoder().encode(password),
+  "PBKDF2",
+  false,
+  ["deriveBits"],
+);
 const bits = await webcrypto.subtle.deriveBits(
   { name: "PBKDF2", hash: "SHA-256", salt, iterations },
   key,
@@ -83,7 +94,16 @@ const statements = [
   // 重设密码时撤销全部旧会话，避免已泄露 Cookie 在新密码生效后继续使用。
   "DELETE FROM auth_sessions WHERE user_id = " + sql(userId) + ";",
   "INSERT INTO password_credentials(user_id, username, salt, password_hash, iterations, failed_attempts, locked_until, updated_at) VALUES (" +
-    [sql(userId), sql(username), sql(saltValue), sql(hashValue), String(iterations), "0", "NULL", sql(now)].join(", ") +
+    [
+      sql(userId),
+      sql(username),
+      sql(saltValue),
+      sql(hashValue),
+      String(iterations),
+      "0",
+      "NULL",
+      sql(now),
+    ].join(", ") +
     ") ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, salt=excluded.salt, password_hash=excluded.password_hash, iterations=excluded.iterations, failed_attempts=0, locked_until=NULL, updated_at=excluded.updated_at;",
 ].join("\n");
 

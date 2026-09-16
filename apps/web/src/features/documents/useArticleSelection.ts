@@ -17,9 +17,7 @@ export function useArticleSelection() {
     enabled: authenticated,
   });
   const articles = query.data ?? [];
-  const [selectedId, setSelectedIdState] = useState(() =>
-    localStorage.getItem(selectionKey) ?? "",
-  );
+  const [selectedId, setSelectedIdState] = useState(() => localStorage.getItem(selectionKey) ?? "");
 
   useEffect(() => {
     if (!authenticated || query.isLoading) return;
@@ -52,7 +50,7 @@ export function useArticleSelection() {
     loading: authStatus === "loading" || (authenticated && query.isLoading),
     selectedId: authenticated ? selectedId : "tmp_article_guest",
     selectedDraftTitle: selectedId
-      ? localStorage.getItem(draftTitleKey(selectedId)) ?? undefined
+      ? (localStorage.getItem(draftTitleKey(selectedId)) ?? undefined)
       : undefined,
     canCreate: authenticated && identity.role !== "reader",
     setSelectedId,

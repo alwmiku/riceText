@@ -1,20 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  act,
-  render,
-  renderHook,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { appendChapter, splitDocumentByChapters } from "@ricetext/document-core";
 import { useEffect, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultDocument } from "../../lib/seed";
-import type {
-  DocumentEnvelope,
-  ForumChapterItem,
-  RichTextNode,
-} from "../../lib/types";
+import type { DocumentEnvelope, ForumChapterItem, RichTextNode } from "../../lib/types";
 import { ApiError } from "../../lib/api";
 import { ensureChapterIdentity } from "../../lib/chapters";
 import { useComposeDocument } from "./useComposeDocument";
@@ -109,8 +99,7 @@ function HydrationRaceHarness() {
 
   return (
     <span>
-      {chapterHeading?.content?.[0]?.text ??
-        (compose.isPlaceholderData ? "加载中" : "无章节")}
+      {chapterHeading?.content?.[0]?.text ?? (compose.isPlaceholderData ? "加载中" : "无章节")}
     </span>
   );
 }
@@ -126,15 +115,17 @@ describe("useComposeDocument 水合", () => {
     // 真实服务端把请求里的身份原样写进目录并返回同一身份（重复注册是幂等的）。
     mocks.createDocumentChapter
       .mockReset()
-      .mockImplementation(async (_documentId: string, input: { chapterId?: string; title: string }) => ({
-        id: input.chapterId!,
-        title: input.title,
-        order: 2,
-        documentId: "demo-post",
-        revision: 0,
-        savedAt: "2026-09-01T20:00:00.000Z",
-        hidden: false,
-      }));
+      .mockImplementation(
+        async (_documentId: string, input: { chapterId?: string; title: string }) => ({
+          id: input.chapterId!,
+          title: input.title,
+          order: 2,
+          documentId: "demo-post",
+          revision: 0,
+          savedAt: "2026-09-01T20:00:00.000Z",
+          hidden: false,
+        }),
+      );
     mocks.listForumChapters.mockReset().mockResolvedValue([]);
     mocks.restoreRevision.mockReset();
     mocks.saveDocument.mockReset().mockResolvedValue({
@@ -146,8 +137,9 @@ describe("useComposeDocument 水合", () => {
       content: { type: "doc", content: [{ type: "paragraph" }] },
       storage: "server",
     });
-    mocks.autosave.mockReset().mockImplementation(
-      (options: { onSaved?: (next: DocumentEnvelope) => void }) => ({
+    mocks.autosave
+      .mockReset()
+      .mockImplementation((options: { onSaved?: (next: DocumentEnvelope) => void }) => ({
         state: "saved",
         revision: defaultDocument.revision,
         savedAt: defaultDocument.savedAt,
@@ -156,8 +148,7 @@ describe("useComposeDocument 水合", () => {
         saveLocal: vi.fn().mockReturnValue(true),
         acceptSaved: (next: DocumentEnvelope) => options.onSaved?.(next),
         acceptLatest: vi.fn(),
-      }),
-    );
+      }));
   });
 
   it("404 后保持空白，点击创建只写本地，首次保存才上传服务器", async () => {
@@ -202,9 +193,7 @@ describe("useComposeDocument 水合", () => {
     });
 
     expect(result.current.content).toEqual({ type: "doc", content: [] });
-    await waitFor(() =>
-      expect(result.current.content).toBe(serverDocument.content),
-    );
+    await waitFor(() => expect(result.current.content).toBe(serverDocument.content));
   });
 
   it("创建请求发现服务器已有同 ID 文档时恢复服务器版本", async () => {
@@ -229,9 +218,7 @@ describe("useComposeDocument 水合", () => {
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
     act(() => result.current.createLocalArticle());
 
-    await expect(
-      act(() => result.current.ensureServerDocument()),
-    ).resolves.toBe("existing");
+    await expect(act(() => result.current.ensureServerDocument())).resolves.toBe("existing");
     await waitFor(() => expect(result.current.document.revision).toBe(1));
     expect(mocks.getDocument).toHaveBeenCalledTimes(2);
   });
@@ -295,26 +282,29 @@ describe("useComposeDocument 水合", () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    client.setQueryData<ForumChapterItem[]>(["forum", "chapters", "demo-post"], [
-      {
-        id: "chapter-1",
-        title: "第一章 潮汐表",
-        order: 1,
-        documentId: "demo-post",
-        revision: 4,
-        savedAt: "2026-08-20T08:00:00.000Z",
-        hidden: false,
-      },
-      {
-        id: "chapter-2",
-        title: "第二章",
-        order: 2,
-        documentId: "demo-post",
-        revision: 7,
-        savedAt: "2026-08-20T09:00:00.000Z",
-        hidden: false,
-      },
-    ]);
+    client.setQueryData<ForumChapterItem[]>(
+      ["forum", "chapters", "demo-post"],
+      [
+        {
+          id: "chapter-1",
+          title: "第一章 潮汐表",
+          order: 1,
+          documentId: "demo-post",
+          revision: 4,
+          savedAt: "2026-08-20T08:00:00.000Z",
+          hidden: false,
+        },
+        {
+          id: "chapter-2",
+          title: "第二章",
+          order: 2,
+          documentId: "demo-post",
+          revision: 7,
+          savedAt: "2026-08-20T09:00:00.000Z",
+          hidden: false,
+        },
+      ],
+    );
     const testWrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
@@ -335,11 +325,7 @@ describe("useComposeDocument 水合", () => {
         storage: "server",
       }),
     );
-    const chapters = client.getQueryData<ForumChapterItem[]>([
-      "forum",
-      "chapters",
-      "demo-post",
-    ])!;
+    const chapters = client.getQueryData<ForumChapterItem[]>(["forum", "chapters", "demo-post"])!;
     expect(chapters.find((chapter) => chapter.id === "chapter-1")).toMatchObject({
       revision: 5,
       savedAt,
@@ -395,27 +381,13 @@ describe("useComposeDocument 水合", () => {
     const minted = registerCall[1].chapterId!;
     expect(minted).toMatch(/^chapter_[0-9a-f-]{36}$/);
     // 2. 服务器 id 已同步回本地目录缓存。
-    const chapters = client.getQueryData<ForumChapterItem[]>([
-      "forum",
-      "chapters",
-      "demo-post",
-    ])!;
-    expect(chapters).toContainEqual(
-      expect.objectContaining({ id: minted, order: 2, revision: 0 }),
-    );
+    const chapters = client.getQueryData<ForumChapterItem[]>(["forum", "chapters", "demo-post"])!;
+    expect(chapters).toContainEqual(expect.objectContaining({ id: minted, order: 2, revision: 0 }));
     // 3. 文档保存使用服务器分配的章节 id。
     const autosaveValue = mocks.autosave.mock.results.at(-1)?.value as {
-      flush: (
-        content: RichTextNode,
-        generation: number,
-        chapterId?: string,
-      ) => Promise<boolean>;
+      flush: (content: RichTextNode, generation: number, chapterId?: string) => Promise<boolean>;
     };
-    expect(autosaveValue.flush).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
-      minted,
-    );
+    expect(autosaveValue.flush).toHaveBeenCalledWith(expect.anything(), expect.anything(), minted);
   });
 
   it("查询稍后完成时不替换本地编辑", async () => {
@@ -430,9 +402,7 @@ describe("useComposeDocument 水合", () => {
     });
     const localContent: RichTextNode = {
       type: "doc",
-      content: [
-        { type: "paragraph", content: [{ type: "text", text: "本地编辑" }] },
-      ],
+      content: [{ type: "paragraph", content: [{ type: "text", text: "本地编辑" }] }],
     };
 
     act(() => result.current.replaceContent(localContent));

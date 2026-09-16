@@ -96,10 +96,7 @@ export class D1SuggestionRepository {
     this.writes = new D1WriteRepository(db);
   }
 
-  async suggestions(
-    documentId: string,
-    principal: ForumUser,
-  ): Promise<Suggestion[]> {
+  async suggestions(documentId: string, principal: ForumUser): Promise<Suggestion[]> {
     await this.reads.document(documentId);
     const editor = await this.canEdit(documentId, principal);
     const sql = editor
@@ -107,17 +104,12 @@ export class D1SuggestionRepository {
       : "SELECT * FROM suggestions WHERE document_id = ? AND author_id = ? ORDER BY created_at DESC";
     const statement = this.db.prepare(sql);
     const result = await (
-      editor
-        ? statement.bind(documentId)
-        : statement.bind(documentId, principal.id)
+      editor ? statement.bind(documentId) : statement.bind(documentId, principal.id)
     ).all<SuggestionRow>();
     return result.results.map(mapSuggestion);
   }
 
-  async batches(
-    documentId: string,
-    principal: ForumUser,
-  ): Promise<SuggestionBatch[]> {
+  async batches(documentId: string, principal: ForumUser): Promise<SuggestionBatch[]> {
     await this.reads.document(documentId);
     const editor = await this.canEdit(documentId, principal);
     const sql = editor
@@ -125,9 +117,7 @@ export class D1SuggestionRepository {
       : "SELECT * FROM suggestion_batches WHERE document_id = ? AND author_id = ? ORDER BY created_at DESC";
     const statement = this.db.prepare(sql);
     const result = await (
-      editor
-        ? statement.bind(documentId)
-        : statement.bind(documentId, principal.id)
+      editor ? statement.bind(documentId) : statement.bind(documentId, principal.id)
     ).all<SuggestionBatchRow>();
     return result.results.map(mapBatch);
   }
@@ -148,13 +138,10 @@ export class D1SuggestionRepository {
     await this.reads.document(documentId);
     if (input.chapterId) {
       const chapter = await this.db
-        .prepare(
-          "SELECT 1 AS found FROM chapters WHERE id = ? AND document_id = ?",
-        )
+        .prepare("SELECT 1 AS found FROM chapters WHERE id = ? AND document_id = ?")
         .bind(input.chapterId, documentId)
         .first<{ found: number }>();
-      if (!chapter)
-        throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节不存在");
+      if (!chapter) throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节不存在");
     }
     const row: SuggestionRow = {
       id: createEntityId("suggestion"),
@@ -210,15 +197,10 @@ export class D1SuggestionRepository {
   ): Promise<SuggestionBatch> {
     const current = await this.reads.document(documentId);
     if (current.revision !== input.baseRevision) {
-      throw new WorkerHttpError(
-        409,
-        "REVISION_CONFLICT",
-        "正文已变化，请重新编辑后提交",
-        {
-          currentRevision: current.revision,
-          baseRevision: input.baseRevision,
-        },
-      );
+      throw new WorkerHttpError(409, "REVISION_CONFLICT", "正文已变化，请重新编辑后提交", {
+        currentRevision: current.revision,
+        baseRevision: input.baseRevision,
+      });
     }
     // 章号由查库解析：章节 ID 是不透明身份，不能从字符串反解位置。
     const chapter = await this.db
@@ -273,8 +255,7 @@ export class D1SuggestionRepository {
       .prepare("SELECT document_id FROM suggestions WHERE id = ?")
       .bind(suggestionId)
       .first<{ document_id: string }>();
-    if (!row)
-      throw new WorkerHttpError(404, "SUGGESTION_NOT_FOUND", "纠错建议不存在");
+    if (!row) throw new WorkerHttpError(404, "SUGGESTION_NOT_FOUND", "纠错建议不存在");
     return row.document_id;
   }
 
@@ -284,20 +265,12 @@ export class D1SuggestionRepository {
       .bind(batchId)
       .first<{ document_id: string }>();
     if (!row) {
-      throw new WorkerHttpError(
-        404,
-        "SUGGESTION_BATCH_NOT_FOUND",
-        "批量校订不存在",
-      );
+      throw new WorkerHttpError(404, "SUGGESTION_BATCH_NOT_FOUND", "批量校订不存在");
     }
     return row.document_id;
   }
 
-  private async reject(
-    kind: "single" | "batch",
-    id: string,
-    reviewerId: string,
-  ): Promise<void> {
+  private async reject(kind: "single" | "batch", id: string, reviewerId: string): Promise<void> {
     const table = kind === "batch" ? "suggestion_batches" : "suggestions";
     const now = new Date().toISOString();
     try {
@@ -329,9 +302,7 @@ export class D1SuggestionRepository {
       if (reviewed) {
         throw new WorkerHttpError(
           409,
-          kind === "batch"
-            ? "SUGGESTION_BATCH_REVIEWED"
-            : "SUGGESTION_REVIEWED",
+          kind === "batch" ? "SUGGESTION_BATCH_REVIEWED" : "SUGGESTION_REVIEWED",
           kind === "batch" ? "批量校订已审核" : "纠错建议已审核",
         );
       }
@@ -339,10 +310,7 @@ export class D1SuggestionRepository {
     }
   }
 
-  private async canEdit(
-    documentId: string,
-    principal: ForumUser,
-  ): Promise<boolean> {
+  private async canEdit(documentId: string, principal: ForumUser): Promise<boolean> {
     if (principal.role === "moderator") return true;
     const access = await this.db
       .prepare(
@@ -368,8 +336,7 @@ export class D1SuggestionRepository {
       .prepare("SELECT * FROM suggestions WHERE id = ?")
       .bind(suggestionId)
       .first<SuggestionRow>();
-    if (!row)
-      throw new WorkerHttpError(404, "SUGGESTION_NOT_FOUND", "纠错建议不存在");
+    if (!row) throw new WorkerHttpError(404, "SUGGESTION_NOT_FOUND", "纠错建议不存在");
     if (row.status !== "pending") {
       throw new WorkerHttpError(409, "SUGGESTION_REVIEWED", "纠错建议已审核");
     }
@@ -385,38 +352,26 @@ export class D1SuggestionRepository {
 
     const current = await this.reads.document(row.document_id);
     if (current.revision !== baseRevision) {
-      throw new WorkerHttpError(
-        409,
-        "REVISION_CONFLICT",
-        "正文已变化，请重新核对建议",
-        {
-          currentRevision: current.revision,
-          baseRevision,
-        },
-      );
+      throw new WorkerHttpError(409, "REVISION_CONFLICT", "正文已变化，请重新核对建议", {
+        currentRevision: current.revision,
+        baseRevision,
+      });
     }
     const chapter = row.chapter_id
       ? await this.db
-          .prepare(
-            "SELECT sort_order, content_json FROM chapters WHERE id = ? AND document_id = ?",
-          )
+          .prepare("SELECT sort_order, content_json FROM chapters WHERE id = ? AND document_id = ?")
           .bind(row.chapter_id, row.document_id)
           .first<{ sort_order: number; content_json: string | null }>()
       : null;
-    const replaced = applySuggestionText(
-      current.content,
-      row.from_text,
-      row.to_text,
-      {
-        chapterId: row.chapter_id ?? "",
-        chapterOrder: chapter?.sort_order ?? null,
-        chapterContent: chapter?.content_json
-          ? repairDocumentForRead(JSON.parse(chapter.content_json))
-          : null,
-        lineNo: row.line_no,
-        lineText: row.line_text,
-      },
-    );
+    const replaced = applySuggestionText(current.content, row.from_text, row.to_text, {
+      chapterId: row.chapter_id ?? "",
+      chapterOrder: chapter?.sort_order ?? null,
+      chapterContent: chapter?.content_json
+        ? repairDocumentForRead(JSON.parse(chapter.content_json))
+        : null,
+      lineNo: row.line_no,
+      lineText: row.line_text,
+    });
     const result = await this.writes.applySuggestionReview({
       documentId: row.document_id,
       baseRevision,
@@ -452,18 +407,10 @@ export class D1SuggestionRepository {
       .bind(batchId)
       .first<SuggestionBatchRow>();
     if (!row) {
-      throw new WorkerHttpError(
-        404,
-        "SUGGESTION_BATCH_NOT_FOUND",
-        "批量校订不存在",
-      );
+      throw new WorkerHttpError(404, "SUGGESTION_BATCH_NOT_FOUND", "批量校订不存在");
     }
     if (row.status !== "pending") {
-      throw new WorkerHttpError(
-        409,
-        "SUGGESTION_BATCH_REVIEWED",
-        "批量校订已审核",
-      );
+      throw new WorkerHttpError(409, "SUGGESTION_BATCH_REVIEWED", "批量校订已审核");
     }
     if (decision === "reject") {
       await this.reject("batch", row.id, reviewer.id);
@@ -512,11 +459,7 @@ export class D1SuggestionRepository {
       steps: rebasedSteps,
     });
     if (!result.created) {
-      throw new WorkerHttpError(
-        409,
-        "SUGGESTION_BATCH_REVIEWED",
-        "批量校订已审核",
-      );
+      throw new WorkerHttpError(409, "SUGGESTION_BATCH_REVIEWED", "批量校订已审核");
     }
     const approved = {
       ...row,

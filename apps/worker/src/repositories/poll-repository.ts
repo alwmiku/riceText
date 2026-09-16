@@ -82,6 +82,7 @@ export class D1PollRepository {
     if (unique.some((id) => !current.options.some((option) => option.id === id))) {
       throw new WorkerHttpError(404, "POLL_OPTION_NOT_FOUND", "提交了不属于该投票的选项");
     }
+    // 新投票预先铸造候选 ID；若唯一键已存在，UPSERT 只更新时间并保留原 ID。
     const voteId = createEntityId("poll_vote");
     const createdAt = new Date().toISOString();
     const statements: D1PreparedStatement[] = [
@@ -91,6 +92,7 @@ export class D1PollRepository {
             "ON CONFLICT(poll_id, user_id) DO UPDATE SET created_at = excluded.created_at",
         )
         .bind(voteId, pollId, principal.id, createdAt),
+      // 后续语句通过业务唯一键查询真实 ID，避免从 pollId/userId 拼接或猜测主键。
       this.db
         .prepare(
           "DELETE FROM poll_vote_options WHERE vote_id = " +

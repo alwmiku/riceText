@@ -58,18 +58,7 @@ import {
 } from "../lib/chapter-source";
 import { Skeleton } from "../components/ui/skeleton";
 
-const CHINESE_NUMERALS = [
-  "零",
-  "一",
-  "二",
-  "三",
-  "四",
-  "五",
-  "六",
-  "七",
-  "八",
-  "九",
-] as const;
+const CHINESE_NUMERALS = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"] as const;
 
 /** 把章节序号转成中文数字（1→一，11→十一，23→二十三），与种子章节命名一致。 */
 function toChineseNumber(value: number): string {
@@ -132,25 +121,19 @@ function ComposeDocumentSession({
   });
   useEffect(() => {
     try {
-      window.localStorage.setItem(
-        ACTIVE_CHAPTER_STORAGE_KEY,
-        String(chapterIndex),
-      );
+      window.localStorage.setItem(ACTIVE_CHAPTER_STORAGE_KEY, String(chapterIndex));
     } catch {
       // 隐私模式等场景下忽略持久化失败。
     }
   }, [chapterIndex, ACTIVE_CHAPTER_STORAGE_KEY]);
-  const [selectedChapter, setSelectedChapter] =
-    useState<ChapterIdentity | null>(() => {
-      try {
-        const id = window.localStorage.getItem(
-          `ricetext:active-chapter-id:${activeDocumentId}`,
-        );
-        return id ? { documentId: activeDocumentId, id } : null;
-      } catch {
-        return null;
-      }
-    });
+  const [selectedChapter, setSelectedChapter] = useState<ChapterIdentity | null>(() => {
+    try {
+      const id = window.localStorage.getItem(`ricetext:active-chapter-id:${activeDocumentId}`);
+      return id ? { documentId: activeDocumentId, id } : null;
+    } catch {
+      return null;
+    }
+  });
   useEffect(() => {
     if (!selectedChapter) return;
     try {
@@ -168,9 +151,7 @@ function ComposeDocumentSession({
   const [notice, setNotice] = useState("");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [comparingRevision, setComparingRevision] = useState<number | null>(
-    null,
-  );
+  const [comparingRevision, setComparingRevision] = useState<number | null>(null);
   const [comparison, setComparison] = useState<{
     revision: number;
     chapterTitle: string;
@@ -193,8 +174,7 @@ function ComposeDocumentSession({
     localOnly: !articleSelection.authenticated,
     initialTitle: articleSelection.selectedDraftTitle,
     // 目录行是服务器权威身份：按目录位置（row.order）解析 id；目录数组本身可能无序。
-    resolveChapterId: (index) =>
-      directoryQuery.data?.find((row) => row.order === index)?.id,
+    resolveChapterId: (index) => directoryQuery.data?.find((row) => row.order === index)?.id,
   });
   const longText = useLongTextWorkspace({
     documentId: activeDocumentId,
@@ -207,12 +187,8 @@ function ComposeDocumentSession({
     onNotice: setNotice,
   });
 
-  const { chapters } = useMemo(
-    () => splitDocumentByHeadings(compose.content),
-    [compose.content],
-  );
-  const directoryReady =
-    !articleSelection.authenticated || directoryQuery.isSuccess;
+  const { chapters } = useMemo(() => splitDocumentByHeadings(compose.content), [compose.content]);
+  const directoryReady = !articleSelection.authenticated || directoryQuery.isSuccess;
   const navigationChapters = useMemo(
     () =>
       directoryReady
@@ -230,9 +206,7 @@ function ComposeDocumentSession({
   const displayedChapters = compose.articleStarted ? navigationChapters : [];
   const selectedIndex =
     selectedChapter?.documentId === activeDocumentId
-      ? navigationChapters.findIndex(
-          (chapter) => chapter.id === selectedChapter.id,
-        )
+      ? navigationChapters.findIndex((chapter) => chapter.id === selectedChapter.id)
       : -1;
   const activeIndex =
     selectedIndex >= 0
@@ -256,16 +230,11 @@ function ComposeDocumentSession({
     : activeChapter
       ? -1
       : 0;
-  if (documentIndex !== mappedDocumentIndex)
-    setDocumentIndex(mappedDocumentIndex);
-  const uploadedChapterKey = chapterQueryKeys.content(
-    activeDocumentId,
-    activeChapter?.id,
-  );
+  if (documentIndex !== mappedDocumentIndex) setDocumentIndex(mappedDocumentIndex);
+  const uploadedChapterKey = chapterQueryKeys.content(activeDocumentId, activeChapter?.id);
   const chapterQuery = useQuery({
     queryKey: uploadedChapterKey,
-    queryFn: ({ signal }) =>
-      getLongTextChapter(activeDocumentId, activeChapter!.id, signal),
+    queryFn: ({ signal }) => getLongTextChapter(activeDocumentId, activeChapter!.id, signal),
     enabled: articleSelection.authenticated && usesUploadedChapters,
   });
   const uploadedChapter = chapterQuery.data;
@@ -277,20 +246,16 @@ function ComposeDocumentSession({
       }),
     [activeChapter, uploadedChapter, chapterQuery.isError],
   );
-  const directoryLoading =
-    articleSelection.authenticated && directoryQuery.isPending;
-  const sourceError =
-    directoryQuery.isError || resolvedContent.source === "error";
-  const sourceLoading =
-    directoryLoading || resolvedContent.source === "loading";
+  const directoryLoading = articleSelection.authenticated && directoryQuery.isPending;
+  const sourceError = directoryQuery.isError || resolvedContent.source === "error";
+  const sourceLoading = directoryLoading || resolvedContent.source === "loading";
   const contentReady =
     !sourceError &&
     !sourceLoading &&
     (resolvedContent.source === "document" ||
       resolvedContent.source === "standalone" ||
       !activeChapter);
-  const unsupportedDocumentRange =
-    activeChapter?.source === "document" && mappedDocumentIndex < 0;
+  const unsupportedDocumentRange = activeChapter?.source === "document" && mappedDocumentIndex < 0;
   const canWriteChapter =
     !compose.isPlaceholderData &&
     compose.articleStarted &&
@@ -335,11 +300,9 @@ function ComposeDocumentSession({
     longText.enabled ? longText.activeIndex : null,
   ]);
   const viewScopeRef = useRef({ key: viewKey });
-  if (viewScopeRef.current.key !== viewKey)
-    viewScopeRef.current = { key: viewKey };
+  if (viewScopeRef.current.key !== viewKey) viewScopeRef.current = { key: viewKey };
   const viewScope = viewScopeRef.current;
-  const isCurrentView = () =>
-    mountedRef.current && viewScopeRef.current === viewScope;
+  const isCurrentView = () => mountedRef.current && viewScopeRef.current === viewScope;
   const compareRequestRef = useRef(0);
   const rollbackRequestRef = useRef(0);
   const resetView = () => {
@@ -354,9 +317,7 @@ function ComposeDocumentSession({
     resetView();
     setChapterIndex(index);
     const chapter = navigationChapters[index];
-    setSelectedChapter(
-      chapter ? { documentId: activeDocumentId, id: chapter.id } : null,
-    );
+    setSelectedChapter(chapter ? { documentId: activeDocumentId, id: chapter.id } : null);
   };
   const { data: comments = [] } = useQuery<CommentReply[]>({
     queryKey: ["comments", compose.document.id, threadId],
@@ -367,9 +328,7 @@ function ComposeDocumentSession({
   const compareRevision = async (revision: number) => {
     if (!contentReady) return;
     const request = ++compareRequestRef.current;
-    const currentContent = structuredClone(
-      editorRef.current?.getJSON() ?? editorContent,
-    );
+    const currentContent = structuredClone(editorRef.current?.getJSON() ?? editorContent);
     setComparingRevision(revision);
     try {
       const snapshot = await getRevision(activeDocumentId, revision);
@@ -398,16 +357,14 @@ function ComposeDocumentSession({
         setNotice(cause instanceof Error ? cause.message : "版本比较加载失败");
       }
     } finally {
-      if (isCurrentView() && request === compareRequestRef.current)
-        setComparingRevision(null);
+      if (isCurrentView() && request === compareRequestRef.current) setComparingRevision(null);
     }
   };
 
   const rollback = async (revision: number) => {
     if (!canWriteChapter) return;
     const request = ++rollbackRequestRef.current;
-    const operationIsCurrent = () =>
-      isCurrentView() && rollbackRequestRef.current === request;
+    const operationIsCurrent = () => isCurrentView() && rollbackRequestRef.current === request;
     compareRequestRef.current += 1;
     setComparingRevision(null);
     setComparison(null);
@@ -416,8 +373,7 @@ function ComposeDocumentSession({
       if (!operationIsCurrent()) return;
       setNotice("已回退到版本 " + revision + "，并创建版本 " + next.revision);
     } catch (error) {
-      if (operationIsCurrent())
-        setNotice(error instanceof Error ? error.message : "版本回退失败");
+      if (operationIsCurrent()) setNotice(error instanceof Error ? error.message : "版本回退失败");
     }
   };
 
@@ -443,9 +399,7 @@ function ComposeDocumentSession({
     } catch (cause) {
       if (!isCurrentView()) return;
       setNotice(
-        cause instanceof Error
-          ? "设置章节可见性失败：" + cause.message
-          : "设置章节可见性失败",
+        cause instanceof Error ? "设置章节可见性失败：" + cause.message : "设置章节可见性失败",
       );
     }
   };
@@ -454,9 +408,7 @@ function ComposeDocumentSession({
   const proofreadChapter = (index: number) => {
     const chapter = navigationChapters[index];
     if (chapter)
-      navigate(
-        `/read?chapter=${index}&chapterId=${encodeURIComponent(chapter.id)}&proofread=1`,
-      );
+      navigate(`/read?chapter=${index}&chapterId=${encodeURIComponent(chapter.id)}&proofread=1`);
   };
 
   // 空库先建立纯本地空白文章；只有之后点击保存才会创建服务器首版。
@@ -472,9 +424,7 @@ function ComposeDocumentSession({
       return;
     compose.createLocalArticle();
     setChapterIndex(0);
-    setNotice(
-      `已在本地创建《${articleSelection.selectedDraftTitle}》，点击保存后上传服务器`,
-    );
+    setNotice(`已在本地创建《${articleSelection.selectedDraftTitle}》，点击保存后上传服务器`);
   }, [
     articleSelection.loading,
     articleSelection.selectedDraftTitle,
@@ -500,10 +450,7 @@ function ComposeDocumentSession({
       return;
     }
     const number = splitDocumentByHeadings(current).chapters.length + 1;
-    const result = appendChapter(
-      current,
-      `第${toChineseNumber(number)}章 新章节`,
-    );
+    const result = appendChapter(current, `第${toChineseNumber(number)}章 新章节`);
     compose.replaceContent(result.document);
     resetView();
     setSelectedChapter(null);
@@ -533,9 +480,7 @@ function ComposeDocumentSession({
           (current = []) => current.filter((item) => item.id !== row.id),
         );
         setSelectedChapter(null);
-        setChapterIndex(
-          Math.min(index, Math.max(0, navigationChapters.length - 2)),
-        );
+        setChapterIndex(Math.min(index, Math.max(0, navigationChapters.length - 2)));
         setNotice(
           outcome.deleted
             ? "已从服务器删除章节「" + row.title + "」"
@@ -543,9 +488,7 @@ function ComposeDocumentSession({
         );
       } catch (error) {
         if (isCurrentView())
-          setNotice(
-            error instanceof Error ? error.message : "服务器章节删除失败",
-          );
+          setNotice(error instanceof Error ? error.message : "服务器章节删除失败");
       }
       return;
     }
@@ -567,17 +510,11 @@ function ComposeDocumentSession({
       (current = []) =>
         current
           .filter((row) => row.id !== chapter.id)
-          .map((row) =>
-            row.order > position ? { ...row, order: row.order - 1 } : row,
-          ),
+          .map((row) => (row.order > position ? { ...row, order: row.order - 1 } : row)),
     );
     setSelectedChapter(null);
-    setChapterIndex(
-      Math.min(index, Math.max(0, navigationChapters.length - 2)),
-    );
-    setNotice(
-      "已删除章节「" + result.removed.title + "」（仅本地草稿，点保存后生效）",
-    );
+    setChapterIndex(Math.min(index, Math.max(0, navigationChapters.length - 2)));
+    setNotice("已删除章节「" + result.removed.title + "」（仅本地草稿，点保存后生效）");
     try {
       const outcome = await deleteDocumentChapter(activeDocumentId, chapter.id);
       if (outcome.deleted) {
@@ -588,9 +525,7 @@ function ComposeDocumentSession({
     } catch {
       if (isCurrentView()) {
         setNotice(
-          "已从本地草稿删除「" +
-            result.removed.title +
-            "」，服务器目录将在下次保存时重新对账",
+          "已从本地草稿删除「" + result.removed.title + "」，服务器目录将在下次保存时重新对账",
         );
       }
     }
@@ -609,8 +544,7 @@ function ComposeDocumentSession({
     setPublishingScope(viewScope);
     try {
       if (usesUploadedChapters && activeChapterStatus && uploadedChapter) {
-        const snapshot =
-          latestContent ?? editorRef.current?.getJSON() ?? editorContent;
+        const snapshot = latestContent ?? editorRef.current?.getJSON() ?? editorContent;
         const hash = await sha256Hex(
           JSON.stringify({
             title: activeChapterStatus.title,
@@ -619,17 +553,13 @@ function ComposeDocumentSession({
           }),
         );
         if (!isCurrentView()) return;
-        const saved = await uploadLongTextChapter(
-          activeDocumentId,
-          activeChapterStatus.id,
-          {
-            title: activeChapterStatus.title,
-            order: activeChapterStatus.order,
-            content: snapshot,
-            hash,
-            baseRevision: uploadedChapter.revision,
-          },
-        );
+        const saved = await uploadLongTextChapter(activeDocumentId, activeChapterStatus.id, {
+          title: activeChapterStatus.title,
+          order: activeChapterStatus.order,
+          content: snapshot,
+          hash,
+          baseRevision: uploadedChapter.revision,
+        });
         void queryClient.invalidateQueries({
           queryKey: chapterQueryKeys.directory(activeDocumentId),
         });
@@ -640,10 +570,7 @@ function ComposeDocumentSession({
             current
               ? {
                   ...current,
-                  content:
-                    current.content === uploadedChapter.content
-                      ? snapshot
-                      : current.content,
+                  content: current.content === uploadedChapter.content ? snapshot : current.content,
                   revision: saved.revision,
                 }
               : current,
@@ -659,8 +586,7 @@ function ComposeDocumentSession({
         compose.autosave.revision;
       const saved = await compose.publishChapter(mappedDocumentIndex, snapshot);
       if (!isCurrentView() || !saved) return;
-      const latestAfter =
-        queryClient.getQueryData<DocumentEnvelope>(documentKey)?.revision;
+      const latestAfter = queryClient.getQueryData<DocumentEnvelope>(documentKey)?.revision;
       setNotice(
         latestAfter === undefined || latestAfter === latestBefore
           ? "内容没有变化，未创建新版本；该章的版本号与历史在首次实际保存时生成"
@@ -670,11 +596,7 @@ function ComposeDocumentSession({
       );
     } catch (cause) {
       if (!isCurrentView()) return;
-      setNotice(
-        cause instanceof Error
-          ? "保存失败：" + cause.message
-          : "保存失败，请稍后重试",
-      );
+      setNotice(cause instanceof Error ? "保存失败：" + cause.message : "保存失败，请稍后重试");
     } finally {
       if (publishingRef.current === viewScope) {
         publishingRef.current = null;
@@ -700,11 +622,7 @@ function ComposeDocumentSession({
           </Button>
         </p>
       ) : !longText.enabled && sourceLoading ? (
-        <Skeleton
-          className="h-16 w-full"
-          role="status"
-          aria-label="正在加载章节正文"
-        />
+        <Skeleton className="h-16 w-full" role="status" aria-label="正在加载章节正文" />
       ) : !longText.enabled && unsupportedDocumentRange ? (
         <p role="status">请在长文本工作台编辑此章节</p>
       ) : !longText.enabled && activeChapter?.source === "placeholder" ? (
@@ -720,25 +638,19 @@ function ComposeDocumentSession({
         mode={mode}
         editable={
           longText.enabled
-            ? !compose.isPlaceholderData &&
-              compose.articleStarted &&
-              canEditSelected
+            ? !compose.isPlaceholderData && compose.articleStarted && canEditSelected
             : canWriteChapter
         }
         longTextMode={longText.enabled}
         onChange={(next) => {
-          if (!isCurrentView() || compose.isPlaceholderData || !canEditSelected)
-            return;
+          if (!isCurrentView() || compose.isPlaceholderData || !canEditSelected) return;
           if (!longText.enabled && !canWriteChapter) return;
           if (longText.enabled) longText.updateEditor(next);
           else if (usesUploadedChapters && activeChapterStatus) {
-            queryClient.setQueryData(
-              uploadedChapterKey,
-              (current: typeof uploadedChapter) =>
-                current ? { ...current, content: next } : current,
+            queryClient.setQueryData(uploadedChapterKey, (current: typeof uploadedChapter) =>
+              current ? { ...current, content: next } : current,
             );
-          } else if (mappedDocumentIndex >= 0)
-            compose.updateChapter(mappedDocumentIndex, next);
+          } else if (mappedDocumentIndex >= 0) compose.updateChapter(mappedDocumentIndex, next);
         }}
         onSplitChapter={longText.splitChapter}
         onChapterEdit={longText.editChapter}
@@ -778,12 +690,8 @@ function ComposeDocumentSession({
         <div>
           <h1 className="text-base font-bold">发帖与创作工作台</h1>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {mode === "compact"
-              ? "快速回复"
-              : mode === "mobile"
-                ? "移动编辑"
-                : "完整创作"}{" "}
-            · {identity.name}
+            {mode === "compact" ? "快速回复" : mode === "mobile" ? "移动编辑" : "完整创作"} ·{" "}
+            {identity.name}
           </p>
         </div>
         <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
@@ -792,9 +700,7 @@ function ComposeDocumentSession({
               articles={articleSelection.articles}
               value={activeDocumentId}
               canCreate={articleSelection.canCreate}
-              disabled={
-                switchingArticle || upload.preparing || upload.uploading
-              }
+              disabled={switchingArticle || upload.preparing || upload.uploading}
               open={newArticleDialogOpen}
               onOpenChange={setNewArticleDialogOpen}
               onChange={async (id) => {
@@ -808,14 +714,10 @@ function ComposeDocumentSession({
                   upload.cancel();
                   articleSelection.setSelectedId(id);
                   const stored = Number.parseInt(
-                    window.localStorage.getItem(
-                      `ricetext:active-chapter:${id}`,
-                    ) ?? "",
+                    window.localStorage.getItem(`ricetext:active-chapter:${id}`) ?? "",
                     10,
                   );
-                  setChapterIndex(
-                    Number.isFinite(stored) && stored >= 0 ? stored : 0,
-                  );
+                  setChapterIndex(Number.isFinite(stored) && stored >= 0 ? stored : 0);
                 } finally {
                   articleSwitchRef.current = false;
                   setSwitchingArticle(false);
@@ -876,8 +778,7 @@ function ComposeDocumentSession({
       </div>
 
       {compose.autosave.state === "conflict" ||
-      (compose.autosave.state === "error" &&
-        compose.autosave.conflictMessage) ? (
+      (compose.autosave.state === "error" && compose.autosave.conflictMessage) ? (
         <div
           className={cn(
             "mb-3 flex flex-wrap items-center gap-3 rounded-md border px-3 py-2 text-xs",
@@ -887,9 +788,7 @@ function ComposeDocumentSession({
           )}
         >
           <AlertTriangle size={16} />
-          <span className="min-w-[220px] flex-1">
-            {compose.autosave.conflictMessage}
-          </span>
+          <span className="min-w-[220px] flex-1">{compose.autosave.conflictMessage}</span>
           {compose.autosave.state === "error" ? (
             <span className="whitespace-nowrap">
               当前身份：{identity.name}（仅作者或版主可保存，请切换身份后重试）
@@ -900,9 +799,7 @@ function ComposeDocumentSession({
                 size="sm"
                 variant="outline"
                 onClick={() =>
-                  navigator.clipboard.writeText(
-                    JSON.stringify(compose.content, null, 2),
-                  )
+                  navigator.clipboard.writeText(JSON.stringify(compose.content, null, 2))
                 }
               >
                 复制本地副本
@@ -919,11 +816,7 @@ function ComposeDocumentSession({
         <div className="mb-3 flex items-center gap-2 rounded-md border border-[#add4cb] bg-[#edf8f5] px-3 py-2 text-xs text-[#185f57]">
           <Check size={15} />
           <span className="flex-1">{notice}</span>
-          <button
-            type="button"
-            onClick={() => setNotice("")}
-            aria-label="关闭提示"
-          >
+          <button type="button" onClick={() => setNotice("")} aria-label="关闭提示">
             <X size={14} />
           </button>
         </div>
@@ -999,30 +892,21 @@ function ComposeDocumentSession({
           onCompareRevision={(revision) => void compareRevision(revision)}
           {...(canEditSelected
             ? {
-                onAddChapter: compose.articleStarted
-                  ? addChapter
-                  : createArticle,
+                onAddChapter: compose.articleStarted ? addChapter : createArticle,
               }
             : {})}
           createArticle={!compose.articleStarted}
-          showServerTools={
-            articleSelection.authenticated &&
-            compose.document.storage === "server"
-          }
+          showServerTools={articleSelection.authenticated && compose.document.storage === "server"}
           {...(canEditSelected
             ? {
                 onDeleteChapter: deleteChapter,
-                deleteMode: usesUploadedChapters
-                  ? ("server" as const)
-                  : ("draft" as const),
+                deleteMode: usesUploadedChapters ? ("server" as const) : ("draft" as const),
                 onToggleHidden: (index: number, hidden: boolean) =>
                   void toggleChapterHidden(index, hidden),
                 onProofread: proofreadChapter,
               }
             : {})}
-          hiddenChapters={navigationChapters.map(
-            (chapter) => chapter.directory?.hidden ?? false,
-          )}
+          hiddenChapters={navigationChapters.map((chapter) => chapter.directory?.hidden ?? false)}
           onSelectChapter={selectChapter}
           onSave={() => void publish()}
           onRestore={(revision) => void rollback(revision)}

@@ -110,7 +110,9 @@ function allowedReturnTo(request: Request, env: WorkerEnv): string {
     throw new WorkerHttpError(422, "INVALID_RETURN_TO", "登录返回地址无效");
   }
   const allowed = new Set(
-    env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean),
+    env.ALLOWED_ORIGINS.split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
   );
   if (!allowed.has(url.origin)) {
     throw new WorkerHttpError(422, "INVALID_RETURN_TO", "登录返回地址不在允许列表中");
@@ -139,6 +141,7 @@ async function resolveOrCreateUser(
     .first<{ user_id: string }>();
   if (existing) return existing.user_id;
 
+  // 外部 issuer/subject 只保存在身份映射表中，内部用户身份保持随机且与认证来源解耦。
   const userId = createEntityId("user");
   const now = new Date().toISOString();
   try {
@@ -155,6 +158,7 @@ async function resolveOrCreateUser(
     ]);
     return userId;
   } catch (error) {
+    // 并发首次登录只有一个身份映射能成功，失败方读取胜出的用户，避免产生第二个身份。
     const concurrent = await env.DB.prepare(
       "SELECT user_id FROM auth_identities WHERE issuer = ? AND subject = ?",
     )
@@ -257,11 +261,10 @@ export async function finishOidcLogin(request: Request, env: WorkerEnv): Promise
   }
   let payload: JWTPayload;
   try {
-    const verified = await jwtVerify(
-      tokens.id_token,
-      createRemoteJWKSet(new URL(oidc.jwks_uri)),
-      { issuer: auth.issuer, audience: auth.clientId },
-    );
+    const verified = await jwtVerify(tokens.id_token, createRemoteJWKSet(new URL(oidc.jwks_uri)), {
+      issuer: auth.issuer,
+      audience: auth.clientId,
+    });
     payload = verified.payload;
   } catch {
     throw new WorkerHttpError(401, "OIDC_ID_TOKEN_INVALID", "OIDC ID Token 校验失败");
@@ -320,8 +323,8 @@ export async function logout(request: Request, env: WorkerEnv): Promise<Response
         "ricetext_session",
         "",
         "HttpOnly;" +
-        (env.ENVIRONMENT === "development" ? "" : " Secure;") +
-        " SameSite=Lax; Path=/; Max-Age=0",
+          (env.ENVIRONMENT === "development" ? "" : " Secure;") +
+          " SameSite=Lax; Path=/; Max-Age=0",
       ),
       "cache-control": "no-store",
     },
@@ -335,10 +338,12 @@ export async function cleanupExpiredAuth(
 ): Promise<number> {
   const results = await db.batch([
     db.prepare("DELETE FROM auth_login_states WHERE expires_at <= ?").bind(now),
-    db.prepare("DELETE FROM auth_sessions WHERE expires_at <= ? OR revoked_at IS NOT NULL").bind(now),
-    db.prepare("DELETE FROM login_rate_limits WHERE window_started_at < ?").bind(
-      new Date(new Date(now).getTime() - 24 * 60 * 60 * 1000).toISOString(),
-    ),
+    db
+      .prepare("DELETE FROM auth_sessions WHERE expires_at <= ? OR revoked_at IS NOT NULL")
+      .bind(now),
+    db
+      .prepare("DELETE FROM login_rate_limits WHERE window_started_at < ?")
+      .bind(new Date(new Date(now).getTime() - 24 * 60 * 60 * 1000).toISOString()),
   ]);
   return results.reduce((total, result) => total + result.meta.changes, 0);
 }

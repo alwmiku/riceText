@@ -107,7 +107,9 @@ export class D1AssetRepository {
       });
       stored = true;
       const ready = await this.db
-        .prepare("UPDATE assets SET state = 'ready', updated_at = ? WHERE id = ? AND state = 'pending'")
+        .prepare(
+          "UPDATE assets SET state = 'ready', updated_at = ? WHERE id = ? AND state = 'pending'",
+        )
         .bind(new Date().toISOString(), id)
         .run();
       if (ready.meta.changes !== 1) throw new Error("Asset state transition failed");

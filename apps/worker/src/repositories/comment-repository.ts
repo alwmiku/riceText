@@ -65,9 +65,7 @@ export class D1CommentRepository {
       .first<{ found: number }>();
     if (!document) throw new WorkerHttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
     const thread = await this.db
-      .prepare(
-        "SELECT archived FROM comment_threads WHERE document_id = ? AND anchor_id = ?",
-      )
+      .prepare("SELECT archived FROM comment_threads WHERE document_id = ? AND anchor_id = ?")
       .bind(documentId, anchorId)
       .first<ThreadRow>();
     if (!thread) {
@@ -119,11 +117,7 @@ export class D1CommentRepository {
     if (cursor) {
       const index = roots.findIndex((root) => root.id === cursor);
       if (index === -1) {
-        throw new WorkerHttpError(
-          422,
-          "INVALID_CURSOR",
-          "间贴 cursor 不在当前锚点根回复中",
-        );
+        throw new WorkerHttpError(422, "INVALID_CURSOR", "间贴 cursor 不在当前锚点根回复中");
       }
       start = index + 1;
     }
@@ -177,24 +171,14 @@ export class D1CommentRepository {
       .first<{ id: string }>();
     if (!inserted) {
       const thread = await this.db
-        .prepare(
-          "SELECT archived FROM comment_threads WHERE document_id = ? AND anchor_id = ?",
-        )
+        .prepare("SELECT archived FROM comment_threads WHERE document_id = ? AND anchor_id = ?")
         .bind(documentId, anchorId)
         .first<ThreadRow>();
       if (!thread) {
-        throw new WorkerHttpError(
-          404,
-          "COMMENT_ANCHOR_NOT_FOUND",
-          "正文中不存在该间贴锚点",
-        );
+        throw new WorkerHttpError(404, "COMMENT_ANCHOR_NOT_FOUND", "正文中不存在该间贴锚点");
       }
       if (thread.archived === 1) {
-        throw new WorkerHttpError(
-          409,
-          "COMMENT_THREAD_ARCHIVED",
-          "锚点已删除，间贴线程只读归档",
-        );
+        throw new WorkerHttpError(409, "COMMENT_THREAD_ARCHIVED", "锚点已删除，间贴线程只读归档");
       }
       throw new WorkerHttpError(404, "PARENT_REPLY_NOT_FOUND", "父回复不属于该间贴线程");
     }

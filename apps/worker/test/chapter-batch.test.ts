@@ -33,18 +33,20 @@ const stageRequest = (
   chapters: Array<{ id: string; temporaryOrder: number; baseRevision: number }>,
 ) =>
   exports.default.fetch(
-    new Request(
-      "http://example.com/api/forum/novels/" + novelId + "/chapters/reorder-stage",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-user-id": "author" },
-        body: JSON.stringify({ chapters }),
-      },
-    ),
+    new Request("http://example.com/api/forum/novels/" + novelId + "/chapters/reorder-stage", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user-id": "author" },
+      body: JSON.stringify({ chapters }),
+    }),
   );
 
-async function manifestHash(chapters: Array<{ id: string; title: string; order: number; hash: string }>) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(chapters)));
+async function manifestHash(
+  chapters: Array<{ id: string; title: string; order: number; hash: string }>,
+) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(chapters)),
+  );
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
@@ -133,42 +135,57 @@ describe("Worker 章节批次", () => {
     const hash = await manifestHash(manifest);
     await env.DB.prepare(
       "INSERT INTO chapter_uploads(document_id,id,manifest_hash,total_chapters,status,created_at) VALUES(?,?,?,?,? ,?)",
-    ).bind("large-atomic", "upload-large", hash, manifest.length, "uploading", now).run();
+    )
+      .bind("large-atomic", "upload-large", hash, manifest.length, "uploading", now)
+      .run();
     for (let offset = 0; offset < manifest.length; offset += 20) {
       await env.DB.batch(
-        manifest.slice(offset, offset + 20).map((item) =>
-          env.DB.prepare(
-            "INSERT INTO chapter_upload_items(document_id,upload_id,chapter_id,title,volume_title,sort_order,content_hash,base_revision,revision,content_json,hidden) VALUES(?,?,?,?,?,?,?,?,?,?,0)",
-          ).bind(
-            "large-atomic",
-            "upload-large",
-            item.id,
-            item.title,
-            item.volumeTitle,
-            item.order,
-            item.hash,
-            0,
-            1,
-            JSON.stringify(contentFor(item.title)),
+        manifest
+          .slice(offset, offset + 20)
+          .map((item) =>
+            env.DB.prepare(
+              "INSERT INTO chapter_upload_items(document_id,upload_id,chapter_id,title,volume_title,sort_order,content_hash,base_revision,revision,content_json,hidden) VALUES(?,?,?,?,?,?,?,?,?,?,0)",
+            ).bind(
+              "large-atomic",
+              "upload-large",
+              item.id,
+              item.title,
+              item.volumeTitle,
+              item.order,
+              item.hash,
+              0,
+              1,
+              JSON.stringify(contentFor(item.title)),
+            ),
           ),
-        ),
       );
     }
-    await env.DB.prepare("UPDATE chapter_uploads SET status='aborted' WHERE document_id=? AND id=?").bind("large-atomic", "upload-large").run();
-    const resumed = await exports.default.fetch(new Request(
-      "http://example.com/api/forum/novels/large-atomic/chapter-uploads",
-      { method: "POST", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ manifestHash: hash, totalChapters: manifest.length }) },
-    ));
+    await env.DB.prepare("UPDATE chapter_uploads SET status='aborted' WHERE document_id=? AND id=?")
+      .bind("large-atomic", "upload-large")
+      .run();
+    const resumed = await exports.default.fetch(
+      new Request("http://example.com/api/forum/novels/large-atomic/chapter-uploads", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({ manifestHash: hash, totalChapters: manifest.length }),
+      }),
+    );
     expect(resumed.status, await resumed.clone().text()).toBe(200);
-    expect((await resumed.json()) as { uploadId: string }).toMatchObject({ uploadId: "upload-large" });
-    const completed = await exports.default.fetch(new Request(
-      "http://example.com/api/forum/novels/large-atomic/chapter-uploads/upload-large/complete",
-      { method: "POST", headers: { "x-user-id": "author" } },
-    ));
+    expect((await resumed.json()) as { uploadId: string }).toMatchObject({
+      uploadId: "upload-large",
+    });
+    const completed = await exports.default.fetch(
+      new Request(
+        "http://example.com/api/forum/novels/large-atomic/chapter-uploads/upload-large/complete",
+        { method: "POST", headers: { "x-user-id": "author" } },
+      ),
+    );
     expect(completed.status, await completed.clone().text()).toBe(200);
     const stored = await env.DB.prepare(
       "SELECT COUNT(*) count,MIN(sort_order) min_order,MAX(sort_order) max_order FROM chapters WHERE document_id=?",
-    ).bind("large-atomic").first<{ count: number; min_order: number; max_order: number }>();
+    )
+      .bind("large-atomic")
+      .first<{ count: number; min_order: number; max_order: number }>();
     expect(stored).toEqual({ count: 1100, min_order: 0, max_order: 1099 });
   }, 30_000);
 
@@ -187,11 +204,10 @@ describe("Worker 章节批次", () => {
     ]);
 
     const response = await exports.default.fetch(
-      new Request(
-        "http://example.com/api/documents/owner-a/chapters/" +
-          chapterId("owner-a", 0),
-        { method: "DELETE", headers: { "x-user-id": "author" } },
-      ),
+      new Request("http://example.com/api/documents/owner-a/chapters/" + chapterId("owner-a", 0), {
+        method: "DELETE",
+        headers: { "x-user-id": "author" },
+      }),
     );
     expect(response.status).toBe(200);
     const chapters = await env.DB.prepare(
@@ -214,11 +230,10 @@ describe("Worker 章节批次", () => {
   it("删除中间章节后压紧后续顺序", async () => {
     await seedNovel("owner-a", 3);
     const response = await exports.default.fetch(
-      new Request(
-        "http://example.com/api/documents/owner-a/chapters/" +
-          chapterId("owner-a", 1),
-        { method: "DELETE", headers: { "x-user-id": "author" } },
-      ),
+      new Request("http://example.com/api/documents/owner-a/chapters/" + chapterId("owner-a", 1), {
+        method: "DELETE",
+        headers: { "x-user-id": "author" },
+      }),
     );
     expect(response.status).toBe(200);
     const chapters = await env.DB.prepare(
@@ -235,13 +250,14 @@ describe("Worker 章节批次", () => {
 
   it("批量保存：200 保存、同 hash 幂等、整批 409 且不发生部分提交", async () => {
     await seedNovel("batch-novel", 3);
-    const item = (
-      id: string,
-      title: string,
-      order: number,
-      hash: string,
-      baseRevision = 1,
-    ) => ({ id, title, order, content: contentFor(title), hash, baseRevision });
+    const item = (id: string, title: string, order: number, hash: string, baseRevision = 1) => ({
+      id,
+      title,
+      order,
+      content: contentFor(title),
+      hash,
+      baseRevision,
+    });
     const saved = await batchRequest("batch-novel", [
       item(chapterId("batch-novel", 0), "第一章（新）", 0, "new-0"),
       item(chapterId("batch-novel", 1), "第二章（新）", 1, "new-1"),
@@ -249,8 +265,20 @@ describe("Worker 章节批次", () => {
     expect(saved.status, await saved.clone().text()).toBe(200);
     await expect(saved.json()).resolves.toEqual({
       chapters: [
-        { id: chapterId("batch-novel", 0), title: "第一章（新）", order: 0, revision: 2, status: "saved" },
-        { id: chapterId("batch-novel", 1), title: "第二章（新）", order: 1, revision: 2, status: "saved" },
+        {
+          id: chapterId("batch-novel", 0),
+          title: "第一章（新）",
+          order: 0,
+          revision: 2,
+          status: "saved",
+        },
+        {
+          id: chapterId("batch-novel", 1),
+          title: "第二章（新）",
+          order: 1,
+          revision: 2,
+          status: "saved",
+        },
       ],
     });
 
@@ -261,7 +289,13 @@ describe("Worker 章节批次", () => {
     expect(replayed.status).toBe(200);
     await expect(replayed.json()).resolves.toEqual({
       chapters: [
-        { id: chapterId("batch-novel", 0), title: "第一章（新）", order: 0, revision: 2, status: "unchanged" },
+        {
+          id: chapterId("batch-novel", 0),
+          title: "第一章（新）",
+          order: 0,
+          revision: 2,
+          status: "unchanged",
+        },
       ],
     });
     const revisions = await env.DB.prepare(
@@ -286,9 +320,7 @@ describe("Worker 章节批次", () => {
         details: { chapterId: chapterId("batch-novel", 1) },
       },
     });
-    const untouched = await env.DB.prepare(
-      "SELECT content_hash FROM chapters WHERE id = ?",
-    )
+    const untouched = await env.DB.prepare("SELECT content_hash FROM chapters WHERE id = ?")
       .bind(chapterId("batch-novel", 2))
       .first<{ content_hash: string }>();
     expect(untouched?.content_hash).toBe("old-2");
@@ -341,8 +373,22 @@ describe("Worker 章节批次", () => {
 
     // 批内重复目标顺序仍是整批 409（用全新 id，避免与上一段已写行冲突）。
     const duplicate = await batchRequest("owner-a", [
-      { id: chapterId("owner-a", 8), title: "D0", order: 5, content: contentFor("D0"), hash: "d0", baseRevision: 0 },
-      { id: chapterId("owner-a", 9), title: "D1", order: 5, content: contentFor("D1"), hash: "d1", baseRevision: 0 },
+      {
+        id: chapterId("owner-a", 8),
+        title: "D0",
+        order: 5,
+        content: contentFor("D0"),
+        hash: "d0",
+        baseRevision: 0,
+      },
+      {
+        id: chapterId("owner-a", 9),
+        title: "D1",
+        order: 5,
+        content: contentFor("D1"),
+        hash: "d1",
+        baseRevision: 0,
+      },
     ]);
     expect(duplicate.status).toBe(409);
     await expect(duplicate.json()).resolves.toMatchObject({
@@ -360,32 +406,60 @@ describe("Worker 章节批次", () => {
       { id: "new-b", title: "B", volumeTitle: "第一卷", order: 1, hash: "hb" },
       { id: "new-c", title: "C", volumeTitle: "第二卷", order: 2, hash: "hc" },
     ];
-    const create = await exports.default.fetch(new Request(
-      "http://example.com/api/forum/novels/atomic-novel/chapter-uploads",
-      { method: "POST", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ manifestHash: await manifestHash(manifest), totalChapters: 3 }) },
-    ));
+    const create = await exports.default.fetch(
+      new Request("http://example.com/api/forum/novels/atomic-novel/chapter-uploads", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({ manifestHash: await manifestHash(manifest), totalChapters: 3 }),
+      }),
+    );
     expect(create.status, await create.clone().text()).toBe(200);
     const uploadId = ((await create.json()) as { uploadId: string }).uploadId;
     expect(uploadId).toMatch(/^upload_[0-9a-f-]{36}$/u);
-    const stage = (items: typeof manifest) => exports.default.fetch(new Request(
-      `http://example.com/api/forum/novels/atomic-novel/chapter-uploads/${uploadId}/batch`,
-      { method: "PUT", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ chapters: items.map((item) => ({ ...item, content: contentFor(item.title), baseRevision: 0 })) }) },
-    ));
+    const stage = (items: typeof manifest) =>
+      exports.default.fetch(
+        new Request(
+          `http://example.com/api/forum/novels/atomic-novel/chapter-uploads/${uploadId}/batch`,
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json", "x-user-id": "author" },
+            body: JSON.stringify({
+              chapters: items.map((item) => ({
+                ...item,
+                content: contentFor(item.title),
+                baseRevision: 0,
+              })),
+            }),
+          },
+        ),
+      );
     expect((await stage([manifest[2]!])).status).toBe(200);
-    const incomplete = await exports.default.fetch(new Request(
-      `http://example.com/api/forum/novels/atomic-novel/chapter-uploads/${uploadId}/complete`,
-      { method: "POST", headers: { "x-user-id": "author" } },
-    ));
+    const incomplete = await exports.default.fetch(
+      new Request(
+        `http://example.com/api/forum/novels/atomic-novel/chapter-uploads/${uploadId}/complete`,
+        { method: "POST", headers: { "x-user-id": "author" } },
+      ),
+    );
     expect(incomplete.status).toBe(409);
-    const before = await env.DB.prepare("SELECT id,sort_order FROM chapters WHERE document_id=? ORDER BY sort_order").bind("atomic-novel").all();
+    const before = await env.DB.prepare(
+      "SELECT id,sort_order FROM chapters WHERE document_id=? ORDER BY sort_order",
+    )
+      .bind("atomic-novel")
+      .all();
     expect(before.results).toEqual([{ id: "chapter-0", sort_order: 0 }]);
     expect((await stage([manifest[0]!, manifest[1]!])).status).toBe(200);
-    const complete = await exports.default.fetch(new Request(
-      `http://example.com/api/forum/novels/atomic-novel/chapter-uploads/${uploadId}/complete`,
-      { method: "POST", headers: { "x-user-id": "author" } },
-    ));
+    const complete = await exports.default.fetch(
+      new Request(
+        `http://example.com/api/forum/novels/atomic-novel/chapter-uploads/${uploadId}/complete`,
+        { method: "POST", headers: { "x-user-id": "author" } },
+      ),
+    );
     expect(complete.status, await complete.clone().text()).toBe(200);
-    const after = await env.DB.prepare("SELECT id,volume_title,sort_order FROM chapters WHERE document_id=? ORDER BY sort_order").bind("atomic-novel").all();
+    const after = await env.DB.prepare(
+      "SELECT id,volume_title,sort_order FROM chapters WHERE document_id=? ORDER BY sort_order",
+    )
+      .bind("atomic-novel")
+      .all();
     expect(after.results).toEqual([
       { id: "new-a", volume_title: "第一卷", sort_order: 0 },
       { id: "new-b", volume_title: "第一卷", sort_order: 1 },
@@ -398,36 +472,52 @@ describe("Worker 章节批次", () => {
     await env.DB.prepare(
       "INSERT INTO chapters(id,title,sort_order,document_id,revision,content_hash,updated_at,hidden) " +
         "VALUES('legacy','遗留章节',0,'repair-novel',0,'same-hash',?,0)",
-    ).bind(now).run();
+    )
+      .bind(now)
+      .run();
     const manifest = [
       { id: "legacy", title: "遗留章节", volumeTitle: "", order: 0, hash: "same-hash" },
     ];
-    const create = await exports.default.fetch(new Request(
-      "http://example.com/api/forum/novels/repair-novel/chapter-uploads",
-      { method: "POST", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ manifestHash: await manifestHash(manifest), totalChapters: 1 }) },
-    ));
+    const create = await exports.default.fetch(
+      new Request("http://example.com/api/forum/novels/repair-novel/chapter-uploads", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({ manifestHash: await manifestHash(manifest), totalChapters: 1 }),
+      }),
+    );
     const uploadId = ((await create.json()) as { uploadId: string }).uploadId;
-    const staged = await exports.default.fetch(new Request(
-      `http://example.com/api/forum/novels/repair-novel/chapter-uploads/${uploadId}/batch`,
-      { method: "PUT", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ chapters: [{ ...manifest[0]!, content: contentFor("已恢复正文"), baseRevision: 0 }] }) },
-    ));
+    const staged = await exports.default.fetch(
+      new Request(
+        `http://example.com/api/forum/novels/repair-novel/chapter-uploads/${uploadId}/batch`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-user-id": "author" },
+          body: JSON.stringify({
+            chapters: [{ ...manifest[0]!, content: contentFor("已恢复正文"), baseRevision: 0 }],
+          }),
+        },
+      ),
+    );
     await expect(staged.json()).resolves.toMatchObject({
       chapters: [{ id: "legacy", revision: 1, status: "saved" }],
     });
-    const complete = await exports.default.fetch(new Request(
-      `http://example.com/api/forum/novels/repair-novel/chapter-uploads/${uploadId}/complete`,
-      { method: "POST", headers: { "x-user-id": "author" } },
-    ));
+    const complete = await exports.default.fetch(
+      new Request(
+        `http://example.com/api/forum/novels/repair-novel/chapter-uploads/${uploadId}/complete`,
+        { method: "POST", headers: { "x-user-id": "author" } },
+      ),
+    );
     expect(complete.status, await complete.clone().text()).toBe(200);
     const repaired = await env.DB.prepare(
       "SELECT revision,content_json FROM chapters WHERE document_id='repair-novel' AND id='legacy'",
     ).first<{ revision: number; content_json: string | null }>();
     expect(repaired?.revision).toBe(1);
     expect(repaired?.content_json).toContain("已恢复正文");
-    const directory = await exports.default.fetch(new Request(
-      "http://example.com/api/forum/chapters?documentId=repair-novel",
-      { headers: { "x-user-id": "author" } },
-    ));
+    const directory = await exports.default.fetch(
+      new Request("http://example.com/api/forum/chapters?documentId=repair-novel", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
     await expect(directory.json()).resolves.toMatchObject({
       items: [{ id: "legacy", volumeTitle: "", revision: 1, hasContent: true }],
     });
@@ -499,9 +589,7 @@ describe("Worker 章节批次", () => {
       },
     ]);
     expect(saved.status, await saved.clone().text()).toBe(200);
-    const row = await env.DB.prepare(
-      "SELECT content_json FROM chapters WHERE id = ?",
-    )
+    const row = await env.DB.prepare("SELECT content_json FROM chapters WHERE id = ?")
       .bind(chapterId("blank-lines", 0))
       .first<{ content_json: string }>();
     const parsed = JSON.parse(row!.content_json) as {
@@ -554,9 +642,7 @@ describe("Worker 章节批次", () => {
       error: { code: "CHAPTER_BATCH_TOO_LARGE" },
     });
     // 超大正文不写入。
-    const row = await env.DB.prepare(
-      "SELECT content_hash FROM chapters WHERE id = ?",
-    )
+    const row = await env.DB.prepare("SELECT content_hash FROM chapters WHERE id = ?")
       .bind(chapterId("limits-novel", 0))
       .first<{ content_hash: string }>();
     expect(row?.content_hash).toBe("old-0");
@@ -576,20 +662,15 @@ describe("Worker 章节批次", () => {
     let requests = 0;
     for (let offset = 0; offset < chapters.length; offset += 20) {
       requests += 1;
-      const response = await batchRequest(
-        "bench-novel",
-        chapters.slice(offset, offset + 20),
-      );
+      const response = await batchRequest("bench-novel", chapters.slice(offset, offset + 20));
       expect(response.status, await response.clone().text()).toBe(200);
       const body = (await response.json()) as {
         chapters: Array<{ status: string; revision: number }>;
       };
       expect(body.chapters).toHaveLength(Math.min(20, chapters.length - offset));
-      expect(
-        body.chapters.every(
-          (item) => item.status === "saved" && item.revision === 2,
-        ),
-      ).toBe(true);
+      expect(body.chapters.every((item) => item.status === "saved" && item.revision === 2)).toBe(
+        true,
+      );
     }
     const elapsed = Date.now() - started;
     console.log(

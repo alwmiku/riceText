@@ -1,13 +1,13 @@
 import { createEntityId, isCurrentEntityId } from "@ricetext/contracts";
 
 /**
- * Mint a stable chapter identity once. Position, title and content never affect the ID.
+ * 章节身份只在创建时铸造一次；位置、标题和正文变化都不会改变 ID。
  */
 export function createChapterId(): string {
   return createEntityId("chapter");
 }
 
-/** Accept current IDs and historical chapter-prefixed identities already persisted in documents. */
+/** 接受当前 `chapter_<uuid>` 以及已经持久化的历史 `chapter-*` 身份。 */
 export function isChapterId(value: unknown): value is string {
   return (
     isCurrentEntityId(value, "chapter") ||
@@ -16,8 +16,8 @@ export function isChapterId(value: unknown): value is string {
 }
 
 /**
- * Determine whether a value can continue to identify an existing chapter. Historical data includes
- * document-scoped and long-text IDs that predate the current prefix convention.
+ * 判断一个值能否继续引用既有章节。历史数据还包含文章作用域 ID 和旧长文本 ID，
+ * 因此读取兼容只检查共享字符契约，不要求它们伪装成当前格式。
  */
 export function isUsableChapterId(value: unknown): value is string {
   return (

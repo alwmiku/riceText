@@ -60,8 +60,7 @@ describe("useAutosave", () => {
 
   it("停止输入 1.2 秒后只保存本地草稿，不请求服务器", async () => {
     const { result, rerender } = renderHook(
-      ({ content, generation }) =>
-        useAutosave({ document: defaultDocument, content, generation }),
+      ({ content, generation }) => useAutosave({ document: defaultDocument, content, generation }),
       { initialProps: { content: initialContent, generation: 0 } },
     );
 
@@ -74,9 +73,7 @@ describe("useAutosave", () => {
       state: "local-saved",
       revision: defaultDocument.revision,
     });
-    expect(
-      JSON.parse(localStorage.getItem("ricetext:draft:demo-post")!),
-    ).toMatchObject({
+    expect(JSON.parse(localStorage.getItem("ricetext:draft:demo-post")!)).toMatchObject({
       documentId: "demo-post",
       baseRevision: defaultDocument.revision,
       content: changedContent,
@@ -146,8 +143,7 @@ describe("useAutosave", () => {
       }),
     );
     const { result, rerender } = renderHook(
-      ({ content, generation }) =>
-        useAutosave({ document: defaultDocument, content, generation }),
+      ({ content, generation }) => useAutosave({ document: defaultDocument, content, generation }),
       { initialProps: { content: initialContent, generation: 0 } },
     );
 
@@ -180,8 +176,7 @@ describe("useAutosave", () => {
       .mockReturnValueOnce(first.promise)
       .mockResolvedValueOnce(savedDocument(20, newestContent));
     const { result, rerender } = renderHook(
-      ({ content, generation }) =>
-        useAutosave({ document: defaultDocument, content, generation }),
+      ({ content, generation }) => useAutosave({ document: defaultDocument, content, generation }),
       { initialProps: { content: changedContent, generation: 1 } },
     );
 
@@ -216,7 +211,8 @@ describe("useAutosave", () => {
     saveDocumentStepsMock.mockReturnValueOnce(first.promise);
     const onSaved = vi.fn();
     const { result, rerender } = renderHook(
-      ({ document, content, generation }) => useAutosave({ document, content, generation, onSaved }),
+      ({ document, content, generation }) =>
+        useAutosave({ document, content, generation, onSaved }),
       { initialProps: { document: defaultDocument, content: changedContent, generation: 1 } },
     );
     let firstSave!: Promise<boolean>;
@@ -225,13 +221,21 @@ describe("useAutosave", () => {
       firstSave = result.current.flush(changedContent, 1);
       queuedSave = result.current.flush(newestContent, 2);
     });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(saveDocumentStepsMock).toHaveBeenCalledTimes(1);
     const nextDocument = { ...savedDocument(7, initialContent), id: "other" };
     rerender({ document: nextDocument, content: changedContent, generation: 1 });
-    saveDocumentStepsMock.mockResolvedValueOnce({ ...nextDocument, revision: 8, content: changedContent });
+    saveDocumentStepsMock.mockResolvedValueOnce({
+      ...nextDocument,
+      revision: 8,
+      content: changedContent,
+    });
     let nextSave!: Promise<boolean>;
-    act(() => { nextSave = result.current.flush(); });
+    act(() => {
+      nextSave = result.current.flush();
+    });
     expect(saveDocumentStepsMock).toHaveBeenCalledTimes(1);
     await act(async () => {
       first.resolve(savedDocument(19));
@@ -250,13 +254,24 @@ describe("useAutosave", () => {
     const first = deferred<DocumentEnvelope>();
     saveDocumentStepsMock.mockReturnValueOnce(first.promise);
     const onSaved = vi.fn();
-    const { result, unmount } = renderHook(() => useAutosave({
-      document: defaultDocument, content: changedContent, generation: 1, onSaved,
-    }));
-    act(() => { result.current.saveLocal(changedContent, 1); });
+    const { result, unmount } = renderHook(() =>
+      useAutosave({
+        document: defaultDocument,
+        content: changedContent,
+        generation: 1,
+        onSaved,
+      }),
+    );
+    act(() => {
+      result.current.saveLocal(changedContent, 1);
+    });
     let pending!: Promise<boolean>;
-    act(() => { pending = result.current.flush(); });
-    await act(async () => { await Promise.resolve(); });
+    act(() => {
+      pending = result.current.flush();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
     unmount();
     first.resolve(savedDocument(19));
     expect(await pending).toBe(false);
@@ -268,12 +283,21 @@ describe("useAutosave", () => {
     const first = deferred<DocumentEnvelope>();
     saveDocumentStepsMock.mockReturnValueOnce(first.promise);
     const onSaved = vi.fn();
-    const { result } = renderHook(() => useAutosave({
-      document: defaultDocument, content: changedContent, generation: 1, onSaved,
-    }));
+    const { result } = renderHook(() =>
+      useAutosave({
+        document: defaultDocument,
+        content: changedContent,
+        generation: 1,
+        onSaved,
+      }),
+    );
     let pending!: Promise<boolean>;
-    act(() => { pending = result.current.flush(); });
-    await act(async () => { await Promise.resolve(); });
+    act(() => {
+      pending = result.current.flush();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
     act(() => result.current.acceptSaved(savedDocument(20, newestContent), newestContent, 2));
     await act(async () => {
       first.resolve(savedDocument(19));
@@ -307,9 +331,7 @@ describe("useAutosave", () => {
 
   it("离线响应只保留本地状态，不推进服务器 revision", async () => {
     const onSaved = vi.fn();
-    saveDocumentStepsMock.mockResolvedValueOnce(
-      savedDocument(19, changedContent, "local-cache"),
-    );
+    saveDocumentStepsMock.mockResolvedValueOnce(savedDocument(19, changedContent, "local-cache"));
     const { result } = renderHook(() =>
       useAutosave({
         document: defaultDocument,

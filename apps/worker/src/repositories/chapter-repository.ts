@@ -1,7 +1,4 @@
-import {
-  convertLongTextBlocksToChapters,
-  type JSONContent,
-} from "@ricetext/document-core";
+import { convertLongTextBlocksToChapters, type JSONContent } from "@ricetext/document-core";
 import {
   ChapterContentSchema,
   ChapterSchema,
@@ -55,14 +52,10 @@ export class D1ChapterRepository {
       .prepare("SELECT 1 AS found FROM documents WHERE id = ?")
       .bind(documentId)
       .first<{ found: number }>();
-    if (!found)
-      throw new WorkerHttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
+    if (!found) throw new WorkerHttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
   }
 
-  private async row(
-    documentId: string,
-    chapterId: string,
-  ): Promise<ChapterRow | null> {
+  private async row(documentId: string, chapterId: string): Promise<ChapterRow | null> {
     return this.db
       .prepare(
         "SELECT id, title, volume_title, sort_order, document_id, revision, updated_at, hidden " +
@@ -72,10 +65,7 @@ export class D1ChapterRepository {
       .first<ChapterRow>();
   }
 
-  async content(
-    documentId: string,
-    chapterId: string,
-  ): Promise<ChapterContent> {
+  async content(documentId: string, chapterId: string): Promise<ChapterContent> {
     const row = await this.db
       .prepare(
         "SELECT id, title, volume_title, sort_order, document_id, revision, updated_at, hidden, content_json " +
@@ -83,8 +73,7 @@ export class D1ChapterRepository {
       )
       .bind(chapterId, documentId)
       .first<ChapterRow & { content_json: string | null }>();
-    if (!row?.content_json)
-      throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节正文不存在");
+    if (!row?.content_json) throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节正文不存在");
     return ChapterContentSchema.parse({
       ...chapter(row),
       content: convertLongTextBlocksToChapters(JSON.parse(row.content_json)),
@@ -116,9 +105,7 @@ export class D1ChapterRepository {
           )
           .bind(chapterId, input.title, documentId, now, documentId),
         this.db
-          .prepare(
-            "UPDATE chapters SET title = ? WHERE id = ? AND document_id = ?",
-          )
+          .prepare("UPDATE chapters SET title = ? WHERE id = ? AND document_id = ?")
           .bind(input.title, chapterId, documentId),
       ])) as unknown as Array<{ meta: { changes: number } }>;
     } catch (error) {
@@ -129,41 +116,24 @@ export class D1ChapterRepository {
     }
     const stored = await this.row(documentId, chapterId);
     if (!stored) {
-      throw new WorkerHttpError(
-        409,
-        "CHAPTER_ORDER_CONFLICT",
-        "该章节位置已被其他章节占用",
-      );
+      throw new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "该章节位置已被其他章节占用");
     }
     return { value: chapter(stored), created: results[0]!.meta.changes > 0 };
   }
 
-  async updateHidden(
-    documentId: string,
-    chapterId: string,
-    hidden: boolean,
-  ): Promise<Chapter> {
+  async updateHidden(documentId: string, chapterId: string, hidden: boolean): Promise<Chapter> {
     await this.requireDocument(documentId);
     const result = await this.db
-      .prepare(
-        "UPDATE chapters SET hidden = ? WHERE id = ? AND document_id = ?",
-      )
+      .prepare("UPDATE chapters SET hidden = ? WHERE id = ? AND document_id = ?")
       .bind(hidden ? 1 : 0, chapterId, documentId)
       .run();
     if (result.meta.changes === 0) {
-      throw new WorkerHttpError(
-        404,
-        "CHAPTER_NOT_FOUND",
-        "章节目录中不存在该章节",
-      );
+      throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节目录中不存在该章节");
     }
     return chapter((await this.row(documentId, chapterId))!);
   }
 
-  async delete(
-    documentId: string,
-    chapterId: string,
-  ): Promise<{ id: string; deleted: boolean }> {
+  async delete(documentId: string, chapterId: string): Promise<{ id: string; deleted: boolean }> {
     await this.requireDocument(documentId);
     const existing = await this.row(documentId, chapterId);
     if (!existing) return { id: chapterId, deleted: false };
@@ -171,8 +141,7 @@ export class D1ChapterRepository {
     const results = await this.db.batch([
       this.db
         .prepare(
-          "UPDATE suggestions SET chapter_id = NULL " +
-            "WHERE document_id = ? AND chapter_id = ?",
+          "UPDATE suggestions SET chapter_id = NULL " + "WHERE document_id = ? AND chapter_id = ?",
         )
         .bind(documentId, chapterId),
       this.db
@@ -204,13 +173,9 @@ export class D1ChapterRepository {
       .prepare("SELECT id, content_hash FROM chapters WHERE document_id = ?")
       .bind(documentId)
       .all<{ id: string; content_hash: string | null }>();
-    const hashes = new Map(
-      result.results.map((row) => [row.id, row.content_hash]),
-    );
+    const hashes = new Map(result.results.map((row) => [row.id, row.content_hash]));
     return {
-      toUpdate: local
-        .filter((item) => hashes.get(item.id) !== item.hash)
-        .map((item) => item.id),
+      toUpdate: local.filter((item) => hashes.get(item.id) !== item.hash).map((item) => item.id),
       existing: [...hashes.keys()],
     };
   }
@@ -272,9 +237,7 @@ export class D1ChapterRepository {
       }
     } catch {
       const current = await this.db
-        .prepare(
-          "SELECT revision FROM chapters WHERE id = ? AND document_id = ?",
-        )
+        .prepare("SELECT revision FROM chapters WHERE id = ? AND document_id = ?")
         .bind(chapterId, documentId)
         .first<ChapterRevisionRow>();
       if (current && current.revision !== input.baseRevision) {
@@ -288,11 +251,7 @@ export class D1ChapterRepository {
           },
         );
       }
-      throw new WorkerHttpError(
-        409,
-        "CHAPTER_ORDER_CONFLICT",
-        "该章节位置已被其他章节占用",
-      );
+      throw new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "该章节位置已被其他章节占用");
     }
 
     const current = await this.db
@@ -310,11 +269,7 @@ export class D1ChapterRepository {
     );
   }
 
-  async createUpload(
-    documentId: string,
-    manifestHash: string,
-    totalChapters: number,
-  ) {
+  async createUpload(documentId: string, manifestHash: string, totalChapters: number) {
     await this.requireDocument(documentId);
     await this.db
       .prepare(
@@ -351,13 +306,7 @@ export class D1ChapterRepository {
         .prepare(
           "INSERT INTO chapter_uploads(document_id,id,manifest_hash,total_chapters,status,created_at) VALUES(?,?,?,?,'uploading',?)",
         )
-        .bind(
-          documentId,
-          uploadId,
-          manifestHash,
-          totalChapters,
-          new Date().toISOString(),
-        )
+        .bind(documentId, uploadId, manifestHash, totalChapters, new Date().toISOString())
         .run();
     }
     const claimed = await this.db
@@ -367,11 +316,7 @@ export class D1ChapterRepository {
       .bind(documentId, uploadId)
       .first();
     if (claimed)
-      throw new WorkerHttpError(
-        409,
-        "CHAPTER_UPLOAD_NOT_ACTIVE",
-        "上传会话正在由其他请求发布",
-      );
+      throw new WorkerHttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话正在由其他请求发布");
     const staged = await this.db
       .prepare(
         "SELECT chapter_id FROM chapter_upload_items WHERE document_id=? AND upload_id=? ORDER BY sort_order",
@@ -407,11 +352,7 @@ export class D1ChapterRepository {
       .bind(documentId, uploadId)
       .first<{ total_chapters: number }>();
     if (!upload)
-      throw new WorkerHttpError(
-        409,
-        "CHAPTER_UPLOAD_NOT_ACTIVE",
-        "上传会话不存在或已结束",
-      );
+      throw new WorkerHttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话不存在或已结束");
     const byId = new Map(
       (
         await this.metadata(
@@ -441,12 +382,10 @@ export class D1ChapterRepository {
       const active = byId.get(item.id);
       const decision = decideChapterUploadWrite(active, item);
       if (decision.status === "conflict")
-        throw new WorkerHttpError(
-          409,
-          "CHAPTER_REVISION_CONFLICT",
-          "章节已被其他修改更新",
-          { chapterId: item.id, currentRevision: decision.currentRevision },
-        );
+        throw new WorkerHttpError(409, "CHAPTER_REVISION_CONFLICT", "章节已被其他修改更新", {
+          chapterId: item.id,
+          currentRevision: decision.currentRevision,
+        });
       const content = sanitizeDocumentForWrite(
         convertLongTextBlocksToChapters(item.content as unknown as JSONContent),
       );
@@ -483,11 +422,7 @@ export class D1ChapterRepository {
         ),
       );
     } catch {
-      throw new WorkerHttpError(
-        409,
-        "CHAPTER_UPLOAD_MANIFEST_CONFLICT",
-        "批次与已暂存章节冲突",
-      );
+      throw new WorkerHttpError(409, "CHAPTER_UPLOAD_MANIFEST_CONFLICT", "批次与已暂存章节冲突");
     }
     return prepared.map((item) => ({
       id: item.id,
@@ -510,12 +445,7 @@ export class D1ChapterRepository {
         status: string;
         published_at: string | null;
       }>();
-    if (!upload)
-      throw new WorkerHttpError(
-        404,
-        "CHAPTER_UPLOAD_NOT_FOUND",
-        "上传会话不存在",
-      );
+    if (!upload) throw new WorkerHttpError(404, "CHAPTER_UPLOAD_NOT_FOUND", "上传会话不存在");
     if (upload.status === "published")
       return {
         uploadId,
@@ -524,30 +454,17 @@ export class D1ChapterRepository {
         publishedAt: upload.published_at!,
       };
     if (upload.status !== "uploading")
-      throw new WorkerHttpError(
-        409,
-        "CHAPTER_UPLOAD_NOT_ACTIVE",
-        "上传会话正在由其他请求发布",
-      );
+      throw new WorkerHttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话正在由其他请求发布");
     // 只有当前令牌能完成发布或释放独占权；令牌过期后，崩溃请求无法继续发布。
     const token = crypto.randomUUID();
     const claimed = await this.db
       .prepare(
         "UPDATE chapter_uploads SET publish_token=?,publish_expires_at=? WHERE document_id=? AND id=? AND status='uploading' AND (publish_token IS NULL OR julianday(publish_expires_at)<=julianday('now'))",
       )
-      .bind(
-        token,
-        new Date(Date.now() + 60_000).toISOString(),
-        documentId,
-        uploadId,
-      )
+      .bind(token, new Date(Date.now() + 60_000).toISOString(), documentId, uploadId)
       .run();
     if (claimed.meta.changes !== 1)
-      throw new WorkerHttpError(
-        409,
-        "CHAPTER_UPLOAD_NOT_ACTIVE",
-        "上传会话正在由其他请求发布",
-      );
+      throw new WorkerHttpError(409, "CHAPTER_UPLOAD_NOT_ACTIVE", "上传会话正在由其他请求发布");
     const release = () =>
       this.db
         .prepare(
@@ -570,9 +487,7 @@ export class D1ChapterRepository {
           base_revision: number;
         }>();
       const items = result.results;
-      const invalidOrder = items.findIndex(
-        (item, index) => item.sort_order !== index,
-      );
+      const invalidOrder = items.findIndex((item, index) => item.sort_order !== index);
       const manifestHash = await sha256Hex(
         new TextEncoder().encode(
           serializeChapterUploadManifest(
@@ -617,28 +532,19 @@ export class D1ChapterRepository {
           current_revision: number;
         }>();
       if (conflict) {
-        throw new WorkerHttpError(
-          409,
-          "CHAPTER_REVISION_CONFLICT",
-          "发布前章节基线发生变化",
-          {
-            chapterId: conflict.chapter_id,
-            baseRevision: conflict.base_revision,
-            currentRevision: conflict.current_revision,
-          },
-        );
+        throw new WorkerHttpError(409, "CHAPTER_REVISION_CONFLICT", "发布前章节基线发生变化", {
+          chapterId: conflict.chapter_id,
+          baseRevision: conflict.base_revision,
+          currentRevision: conflict.current_revision,
+        });
       }
       const publishedAt = new Date().toISOString();
       await this.db.batch([
         this.db
-          .prepare(
-            "INSERT INTO chapter_publish_guards(document_id,upload_id,token) VALUES(?,?,?)",
-          )
+          .prepare("INSERT INTO chapter_publish_guards(document_id,upload_id,token) VALUES(?,?,?)")
           .bind(documentId, uploadId, token),
         this.db
-          .prepare(
-            "UPDATE chapters SET sort_order=-sort_order-1 WHERE document_id=?",
-          )
+          .prepare("UPDATE chapters SET sort_order=-sort_order-1 WHERE document_id=?")
           .bind(documentId),
         this.db
           .prepare(
@@ -657,9 +563,7 @@ export class D1ChapterRepository {
             "UPDATE chapter_uploads SET status='published',published_at=?,publish_token=NULL,publish_expires_at=NULL WHERE document_id=? AND id=? AND publish_token=?",
           )
           .bind(publishedAt, documentId, uploadId, token),
-        this.db
-          .prepare("DELETE FROM chapter_publish_guards WHERE token=?")
-          .bind(token),
+        this.db.prepare("DELETE FROM chapter_publish_guards WHERE token=?").bind(token),
       ]);
       return {
         uploadId,
@@ -785,17 +689,12 @@ export class D1ChapterRepository {
     for (const item of items) {
       const existing = byId.get(item.id);
       if (seenOrders.has(item.order)) {
-        throw new WorkerHttpError(
-          409,
-          "CHAPTER_ORDER_CONFLICT",
-          "批次内多个章节请求相同目标顺序",
-          { chapterId: item.id },
-        );
+        throw new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "批次内多个章节请求相同目标顺序", {
+          chapterId: item.id,
+        });
       }
       seenOrders.add(item.order);
-      const occupied = docOrders.find(
-        (row) => row.sort_order === item.order && row.id !== item.id,
-      );
+      const occupied = docOrders.find((row) => row.sort_order === item.order && row.id !== item.id);
       if (occupied) {
         throw new WorkerHttpError(
           409,
@@ -875,8 +774,7 @@ export class D1ChapterRepository {
       }
     }
     for (const [index, item] of write.entries()) {
-      const changed =
-        executed[index] === undefined || executed[index]!.meta.changes > 0;
+      const changed = executed[index] === undefined || executed[index]!.meta.changes > 0;
       if (changed) {
         results.push({
           id: item.id,
@@ -926,15 +824,12 @@ export class D1ChapterRepository {
   async stageReorder(
     documentId: string,
     items: Array<{ id: string; temporaryOrder?: number | undefined; baseRevision: number }>,
-  ): Promise<
-    Array<{ id: string; revision: number; status: "staged" | "unchanged" }>
-  > {
+  ): Promise<Array<{ id: string; revision: number; status: "staged" | "unchanged" }>> {
     await this.requireDocument(documentId);
     const docOrders = await this.documentOrders(documentId);
     // 数组顺序就是目标顺序：未显式给出临时位置时，从「当前最大 order + 1」起
     // 连续分配，保证临时期落在空闲区间（下标直接当 order 会撞上批外章节）。
-    const temporaryBase =
-      docOrders.reduce((max, row) => Math.max(max, row.sort_order), -1) + 1;
+    const temporaryBase = docOrders.reduce((max, row) => Math.max(max, row.sort_order), -1) + 1;
     const planned = items.map((item, index) => ({
       id: item.id,
       temporaryOrder: item.temporaryOrder ?? temporaryBase + index,
@@ -964,32 +859,23 @@ export class D1ChapterRepository {
     for (const item of planned) {
       const existing = byId.get(item.id);
       if (seenOrders.has(item.temporaryOrder)) {
-        throw new WorkerHttpError(
-          409,
-          "CHAPTER_ORDER_CONFLICT",
-          "批次内多个章节请求相同临时顺序",
-          { chapterId: item.id },
-        );
+        throw new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "批次内多个章节请求相同临时顺序", {
+          chapterId: item.id,
+        });
       }
       seenOrders.add(item.temporaryOrder);
       const occupied = docOrders.find(
         (row) => row.sort_order === item.temporaryOrder && row.id !== item.id,
       );
       if (occupied) {
-        throw new WorkerHttpError(
-          409,
-          "CHAPTER_ORDER_CONFLICT",
-          "该临时顺序已被其他章节占用",
-          { chapterId: item.id },
-        );
+        throw new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "该临时顺序已被其他章节占用", {
+          chapterId: item.id,
+        });
       }
       if (!existing) {
-        throw new WorkerHttpError(
-          404,
-          "CHAPTER_NOT_FOUND",
-          "章节目录中不存在该章节",
-          { chapterId: item.id },
-        );
+        throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节目录中不存在该章节", {
+          chapterId: item.id,
+        });
       }
       if (existing.sort_order === item.temporaryOrder) {
         if (
@@ -999,8 +885,7 @@ export class D1ChapterRepository {
           results.push({
             id: item.id,
             revision: existing.revision,
-            status:
-              existing.revision === item.baseRevision ? "unchanged" : "staged",
+            status: existing.revision === item.baseRevision ? "unchanged" : "staged",
           });
           continue;
         }
@@ -1051,8 +936,7 @@ export class D1ChapterRepository {
       }
     }
     for (const [index, item] of staged.entries()) {
-      const changed =
-        executed[index] === undefined || executed[index]!.meta.changes > 0;
+      const changed = executed[index] === undefined || executed[index]!.meta.changes > 0;
       if (changed) {
         results.push({
           id: item.id,
@@ -1103,16 +987,11 @@ export class D1ChapterRepository {
     const docOrders = await this.documentOrders(documentId);
     for (const item of items) {
       const existing = byId.get(item.id);
-      const occupied = docOrders.find(
-        (row) => row.sort_order === item.order && row.id !== item.id,
-      );
+      const occupied = docOrders.find((row) => row.sort_order === item.order && row.id !== item.id);
       if (occupied) {
-        return new WorkerHttpError(
-          409,
-          "CHAPTER_ORDER_CONFLICT",
-          "该章节位置已被其他章节占用",
-          { chapterId: item.id },
-        );
+        return new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "该章节位置已被其他章节占用", {
+          chapterId: item.id,
+        });
       }
       if (existing && existing.revision !== item.baseRevision) {
         return new WorkerHttpError(
@@ -1123,12 +1002,9 @@ export class D1ChapterRepository {
         );
       }
     }
-    return new WorkerHttpError(
-      409,
-      "CHAPTER_ORDER_CONFLICT",
-      "保存批次时发生并发冲突",
-      { detail: error instanceof Error ? error.message : String(error) },
-    );
+    return new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "保存批次时发生并发冲突", {
+      detail: error instanceof Error ? error.message : String(error),
+    });
   }
 
   /** 换序暂存失败后重读行状态，把并发竞争映射为带 chapterId 的 409。 */
@@ -1152,12 +1028,9 @@ export class D1ChapterRepository {
         (row) => row.sort_order === item.temporaryOrder && row.id !== item.id,
       );
       if (occupied) {
-        return new WorkerHttpError(
-          409,
-          "CHAPTER_ORDER_CONFLICT",
-          "该临时顺序已被其他章节占用",
-          { chapterId: item.id },
-        );
+        return new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "该临时顺序已被其他章节占用", {
+          chapterId: item.id,
+        });
       }
       if (existing && existing.revision !== item.baseRevision) {
         return new WorkerHttpError(
@@ -1168,11 +1041,8 @@ export class D1ChapterRepository {
         );
       }
     }
-    return new WorkerHttpError(
-      409,
-      "CHAPTER_ORDER_CONFLICT",
-      "换序暂存时发生并发冲突",
-      { detail: error instanceof Error ? error.message : String(error) },
-    );
+    return new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "换序暂存时发生并发冲突", {
+      detail: error instanceof Error ? error.message : String(error),
+    });
   }
 }

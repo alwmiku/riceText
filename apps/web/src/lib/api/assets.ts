@@ -1,12 +1,6 @@
 import { createTemporaryId } from "@ricetext/contracts";
 import type { UploadedAsset } from "../types";
-import {
-  ApiError,
-  api,
-  isApiClientError,
-  resolveApiUrl,
-  rethrowClientError,
-} from "./client";
+import { ApiError, api, isApiClientError, resolveApiUrl, rethrowClientError } from "./client";
 
 export async function uploadAsset(file: File): Promise<UploadedAsset> {
   try {
@@ -20,8 +14,7 @@ export async function uploadAsset(file: File): Promise<UploadedAsset> {
     };
   } catch (error) {
     if (isApiClientError(error)) rethrowClientError(error);
-    if (file.size > 8 * 1024 * 1024)
-      throw new ApiError("上传限制为 8 MB", 422);
+    if (file.size > 8 * 1024 * 1024) throw new ApiError("上传限制为 8 MB", 422);
     return {
       assetId: createTemporaryId("asset"),
       url: URL.createObjectURL(file),

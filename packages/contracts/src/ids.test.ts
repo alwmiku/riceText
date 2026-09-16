@@ -8,8 +8,8 @@ import {
   isCurrentEntityId,
 } from "./ids";
 
-describe("entity IDs", () => {
-  it("creates a UUID v4 ID for every registered business prefix", () => {
+describe("统一实体 ID", () => {
+  it("为每个已注册业务前缀生成 UUID v4 ID", () => {
     const prefixes = Object.values(ENTITY_ID_PREFIXES);
     const ids = prefixes.map((prefix) => createEntityId(prefix));
     for (const [index, prefix] of prefixes.entries()) {
@@ -22,13 +22,13 @@ describe("entity IDs", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("marks local-only IDs as temporary", () => {
+  it("使用 tmp 前缀标记仅存在于本地的 ID", () => {
     expect(createTemporaryId("asset")).toMatch(/^tmp_asset_[0-9a-f-]{36}$/u);
     expect(createTemporaryId("roll")).toMatch(/^tmp_roll_[0-9a-f-]{36}$/u);
     expect(createTemporaryId("comment")).toMatch(/^tmp_comment_[0-9a-f-]{36}$/u);
   });
 
-  it("uses getRandomValues when randomUUID is unavailable", () => {
+  it("randomUUID 不可用时使用 getRandomValues", () => {
     const original = globalThis.crypto;
     const getRandomValues = vi.fn(<T extends ArrayBufferView | null>(array: T): T => {
       if (array instanceof Uint8Array) array.fill(0xab);

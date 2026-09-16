@@ -18,10 +18,7 @@ export async function createDice(
     const sides = Number(match[2]);
     if (count < 1 || count > 50 || sides < 2 || sides > 1000)
       throw new ApiError("骰子数量或面数超出范围", 422);
-    const rolls = Array.from(
-      { length: count },
-      () => Math.floor(Math.random() * sides) + 1,
-    );
+    const rolls = Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
     const modifier = match[3] ? Number(`${match[3]}${match[4]}`) : 0;
     return {
       rollId: createTemporaryId("roll"),

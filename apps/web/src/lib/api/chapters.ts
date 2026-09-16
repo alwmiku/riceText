@@ -15,8 +15,7 @@ export async function listForumChapters(
   try {
     return (await api().listChapters(documentId)).items;
   } catch (error) {
-    if (options?.strict || !isServiceUnavailable(error))
-      rethrowClientError(error);
+    if (options?.strict || !isServiceUnavailable(error)) rethrowClientError(error);
     return [];
   }
 }
@@ -160,10 +159,7 @@ export async function stageLongTextChapterUploadBatch(
   });
 }
 
-export async function completeLongTextChapterUpload(
-  novelId: string,
-  uploadId: string,
-) {
+export async function completeLongTextChapterUpload(novelId: string, uploadId: string) {
   return api().completeChapterUpload(novelId, uploadId);
 }
 
