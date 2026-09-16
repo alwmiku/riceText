@@ -1,6 +1,7 @@
 import {
   ForumUserSchema,
   PollSchema,
+  createEntityId,
   PollVotePageSchema,
   type ForumUser,
   type Poll,
@@ -79,13 +80,9 @@ export class D1PollRepository {
       throw new WorkerHttpError(422, "POLL_SINGLE_CHOICE", "该投票只能选择一个选项");
     }
     if (unique.some((id) => !current.options.some((option) => option.id === id))) {
-      throw new WorkerHttpError(
-        404,
-        "POLL_OPTION_NOT_FOUND",
-        "提交了不属于该投票的选项",
-      );
+      throw new WorkerHttpError(404, "POLL_OPTION_NOT_FOUND", "提交了不属于该投票的选项");
     }
-    const voteId = pollId + ":" + principal.id;
+    const voteId = createEntityId("poll_vote");
     const createdAt = new Date().toISOString();
     const statements: D1PreparedStatement[] = [
       this.db
@@ -94,13 +91,21 @@ export class D1PollRepository {
             "ON CONFLICT(poll_id, user_id) DO UPDATE SET created_at = excluded.created_at",
         )
         .bind(voteId, pollId, principal.id, createdAt),
-      this.db.prepare("DELETE FROM poll_vote_options WHERE vote_id = ?").bind(voteId),
+      this.db
+        .prepare(
+          "DELETE FROM poll_vote_options WHERE vote_id = " +
+            "(SELECT id FROM poll_votes WHERE poll_id = ? AND user_id = ?)",
+        )
+        .bind(pollId, principal.id),
     ];
     for (const optionId of unique) {
       statements.push(
         this.db
-          .prepare("INSERT INTO poll_vote_options(vote_id, option_id) VALUES (?, ?)")
-          .bind(voteId, optionId),
+          .prepare(
+            "INSERT INTO poll_vote_options(vote_id, option_id) " +
+              "SELECT id, ? FROM poll_votes WHERE poll_id = ? AND user_id = ?",
+          )
+          .bind(optionId, pollId, principal.id),
       );
     }
     await this.db.batch(statements);

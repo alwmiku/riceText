@@ -40,7 +40,7 @@ function isChapterHeading(node: ChapterIdentityNode): boolean {
  * 1. 节点已携带的身份（含历史的 `chapter-v1-<hash>` 与位置 ID）；
  * 2. `resolveExistingId(章节位置)` 返回的服务器目录 id —— 目录由服务器拥有，
  *    旧正文第一次保存时必须复用它，否则会铸出新身份、让目录行变成孤儿；
- * 3. 现铸一个 `chapter-<uuid>`（服务器目录里还没有这一章）。
+ * 3. 现铸一个 `chapter_<uuid>`（服务器目录里还没有这一章）。
  *
  * 只处理章节标题本身：没有 H1 章节的正文保持原样，避免把章节属性写到段落上。
  * 补铸必须写回正文（`heading.attrs.chapterId`），否则每次保存都会换身份。

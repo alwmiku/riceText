@@ -1,6 +1,7 @@
 import {
   CommentReplySchema,
   CommentThreadSchema,
+  createEntityId,
   type CommentReply,
   type CommentThread,
   type ForumUser,
@@ -145,7 +146,7 @@ export class D1CommentRepository {
     body: string,
     principal: ForumUser,
   ): Promise<CommentReply> {
-    const id = crypto.randomUUID();
+    const id = createEntityId("comment");
     const createdAt = new Date().toISOString();
     const inserted = await this.db
       .prepare(

@@ -129,7 +129,7 @@ describe("ensureChapterIdentity", () => {
     };
     const first = ensureChapterIdentity(document);
     expect(first.changed).toBe(true);
-    expect(idOf(first.content.content![0]!)).toMatch(/^chapter-[0-9a-f-]{36}$/u);
+    expect(idOf(first.content.content![0]!)).toMatch(/^chapter_[0-9a-f-]{36}$/u);
 
     const second = ensureChapterIdentity(first.content);
     expect(second.changed).toBe(false);
@@ -153,7 +153,7 @@ describe("ensureChapterIdentity", () => {
     );
     const ids = result.content.content!.map(idOf) as string[];
     expect(ids[0]).toBe("stable-0");
-    expect(ids[1]).toMatch(/^chapter-[0-9a-f-]{36}$/u);
+    expect(ids[1]).toMatch(/^chapter_[0-9a-f-]{36}$/u);
     expect(ids[1]).not.toBe(ids[0]);
   });
 

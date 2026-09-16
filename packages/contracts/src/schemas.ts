@@ -641,7 +641,7 @@ export type StageNovelChapterReorderResponse = z.infer<
 /**
  * 新增章节请求：编辑器保存前把正文中已出现但服务器目录缺失的新章节注册进目录。
  *
- * `chapterId` 由创建方铸造（`chapter-<uuid>`），服务端只接受并使用它，
+ * `chapterId` 由创建方铸造（`chapter_<uuid>`），服务端只接受并使用它，
  * 不再按位置推导身份；重复注册同一 ID 是幂等的。旧客户端仍可只发 `order`，
  * 服务端会为它铸造一个新身份。
  */

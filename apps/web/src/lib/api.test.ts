@@ -302,7 +302,7 @@ describe('Web API 客户端', () => {
     const [, init] = fetchMock.mock.calls[0]!;
     expect(init).toMatchObject({ method: 'POST' });
     expect(JSON.parse(String(init?.body))).toMatchObject({ targetRevision: 12, baseRevision: 18 });
-    expect(JSON.parse(String(init?.body)).clientMutationId).toMatch(/^restore_/);
+    expect(JSON.parse(String(init?.body)).clientMutationId).toMatch(/^mutation_/);
   });
 
   it('骰子优先使用服务端结果，离线时稳定生成合法结果', async () => {
@@ -312,7 +312,7 @@ describe('Web API 客户端', () => {
 
     fetchMock.mockRejectedValueOnce(new TypeError('网络离线'));
     vi.spyOn(Math, 'random').mockReturnValue(0.4);
-    await expect(createDice(' 2d6-1 ', 'roll_old')).resolves.toMatchObject({ expression: ' 2d6-1 ', rolls: [3, 3], total: 5, rerollOf: 'roll_old' });
+    await expect(createDice(' 2d6-1 ', 'roll_old')).resolves.toMatchObject({ rollId: expect.stringMatching(/^tmp_roll_[0-9a-f-]{36}$/u), expression: ' 2d6-1 ', rolls: [3, 3], total: 5, rerollOf: 'roll_old' });
   });
 
   it('骰子拒绝无效表达式和越界参数，并透传服务端校验错误', async () => {
@@ -340,7 +340,7 @@ describe('Web API 客户端', () => {
     fetchMock.mockRejectedValueOnce(new TypeError('网络离线'));
     const createObjectURL = vi.fn(() => 'blob:cover');
     vi.stubGlobal('URL', { ...URL, createObjectURL });
-    await expect(uploadAsset(file)).resolves.toMatchObject({ url: 'blob:cover', name: 'cover.png' });
+    await expect(uploadAsset(file)).resolves.toMatchObject({ assetId: expect.stringMatching(/^tmp_asset_[0-9a-f-]{36}$/u), url: 'blob:cover', name: 'cover.png' });
     expect(createObjectURL).toHaveBeenCalledWith(file);
   });
 

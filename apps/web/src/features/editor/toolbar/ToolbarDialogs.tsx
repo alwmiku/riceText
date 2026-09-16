@@ -1,3 +1,4 @@
+import { createEntityId } from "@ricetext/contracts";
 import type { Editor } from "@tiptap/react";
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
@@ -11,7 +12,6 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
-import { createId } from "../../../lib/utils";
 import { deleteNovelExcerpt, isRichNodeActive, unwrapOutermostReplyGate } from "../commands";
 import { insertNode, insertReplyGate } from "../editor-actions";
 import {
@@ -276,7 +276,7 @@ export function ToolbarDialogs({
               } else {
                 insertNode(editor, {
                   type: "attachmentRef",
-                  attrs: { attachmentId: createId("attachment"), ...values },
+                  attrs: { attachmentId: createEntityId("attachment"), ...values },
                 });
               }
             }}
@@ -291,7 +291,7 @@ export function ToolbarDialogs({
               } else {
                 insertNode(editor, {
                   type: "pollRef",
-                  attrs: { pollId: createId("poll"), ...values },
+                  attrs: { pollId: createEntityId("poll"), ...values },
                 });
               }
             }}

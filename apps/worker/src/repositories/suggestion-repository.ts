@@ -1,6 +1,7 @@
 import {
   SuggestionBatchSchema,
   SuggestionSchema,
+  createEntityId,
   type ForumUser,
   type Suggestion,
   type SuggestionBatch,
@@ -156,7 +157,7 @@ export class D1SuggestionRepository {
         throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节不存在");
     }
     const row: SuggestionRow = {
-      id: crypto.randomUUID(),
+      id: createEntityId("suggestion"),
       document_id: documentId,
       chapter_id: input.chapterId || null,
       chapter_title: input.chapterTitle,
@@ -229,7 +230,7 @@ export class D1SuggestionRepository {
       chapterOrder: chapter?.sort_order ?? null,
     });
     const row: SuggestionBatchRow = {
-      id: crypto.randomUUID(),
+      id: createEntityId("suggestion_batch"),
       document_id: documentId,
       chapter_id: input.chapterId,
       chapter_title: input.chapterTitle,

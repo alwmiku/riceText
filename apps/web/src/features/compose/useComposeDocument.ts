@@ -1,3 +1,4 @@
+import { createEntityId } from "@ricetext/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -19,7 +20,6 @@ import {
   mergeChapter,
   splitDocumentByHeadings,
 } from "../../lib/chapters";
-import { createId } from "../../lib/utils";
 import { chapterQueryKeys } from "../../lib/chapter-query-keys";
 import type { DocumentEnvelope, ForumChapterItem, RichTextNode } from "../../lib/types";
 import { useAutosave } from "../editor/hooks/useAutosave";
@@ -256,7 +256,7 @@ export function useComposeDocument(
    * 给正文里缺身份的章节标题补一次身份并写回。
    *
    * 目录里已有的章节复用服务器 id（否则会把旧正文的目录行变成孤儿）；
-   * 目录里没有的才现铸 `chapter-<uuid>`，由接下来的注册流程登记。
+   * 目录里没有的才现铸 `chapter_<uuid>`，由接下来的注册流程登记。
    * 没有缺身份时保持引用不变，不产生多余代次。
    */
   const ensureChapterIdentityInPlace = useCallback(() => {
@@ -385,7 +385,7 @@ export function useComposeDocument(
           title: document.title,
           schemaVersion: document.schemaVersion,
           baseRevision: 0,
-          clientMutationId: createId("create"),
+          clientMutationId: createEntityId("mutation"),
           content: snapshot,
         });
       } catch (error) {

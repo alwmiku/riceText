@@ -1,4 +1,4 @@
-import { AssetSchema, type ForumUser } from "@ricetext/contracts";
+import { AssetSchema, createEntityId, type ForumUser } from "@ricetext/contracts";
 import {
   detectImageMime,
   extensionForImage,
@@ -72,7 +72,7 @@ export class D1AssetRepository {
         "仅支持签名与 MIME 一致的 PNG/JPEG/GIF/WebP 图片",
       );
     }
-    const id = crypto.randomUUID();
+    const id = createEntityId("asset");
     const extension = extensionForImage(detected);
     const objectKey = "images/" + id + "." + extension;
     const originalName = sanitizeOriginalName(file.name, id + "." + extension);

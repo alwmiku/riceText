@@ -9,12 +9,12 @@ describe("long text chapter identity", () => {
   it("创建时铸造一次与内容无关的身份", () => {
     const first = createLongTextChapterId();
     const second = createLongTextChapterId();
-    expect(first).toMatch(/^chapter-[0-9a-f-]{36}$/u);
+    expect(first).toMatch(/^chapter_[0-9a-f-]{36}$/u);
     expect(second).not.toBe(first);
   });
 
   it("认得出历史格式与新格式，不把它们当成缺身份", () => {
-    expect(isCurrentLongTextChapterId("chapter-2f5c1d3a-9b7e-4c6f-8a1d-0e4b7c9d2f31")).toBe(true);
+    expect(isCurrentLongTextChapterId("chapter_2f5c1d3a-9b7e-4c6f-8a1d-0e4b7c9d2f31")).toBe(true);
     // 历史内容哈希身份：改一个字就换 ID 的旧方案，但仍属已分配身份。
     expect(isCurrentLongTextChapterId("chapter-v1-" + "a".repeat(64))).toBe(true);
     expect(isCurrentLongTextChapterId("lt-2d25ad98-article-local-chapter-2")).toBe(false);

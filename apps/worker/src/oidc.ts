@@ -1,3 +1,4 @@
+import { createEntityId } from "@ricetext/contracts";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import type { WorkerEnv } from "./env";
 import { WorkerHttpError } from "./http-error";
@@ -138,8 +139,7 @@ async function resolveOrCreateUser(
     .first<{ user_id: string }>();
   if (existing) return existing.user_id;
 
-  const digest = await tokenHash(issuer + "|" + subject);
-  const userId = "oidc_" + digest.slice(0, 32);
+  const userId = createEntityId("user");
   const now = new Date().toISOString();
   try {
     await env.DB.batch([

@@ -1,10 +1,11 @@
+import { createTemporaryId } from '@ricetext/contracts';
 import { ChevronDown, CornerDownRight, MessageCircle, Minus, Send, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, IconButton } from '../../components/ui';
 import { voteComment } from '../../lib/api';
 import { seedComments } from '../../lib/seed';
 import type { CommentReply, SeedIdentity } from '../../lib/types';
-import { createId, formatTime } from '../../lib/utils';
+import { formatTime } from '../../lib/utils';
 
 type SortMode = 'score' | 'recent';
 
@@ -59,7 +60,7 @@ export function CommentThread({ identity, initial = seedComments, compact = fals
   };
   const submit = () => {
     if (!body.trim()) return;
-    const next: CommentReply = { id: createId('comment'), parentId: replyTo?.id ?? null, author: identity, body: body.trim(), createdAt: new Date().toISOString(), upvotes: 0, downvotes: 0, myVote: 0, children: [] };
+    const next: CommentReply = { id: createTemporaryId('comment'), parentId: replyTo?.id ?? null, author: identity, body: body.trim(), createdAt: new Date().toISOString(), upvotes: 0, downvotes: 0, myVote: 0, children: [] };
     // parentId 决定插入楼中楼还是根列表；真实持久化由未来 CommentAdapter 接管。
     if (replyTo) setComments((current) => updateTree(current, replyTo.id, (item) => ({ ...item, children: [...item.children, next] })));
     else setComments((current) => [next, ...current]);

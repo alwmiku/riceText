@@ -1,4 +1,4 @@
-import { createId } from "../utils";
+import { createEntityId } from "@ricetext/contracts";
 import { seedRevisions } from "../seed";
 import type { DocumentEnvelope, RevisionSummary, RichTextNode } from "../types";
 import { api, isServiceUnavailable, rethrowClientError } from "./client";
@@ -33,7 +33,7 @@ export async function restoreRevision(
   const envelope = await api().rollbackDocument(id, {
     targetRevision: revision,
     baseRevision,
-    clientMutationId: createId("restore"),
+    clientMutationId: createEntityId("mutation"),
   });
   return { ...envelope, content: envelope.content as unknown as RichTextNode };
 }

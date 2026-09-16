@@ -49,7 +49,7 @@ export async function syncLongTextChapters(
 /**
  * 注册正文中已出现但目录缺失的新章节。
  *
- * 身份由调用方提供（`chapter-<uuid>`，与正文标题节点上的属性一致），服务端
+ * 身份由调用方提供（`chapter_<uuid>`，与正文标题节点上的属性一致），服务端
  * 把它追加到目录末尾并返回同一身份；重复注册是幂等的。
  */
 export async function createDocumentChapter(

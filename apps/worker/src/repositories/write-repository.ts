@@ -15,7 +15,11 @@ import {
   type JSONContent,
   type StepJson,
 } from "@ricetext/document-core";
-import { createChapterId, isChapterId, sanitizeDocumentForWrite } from "@ricetext/server-core";
+import {
+  createChapterId,
+  isUsableChapterId,
+  sanitizeDocumentForWrite,
+} from "@ricetext/server-core";
 import { WorkerHttpError } from "../http-error";
 import { D1ReadRepository } from "./read-repository";
 
@@ -121,10 +125,13 @@ export class D1WriteRepository {
     const chapters = splitDocumentByChapters(content as unknown as JSONContent).chapters;
     const chapterRows =
       chapters.length > 0
-        ? chapters.map((chapter) => ({
-            id: isChapterId(chapter.id) ? chapter.id : createChapterId(),
-            title: chapter.title,
-          }))
+        ? chapters.map((chapter) => {
+            const sourceId = chapter.blocks[0]?.attrs?.chapterId;
+            return {
+              id: isUsableChapterId(sourceId) ? sourceId : createChapterId(),
+              title: chapter.title,
+            };
+          })
         : [{ id: createChapterId(), title: "正文" }];
     const statements: D1PreparedStatement[] = [
       this.db
@@ -148,9 +155,10 @@ export class D1WriteRepository {
         .bind(documentId, request.schemaVersion, JSON.stringify(content), authorId, createdAt),
       this.db
         .prepare(
-          "INSERT INTO document_mutations(document_id, client_mutation_id, request_json, revision) VALUES (?, ?, ?, 1)",
+          "INSERT INTO document_mutations(document_id, client_mutation_id, request_json, revision, created_at) " +
+            "VALUES (?, ?, ?, 1, ?)",
         )
-        .bind(documentId, request.clientMutationId, requestJson),
+        .bind(documentId, request.clientMutationId, requestJson, createdAt),
       this.db
         .prepare(
           "INSERT INTO document_acl(document_id, user_id, permission, created_at) VALUES (?, ?, 'admin', ?)",
@@ -300,8 +308,7 @@ export class D1WriteRepository {
     return this.write({
       documentId: input.documentId,
       baseRevision: input.baseRevision,
-      mutationId:
-        (input.kind === "batch" ? "suggestion-batch-" : "suggestion-") + input.suggestionId,
+      mutationId: input.suggestionId,
       requestJson,
       schemaVersion: input.schemaVersion,
       content,
@@ -395,10 +402,10 @@ export class D1WriteRepository {
       this.db
         .prepare(
           "INSERT INTO document_mutations(" +
-            "document_id, client_mutation_id, request_json, revision" +
-            ") VALUES (?, ?, ?, ?)",
+            "document_id, client_mutation_id, request_json, revision, created_at" +
+            ") VALUES (?, ?, ?, ?, ?)",
         )
-        .bind(input.documentId, input.mutationId, input.requestJson, revision),
+        .bind(input.documentId, input.mutationId, input.requestJson, revision, createdAt),
       this.db
         .prepare(
           "UPDATE documents SET schema_version = ?, current_revision = ?, updated_at = ? " +

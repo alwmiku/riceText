@@ -1,4 +1,4 @@
-import { createId } from "../utils";
+import { createTemporaryId } from "@ricetext/contracts";
 import type { DiceResult } from "../types";
 import { ApiError, api, isApiClientError, rethrowClientError } from "./client";
 
@@ -24,7 +24,7 @@ export async function createDice(
     );
     const modifier = match[3] ? Number(`${match[3]}${match[4]}`) : 0;
     return {
-      rollId: createId("roll"),
+      rollId: createTemporaryId("roll"),
       expression,
       rolls,
       total: rolls.reduce((sum, value) => sum + value, modifier),

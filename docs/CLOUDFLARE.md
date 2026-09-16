@@ -97,7 +97,7 @@ https://editor.bianbai.org/api/health
 pnpm auth:create-user -- --env production --username writer --user-id author --name "作者" --role author
 ```
 
-重复执行同一个 `user-id` 可重设密码并撤销该用户的旧会话。密码至少 10 位；同一来源 15 分钟内最多尝试登录 10 次。Cloudflare 生产运行时限制 PBKDF2 为 100,000 次，旧的 120,000 次测试凭据必须重新执行建号命令。
+省略 `--user-id` 时工具生成 `user_<uuid>`；需要重设固定账号或维护兼容种子用户时显式传入。重复执行同一个 `user-id` 可重设密码并撤销该用户的旧会话。密码至少 10 位；同一来源 15 分钟内最多尝试登录 10 次。Cloudflare 生产运行时限制 PBKDF2 为 100,000 次，旧的 120,000 次测试凭据必须重新执行建号命令。
 
 OIDC 是可选功能，不使用时无需配置 `OIDC_ISSUER`、`OIDC_CLIENT_ID` 和 `OIDC_CLIENT_SECRET`。
 

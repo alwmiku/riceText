@@ -190,7 +190,7 @@ describe("useComposeDocument 水合", () => {
       title: "未命名文章",
       schemaVersion: 1,
       baseRevision: 0,
-      clientMutationId: expect.stringMatching(/^create_/),
+      clientMutationId: expect.stringMatching(/^mutation_/),
       content: { type: "doc", content: [{ type: "paragraph" }] },
     });
     await waitFor(() => expect(result.current.document.storage).toBe("server"));
@@ -393,7 +393,7 @@ describe("useComposeDocument 水合", () => {
     expect(registerCall[0]).toBe("demo-post");
     expect(registerCall[1]).toMatchObject({ title: "第三章 新章节" });
     const minted = registerCall[1].chapterId!;
-    expect(minted).toMatch(/^chapter-[0-9a-f-]{36}$/);
+    expect(minted).toMatch(/^chapter_[0-9a-f-]{36}$/);
     // 2. 服务器 id 已同步回本地目录缓存。
     const chapters = client.getQueryData<ForumChapterItem[]>([
       "forum",

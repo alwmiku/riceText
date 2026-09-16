@@ -366,6 +366,7 @@ describe("Worker 章节批次", () => {
     ));
     expect(create.status, await create.clone().text()).toBe(200);
     const uploadId = ((await create.json()) as { uploadId: string }).uploadId;
+    expect(uploadId).toMatch(/^upload_[0-9a-f-]{36}$/u);
     const stage = (items: typeof manifest) => exports.default.fetch(new Request(
       `http://example.com/api/forum/novels/atomic-novel/chapter-uploads/${uploadId}/batch`,
       { method: "PUT", headers: { "content-type": "application/json", "x-user-id": "author" }, body: JSON.stringify({ chapters: items.map((item) => ({ ...item, content: contentFor(item.title), baseRevision: 0 })) }) },

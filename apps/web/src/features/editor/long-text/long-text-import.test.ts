@@ -15,7 +15,7 @@ describe("createLongTextDocument", () => {
         {
           type: "longTextBlock",
           attrs: {
-            chapterId: expect.stringMatching(/^chapter-[0-9a-f-]{36}$/),
+            chapterId: expect.stringMatching(/^chapter_[0-9a-f-]{36}$/),
             title: "第一章 起点",
             text: "第一章正文",
             order: 0,
@@ -26,7 +26,7 @@ describe("createLongTextDocument", () => {
         {
           type: "longTextBlock",
           attrs: {
-            chapterId: expect.stringMatching(/^chapter-[0-9a-f-]{36}$/),
+            chapterId: expect.stringMatching(/^chapter_[0-9a-f-]{36}$/),
             title: "第二章 终点",
             text: "第二章正文",
             order: 1,
@@ -45,8 +45,8 @@ describe("createLongTextDocument", () => {
     const firstId = String(first.content?.[0]?.attrs?.chapterId);
     const secondId = String(second.content?.[0]?.attrs?.chapterId);
 
-    expect(firstId).toMatch(/^chapter-[0-9a-f-]{36}$/);
-    expect(secondId).toMatch(/^chapter-[0-9a-f-]{36}$/);
+    expect(firstId).toMatch(/^chapter_[0-9a-f-]{36}$/);
+    expect(secondId).toMatch(/^chapter_[0-9a-f-]{36}$/);
     expect(firstId).not.toBe(secondId);
   });
 

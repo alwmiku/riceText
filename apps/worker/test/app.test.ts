@@ -478,8 +478,7 @@ describe("RiceText Worker", () => {
     )
       .bind("identity-post")
       .all<{ id: string; revision: number }>();
-    const revisionOf = (id: string) =>
-      revisions.results.find((row) => row.id === id)!.revision;
+    const revisionOf = (id: string) => revisions.results.find((row) => row.id === id)!.revision;
     const reordered = await exports.default.fetch(
       new Request("http://example.com/api/forum/novels/identity-post/chapters/reorder-stage", {
         method: "POST",
@@ -774,6 +773,11 @@ describe("RiceText Worker", () => {
         .bind("demo-post")
         .first(),
     ).toEqual({ count: 2 });
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM document_mutations WHERE created_at IS NULL OR created_at = ''",
+      ).first(),
+    ).toEqual({ count: 0 });
     expect(
       await env.DB.prepare("SELECT revision FROM chapters WHERE id = ?").bind("chapter-0").first(),
     ).toEqual({ revision: 2 });
@@ -1285,6 +1289,7 @@ describe("RiceText Worker", () => {
     );
     expect(submitted.status).toBe(201);
     const suggestion = (await submitted.json()) as { id: string };
+    expect(suggestion.id).toMatch(/^suggestion_[0-9a-f-]{36}$/u);
 
     const readerList = await exports.default.fetch(
       new Request("http://example.com/api/forum/documents/demo-post/suggestions", {
@@ -1440,6 +1445,7 @@ describe("RiceText Worker", () => {
     );
     expect(submitted.status, await submitted.clone().text()).toBe(201);
     const batch = (await submitted.json()) as { id: string };
+    expect(batch.id).toMatch(/^suggestion_batch_[0-9a-f-]{36}$/u);
 
     const approved = await exports.default.fetch(
       new Request("http://example.com/api/forum/suggestion-batches/" + batch.id, {
@@ -1687,6 +1693,7 @@ describe("RiceText Worker", () => {
       }),
     );
     expect(reply.status).toBe(201);
+    expect(((await reply.json()) as { id: string }).id).toMatch(/^comment_[0-9a-f-]{36}$/u);
     await expect((await resolve()).json()).resolves.toMatchObject({
       visible: true,
       content: hiddenContent,
@@ -1721,11 +1728,12 @@ describe("RiceText Worker", () => {
     const concurrent: Response[] = await Promise.all([submit("poll-a"), submit("poll-b")]);
     expect(concurrent.map((item) => item.status)).toEqual([200, 200]);
     const selected = await env.DB.prepare(
-      "SELECT selected.option_id FROM poll_votes vote " +
+      "SELECT vote.id, selected.option_id FROM poll_votes vote " +
         "JOIN poll_vote_options selected ON selected.vote_id = vote.id " +
         "WHERE vote.poll_id = 'poll-worker' AND vote.user_id = 'reader'",
-    ).all<{ option_id: string }>();
+    ).all<{ id: string; option_id: string }>();
     expect(selected.results).toHaveLength(1);
+    expect(selected.results[0]?.id).toMatch(/^poll_vote_[0-9a-f-]{36}$/u);
     expect(["poll-a", "poll-b"]).toContain(selected.results[0]?.option_id);
 
     const details = await exports.default.fetch(
@@ -1876,6 +1884,7 @@ describe("RiceText Worker", () => {
     );
     expect(uploaded.status).toBe(201);
     const asset = (await uploaded.json()) as { id: string; url: string; size: number };
+    expect(asset.id).toMatch(/^asset_[0-9a-f-]{36}$/u);
     expect(asset.size).toBe(png.byteLength);
     const metadata = await env.DB.prepare(
       "SELECT object_key, checksum, state FROM assets WHERE id = ?",
@@ -2081,6 +2090,8 @@ describe("RiceText Worker", () => {
       rolls: number[];
       total: number;
     };
+    expect(first.rollId).toMatch(/^roll_[0-9a-f-]{36}$/u);
+    expect(first.rootRollId).toBe(first.rollId);
     expect(first.rolls).toHaveLength(2);
     expect(first.total).toBeGreaterThanOrEqual(2);
     expect(first.total).toBeLessThanOrEqual(12);
@@ -2340,8 +2351,14 @@ describe("RiceText Worker", () => {
     );
     expect(session.status).toBe(200);
     await expect(session.json()).resolves.toMatchObject({
-      current: { name: "OIDC 新读者", role: "reader" },
-      available: [{ name: "OIDC 新读者", role: "reader" }],
+      current: {
+        id: expect.stringMatching(/^user_[0-9a-f-]{36}$/u),
+        name: "OIDC 新读者",
+        role: "reader",
+      },
+      available: [
+        { id: expect.stringMatching(/^user_[0-9a-f-]{36}$/u), name: "OIDC 新读者", role: "reader" },
+      ],
     });
 
     const logout = await worker.fetch(

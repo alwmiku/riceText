@@ -107,7 +107,9 @@ Unicode 表情与颜文字存为普通文本；站点自定义表情是行内原
 
 正文只持久化白名单 Tiptap JSON；图片二进制不会嵌入正文。文档保存使用递增 revision、`baseRevision` 与 `clientMutationId` 实现乐观并发与幂等写入，不依赖内容 Hash 或静默覆盖；章节差异同步则使用内容哈希做最小上传。客户端与服务端都按 schema 白名单校验/净化 JSON，拒绝未知节点、危险 URL、任意样式与 base64 媒体。
 
-章节身份是 `chapter-<uuid>`，创建时铸造一次，移动、改名、改正文都不变；ID 不含位置，代码不得从它反解章号，位置只由服务端的 `order` 给出。读、存、删、隐藏、换序、批量上传与建议定位一律以 `chapterId` 寻址；换序请求用有序 id 列表表达意图，数组下标即目标顺序。历史 ID（`chapter-<order>`、`chapter-v1-<hash>` 等）不迁移，按不透明身份继续可用。
+对外可见、持久化或跨模块流转的业务 ID 统一为 `<类型前缀>_<uuid-v4>`；服务端内部 request ID、锁、认证 state 和会话 token 可保持裸 UUID 或高熵随机值。ID 不编码时间、顺序和父实体，排序与清理只依赖 `created_at`、`updated_at`、`sort_order`、`revision` 等独立字段。历史 ID 不批量重写，新代码写新格式、读取路径继续兼容旧值。
+
+章节身份是 `chapter_<uuid>`，创建时铸造一次，移动、改名、改正文都不变；ID 不含位置，代码不得从它反解章号，位置只由服务端的 `order` 给出。读、存、删、隐藏、换序、批量上传与建议定位一律以 `chapterId` 寻址；换序请求用有序 id 列表表达意图，数组下标即目标顺序。历史 ID（`chapter-<order>`、`chapter-v1-<hash>` 等）不迁移，按不透明身份继续可用。
 
 ## 接口说明
 

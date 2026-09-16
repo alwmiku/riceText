@@ -109,7 +109,7 @@ describe("useAutosave", () => {
         schemaVersion: 1,
         baseRevision: 18,
         chapterId: "chapter-1",
-        clientMutationId: expect.stringMatching(/^save_/),
+        clientMutationId: expect.stringMatching(/^mutation_/),
         steps: expect.any(Array),
       }),
     );

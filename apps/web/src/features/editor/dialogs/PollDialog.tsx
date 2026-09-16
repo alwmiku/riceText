@@ -1,7 +1,7 @@
+import { createEntityId } from "@ricetext/contracts";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, Dialog } from "../../../components/ui";
-import { createId } from "../../../lib/utils";
 
 export interface PollDialogValues {
   question: string;
@@ -10,8 +10,8 @@ export interface PollDialogValues {
 }
 
 const initialOptions = () => [
-  { id: createId("poll-option"), label: "选项一" },
-  { id: createId("poll-option"), label: "选项二" },
+  { id: createEntityId("poll_option"), label: "选项一" },
+  { id: createEntityId("poll_option"), label: "选项二" },
 ];
 
 /** 创建或编辑正文中的持久化投票选项。 */
@@ -134,7 +134,7 @@ export function PollDialog({
             onClick={() =>
               setOptions((current) => [
                 ...current,
-                { id: createId("poll-option"), label: "" },
+                { id: createEntityId("poll_option"), label: "" },
               ])
             }
           >

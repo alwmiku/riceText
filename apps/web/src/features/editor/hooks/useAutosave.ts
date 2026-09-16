@@ -1,3 +1,4 @@
+import { createEntityId } from "@ricetext/contracts";
 import { diffDocuments } from "@ricetext/document-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, saveDocumentSteps } from "../../../lib/api";
@@ -5,7 +6,6 @@ import {
   clearLocalDocumentDraft,
   saveLocalDocumentDraft,
 } from "../../../lib/local-document-draft-storage";
-import { createId } from "../../../lib/utils";
 import type {
   DocumentEnvelope,
   RichTextNode,
@@ -235,7 +235,7 @@ export function useAutosave({
           const result = await saveDocumentSteps(document.id, {
             schemaVersion: document.schemaVersion,
             baseRevision: revisionRef.current,
-            clientMutationId: createId("save"),
+            clientMutationId: createEntityId("mutation"),
             steps,
             ...(chapterId ? { chapterId } : {}),
           });

@@ -1,4 +1,4 @@
-import { createId } from "../utils";
+import { createTemporaryId } from "@ricetext/contracts";
 import type { UploadedAsset } from "../types";
 import {
   ApiError,
@@ -23,7 +23,7 @@ export async function uploadAsset(file: File): Promise<UploadedAsset> {
     if (file.size > 8 * 1024 * 1024)
       throw new ApiError("上传限制为 8 MB", 422);
     return {
-      assetId: createId("asset"),
+      assetId: createTemporaryId("asset"),
       url: URL.createObjectURL(file),
       name: file.name,
       mimeType: file.type,

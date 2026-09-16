@@ -1,5 +1,5 @@
+import { createEntityId } from "@ricetext/contracts";
 import type { Editor } from "@tiptap/react";
-import { createId } from "../../lib/utils";
 import { FONT_SIZE_RANGE } from "./editor-tool-definitions";
 
 /**
@@ -239,7 +239,7 @@ export function insertNode(editor: Editor, node: Record<string, unknown>): boole
 export function insertReplyGate(editor: Editor): boolean {
   return insertNode(editor, {
     type: "replyGate",
-    attrs: { gateId: createId("gate"), prompt: "回复后可见" },
+    attrs: { gateId: createEntityId("gate"), prompt: "回复后可见" },
     content: [
       {
         type: "paragraph",

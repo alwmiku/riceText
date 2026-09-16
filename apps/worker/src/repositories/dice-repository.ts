@@ -1,5 +1,5 @@
 import { DiceRoll } from "@dice-roller/rpg-dice-roller";
-import { DiceRollSchema, type DiceRollResult } from "@ricetext/contracts";
+import { DiceRollSchema, createEntityId, type DiceRollResult } from "@ricetext/contracts";
 import { WorkerHttpError } from "../http-error";
 
 type DiceRow = {
@@ -76,7 +76,7 @@ export class D1DiceRepository {
         "骰子表达式不可解析，例如可使用 3d5",
       );
     }
-    const id = crypto.randomUUID();
+    const id = createEntityId("roll");
     const root = rootRollId ?? id;
     const createdAt = new Date().toISOString();
     const rolls = extractRolls(JSON.parse(JSON.stringify(roll.toJSON())));

@@ -1,8 +1,8 @@
+import { createEntityId } from "@ricetext/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useAppContext } from "../../app-context";
 import { listDocuments } from "../../lib/api";
-import { createId } from "../../lib/utils";
 
 const selectionKey = "ricetext:selected-document";
 const draftTitleKey = (id: string) => `ricetext:draft-title:${id}`;
@@ -40,7 +40,7 @@ export function useArticleSelection() {
     localStorage.setItem(selectionKey, id);
   };
   const createArticle = (title: string) => {
-    const id = createId("article");
+    const id = createEntityId("article");
     setSelectedIdState(id);
     localStorage.setItem(selectionKey, id);
     localStorage.setItem(draftTitleKey(id), title.trim());
@@ -50,7 +50,7 @@ export function useArticleSelection() {
     authenticated,
     articles,
     loading: authStatus === "loading" || (authenticated && query.isLoading),
-    selectedId: authenticated ? selectedId : "guest-local",
+    selectedId: authenticated ? selectedId : "tmp_article_guest",
     selectedDraftTitle: selectedId
       ? localStorage.getItem(draftTitleKey(selectedId)) ?? undefined
       : undefined,

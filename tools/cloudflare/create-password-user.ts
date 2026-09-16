@@ -2,6 +2,7 @@ import { randomBytes, randomUUID, webcrypto } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createEntityId } from "../../packages/contracts/src/ids.js";
 import { PASSWORD_HASH_ITERATIONS } from "../../packages/contracts/src/schemas.js";
 
 function argument(name: string): string {
@@ -51,7 +52,8 @@ async function hiddenPassword(): Promise<string> {
 const local = process.argv.includes("--local");
 const environment = local ? "local" : argument("--env");
 const username = argument("--username");
-const userId = argument("--user-id");
+const userIdIndex = process.argv.indexOf("--user-id");
+const userId = userIdIndex >= 0 && process.argv[userIdIndex + 1] ? process.argv[userIdIndex + 1]! : createEntityId("user");
 const name = argument("--name");
 const role = argument("--role");
 if (!/^[A-Za-z0-9._-]{3,64}$/.test(username)) throw new Error("账号只能包含字母、数字、点、下划线和短横线");

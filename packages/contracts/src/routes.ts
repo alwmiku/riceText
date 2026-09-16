@@ -232,7 +232,7 @@ export const contractRoutes: readonly ContractRoute[] = [
     implementationStatus: "implemented",
     summary: "注册正文中出现的新章节",
     description:
-      "需要 author 或 moderator。编辑器的「新增章节」只修改正文；保存前客户端必须把正文中服务器目录缺失的新章节注册进来。服务端按位置分配章节 id（chapter-<order>，同位置重复注册幂等返回同一行），客户端用返回的 id 同步本地目录并执行文档保存——新章节历史与独立版本号才能按该 id 归集。",
+      "需要 author 或 moderator。编辑器的「新增章节」只修改正文；保存前客户端必须把正文中服务器目录缺失的新章节注册进来。章节身份由客户端以 chapter_<uuid> 铸造，省略时服务端兜底铸造；重复注册同一 ID 幂等返回同一行，顺序只由 order 字段表达。",
     params: documentParams,
     body: CreateDocumentChapterRequestSchema,
     responses: {
@@ -877,4 +877,3 @@ export function getContractRoute(operationId: string): ContractRoute {
   if (!route) throw new Error(`未知契约 operationId: ${operationId}`);
   return route;
 }
-

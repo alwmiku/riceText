@@ -5,6 +5,7 @@ import {
 import {
   ChapterContentSchema,
   ChapterSchema,
+  createEntityId,
   type Chapter,
   type ChapterContent,
   type TiptapDocument,
@@ -344,7 +345,7 @@ export class D1ChapterRepository {
         if (reopened.meta.changes === 1) existing = recoverable;
       }
     }
-    const uploadId = existing?.id ?? `upload_${crypto.randomUUID()}`;
+    const uploadId = existing?.id ?? createEntityId("upload");
     if (!existing) {
       await this.db
         .prepare(

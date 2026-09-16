@@ -86,8 +86,8 @@ export default function ComposePage() {
   const { identity } = useAppContext();
   const articleSelection = useArticleSelection();
   const activeDocumentId = articleSelection.authenticated
-    ? articleSelection.selectedId || `article-${identity.id}`
-    : "guest-local";
+    ? articleSelection.selectedId || "tmp_article_empty"
+    : "tmp_article_guest";
   return (
     <ComposeDocumentSession
       key={JSON.stringify([identity.id, activeDocumentId])}
