@@ -8,6 +8,7 @@ import {
   type ForumSuggestion,
 } from "../../lib/api";
 import type { ForumSuggestionBatch } from "../../lib/types";
+import { revisionQueryKeys } from "../../lib/revision-query-keys";
 import { SuggestionBatchCard } from "./SuggestionBatchCard";
 import { ProofreadView } from "./ProofreadView";
 
@@ -57,10 +58,7 @@ export function ProofreadWorkspace({
     [batches, chapterId],
   );
   const visibleSuggestions = useMemo(
-    () =>
-      chapterSuggestions.filter(
-        (suggestion) => suggestion.status === "pending",
-      ),
+    () => chapterSuggestions.filter((suggestion) => suggestion.status === "pending"),
     [chapterSuggestions],
   );
 
@@ -85,7 +83,7 @@ export function ProofreadWorkspace({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey }),
         queryClient.invalidateQueries({ queryKey: ["document", documentId] }),
-        queryClient.invalidateQueries({ queryKey: ["revisions", documentId] }),
+        queryClient.invalidateQueries({ queryKey: revisionQueryKeys.article(documentId) }),
       ]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "审核失败");
@@ -94,23 +92,14 @@ export function ProofreadWorkspace({
     }
   };
 
-  const reviewBatch = async (
-    id: string,
-    decision: "approve" | "reject",
-  ) => {
+  const reviewBatch = async (id: string, decision: "approve" | "reject") => {
     if (busyId) return;
     setBusyId(id);
     setError("");
     try {
-      const result = await reviewSuggestionBatch(
-        id,
-        decision,
-        revisionRef.current,
-      );
-      queryClient.setQueryData<ForumSuggestionBatch[]>(
-        batchQueryKey,
-        (current = []) =>
-          current.map((item) => (item.id === id ? result.batch : item)),
+      const result = await reviewSuggestionBatch(id, decision, revisionRef.current);
+      queryClient.setQueryData<ForumSuggestionBatch[]>(batchQueryKey, (current = []) =>
+        current.map((item) => (item.id === id ? result.batch : item)),
       );
       if (result.document) {
         revisionRef.current = result.document.revision;
@@ -119,7 +108,7 @@ export function ProofreadWorkspace({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: batchQueryKey }),
         queryClient.invalidateQueries({ queryKey: ["document", documentId] }),
-        queryClient.invalidateQueries({ queryKey: ["revisions", documentId] }),
+        queryClient.invalidateQueries({ queryKey: revisionQueryKeys.article(documentId) }),
       ]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "批量审核失败");

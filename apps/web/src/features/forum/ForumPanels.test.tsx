@@ -1,7 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Circle } from "lucide-react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  CHAPTER_EDITOR_CAPABILITIES,
+  createChapterEditingUnit,
+} from "../../lib/chapter-editing-unit";
 import { identities, seedRevisions } from "../../lib/seed";
 import type { RichTextNode } from "../../lib/types";
 import { ChapterRail, ForumBusinessPanel, HistoryPanel } from "./ForumPanels";
@@ -40,6 +45,29 @@ vi.mock("../../lib/api/polls", () => ({
   votePoll: mocks.votePollMock,
   getPollVotes: mocks.getPollVotesMock,
 }));
+
+function editingUnit(
+  content: RichTextNode = { type: "doc", content: [{ type: "paragraph" }] },
+  articleId = "demo-post",
+) {
+  return createChapterEditingUnit({
+    articleId,
+    articleTitle: "雾港来信",
+    baseRevision: 18,
+    chapterId: "chapter-0",
+    chapterTitle: "楔子 · 雨季之前",
+    chapterOrder: 0,
+    chapterRevision: 18,
+    savedAt: "2026-09-16T00:00:00.000Z",
+    source: "document",
+    content,
+    capabilities: [
+      CHAPTER_EDITOR_CAPABILITIES.proofread,
+      CHAPTER_EDITOR_CAPABILITIES.history,
+      CHAPTER_EDITOR_CAPABILITIES.remoteTools,
+    ],
+  });
+}
 
 function renderWithQuery(ui: ReactNode) {
   const client = new QueryClient({
@@ -374,16 +402,29 @@ describe("ForumPanels", () => {
     expect(onSelect).toHaveBeenCalledWith(2);
   });
 
-  it("校订列表只显示当前章节，并保留章节与行定位", async () => {
+  it("无需修改面板即可注入自定义章节工具", () => {
     renderWithQuery(
       <ForumBusinessPanel
         identity={identities[0]!}
-        documentId="demo-post"
-        baseRevision={18}
-        chapterId="chapter-0"
-        chapterTitle="楔子 · 雨季之前"
+        unit={editingUnit()}
+        tools={[
+          {
+            id: "statistics",
+            label: "统计",
+            icon: Circle,
+            render: ({ unit }) => <p>{unit.chapter.title}统计面板</p>,
+          },
+        ]}
         onRestore={vi.fn()}
       />,
+    );
+    expect(screen.getByRole("button", { name: "统计" })).toBeInTheDocument();
+    expect(screen.getByText("楔子 · 雨季之前统计面板")).toBeInTheDocument();
+  });
+
+  it("校订列表只显示当前章节，并保留章节与行定位", async () => {
+    renderWithQuery(
+      <ForumBusinessPanel identity={identities[0]!} unit={editingUnit()} onRestore={vi.fn()} />,
     );
     expect(await screen.findByText("楔子 · 雨季之前")).toBeInTheDocument();
     expect(screen.getByText("第 2 行")).toBeInTheDocument();
@@ -407,14 +448,7 @@ describe("ForumPanels", () => {
       },
     ]);
     renderWithQuery(
-      <ForumBusinessPanel
-        identity={identities[0]!}
-        documentId="demo-post"
-        baseRevision={18}
-        chapterId="chapter-0"
-        chapterTitle="楔子 · 雨季之前"
-        onRestore={vi.fn()}
-      />,
+      <ForumBusinessPanel identity={identities[0]!} unit={editingUnit()} onRestore={vi.fn()} />,
     );
 
     expect(await screen.findByRole("tab", { name: /待审核.*0/ })).toBeInTheDocument();
@@ -428,14 +462,7 @@ describe("ForumPanels", () => {
 
   it("接受校订建议调用审核 API并显示已合并状态", async () => {
     renderWithQuery(
-      <ForumBusinessPanel
-        identity={identities[0]!}
-        documentId="demo-post"
-        baseRevision={18}
-        chapterId="chapter-0"
-        chapterTitle="楔子 · 雨季之前"
-        onRestore={vi.fn()}
-      />,
+      <ForumBusinessPanel identity={identities[0]!} unit={editingUnit()} onRestore={vi.fn()} />,
     );
     fireEvent.click((await screen.findAllByRole("button", { name: /接受/ }))[0]!);
     await waitFor(() =>
@@ -447,15 +474,7 @@ describe("ForumPanels", () => {
 
   it("当前章节没有引用节点时隐藏附件和投票入口", () => {
     renderWithQuery(
-      <ForumBusinessPanel
-        identity={identities[0]!}
-        documentId="demo-post"
-        baseRevision={18}
-        chapterId="chapter-0"
-        chapterTitle="楔子 · 雨季之前"
-        activeContent={{ type: "doc", content: [{ type: "paragraph" }] }}
-        onRestore={vi.fn()}
-      />,
+      <ForumBusinessPanel identity={identities[0]!} unit={editingUnit()} onRestore={vi.fn()} />,
     );
     expect(screen.queryByRole("button", { name: "附件" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "投票" })).not.toBeInTheDocument();
@@ -467,11 +486,7 @@ describe("ForumPanels", () => {
     renderWithQuery(
       <ForumBusinessPanel
         identity={identities[1]!}
-        documentId="demo-post"
-        baseRevision={18}
-        chapterId="chapter-0"
-        chapterTitle="楔子 · 雨季之前"
-        activeContent={attachmentContent}
+        unit={editingUnit(attachmentContent)}
         onRestore={vi.fn()}
       />,
     );
@@ -488,11 +503,7 @@ describe("ForumPanels", () => {
     renderWithQuery(
       <ForumBusinessPanel
         identity={{ ...identities[1]!, coins: 5 }}
-        documentId="demo-post"
-        baseRevision={18}
-        chapterId="chapter-0"
-        chapterTitle="楔子 · 雨季之前"
-        activeContent={attachmentContent}
+        unit={editingUnit(attachmentContent)}
         onRestore={vi.fn()}
       />,
     );
@@ -504,11 +515,7 @@ describe("ForumPanels", () => {
     renderWithQuery(
       <ForumBusinessPanel
         identity={identities[1]!}
-        documentId="demo-post"
-        baseRevision={18}
-        chapterId="chapter-0"
-        chapterTitle="楔子 · 雨季之前"
-        activeContent={pollContent}
+        unit={editingUnit(pollContent)}
         onRestore={vi.fn()}
       />,
     );
@@ -533,10 +540,7 @@ describe("ForumPanels", () => {
     renderWithQuery(
       <ForumBusinessPanel
         identity={identities[0]!}
-        documentId="post_7"
-        baseRevision={18}
-        chapterId="chapter-0"
-        chapterTitle="楔子 · 雨季之前"
+        unit={editingUnit(undefined, "post_7")}
         onRestore={onRestore}
       />,
     );

@@ -30,7 +30,7 @@ const mocks = vi.hoisted(() => ({
   uploadLongTextChapter: vi.fn(),
 }));
 
-vi.mock("../features/editor/hooks/useAutosave", () => ({ useAutosave: mocks.autosave }));
+vi.mock("../features/compose/useAutosave", () => ({ useAutosave: mocks.autosave }));
 // jsdom 不提供 IndexedDB；本页验证正常存储流程，上传 Hook 测试覆盖失败场景。
 vi.mock("../lib/long-text-draft-storage", () => ({
   loadLongTextValue: vi.fn(async () => undefined),

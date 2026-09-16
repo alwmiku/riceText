@@ -57,6 +57,22 @@ ID 里不含位置，任何代码都不得从它反解章号；文章隔离由 `
 未提供标记的旧接口才以 revision 兼容判断。编辑页优先自身尚未保存的文档正文，阅读页优先已确认的
 独立正文；独立正文请求失败不能退回同位置的其他章节。目录与正文查询统一使用 `chapter-query-keys.ts`。
 
+## 章节编辑单元与扩展边界
+
+文章是聚合根，卷是文章内的章节分组，章节是功能完整的编辑单元。Web 使用 `ChapterEditingUnit`
+一次传递文章并发基线、卷上下文、稳定章节身份、章节 revision、正文和 capability；布局组件与业务工具
+不再分别接收一组容易错位的 `documentId/chapterId/revision/content` 参数。附件、投票、校订和历史
+通过 `ChapterToolDefinition` 注册表接入，宿主可以增删工具或声明新 capability，而无需修改工具面板分支。
+
+卷层级由 document-core 的纯投影统一生成。当前 `volumeTitle` 仍是兼容字段，不把标题当持久身份；
+每个连续卷段临时使用首章稳定 ID 作为展示 key，避免同名卷共享折叠状态。正式卷实体化后，投影层只需
+把该 key 替换为 `volumeId`，侧栏不需要重写。
+
+目录身份解析遵循「精确 chapterId → 唯一 order 兼容 → 拒绝远端保存」。目录缺失或存在歧义时只保留
+本地草稿，禁止猜测目录第一行，避免把后续章节的正文、历史和建议写到第一章。
+
+仍需分阶段收敛的边界：
+
 ## 后端与提交边界
 
 生产与本地都只有 Cloudflare Worker + D1 一套后端：路由在 `apps/worker/src/app.ts`，

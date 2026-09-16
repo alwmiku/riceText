@@ -1,3 +1,9 @@
+import {
+  chapterVolumeKey,
+  chapterVolumeTitle,
+  expandActiveChapterVolume,
+  startsChapterVolume,
+} from "@ricetext/document-core";
 import { ChevronRight, Menu, X } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { Button } from "../../components/ui";
@@ -21,78 +27,70 @@ function TocItems({
   currentIndex: number;
   onSelect: (index: number) => void;
 }) {
-  const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set());
   useEffect(() => {
-    const volume = chapters[currentIndex]?.volumeTitle?.trim();
-    if (!volume) return;
-    setCollapsedVolumes((current) => {
-      if (!current.has(volume)) return current;
-      const next = new Set(current);
-      next.delete(volume);
-      return next;
-    });
+    setCollapsedVolumes((current) => expandActiveChapterVolume(current, chapters, currentIndex));
   }, [chapters, currentIndex]);
   return (
     <ol className="m-0 grid list-none gap-0.5 p-0">
       {chapters.map((chapter, index) => {
         const [main = "", sub] = chapter.title.split(" · ");
         const active = index === currentIndex;
-        const volume = chapter.volumeTitle?.trim() ?? "";
-        const startsVolume =
-          Boolean(volume) &&
-          chapters[index - 1]?.volumeTitle?.trim() !== volume;
-        const volumeOpen = !collapsedVolumes.has(volume);
+        const volume = chapterVolumeTitle(chapter);
+        const volumeKey = chapterVolumeKey(chapters, index);
+        const startsVolume = startsChapterVolume(chapters, index);
+        const volumeOpen = !collapsedVolumes.has(volumeKey);
         return (
           <Fragment key={chapter.id}>
-          {startsVolume ? (
-            <li>
-              <button
-                type="button"
-                className="mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs font-bold text-foreground hover:bg-muted"
-                aria-label={`${volumeOpen ? "收起" : "展开"}卷 ${volume}`}
-                onClick={() =>
-                  setCollapsedVolumes((current) => {
-                    const next = new Set(current);
-                    if (volumeOpen) next.add(volume);
-                    else next.delete(volume);
-                    return next;
-                  })
-                }
+            {startsVolume ? (
+              <li>
+                <button
+                  type="button"
+                  className="mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs font-bold text-foreground hover:bg-muted"
+                  aria-label={`${volumeOpen ? "收起" : "展开"}卷 ${volume}`}
+                  onClick={() =>
+                    setCollapsedVolumes((current) => {
+                      const next = new Set(current);
+                      if (volumeOpen) next.add(volumeKey);
+                      else next.delete(volumeKey);
+                      return next;
+                    })
+                  }
+                >
+                  <ChevronRight
+                    className={
+                      volumeOpen ? "rotate-90 transition-transform" : "transition-transform"
+                    }
+                  />
+                  <span className="truncate">{volume}</span>
+                </button>
+              </li>
+            ) : null}
+            {!volume || volumeOpen ? (
+              <li
+                className={`${volume ? "ml-3 " : ""}${
+                  active
+                    ? "[&_button]:!bg-[#e7f5f2] [&_button]:!font-bold [&_button]:!text-[#14766d]"
+                    : ""
+                }`}
               >
-                <ChevronRight
-                  className={volumeOpen ? "rotate-90 transition-transform" : "transition-transform"}
-                />
-                <span className="truncate">{volume}</span>
-              </button>
-            </li>
-          ) : null}
-          {!volume || volumeOpen ? (
-          <li
-            className={
-              `${volume ? "ml-3 " : ""}${active
-                ? "[&_button]:!bg-[#e7f5f2] [&_button]:!font-bold [&_button]:!text-[#14766d]"
-                : ""}`
-            }
-          >
-            <button
-              type="button"
-              aria-current={active ? "true" : undefined}
-              onClick={() => onSelect(index)}
-              className="flex w-full cursor-pointer items-baseline gap-[7px] overflow-hidden rounded-[5px] border-0 bg-transparent px-2 py-1 text-left text-[13px] leading-[1.45] font-bold text-[#37414b] before:text-[#0f766e] before:content-['•'] hover:bg-[#eef5f3] hover:text-[#14766d]"
-            >
-              <span className="min-w-0 flex-1">
-                <TextMarquee text={main} className="text-[13px] font-bold leading-[1.45]" />
-              </span>
-              {sub ? (
-                <small className="max-w-[45%] shrink-0 truncate text-[10px] text-muted-foreground">
-                  {sub}
-                </small>
-              ) : null}
-            </button>
-          </li>
-          ) : null}
+                <button
+                  type="button"
+                  aria-current={active ? "true" : undefined}
+                  onClick={() => onSelect(index)}
+                  className="flex w-full cursor-pointer items-baseline gap-[7px] overflow-hidden rounded-[5px] border-0 bg-transparent px-2 py-1 text-left text-[13px] leading-[1.45] font-bold text-[#37414b] before:text-[#0f766e] before:content-['•'] hover:bg-[#eef5f3] hover:text-[#14766d]"
+                >
+                  <span className="min-w-0 flex-1">
+                    <TextMarquee text={main} className="text-[13px] font-bold leading-[1.45]" />
+                  </span>
+                  {sub ? (
+                    <small className="max-w-[45%] shrink-0 truncate text-[10px] text-muted-foreground">
+                      {sub}
+                    </small>
+                  ) : null}
+                </button>
+              </li>
+            ) : null}
           </Fragment>
         );
       })}
@@ -123,20 +121,13 @@ export function TocSidebar({
           目录
         </p>
         <div className="mt-2.5 mb-2 h-px bg-border" aria-hidden="true" />
-        <TocItems
-          chapters={chapters}
-          currentIndex={currentIndex}
-          onSelect={onSelect}
-        />
+        <TocItems chapters={chapters} currentIndex={currentIndex} onSelect={onSelect} />
       </nav>
 
       <MobileChapterTrigger open={mobileOpen} onOpen={() => setMobileOpen(true)} />
 
       {mobileOpen ? (
-        <div
-          className="fixed inset-0 z-50 hidden max-[840px]:block"
-          role="presentation"
-        >
+        <div className="fixed inset-0 z-50 hidden max-[840px]:block" role="presentation">
           <button
             type="button"
             aria-label="关闭阅读目录"

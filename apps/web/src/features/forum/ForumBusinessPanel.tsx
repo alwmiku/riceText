@@ -1,11 +1,12 @@
-import { History, MessageSquareText, Paperclip, Vote } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { RichTextNode, SeedIdentity } from "../../lib/types";
+import type { ChapterEditingUnit } from "../../lib/chapter-editing-unit";
 import { cn } from "../../lib/utils";
-import { AttachmentPanel } from "./AttachmentPanel";
-import { HistoryPanel } from "./HistoryPanel";
-import { PollPanel } from "./PollPanel";
-import { SuggestionPanel } from "./SuggestionPanel";
+import {
+  DEFAULT_CHAPTER_TOOLS,
+  type ChapterToolContext,
+  type ChapterToolDefinition,
+} from "./chapter-tools";
 import { useRevisions } from "./useRevisions";
 
 function collectBusinessReferences(content: RichTextNode | undefined) {
@@ -22,58 +23,47 @@ function collectBusinessReferences(content: RichTextNode | undefined) {
   return { attachmentIds: [...attachments], pollIds: [...polls] };
 }
 
-/** 汇总校订、附件、投票和版本历史等论坛创作能力。 */
+/** 章节工具容器：只管理注册工具的可见性和当前选项卡。 */
 export function ForumBusinessPanel({
   identity,
-  documentId,
-  baseRevision,
-  chapterId,
-  chapterTitle,
-  activeContent,
+  unit,
   comparingRevision,
   onCompare,
   onRestore,
+  tools = DEFAULT_CHAPTER_TOOLS,
   className,
 }: {
   identity: SeedIdentity;
-  documentId: string;
-  /** 当前文档 revision，作为审核建议合并的基线。 */
-  baseRevision: number;
-  /** 当前编辑章节的服务器目录 id；新建章节未注册时为空（历史面板显示暂无）。 */
-  chapterId?: string | undefined;
-  chapterTitle: string;
-  /** 当前章节正文；附件与投票 Tab 只跟随其中的引用节点。 */
-  activeContent?: RichTextNode;
+  unit: ChapterEditingUnit;
   comparingRevision?: number | null;
   onCompare?: (revision: number) => void;
   onRestore: (revision: number) => void;
+  /** 宿主可追加、替换或删减工具，而无需修改面板实现。 */
+  tools?: readonly ChapterToolDefinition[];
   className?: string;
 }) {
-  const [tab, setTab] = useState<
-    "suggestions" | "attachment" | "poll" | "history"
-  >("suggestions");
-  const { revisions } = useRevisions(documentId, chapterId);
+  const { revisions } = useRevisions(unit.article.id, unit.chapter.id ?? undefined);
   const { attachmentIds, pollIds } = useMemo(
-    () => collectBusinessReferences(activeContent),
-    [activeContent],
+    () => collectBusinessReferences(unit.content),
+    [unit.content],
   );
-  const tabs = [
-    { id: "suggestions" as const, label: "校订", icon: MessageSquareText },
-    ...(attachmentIds.length > 0
-      ? [{ id: "attachment" as const, label: "附件", icon: Paperclip }]
-      : []),
-    ...(pollIds.length > 0
-      ? [{ id: "poll" as const, label: "投票", icon: Vote }]
-      : []),
-    { id: "history" as const, label: "历史", icon: History },
-  ];
+  const context: ChapterToolContext = {
+    unit,
+    identity,
+    attachmentIds,
+    pollIds,
+    revisions,
+    ...(comparingRevision !== undefined ? { comparingRevision } : {}),
+    ...(onCompare ? { onCompare } : {}),
+    onRestore,
+  };
+  const visibleTools = tools.filter((tool) => tool.isVisible?.(context) ?? true);
+  const [tab, setTab] = useState(() => visibleTools[0]?.id ?? "");
   useEffect(() => {
-    if (
-      (tab === "attachment" && attachmentIds.length === 0) ||
-      (tab === "poll" && pollIds.length === 0)
-    )
-      setTab("suggestions");
-  }, [attachmentIds.length, pollIds.length, tab]);
+    if (!visibleTools.some((tool) => tool.id === tab)) setTab(visibleTools[0]?.id ?? "");
+  }, [tab, visibleTools]);
+  const activeTool = visibleTools.find((tool) => tool.id === tab) ?? visibleTools[0];
+
   return (
     <aside
       className={cn(
@@ -89,7 +79,7 @@ export function ForumBusinessPanel({
         </span>
       </div>
       <div className="grid grid-flow-col auto-cols-fr border-b border-border">
-        {tabs.map(({ id, label, icon: Icon }) => (
+        {visibleTools.map(({ id, label, icon: Icon }) => (
           <button
             type="button"
             key={id}
@@ -102,34 +92,7 @@ export function ForumBusinessPanel({
           </button>
         ))}
       </div>
-      <div className="p-3">
-        {tab === "suggestions" && (
-          <SuggestionPanel
-            documentId={documentId}
-            baseRevision={baseRevision}
-            chapterId={chapterId ?? ""}
-            chapterTitle={chapterTitle}
-          />
-        )}
-        {tab === "attachment" && (
-          <AttachmentPanel identity={identity} attachmentIds={attachmentIds} />
-        )}
-        {tab === "poll" && (
-          <div className="flex flex-col gap-3">
-            {pollIds.map((pollId) => (
-              <PollPanel key={pollId} pollId={pollId} />
-            ))}
-          </div>
-        )}
-        {tab === "history" && (
-          <HistoryPanel
-            revisions={revisions}
-            {...(comparingRevision !== undefined ? { comparingRevision } : {})}
-            {...(onCompare ? { onCompare } : {})}
-            onRestore={onRestore}
-          />
-        )}
-      </div>
+      <div className="p-3">{activeTool?.render(context)}</div>
     </aside>
   );
 }

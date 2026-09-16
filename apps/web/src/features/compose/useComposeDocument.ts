@@ -21,8 +21,10 @@ import {
   splitDocumentByHeadings,
 } from "../../lib/chapters";
 import { chapterQueryKeys } from "../../lib/chapter-query-keys";
+import { revisionQueryKeys } from "../../lib/revision-query-keys";
 import type { DocumentEnvelope, ForumChapterItem, RichTextNode } from "../../lib/types";
-import { useAutosave } from "../editor/hooks/useAutosave";
+import { useAutosave } from "./useAutosave";
+import { resolveChapterDirectoryIdentity } from "./chapter-directory-identity";
 
 export interface ComposeDocumentController {
   document: DocumentEnvelope;
@@ -242,7 +244,7 @@ export function useComposeDocument(
           },
         );
       }
-      void queryClient.invalidateQueries({ queryKey: ["revisions", next.id] });
+      void queryClient.invalidateQueries({ queryKey: revisionQueryKeys.article(next.id) });
       void queryClient.invalidateQueries({ queryKey: ["documents"] });
       void queryClient.invalidateQueries({
         queryKey: chapterQueryKeys.directory(documentId),
@@ -279,13 +281,6 @@ export function useComposeDocument(
   const prepareChapterForSave = useCallback(
     async (snapshot: RichTextNode, activeIndex: number): Promise<string | undefined> => {
       if (!isCurrent()) return undefined;
-      const cachedDirectory =
-        queryClient.getQueryData<ForumChapterItem[]>(chapterQueryKeys.directory(documentId)) ?? [];
-      // 目录行按位置（row.order）是权威身份；目录缺失时才退回正文身份。
-      const identityFor = (_index: number, fallback: string) =>
-        cachedDirectory.find((row) => row.id === fallback)?.id ??
-        cachedDirectory[0]?.id ??
-        (isUsableChapterId(fallback) ? fallback : undefined);
       const chapters = splitDocumentByHeadings(snapshot).chapters;
       const active = chapters[activeIndex];
       if (!active) return undefined;
@@ -297,7 +292,7 @@ export function useComposeDocument(
         try {
           directory = await listForumChapters(documentId);
         } catch {
-          return isCurrent() ? identityFor(activeIndex, active.id) : undefined;
+          return undefined;
         }
         if (!isCurrent()) return undefined;
         queryClient.setQueryData<ForumChapterItem[]>(
@@ -305,10 +300,11 @@ export function useComposeDocument(
           directory,
         );
       }
-      // 只注册目录里还没有的章节：按 chapterId 对齐，位置不参与身份判定。
-      const knownIds = new Set(directory.map((row) => row.id));
+      // 只注册目录里无法解析的章节：稳定 ID 优先，旧正文允许唯一 order 兼容。
       const missing = chapters.filter(
-        (chapter) => isUsableChapterId(chapter.id) && !knownIds.has(chapter.id),
+        (chapter, index) =>
+          isUsableChapterId(chapter.id) &&
+          !resolveChapterDirectoryIdentity(directory, index, chapter.id),
       );
       if (missing.length > 0) {
         const created: ForumChapterItem[] = [];
@@ -325,8 +321,7 @@ export function useComposeDocument(
             if (!isCurrent()) return undefined;
           } catch {
             if (!isCurrent()) return undefined;
-            // 离线或注册失败：不中止保存（文档保存路径会自行降级为本地草稿），
-            // 目录同步成功后再保存时历史与版本号即可按服务器 id 归集。
+            // 注册失败后停止剩余远端操作；调用方会保留本地草稿，绝不猜测目录身份。
             createFailed = true;
           }
         }
@@ -346,7 +341,12 @@ export function useComposeDocument(
       // 按 chapterId 判定，位置不再参与——移动章节不会误删任何一行。
       const directoryAfter =
         queryClient.getQueryData<ForumChapterItem[]>(chapterQueryKeys.directory(documentId)) ?? [];
-      const survivingIds = new Set(chapters.map((chapter) => chapter.id));
+      const survivingIds = new Set<string>();
+      chapters.forEach((chapter, index) => {
+        survivingIds.add(chapter.id);
+        const resolved = resolveChapterDirectoryIdentity(directoryAfter, index, chapter.id);
+        if (resolved) survivingIds.add(resolved);
+      });
       const stale = directoryAfter.filter((row) => !survivingIds.has(row.id));
       if (stale.length > 0) {
         const removedIds: string[] = [];
@@ -367,9 +367,10 @@ export function useComposeDocument(
           );
         }
       }
-      // 活动章节按身份返回：正文声明的身份要先与目录同一位置的 id 一致；
-      // 正文刚被补铸（还没写回）时，只有目录行是权威身份。
-      return identityFor(activeIndex, active.id);
+      // 精确 ID 优先；旧正文只允许唯一 order 对齐。无法确认时禁止远端保存。
+      const currentDirectory =
+        queryClient.getQueryData<ForumChapterItem[]>(chapterQueryKeys.directory(documentId)) ?? [];
+      return resolveChapterDirectoryIdentity(currentDirectory, activeIndex, active.id);
     },
     [documentId, isCurrent, queryClient],
   );
@@ -470,7 +471,11 @@ export function useComposeDocument(
       //    身份在调用时从目录重新解析：渲染闭包里的值可能早于目录到达。
       const serverChapterId = await prepareChapterForSave(contentRef.current, chapterIndex);
       if (!isCurrent()) return false;
-      // 2. 用服务器章节身份执行最小 steps 保存：新章历史与版本号才能正确归集。
+      if (!serverChapterId) {
+        autosave.saveLocal(contentRef.current, generationRef.current);
+        return false;
+      }
+      // 2. 用已确认的服务器章节身份执行最小 steps 保存。
       return autosave.flush(contentRef.current, generationRef.current, serverChapterId);
     },
     [
@@ -514,7 +519,9 @@ export function useComposeDocument(
               : chapter,
           ),
       );
-      void queryClient.invalidateQueries({ queryKey: ["revisions", document.id, chapterId] });
+      void queryClient.invalidateQueries({
+        queryKey: revisionQueryKeys.chapter(document.id, chapterId),
+      });
       void queryClient.invalidateQueries({ queryKey: chapterQueryKeys.directory(document.id) });
       return next;
     },

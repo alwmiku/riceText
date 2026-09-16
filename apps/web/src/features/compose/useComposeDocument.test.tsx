@@ -46,7 +46,7 @@ vi.mock("../../lib/api", () => ({
   restoreRevision: mocks.restoreRevision,
   saveDocument: mocks.saveDocument,
 }));
-vi.mock("../editor/hooks/useAutosave", () => ({ useAutosave: mocks.autosave }));
+vi.mock("./useAutosave", () => ({ useAutosave: mocks.autosave }));
 
 const serverDocument: DocumentEnvelope = {
   ...defaultDocument,
@@ -388,6 +388,101 @@ describe("useComposeDocument 水合", () => {
       flush: (content: RichTextNode, generation: number, chapterId?: string) => Promise<boolean>;
     };
     expect(autosaveValue.flush).toHaveBeenCalledWith(expect.anything(), expect.anything(), minted);
+  });
+
+  it("旧正文只通过唯一 order 复用目录身份，不重复注册或误删", async () => {
+    const legacyDocument: DocumentEnvelope = {
+      ...serverDocument,
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 1, chapterStart: true, chapterId: "legacy-local" },
+            content: [{ type: "text", text: "旧章节" }],
+          },
+          { type: "paragraph", content: [{ type: "text", text: "旧正文" }] },
+        ],
+      },
+    };
+    mocks.getDocument.mockResolvedValueOnce(legacyDocument);
+    mocks.listForumChapters.mockResolvedValueOnce([
+      {
+        id: "server-chapter",
+        documentId: "demo-post",
+        title: "旧章节",
+        order: 0,
+        revision: 3,
+        savedAt: legacyDocument.savedAt,
+        hidden: false,
+      },
+    ]);
+    const { result } = renderHook(() => useComposeDocument("demo-post", 0), { wrapper });
+    await waitFor(() => expect(result.current.content).toEqual(legacyDocument.content));
+
+    await act(async () => {
+      expect(await result.current.publishChapter(0)).toBe(true);
+    });
+    const autosaveValue = mocks.autosave.mock.results.at(-1)?.value as {
+      flush: ReturnType<typeof vi.fn>;
+    };
+    expect(mocks.createDocumentChapter).not.toHaveBeenCalled();
+    expect(mocks.deleteDocumentChapter).not.toHaveBeenCalled();
+    expect(autosaveValue.flush).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(Number),
+      "server-chapter",
+    );
+  });
+
+  it("目录不同步时保留本地草稿且不把第二章保存到第一章", async () => {
+    const twoChapters: DocumentEnvelope = {
+      ...serverDocument,
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 1, chapterStart: true, chapterId: "chapter_a" },
+            content: [{ type: "text", text: "第一章" }],
+          },
+          { type: "paragraph", content: [{ type: "text", text: "第一章正文" }] },
+          {
+            type: "heading",
+            attrs: { level: 1, chapterStart: true, chapterId: "chapter_b" },
+            content: [{ type: "text", text: "第二章" }],
+          },
+          { type: "paragraph", content: [{ type: "text", text: "第二章正文" }] },
+        ],
+      },
+    };
+    mocks.getDocument.mockResolvedValueOnce(twoChapters);
+    mocks.listForumChapters.mockResolvedValueOnce([
+      {
+        id: "chapter_a",
+        documentId: "demo-post",
+        title: "第一章",
+        order: 0,
+        revision: 1,
+        savedAt: twoChapters.savedAt,
+        hidden: false,
+      },
+    ]);
+    mocks.createDocumentChapter.mockRejectedValueOnce(new Error("目录暂时不可写"));
+    const { result } = renderHook(() => useComposeDocument("demo-post", 1), { wrapper });
+    await waitFor(() => expect(result.current.content).toEqual(twoChapters.content));
+
+    let published = true;
+    await act(async () => {
+      published = await result.current.publishChapter(1);
+    });
+    const autosaveValue = mocks.autosave.mock.results.at(-1)?.value as {
+      flush: ReturnType<typeof vi.fn>;
+      saveLocal: ReturnType<typeof vi.fn>;
+    };
+    expect(published).toBe(false);
+    expect(autosaveValue.flush).not.toHaveBeenCalled();
+    expect(autosaveValue.saveLocal).toHaveBeenCalledWith(expect.anything(), expect.any(Number));
   });
 
   it("查询稍后完成时不替换本地编辑", async () => {

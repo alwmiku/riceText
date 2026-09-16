@@ -1,4 +1,10 @@
 import {
+  chapterVolumeKey,
+  chapterVolumeTitle,
+  expandActiveChapterVolume,
+  startsChapterVolume,
+} from "@ricetext/document-core";
+import {
   BookOpen,
   ChevronRight,
   Eye,
@@ -21,11 +27,7 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../../components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { cn } from "../../lib/utils";
 
 /** 完整创作模式左侧的章节目录：点击切换当前编辑章节。 */
@@ -69,20 +71,10 @@ export function ChapterRail({
 }) {
   const [pendingDelete, setPendingDelete] = useState<number | null>(null);
   const [menuIndex, setMenuIndex] = useState<number | null>(null);
-  const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const pendingChapter =
-    pendingDelete !== null ? chapters[pendingDelete] : undefined;
+  const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set());
+  const pendingChapter = pendingDelete !== null ? chapters[pendingDelete] : undefined;
   useEffect(() => {
-    const volume = chapters[currentIndex]?.volumeTitle?.trim();
-    if (!volume) return;
-    setCollapsedVolumes((current) => {
-      if (!current.has(volume)) return current;
-      const next = new Set(current);
-      next.delete(volume);
-      return next;
-    });
+    setCollapsedVolumes((current) => expandActiveChapterVolume(current, chapters, currentIndex));
   }, [chapters, currentIndex]);
 
   return (
@@ -106,11 +98,10 @@ export function ChapterRail({
             const [main, sub] = chapter.title.split(" · ");
             const active = order === currentIndex;
             const hidden = hiddenChapters?.[order] ?? false;
-            const volume = chapter.volumeTitle?.trim() ?? "";
-            const startsVolume =
-              Boolean(volume) &&
-              chapters[order - 1]?.volumeTitle?.trim() !== volume;
-            const volumeOpen = !collapsedVolumes.has(volume);
+            const volume = chapterVolumeTitle(chapter);
+            const volumeKey = chapterVolumeKey(chapters, order);
+            const startsVolume = startsChapterVolume(chapters, order);
+            const volumeOpen = !collapsedVolumes.has(volumeKey);
             return (
               <Fragment key={chapter.id}>
                 {startsVolume ? (
@@ -121,101 +112,96 @@ export function ChapterRail({
                     onClick={() =>
                       setCollapsedVolumes((current) => {
                         const next = new Set(current);
-                        if (volumeOpen) next.add(volume);
-                        else next.delete(volume);
+                        if (volumeOpen) next.add(volumeKey);
+                        else next.delete(volumeKey);
                         return next;
                       })
                     }
                   >
                     <ChevronRight
-                      className={cn(
-                        "transition-transform",
-                        volumeOpen && "rotate-90",
-                      )}
+                      className={cn("transition-transform", volumeOpen && "rotate-90")}
                     />
                     <span className="min-w-0 flex-1 truncate">{volume}</span>
                   </button>
                 ) : null}
                 {!volume || volumeOpen ? (
-              <div className={cn("group relative", volume && "ml-3")}>
-                <button
-                  type="button"
-                  className="flex w-full cursor-pointer items-center gap-[9px] rounded-[5px] px-2.5 py-[9px] pr-9 text-left text-[13px] text-[#4c5761] hover:bg-[#edf7f5] hover:text-[#176e66] data-[active=true]:bg-[#edf7f5] data-[active=true]:text-[#176e66]"
-                  data-active={active}
-                  onClick={() => onSelect(order)}
-                >
-                  <span className="min-w-0 flex-1">
-                    <strong className="block truncate font-semibold">
-                      {main}
-                    </strong>
-                    {sub ? (
-                      <small className="block truncate text-[10px] text-muted-foreground">
-                        {sub}
-                      </small>
-                    ) : null}
-                  </span>
-                  {hidden ? <Badge tone="amber">已隐藏</Badge> : null}
-                </button>
-                {/* 右向箭头：打开章节操作弹窗（删除/隐藏/校订）。 */}
-                <Popover
-                  open={menuIndex === order}
-                  onOpenChange={(open) => setMenuIndex(open ? order : null)}
-                >
-                  <PopoverTrigger asChild>
+                  <div className={cn("group relative", volume && "ml-3")}>
                     <button
                       type="button"
-                      aria-label={`打开章节操作 ${chapter.title}`}
-                      title="章节操作"
-                      className="absolute top-1/2 right-1.5 grid h-[24px] w-[24px] -translate-y-1/2 cursor-pointer place-items-center rounded border-0 bg-transparent text-[#8a949d] hover:bg-[#edf7f5] hover:text-[#176e66]"
+                      className="flex w-full cursor-pointer items-center gap-[9px] rounded-[5px] px-2.5 py-[9px] pr-9 text-left text-[13px] text-[#4c5761] hover:bg-[#edf7f5] hover:text-[#176e66] data-[active=true]:bg-[#edf7f5] data-[active=true]:text-[#176e66]"
+                      data-active={active}
+                      onClick={() => onSelect(order)}
                     >
-                      <ChevronRight size={14} />
+                      <span className="min-w-0 flex-1">
+                        <strong className="block truncate font-semibold">{main}</strong>
+                        {sub ? (
+                          <small className="block truncate text-[10px] text-muted-foreground">
+                            {sub}
+                          </small>
+                        ) : null}
+                      </span>
+                      {hidden ? <Badge tone="amber">已隐藏</Badge> : null}
                     </button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" sideOffset={8} className="w-44 p-1.5">
-                    <div className="flex flex-col gap-1">
-                      {onDelete ? (
+                    {/* 右向箭头：打开章节操作弹窗（删除/隐藏/校订）。 */}
+                    <Popover
+                      open={menuIndex === order}
+                      onOpenChange={(open) => setMenuIndex(open ? order : null)}
+                    >
+                      <PopoverTrigger asChild>
                         <button
                           type="button"
-                          onClick={() => {
-                            setMenuIndex(null);
-                            setPendingDelete(order);
-                          }}
-                          className="flex w-full cursor-pointer items-center gap-2 rounded-md bg-destructive px-2 py-2 text-xs font-semibold text-white hover:bg-destructive/90"
+                          aria-label={`打开章节操作 ${chapter.title}`}
+                          title="章节操作"
+                          className="absolute top-1/2 right-1.5 grid h-[24px] w-[24px] -translate-y-1/2 cursor-pointer place-items-center rounded border-0 bg-transparent text-[#8a949d] hover:bg-[#edf7f5] hover:text-[#176e66]"
                         >
-                          <Trash2 size={13} />
-                          删除章节
+                          <ChevronRight size={14} />
                         </button>
-                      ) : null}
-                      {onToggleHidden ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMenuIndex(null);
-                            onToggleHidden(order, !hidden);
-                          }}
-                          className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-2 text-xs font-medium text-[#4c5761] hover:bg-muted"
-                        >
-                          {hidden ? <Eye size={13} /> : <EyeOff size={13} />}
-                          {hidden ? "取消隐藏" : "隐藏章节"}
-                        </button>
-                      ) : null}
-                      {onProofread ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMenuIndex(null);
-                            onProofread(order);
-                          }}
-                          className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-2 text-xs font-medium text-[#4c5761] hover:bg-muted"
-                        >
-                          <GitCompareArrows size={13} />
-                          校订章节
-                        </button>
-                      ) : null}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" sideOffset={8} className="w-44 p-1.5">
+                        <div className="flex flex-col gap-1">
+                          {onDelete ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuIndex(null);
+                                setPendingDelete(order);
+                              }}
+                              className="flex w-full cursor-pointer items-center gap-2 rounded-md bg-destructive px-2 py-2 text-xs font-semibold text-white hover:bg-destructive/90"
+                            >
+                              <Trash2 size={13} />
+                              删除章节
+                            </button>
+                          ) : null}
+                          {onToggleHidden ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuIndex(null);
+                                onToggleHidden(order, !hidden);
+                              }}
+                              className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-2 text-xs font-medium text-[#4c5761] hover:bg-muted"
+                            >
+                              {hidden ? <Eye size={13} /> : <EyeOff size={13} />}
+                              {hidden ? "取消隐藏" : "隐藏章节"}
+                            </button>
+                          ) : null}
+                          {onProofread ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuIndex(null);
+                                onProofread(order);
+                              }}
+                              className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-2 text-xs font-medium text-[#4c5761] hover:bg-muted"
+                            >
+                              <GitCompareArrows size={13} />
+                              校订章节
+                            </button>
+                          ) : null}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 ) : null}
               </Fragment>
             );
@@ -246,17 +232,13 @@ export function ChapterRail({
           <div>
             <dt className="text-muted-foreground">字数</dt>
             <dd className="mt-1 font-bold">
-              {activeCharCount !== undefined
-                ? activeCharCount.toLocaleString()
-                : "—"}
+              {activeCharCount !== undefined ? activeCharCount.toLocaleString() : "—"}
             </dd>
           </div>
           <div>
             <dt className="text-muted-foreground">修订</dt>
             <dd className="mt-1 font-bold">
-              {activeRevision !== undefined
-                ? activeRevision.toLocaleString()
-                : "—"}
+              {activeRevision !== undefined ? activeRevision.toLocaleString() : "—"}
             </dd>
           </div>
         </dl>

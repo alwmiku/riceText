@@ -7,6 +7,7 @@ import {
   reviewSuggestion,
 } from "../../lib/api/suggestions";
 import type { ForumSuggestionBatch } from "../../lib/types";
+import { revisionQueryKeys } from "../../lib/revision-query-keys";
 import { forumQueryKeys } from "./query-keys";
 
 export function useSuggestions(documentId: string, baseRevision: number) {
@@ -44,7 +45,7 @@ export function useSuggestions(documentId: string, baseRevision: number) {
         queryKey: forumQueryKeys.document(documentId),
       });
       await queryClient.invalidateQueries({
-        queryKey: forumQueryKeys.revisions(documentId),
+        queryKey: revisionQueryKeys.article(documentId),
       });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "审核失败");
@@ -60,8 +61,7 @@ export function useSuggestions(documentId: string, baseRevision: number) {
       const result = await reviewBatchMutation.mutateAsync({ id, decision });
       queryClient.setQueryData<ForumSuggestionBatch[]>(
         forumQueryKeys.suggestionBatches(documentId),
-        (current = []) =>
-          current.map((item) => (item.id === id ? result.batch : item)),
+        (current = []) => current.map((item) => (item.id === id ? result.batch : item)),
       );
       await Promise.all([
         queryClient.invalidateQueries({
@@ -71,7 +71,7 @@ export function useSuggestions(documentId: string, baseRevision: number) {
           queryKey: forumQueryKeys.document(documentId),
         }),
         queryClient.invalidateQueries({
-          queryKey: forumQueryKeys.revisions(documentId),
+          queryKey: revisionQueryKeys.article(documentId),
         }),
       ]);
     } catch (cause) {

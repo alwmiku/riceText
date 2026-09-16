@@ -402,6 +402,17 @@ describe("Compose 使用真实 autosave", () => {
   });
 
   it.each([409, 422, 0])("普通保存 %s 保留离线草稿且不推进服务器基线", async (status) => {
+    api.listForumChapters.mockResolvedValueOnce([
+      {
+        id: "chapter-0",
+        documentId: "a",
+        title: "正文",
+        order: 0,
+        revision: 1,
+        savedAt: document("a").savedAt,
+        hidden: false,
+      },
+    ]);
     const { result } = setup();
     const latest = content("unsaved");
     act(() => result.current.replaceContent(latest));

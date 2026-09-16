@@ -50,6 +50,7 @@ import type {
 } from "../lib/types";
 import { cn, sha256Hex } from "../lib/utils";
 import { chapterQueryKeys } from "../lib/chapter-query-keys";
+import { CHAPTER_EDITOR_CAPABILITIES, createChapterEditingUnit } from "../lib/chapter-editing-unit";
 import {
   resolveChapterContent,
   resolveChapterSources,
@@ -216,9 +217,11 @@ function ComposeDocumentSession({
   // 空白本地编辑器会成为第一个旧版章节，同时保持编辑会话不变。
   const activeChapterId = activeChapter?.id ?? "chapter-0";
   const activeChapterSource = activeChapter?.source ?? "document";
-  if (activeChapter && selectedChapter?.id !== activeChapter.id) {
-    setSelectedChapter({ documentId: activeDocumentId, id: activeChapter.id });
-  }
+  useEffect(() => {
+    if (activeChapter && selectedChapter?.id !== activeChapter.id) {
+      setSelectedChapter({ documentId: activeDocumentId, id: activeChapter.id });
+    }
+  }, [activeChapter, activeDocumentId, selectedChapter?.id]);
   const activeChapterStatus = activeChapter?.directory;
   const usesUploadedChapters = activeChapter?.source === "standalone";
   const mappedDocumentIndex = activeChapter?.documentChapter
@@ -230,7 +233,9 @@ function ComposeDocumentSession({
     : activeChapter
       ? -1
       : 0;
-  if (documentIndex !== mappedDocumentIndex) setDocumentIndex(mappedDocumentIndex);
+  useEffect(() => {
+    if (documentIndex !== mappedDocumentIndex) setDocumentIndex(mappedDocumentIndex);
+  }, [documentIndex, mappedDocumentIndex]);
   const uploadedChapterKey = chapterQueryKeys.content(activeDocumentId, activeChapter?.id);
   const chapterQuery = useQuery({
     queryKey: uploadedChapterKey,
@@ -285,6 +290,33 @@ function ComposeDocumentSession({
     compose.autosave.state === "saved"
       ? (activeChapterStatus?.savedAt ?? compose.document.savedAt)
       : compose.autosave.savedAt;
+  const remoteToolsEnabled =
+    articleSelection.authenticated && compose.document.storage === "server";
+  const editingUnit = createChapterEditingUnit({
+    articleId: compose.document.id,
+    articleTitle: compose.document.title,
+    baseRevision: compose.autosave.revision,
+    volumeTitle: activeChapter?.volumeTitle,
+    chapterId: activeChapterStatus?.id,
+    chapterTitle: compose.articleStarted
+      ? (activeChapter?.title ?? compose.document.title)
+      : "尚未创建文章",
+    chapterOrder: activeChapterStatus?.order ?? activeIndex,
+    chapterRevision: activeRevision,
+    savedAt: activeSavedAt,
+    source: activeChapterSource,
+    content: editorContent,
+    capabilities: [
+      ...(canWriteChapter
+        ? [CHAPTER_EDITOR_CAPABILITIES.edit, CHAPTER_EDITOR_CAPABILITIES.save]
+        : []),
+      ...(canEditSelected && activeChapterStatus?.id
+        ? [CHAPTER_EDITOR_CAPABILITIES.proofread]
+        : []),
+      ...(activeChapterStatus?.id ? [CHAPTER_EDITOR_CAPABILITIES.history] : []),
+      ...(remoteToolsEnabled ? [CHAPTER_EDITOR_CAPABILITIES.remoteTools] : []),
+    ],
+  });
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -871,11 +903,7 @@ function ComposeDocumentSession({
           mode={mode}
           chapters={displayedChapters}
           activeIndex={activeIndex}
-          title={
-            compose.articleStarted
-              ? (activeChapter?.title ?? compose.document.title)
-              : "尚未创建文章"
-          }
+          unit={editingUnit}
           saveStatus={
             <SaveStatus
               state={
@@ -892,13 +920,8 @@ function ComposeDocumentSession({
           editor={editor}
           comparison={comparisonView}
           identity={identity}
-          documentId={compose.document.id}
-          revision={compose.autosave.revision}
           saveDisabled={!canWriteChapter || publishingScope === viewScope}
           activeCharCount={activeCharCount}
-          chapterId={activeChapterStatus?.id}
-          activeRevision={activeRevision}
-          activeContent={editorContent}
           comparingRevision={comparingRevision}
           onCompareRevision={(revision) => void compareRevision(revision)}
           {...(canEditSelected
@@ -907,7 +930,6 @@ function ComposeDocumentSession({
               }
             : {})}
           createArticle={!compose.articleStarted}
-          showServerTools={articleSelection.authenticated && compose.document.storage === "server"}
           {...(canEditSelected
             ? {
                 onDeleteChapter: deleteChapter,
