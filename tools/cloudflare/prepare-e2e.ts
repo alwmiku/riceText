@@ -147,6 +147,8 @@ if (process.env.CF_E2E_EMPTY_DOCUMENTS === "true") {
     "DELETE FROM reply_receipts;",
     "DELETE FROM reply_gates;",
     "DELETE FROM chapters;",
+    "DELETE FROM chapter_write_guards;",
+    "DELETE FROM chapter_revisions;",
     "DELETE FROM document_mutations;",
     "DELETE FROM document_revisions;",
     "DELETE FROM document_acl;",

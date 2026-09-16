@@ -13,14 +13,15 @@ import type { ChapterSummary } from "../compose/long-text-workspace-projections"
 export type { ChapterSummary } from "../compose/long-text-workspace-projections";
 
 interface ChapterSidebarProps {
-  /** 全部章节摘要；操作按索引进行。 */
+  /** 全部章节摘要。 */
   chapters: readonly ChapterSummary[];
-  /** 当前正在编辑的章节索引。 */
+  /** 当前正在编辑的章节在列表中的位置（只用于渲染高亮）。 */
   activeIndex: number;
   onSelect: (index: number) => void;
-  onDelete: (index: number) => void;
-  onMerge: (index: number) => void;
-  onMove: (from: number, to: number) => void;
+  /** 章节命令一律按稳定 ID 寻址；位置只在选择与拖拽目标换算时使用。 */
+  onDelete: (chapterId: string) => void;
+  onMerge: (chapterId: string) => void;
+  onMove: (chapterId: string, targetChapterId: string) => void;
 }
 
 /**
@@ -95,8 +96,9 @@ export function ChapterSidebar({
                 onDrop={(event) => {
                   event.preventDefault();
                   const source = dragIndex ?? Number(event.dataTransfer.getData("text/plain"));
-                  if (Number.isFinite(source) && source !== index) {
-                    onMove(source, index);
+                  const sourceChapter = Number.isFinite(source) ? chapters[source] : undefined;
+                  if (sourceChapter && sourceChapter.id !== chapter.id) {
+                    onMove(sourceChapter.id, chapter.id);
                   }
                   setDragIndex(null);
                 }}
@@ -118,7 +120,8 @@ export function ChapterSidebar({
                     disabled={index === 0}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onMove(index, index - 1);
+                      const target = chapters[index - 1];
+                      if (target) onMove(chapter.id, target.id);
                     }}
                     className="grid h-[22px] w-[22px] cursor-pointer place-items-center rounded border-0 bg-transparent text-[#6b7a76] hover:bg-[#e2efec] hover:text-[#176e66] disabled:cursor-not-allowed disabled:opacity-35"
                   >
@@ -130,7 +133,8 @@ export function ChapterSidebar({
                     disabled={index === chapters.length - 1}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onMove(index, index + 1);
+                      const target = chapters[index + 1];
+                      if (target) onMove(chapter.id, target.id);
                     }}
                     className="grid h-[22px] w-[22px] cursor-pointer place-items-center rounded border-0 bg-transparent text-[#6b7a76] hover:bg-[#e2efec] hover:text-[#176e66] disabled:cursor-not-allowed disabled:opacity-35"
                   >
@@ -143,7 +147,7 @@ export function ChapterSidebar({
                     disabled={!canMergeChapter(index)}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onMerge(index);
+                      onMerge(chapter.id);
                     }}
                     className="grid h-[22px] w-[22px] cursor-pointer place-items-center rounded border-0 bg-transparent text-[#6b7a76] hover:bg-[#e2efec] hover:text-[#176e66] disabled:cursor-not-allowed disabled:opacity-35"
                   >
@@ -154,7 +158,7 @@ export function ChapterSidebar({
                     aria-label="删除章节"
                     onClick={(event) => {
                       event.stopPropagation();
-                      onDelete(index);
+                      onDelete(chapter.id);
                     }}
                     className="grid h-[22px] w-[22px] cursor-pointer place-items-center rounded border-0 bg-transparent text-[#6b7a76] hover:bg-[#e2efec] hover:text-[#176e66] disabled:cursor-not-allowed disabled:opacity-35"
                   >

@@ -45,6 +45,8 @@ DELETE FROM comment_threads;
 DELETE FROM reply_receipts;
 DELETE FROM reply_gates;
 DELETE FROM chapters;
+DELETE FROM chapter_write_guards;
+DELETE FROM chapter_revisions;
 DELETE FROM document_mutations;
 DELETE FROM document_revisions;
 DELETE FROM document_acl;

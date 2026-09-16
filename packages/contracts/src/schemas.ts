@@ -197,7 +197,12 @@ export const RevisionSummarySchema = z
     savedAt: DateTimeSchema,
     authorId: EntityIdSchema,
     authorName: z.string(),
-    operation: z.enum(["seed", "update", "rollback", "suggestion", "steps"]),
+    operation: z.enum(["seed", "update", "rollback", "suggestion", "steps", "import"]),
+    /**
+     * 快照来源：document 表示版本来自整篇不可变快照，
+     * chapter 表示版本来自独立章节正文快照（没有整篇快照可比对）。
+     */
+    origin: z.enum(["document", "chapter"]),
     summary: z.string(),
     /** 本次修订应用的 steps 的人类可读描述（快照修订为 null）。 */
     stepsSummary: z.string().nullable(),
@@ -448,8 +453,10 @@ export const ChapterSchema = z
     volumeTitle: z.string().max(500).optional(),
     order: z.number().int().nonnegative(),
     documentId: EntityIdSchema,
-    /** 该章节独立的保存版本号。 */
+    /** 该章节行上的乐观并发令牌；换序、隐藏等非内容操作也会推进。 */
     revision: z.number().int().nonnegative(),
+    /** 章节内容版本：账本里该章节的版本数量，0 表示还没有任何内容版本。 */
+    latestRevision: z.number().int().nonnegative().optional(),
     /** 独立章节存储中是否已有可读取的正文。 */
     hasContent: z.boolean().optional(),
     /** 该章节最近一次由服务器确认的保存时间。 */
@@ -736,6 +743,10 @@ export const CreateSuggestionRequestSchema = z
 export const ReviewSuggestionRequestSchema = z
   .object({
     decision: z.enum(["approve", "reject"]),
+    /**
+     * @deprecated 审核不再以整篇文档版本作为并发基线：批准的前置条件是提交建议时
+     * 目标章节的内容版本（服务端记录）。该字段仅为未迁移的旧建议行保留整篇守卫。
+     */
     baseRevision: z.number().int().nonnegative(),
   })
   .strict();

@@ -45,8 +45,10 @@ export function mapLongTextCoverage(
   });
 }
 
-/** 编辑器一次只装载一章；不存在的索引返回合法空文档。 */
-export function activeLongTextChapter(document: RichTextNode, activeIndex: number): RichTextNode {
-  const block = document.content?.[activeIndex];
+/** 编辑器一次只装载一章；按稳定 ID 定位，找不到时返回合法空文档。 */
+export function activeLongTextChapter(document: RichTextNode, chapterId: string): RichTextNode {
+  const block = (document.content ?? []).find(
+    (node) => String(node.attrs?.chapterId) === chapterId,
+  );
   return block ? { type: "doc", content: [block] } : { type: "doc", content: [] };
 }

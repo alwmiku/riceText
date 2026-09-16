@@ -73,10 +73,11 @@ describe("ChapterSidebar", () => {
     fireEvent.click(within(second).getByRole("button", { name: "合并到上一章" }));
     fireEvent.click(within(third).getByRole("button", { name: "删除章节" }));
 
-    expect(props.onMove).toHaveBeenNthCalledWith(1, 0, 1);
-    expect(props.onMove).toHaveBeenNthCalledWith(2, 1, 0);
-    expect(props.onMerge).toHaveBeenCalledWith(1);
-    expect(props.onDelete).toHaveBeenCalledWith(2);
+    // 命令按稳定 ID 寻址：上移/下移表达为「移到哪一章」，合并与删除直接传身份。
+    expect(props.onMove).toHaveBeenNthCalledWith(1, "chapter-0", "chapter-1");
+    expect(props.onMove).toHaveBeenNthCalledWith(2, "chapter-1", "chapter-0");
+    expect(props.onMerge).toHaveBeenCalledWith("chapter-1");
+    expect(props.onDelete).toHaveBeenCalledWith("chapter-2");
     expect(props.onSelect).not.toHaveBeenCalled();
     expect(
       within(third).getByRole("button", { name: "合并到上一章" }),
@@ -98,7 +99,7 @@ describe("ChapterSidebar", () => {
     expect(dataTransfer.setData).toHaveBeenCalledWith("text/plain", "0");
     fireEvent.dragOver(second, { dataTransfer });
     fireEvent.drop(second, { dataTransfer });
-    expect(props.onMove).toHaveBeenCalledWith(0, 1);
+    expect(props.onMove).toHaveBeenCalledWith("chapter-0", "chapter-1");
 
     fireEvent.dragStart(first, { dataTransfer });
     fireEvent.drop(first, { dataTransfer });

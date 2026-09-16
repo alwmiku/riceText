@@ -416,7 +416,10 @@ export const contractRoutes: readonly ContractRoute[] = [
     path: "/api/documents/:documentId/revisions",
     tags: ["文档"],
     summary: "分页读取版本历史",
-    description: "带 chapterId 时按该章节自己的版本倒序返回；cursor 使用上一页最后一个章节版本。",
+    description:
+      "带 chapterId 时直接读章节版本账本，按该章节自己的内容版本倒序返回；cursor 使用上一页最后一个章节版本。" +
+      "origin 表明该版本是来自整篇不可变快照还是独立章节正文快照。",
+
     params: documentParams,
     query: revisionQuery,
     responses: {
@@ -431,7 +434,8 @@ export const contractRoutes: readonly ContractRoute[] = [
     tags: ["文档"],
     summary: "读取指定历史版本",
     description:
-      "带 chapterId 时，路径中的 revision 是该章节自己的版本号；返回对应内部快照用于只读比较。",
+      "带 chapterId 时，路径中的 revision 是该章节自己的版本号；当该版本来自整篇不可变快照时返回该快照，" +
+      "否则返回账本里保存的独立章节正文快照。两种情况都可用于只读比较。",
     params: revisionParams,
     query: RevisionSnapshotQuerySchema,
     responses: {
@@ -683,7 +687,7 @@ export const contractRoutes: readonly ContractRoute[] = [
     implementationStatus: "implemented",
     summary: "审核纠错建议",
     description:
-      "仅 author/moderator。approve 按服务端 documentId + chapterId 身份限定章节，核对 lineNo 与完整 lineText；行号漂移时仅接受章内唯一上下文，行内 fromText 也必须唯一。无定位旧建议仅允许全文唯一匹配；已失效的章节或行定位不降级为全文首次替换。独立章节正文与文档快照不一致时拒绝应用。成功创建 operation=suggestion 的真实修订；找不到原文或上下文返回 409 SUGGESTION_SOURCE_NOT_FOUND，定位歧义返回 409 SUGGESTION_SOURCE_AMBIGUOUS，均不改变正文和建议状态。reject 只更新建议状态。",
+      "仅 author/moderator。approve 按服务端 documentId + chapterId 身份限定章节，核对 lineNo 与完整 lineText；行号漂移时仅接受章内唯一上下文，行内 fromText 也必须唯一。并发基线是提交建议时目标章节的内容版本：其他章节的更新不会让本建议失效，目标章节自身变化时返回 409 CHAPTER_REVISION_CONFLICT 且不写任何正文。无定位旧建议仅允许全文唯一匹配；已失效的章节或行定位不降级为全文首次替换。独立章节正文与文档快照不一致时拒绝应用。成功创建 operation=suggestion 的真实修订；找不到原文或上下文返回 409 SUGGESTION_SOURCE_NOT_FOUND，定位歧义返回 409 SUGGESTION_SOURCE_AMBIGUOUS，均不改变正文和建议状态。reject 只更新建议状态。",
     params: suggestionParams,
     body: ReviewSuggestionRequestSchema,
     responses: {
@@ -696,7 +700,9 @@ export const contractRoutes: readonly ContractRoute[] = [
       403: { description: "当前身份不可审核。", schema: ApiErrorSchema },
       404: { description: "建议不存在。", schema: ApiErrorSchema },
       409: {
-        description: "建议已审核、baseRevision 过期，或原文/章节/行定位不存在或有歧义。",
+        description:
+          "建议已审核、目标章节内容已被其他修改更新（CHAPTER_REVISION_CONFLICT）、" +
+          "或原文/章节/行定位不存在或有歧义。其他章节的更新不影响本建议。",
         schema: ApiErrorSchema,
       },
     },

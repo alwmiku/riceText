@@ -7,7 +7,7 @@ import {
   type SuggestionBatch,
   type TiptapDocument,
 } from "@ricetext/contracts";
-import { diffDocuments, type JSONContent } from "@ricetext/document-core";
+import { diffDocuments, resolveChapterRange, type JSONContent } from "@ricetext/document-core";
 import {
   mergeSuggestionBatch,
   repairDocumentForRead,
@@ -15,6 +15,7 @@ import {
   validateSuggestionBatch,
 } from "@ricetext/server-core";
 import { WorkerHttpError } from "../http-error";
+import { latestChapterRevision } from "./chapter-ledger";
 import { D1ReadRepository } from "./read-repository";
 import { D1WriteRepository } from "./write-repository";
 
@@ -31,6 +32,8 @@ type SuggestionRow = {
   status: "pending" | "approved" | "rejected";
   author_id: string;
   reviewer_id: string | null;
+  /** 提交时目标章节的内容版本；迁移前的旧行为 null（继续走整篇守卫）。 */
+  base_chapter_revision: number | null;
   created_at: string;
 };
 
@@ -47,6 +50,7 @@ type SuggestionBatchRow = {
   status: "pending" | "approved" | "rejected";
   author_id: string;
   reviewer_id: string | null;
+  base_chapter_revision: number | null;
   created_at: string;
 };
 
@@ -143,10 +147,15 @@ export class D1SuggestionRepository {
         .first<{ found: number }>();
       if (!chapter) throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节不存在");
     }
+    // 记录提交时的章节内容版本：审核只需该章节未变，不再要求整篇文档版本一致。
+    const baseChapterRevision = input.chapterId
+      ? await latestChapterRevision(this.db, documentId, input.chapterId)
+      : null;
     const row: SuggestionRow = {
       id: createEntityId("suggestion"),
       document_id: documentId,
       chapter_id: input.chapterId || null,
+      base_chapter_revision: baseChapterRevision,
       chapter_title: input.chapterTitle,
       line_no: input.lineNo,
       line_text: input.lineText,
@@ -162,8 +171,8 @@ export class D1SuggestionRepository {
       .prepare(
         "INSERT INTO suggestions(" +
           "id, document_id, chapter_id, chapter_title, line_no, line_text, from_text, to_text, " +
-          "reason, status, author_id, reviewer_id, created_at, reviewed_at" +
-          ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, ?, NULL)",
+          "reason, status, author_id, reviewer_id, base_chapter_revision, created_at, reviewed_at" +
+          ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, ?, ?, NULL)",
       )
       .bind(
         row.id,
@@ -176,6 +185,7 @@ export class D1SuggestionRepository {
         row.to_text,
         row.reason,
         row.author_id,
+        row.base_chapter_revision,
         row.created_at,
       )
       .run();
@@ -209,12 +219,18 @@ export class D1SuggestionRepository {
       .first<{ sort_order: number }>();
     validateSuggestionBatch(current.content, {
       ...input,
-      chapterOrder: chapter?.sort_order ?? null,
+      chapterRange: resolveChapterRange(
+        current.content as unknown as JSONContent,
+        input.chapterId,
+        chapter?.sort_order ?? null,
+      ),
     });
+    const baseChapterRevision = await latestChapterRevision(this.db, documentId, input.chapterId);
     const row: SuggestionBatchRow = {
       id: createEntityId("suggestion_batch"),
       document_id: documentId,
       chapter_id: input.chapterId,
+      base_chapter_revision: baseChapterRevision,
       chapter_title: input.chapterTitle,
       base_revision: input.baseRevision,
       before_content_json: JSON.stringify(input.beforeContent),
@@ -230,8 +246,9 @@ export class D1SuggestionRepository {
       .prepare(
         "INSERT INTO suggestion_batches(" +
           "id, document_id, chapter_id, chapter_title, base_revision, before_content_json, " +
-          "after_content_json, steps_json, reason, status, author_id, reviewer_id, created_at, reviewed_at" +
-          ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, ?, NULL)",
+          "after_content_json, steps_json, reason, status, author_id, reviewer_id, " +
+          "base_chapter_revision, created_at, reviewed_at" +
+          ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, ?, ?, NULL)",
       )
       .bind(
         row.id,
@@ -244,6 +261,7 @@ export class D1SuggestionRepository {
         row.steps_json,
         row.reason,
         row.author_id,
+        row.base_chapter_revision,
         row.created_at,
       )
       .run();
@@ -350,22 +368,25 @@ export class D1SuggestionRepository {
       return { suggestion: mapSuggestion(rejected), document: null };
     }
 
+    // 章节级并发基线：只要求目标章节的内容版本未变。整篇 revision 由 write() 在
+    // 提交时重新取号，其他章节的更新不会让这条建议失效。
     const current = await this.reads.document(row.document_id);
-    if (current.revision !== baseRevision) {
-      throw new WorkerHttpError(409, "REVISION_CONFLICT", "正文已变化，请重新核对建议", {
-        currentRevision: current.revision,
-        baseRevision,
-      });
-    }
     const chapter = row.chapter_id
       ? await this.db
           .prepare("SELECT sort_order, content_json FROM chapters WHERE id = ? AND document_id = ?")
           .bind(row.chapter_id, row.document_id)
           .first<{ sort_order: number; content_json: string | null }>()
       : null;
+    const chapterRange = row.chapter_id
+      ? resolveChapterRange(
+          current.content as unknown as JSONContent,
+          row.chapter_id,
+          chapter?.sort_order ?? null,
+        )
+      : null;
     const replaced = applySuggestionText(current.content, row.from_text, row.to_text, {
       chapterId: row.chapter_id ?? "",
-      chapterOrder: chapter?.sort_order ?? null,
+      chapterRange,
       chapterContent: chapter?.content_json
         ? repairDocumentForRead(JSON.parse(chapter.content_json))
         : null,
@@ -381,6 +402,14 @@ export class D1SuggestionRepository {
       reviewerId: reviewer.id,
       schemaVersion: current.schemaVersion,
       ...(row.chapter_id ? { chapterId: row.chapter_id } : {}),
+      ...(row.chapter_id && row.base_chapter_revision !== null
+        ? {
+            chapterPrecondition: {
+              chapterId: row.chapter_id,
+              expectedChapterRevision: row.base_chapter_revision,
+            },
+          }
+        : {}),
     });
     if (!result.created) {
       throw new WorkerHttpError(409, "SUGGESTION_REVIEWED", "纠错建议已审核");
@@ -431,7 +460,11 @@ export class D1SuggestionRepository {
       : null;
     const merged = mergeSuggestionBatch(
       current.content,
-      batchChapter?.sort_order ?? null,
+      resolveChapterRange(
+        current.content as unknown as JSONContent,
+        row.chapter_id,
+        batchChapter?.sort_order ?? null,
+      ),
       repairDocumentForRead(JSON.parse(row.before_content_json)),
       repairDocumentForRead(JSON.parse(row.after_content_json)),
     );
@@ -457,6 +490,14 @@ export class D1SuggestionRepository {
       schemaVersion: current.schemaVersion,
       chapterId: row.chapter_id,
       steps: rebasedSteps,
+      ...(row.base_chapter_revision !== null
+        ? {
+            chapterPrecondition: {
+              chapterId: row.chapter_id,
+              expectedChapterRevision: row.base_chapter_revision,
+            },
+          }
+        : {}),
     });
     if (!result.created) {
       throw new WorkerHttpError(409, "SUGGESTION_BATCH_REVIEWED", "批量校订已审核");

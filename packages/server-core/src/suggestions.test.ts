@@ -27,7 +27,7 @@ describe("suggestion batch attribute compatibility", () => {
     after.content[1]!.attrs!.firstLineIndent = 2;
     after.content[1]!.attrs!.leftIndent = 4;
     const result = validateSuggestionBatch(chapter, {
-      chapterOrder: 0,
+      chapterRange: { start: 0, end: 2 },
       beforeContent: before,
       afterContent: after,
       steps: diffDocuments(chapter as JSONContent, after as JSONContent).map(
@@ -43,7 +43,7 @@ describe("suggestion batch attribute compatibility", () => {
     const changed = structuredClone(current);
     changed.content[1]!.attrs!.leftIndent = 2;
     expect(
-      mergeSuggestionBatch(changed, 0, current, current),
+      mergeSuggestionBatch(changed, { start: 0, end: 2 }, current, current),
     ).toBeNull();
   });
 
@@ -63,7 +63,7 @@ describe("suggestion batch attribute compatibility", () => {
     changed.content[0]!.content![0]!.text = "Changed book";
     expect(() =>
       validateSuggestionBatch(current, {
-        chapterOrder: 0,
+        chapterRange: { start: 1, end: 3 },
         beforeContent: sanitizeDocumentForWrite(chapter),
         afterContent: sanitizeDocumentForWrite(chapter),
         steps: diffDocuments(

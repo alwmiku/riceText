@@ -17,7 +17,7 @@ import {
 import {
   ensureChapterIdentity,
   isUsableChapterId,
-  mergeChapter,
+  mergeChapterRange,
   splitDocumentByHeadings,
 } from "../../lib/chapters";
 import { chapterQueryKeys } from "../../lib/chapter-query-keys";
@@ -38,8 +38,9 @@ export interface ComposeDocumentController {
   replaceContent: (next: RichTextNode) => void;
   createLocalArticle: () => void;
   ensureServerDocument: () => Promise<"created" | "existing" | false>;
-  updateChapter: (chapterIndex: number, chapter: RichTextNode) => void;
-  publishChapter: (chapterIndex: number, latestChapter?: RichTextNode) => Promise<boolean>;
+  /** 按稳定章节 ID 合并一章正文；正文里找不到该身份时不改动任何内容。 */
+  updateChapter: (chapterId: string, chapter: RichTextNode) => void;
+  publishChapter: (chapterId: string, latestChapter?: RichTextNode) => Promise<boolean>;
   /** 仅回退指定章节；返回值仍是包含最新整篇快照的文档信封。 */
   rollback: (
     chapterId: string,
@@ -57,8 +58,8 @@ export function useComposeDocument(
     localOnly?: boolean;
     initialTitle?: string | undefined;
     /**
-     * 按章节位置解析服务器目录里的章节身份。目录行由服务器拥有，正文标题的身份
-     * 可能还没来得及写回，读取返回值的时刻二者不一致时以目录为准。
+     * 旧正文兼容：只有正文还没有显式章节身份时才按位置对齐服务器目录。
+     * 目录行由服务器拥有，正文标题的身份可能还没来得及写回。
      */
     resolveChapterId?: ((chapterIndex: number) => string | undefined) | undefined;
   } = {},
@@ -141,9 +142,14 @@ export function useComposeDocument(
   const resolveChapterId = options.resolveChapterId;
   const chapterId = useMemo(() => {
     if (chapterIndex == null || chapterIndex < 0) return undefined;
+    const section = splitDocumentByHeadings(content).chapters[chapterIndex];
+    // 稳定身份优先：正文标题上的 chapterId 就是身份，不从目录顺序反推。
+    if (section?.explicitIdentity && isUsableChapterId(section.id)) return section.id;
+    // 旧正文还没补身份时才按服务端目录顺序对齐（唯一的位置兼容点）。
     const fromDirectory = resolveChapterId?.(chapterIndex);
     if (isUsableChapterId(fromDirectory)) return fromDirectory;
-    const section = splitDocumentByHeadings(content).chapters[chapterIndex];
+    // 正文完全没有分章标题时（单章正文），沿用位置派生 id：
+    // 它是 ensureChapterIdentity 补铸之前唯一可用的章节引用。
     return section && isUsableChapterId(section.id) ? section.id : undefined;
   }, [chapterIndex, content, resolveChapterId]);
   // Query 结束到本地 state 水合之间仍视为加载中，避免编辑器在这一帧上报占位正文。
@@ -252,11 +258,47 @@ export function useComposeDocument(
     },
   });
 
-  const updateChapter = useCallback(
-    (chapterIndex: number, chapter: RichTextNode) => {
-      replaceContent(mergeChapter(contentRef.current, chapterIndex, chapter));
+  /**
+   * 正文中的活动章节位置。
+   *
+   * 稳定 chapterId 优先；**整篇正文都还没有显式身份**时（旧正文，含完全没有
+   * 分章标题的单章正文）才退回文档位置——位置来自宿主传入的 documentIndex，
+   * 这是本 Hook 里唯一的位置兼容点。正文里已有别的显式身份却找不到目标时返回 -1，
+   * 调用方必须拒绝写入而不是猜一章。
+   */
+  const locateActiveChapter = useCallback(
+    (snapshot: RichTextNode, activeChapterId: string): number => {
+      const chapters = splitDocumentByHeadings(snapshot).chapters;
+      const exact = chapters.findIndex(
+        (candidate) => candidate.explicitIdentity && candidate.id === activeChapterId,
+      );
+      if (exact >= 0) return exact;
+      if (chapters.some((candidate) => candidate.explicitIdentity)) return -1;
+      if (chapterIndex != null && chapterIndex >= 0 && chapterIndex < chapters.length) {
+        return chapterIndex;
+      }
+      return chapters.length === 1 ? 0 : -1;
     },
-    [replaceContent],
+    [chapterIndex],
+  );
+
+  /** 按稳定章节 ID 合并一章正文；正文里找不到该身份时不改动任何内容。 */
+  const updateChapter = useCallback(
+    (chapterId: string, chapter: RichTextNode) => {
+      const current = contentRef.current;
+      const sections = splitDocumentByHeadings(current).chapters;
+      const index = locateActiveChapter(current, chapterId);
+      const section = index >= 0 ? sections[index] : undefined;
+      if (!section) return;
+      const next = mergeChapterRange(
+        current as never,
+        { start: section.start, end: section.end },
+        chapter as never,
+        section.explicitIdentity ? chapterId : undefined,
+      );
+      if (next) replaceContent(next as unknown as RichTextNode);
+    },
+    [locateActiveChapter, replaceContent],
   );
 
   /**
@@ -267,9 +309,9 @@ export function useComposeDocument(
    * 没有缺身份时保持引用不变，不产生多余代次。
    */
   const ensureChapterIdentityInPlace = useCallback(() => {
-    const { content: next, changed } = ensureChapterIdentity(
-      contentRef.current,
-      options.resolveChapterId,
+    // 身份补铸是唯一的旧正文兼容路径：只有缺身份的章节标题才会回调宿主。
+    const { content: next, changed } = ensureChapterIdentity(contentRef.current, ({ position }) =>
+      options.resolveChapterId?.(position),
     );
     if (changed) replaceContent(next);
   }, [replaceContent, options.resolveChapterId]);
@@ -279,9 +321,20 @@ export function useComposeDocument(
   // 2) 接口返回的服务器 id 写回本地目录缓存（同步回本地）；
   // 3) 返回活动章节的服务器 id，供本次文档保存使用。
   const prepareChapterForSave = useCallback(
-    async (snapshot: RichTextNode, activeIndex: number): Promise<string | undefined> => {
+    async (
+      snapshot: RichTextNode,
+      activeChapterId: string,
+      fallbackActiveIndex?: number,
+    ): Promise<string | undefined> => {
       if (!isCurrent()) return undefined;
       const chapters = splitDocumentByHeadings(snapshot).chapters;
+      const fallbackIndex =
+        fallbackActiveIndex !== undefined && fallbackActiveIndex >= 0 && fallbackActiveIndex < chapters.length
+          ? fallbackActiveIndex
+          : -1;
+      const located = locateActiveChapter(snapshot, activeChapterId);
+      // 身份补铸可能把「按位置定位」的旧章节换成现铸 ID：此时沿用补铸前的位置。
+      const activeIndex = located >= 0 ? located : fallbackIndex;
       const active = chapters[activeIndex];
       if (!active) return undefined;
       // 目录未同步时取服务器最新清单，避免把已有章节误判为新增。
@@ -304,7 +357,7 @@ export function useComposeDocument(
       const missing = chapters.filter(
         (chapter, index) =>
           isUsableChapterId(chapter.id) &&
-          !resolveChapterDirectoryIdentity(directory, index, chapter.id),
+          !resolveChapterDirectoryIdentity(directory, chapter, index),
       );
       if (missing.length > 0) {
         const created: ForumChapterItem[] = [];
@@ -344,7 +397,7 @@ export function useComposeDocument(
       const survivingIds = new Set<string>();
       chapters.forEach((chapter, index) => {
         survivingIds.add(chapter.id);
-        const resolved = resolveChapterDirectoryIdentity(directoryAfter, index, chapter.id);
+        const resolved = resolveChapterDirectoryIdentity(directoryAfter, chapter, index);
         if (resolved) survivingIds.add(resolved);
       });
       const stale = directoryAfter.filter((row) => !survivingIds.has(row.id));
@@ -370,7 +423,7 @@ export function useComposeDocument(
       // 精确 ID 优先；旧正文只允许唯一 order 对齐。无法确认时禁止远端保存。
       const currentDirectory =
         queryClient.getQueryData<ForumChapterItem[]>(chapterQueryKeys.directory(documentId)) ?? [];
-      return resolveChapterDirectoryIdentity(currentDirectory, activeIndex, active.id);
+      return resolveChapterDirectoryIdentity(currentDirectory, active, activeIndex);
     },
     [documentId, isCurrent, queryClient],
   );
@@ -449,17 +502,31 @@ export function useComposeDocument(
   ]);
 
   const publishChapter = useCallback(
-    async (chapterIndex: number, latestChapter?: RichTextNode) => {
+    async (chapterId: string, latestChapter?: RichTextNode) => {
       // 提交快捷键可能早于 React onChange；显式合并编辑器快照后再 flush。
       if (!isCurrent() || isDocumentLoading) return false;
       if (latestChapter) {
-        const next = mergeChapter(contentRef.current, chapterIndex, latestChapter);
-        if (JSON.stringify(next) !== JSON.stringify(contentRef.current)) {
-          replaceContent(next);
+        const current = contentRef.current;
+        // 提交快捷键可能早于 React onChange：先按稳定 ID 定位这一章再合并快照。
+        const index = locateActiveChapter(current, chapterId);
+        const section = index >= 0 ? splitDocumentByHeadings(current).chapters[index] : undefined;
+        const next = section
+          ? mergeChapterRange(
+              current as never,
+              { start: section.start, end: section.end },
+              latestChapter as never,
+              section.explicitIdentity ? chapterId : undefined,
+            )
+          : null;
+        if (next && JSON.stringify(next) !== JSON.stringify(contentRef.current)) {
+          replaceContent(next as unknown as RichTextNode);
         }
       }
       if (!articleStarted) return false;
       // 0. 缺身份的章节标题先补铸并写回正文：一次写入换来永久稳定的章节身份。
+      //    补铸会把旧正文的位置 ID 换成持久身份，因此先记下补铸前的位置：
+      //    补铸后按新身份找不到目标章节时，用这个位置继续，而不是拒绝保存。
+      const fallbackActiveIndex = locateActiveChapter(contentRef.current, chapterId);
       ensureChapterIdentityInPlace();
       if (localOnly) {
         return autosave.saveLocal(contentRef.current, generationRef.current);
@@ -469,7 +536,11 @@ export function useComposeDocument(
       }
       // 1. 注册新增章节（身份由正文节点提供；离线时保存路径会自行降级为本地草稿）。
       //    身份在调用时从目录重新解析：渲染闭包里的值可能早于目录到达。
-      const serverChapterId = await prepareChapterForSave(contentRef.current, chapterIndex);
+      const serverChapterId = await prepareChapterForSave(
+        contentRef.current,
+        chapterId,
+        fallbackActiveIndex,
+      );
       if (!isCurrent()) return false;
       if (!serverChapterId) {
         autosave.saveLocal(contentRef.current, generationRef.current);
@@ -486,6 +557,7 @@ export function useComposeDocument(
       isCurrent,
       isDocumentLoading,
       localOnly,
+      locateActiveChapter,
       prepareChapterForSave,
       replaceContent,
     ],

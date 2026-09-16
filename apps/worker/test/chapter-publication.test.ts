@@ -36,8 +36,8 @@ describe("D1 章节发布保护", () => {
     await env.DB.prepare("INSERT OR IGNORE INTO users(id,name,role,is_friend,bio,created_at,updated_at) VALUES('publication-author','作者','author',0,'','now','now')").run();
     await env.DB.prepare("INSERT INTO documents(id,title,schema_version,current_revision,created_by,created_at,updated_at) VALUES(?,'文章',1,0,'publication-author','now','now')").bind(documentId).run();
     repository = new D1ChapterRepository(env.DB);
-    await repository.save(documentId, "a", { title: "旧 A", order: 0, content, hash: "old-a", baseRevision: 0 });
-    await repository.save(documentId, "removed", { title: "将被移除", order: 1, content, hash: "old-removed", baseRevision: 0 });
+    await repository.save(documentId, "a", { title: "旧 A", order: 0, content, hash: "old-a", baseRevision: 0 }, "publication-author");
+    await repository.save(documentId, "removed", { title: "将被移除", order: 1, content, hash: "old-removed", baseRevision: 0 }, "publication-author");
     hash = await digest(manifest);
     uploadId = (await repository.createUpload(documentId, hash, 2)).uploadId;
     await repository.stageUploadBatch(documentId, uploadId, manifest.map((item) => ({ ...item, content, baseRevision: item.id === "a" ? 1 : 0 })));
@@ -50,10 +50,10 @@ describe("D1 章节发布保护", () => {
   it.each(["a", "removed", "added"])("保留应用层预检查后对 %s 的并发保存结果", async (id) => {
     let before: unknown;
     const racing = beforeBatch(async () => {
-      await repository.save(documentId, id, { title: "并发保存", order: id === "a" ? 0 : id === "removed" ? 1 : 2, content, hash: "concurrent", baseRevision: id === "added" ? 0 : 1 });
+      await repository.save(documentId, id, { title: "并发保存", order: id === "a" ? 0 : id === "removed" ? 1 : 2, content, hash: "concurrent", baseRevision: id === "added" ? 0 : 1 }, "publication-author");
       before = await state();
     });
-    await expect(racing.completeUpload(documentId, uploadId)).rejects.toMatchObject({ code: "CHAPTER_REVISION_CONFLICT" });
+    await expect(racing.completeUpload(documentId, uploadId, "publication-author")).rejects.toMatchObject({ code: "CHAPTER_REVISION_CONFLICT" });
     expect(await state()).toEqual(before);
     expect(await env.DB.prepare("SELECT status,publish_token FROM chapter_uploads WHERE document_id=? AND id=?").bind(documentId, uploadId).first()).toEqual({ status: "uploading", publish_token: null });
     const fresh = await repository.createUpload(documentId, hash, 2);
@@ -67,10 +67,10 @@ describe("D1 章节发布保护", () => {
     await repository.stageUploadBatch(documentId, second.uploadId, secondManifest.map((item) => ({ ...item, content, baseRevision: item.id === "a" ? 1 : 0 })));
     let winner: unknown;
     const racing = beforeBatch(async () => {
-      winner = await repository.completeUpload(documentId, second.uploadId);
+      winner = await repository.completeUpload(documentId, second.uploadId, "publication-author");
     });
-    await expect(racing.completeUpload(documentId, uploadId)).rejects.toMatchObject({ code: "CHAPTER_REVISION_CONFLICT" });
-    expect(await repository.completeUpload(documentId, second.uploadId)).toEqual(winner);
+    await expect(racing.completeUpload(documentId, uploadId, "publication-author")).rejects.toMatchObject({ code: "CHAPTER_REVISION_CONFLICT" });
+    expect(await repository.completeUpload(documentId, second.uploadId, "publication-author")).toEqual(winner);
     expect(await state()).toMatchObject([{ id: "a", title: "新 A另一套", revision: 2 }, { id: "new", revision: 1 }]);
   });
 
@@ -78,35 +78,35 @@ describe("D1 章节发布保护", () => {
     const before = await state();
     const racing = beforeBatch(async () => {
       await expect(repository.createUpload(documentId, hash, 2)).rejects.toMatchObject({ code: "CHAPTER_UPLOAD_NOT_ACTIVE" });
-      await expect(repository.completeUpload(documentId, uploadId)).rejects.toMatchObject({ code: "CHAPTER_UPLOAD_NOT_ACTIVE" });
+      await expect(repository.completeUpload(documentId, uploadId, "publication-author")).rejects.toMatchObject({ code: "CHAPTER_UPLOAD_NOT_ACTIVE" });
       await env.DB.prepare("UPDATE chapter_uploads SET publish_expires_at='2000-01-01T00:00:00.000Z' WHERE document_id=? AND id=?").bind(documentId, uploadId).run();
       expect(await repository.createUpload(documentId, hash, 2)).toMatchObject({ uploadId, staged: ["a", "new"] });
       await env.DB.prepare("UPDATE chapter_uploads SET publish_token='new-owner',publish_expires_at=? WHERE document_id=? AND id=?").bind(new Date(Date.now() + 60_000).toISOString(), documentId, uploadId).run();
     });
-    await expect(racing.completeUpload(documentId, uploadId)).rejects.toMatchObject({ code: "CHAPTER_UPLOAD_NOT_ACTIVE" });
+    await expect(racing.completeUpload(documentId, uploadId, "publication-author")).rejects.toMatchObject({ code: "CHAPTER_UPLOAD_NOT_ACTIVE" });
     expect(await state()).toEqual(before);
     expect(await env.DB.prepare("SELECT publish_token FROM chapter_uploads WHERE document_id=? AND id=?").bind(documentId, uploadId).first()).toEqual({ publish_token: "new-owner" });
     await env.DB.prepare("UPDATE chapter_uploads SET publish_expires_at='2000-01-01T00:00:00.000Z' WHERE document_id=? AND id=?").bind(documentId, uploadId).run();
-    const completed = await repository.completeUpload(documentId, uploadId);
-    expect(await repository.completeUpload(documentId, uploadId)).toEqual(completed);
+    const completed = await repository.completeUpload(documentId, uploadId, "publication-author");
+    expect(await repository.completeUpload(documentId, uploadId, "publication-author")).toEqual(completed);
   });
 
   it("后期失败时回滚整个批次，并允许暂停、恢复及重复完成", async () => {
     const before = await state();
     await env.DB.prepare("UPDATE chapter_uploads SET status='aborted' WHERE document_id=? AND id=?").bind(documentId, uploadId).run();
-    await expect(repository.completeUpload(documentId, uploadId)).rejects.toMatchObject({ code: "CHAPTER_UPLOAD_NOT_ACTIVE" });
+    await expect(repository.completeUpload(documentId, uploadId, "publication-author")).rejects.toMatchObject({ code: "CHAPTER_UPLOAD_NOT_ACTIVE" });
     expect(await repository.createUpload(documentId, hash, 2)).toMatchObject({ uploadId, staged: ["a", "new"] });
     await env.DB.exec("CREATE TRIGGER fail_chapter_publication BEFORE UPDATE OF status ON chapter_uploads WHEN NEW.status='published' BEGIN SELECT RAISE(ABORT,'injected publication failure'); END;");
     try {
-      await expect(repository.completeUpload(documentId, uploadId)).rejects.toMatchObject({ code: "CHAPTER_UPLOAD_PUBLISH_CONFLICT" });
+      await expect(repository.completeUpload(documentId, uploadId, "publication-author")).rejects.toMatchObject({ code: "CHAPTER_UPLOAD_PUBLISH_CONFLICT" });
       expect(await state()).toEqual(before);
       expect(await env.DB.prepare("SELECT COUNT(*) count FROM chapter_publish_guards").first()).toEqual({ count: 0 });
       expect(await env.DB.prepare("SELECT status,publish_token FROM chapter_uploads WHERE document_id=? AND id=?").bind(documentId, uploadId).first()).toEqual({ status: "uploading", publish_token: null });
     } finally {
       await env.DB.exec("DROP TRIGGER fail_chapter_publication;");
     }
-    const completed = await repository.completeUpload(documentId, uploadId);
-    expect(await repository.completeUpload(documentId, uploadId)).toEqual(completed);
+    const completed = await repository.completeUpload(documentId, uploadId, "publication-author");
+    expect(await repository.completeUpload(documentId, uploadId, "publication-author")).toEqual(completed);
     expect(await state()).toMatchObject([{ id: "a", sort_order: 0, revision: 2 }, { id: "new", sort_order: 1, revision: 1 }]);
   });
 

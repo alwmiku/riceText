@@ -21,7 +21,7 @@ vi.mock("../editor/RichTextEditor", () => ({
           content: [
             {
               type: "heading",
-              attrs: { level: 2 },
+              attrs: { level: 1, chapterStart: true, chapterId: "chapter-0" },
               content: [{ type: "text", text: "第一章" }],
             },
             { type: "paragraph", content: [{ type: "text", text: "修改一" }] },
@@ -40,7 +40,7 @@ const fullContent = {
   content: [
     {
       type: "heading",
-      attrs: { level: 2 },
+      attrs: { level: 1, chapterStart: true, chapterId: "chapter-0" },
       content: [{ type: "text", text: "第一章" }],
     },
     { type: "paragraph", content: [{ type: "text", text: "原文一" }] },
@@ -57,7 +57,6 @@ function renderEditor() {
         baseRevision={7}
         chapterId="chapter-0"
         chapterTitle="第一章"
-        chapterIndex={0}
         fullContent={fullContent}
         chapterContent={fullContent}
       />

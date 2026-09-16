@@ -5,7 +5,7 @@ import { FilePenLine, Send } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button, Dialog } from "../../components/ui";
 import { submitSuggestionBatch } from "../../lib/api";
-import { mergeChapter } from "../../lib/chapters";
+import { mergeChapterRange, resolveChapterRange } from "../../lib/chapters";
 import type { RichTextNode } from "../../lib/types";
 import { RichTextEditor } from "../editor/RichTextEditor";
 
@@ -15,7 +15,6 @@ export function ChapterSuggestionEditor({
   baseRevision,
   chapterId,
   chapterTitle,
-  chapterIndex,
   fullContent,
   chapterContent,
 }: {
@@ -23,7 +22,6 @@ export function ChapterSuggestionEditor({
   baseRevision: number;
   chapterId: string;
   chapterTitle: string;
-  chapterIndex: number;
   fullContent: RichTextNode;
   chapterContent: RichTextNode;
 }) {
@@ -48,7 +46,15 @@ export function ChapterSuggestionEditor({
   };
 
   const submit = async () => {
-    const merged = mergeChapter(fullContent, chapterIndex, draft);
+    // 章节定位按稳定 chapterId 解析；正文里找不到这一章时拒绝提交，不猜位置。
+    const range = resolveChapterRange(fullContent as never, chapterId);
+    const merged = range
+      ? mergeChapterRange(fullContent as never, range, draft as never, chapterId)
+      : null;
+    if (!merged) {
+      setError("当前章节在整篇正文中已无法定位，请刷新后重试");
+      return;
+    }
     let steps: StepJson[];
     try {
       steps = diffDocumentsVerified(fullContent, merged);

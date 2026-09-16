@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { JSONContent } from "@tiptap/core";
 import {
   appendChapter,
-  getChapterRange,
   normalizeChapterHeadings,
-  removeChapter,
-  replaceChapter,
+  removeChapterRange,
+  replaceChapterRange,
+  resolveChapterRange,
   splitDocumentByChapters,
 } from "./index.js";
 
@@ -44,7 +44,9 @@ describe("chapter document operations", () => {
       { ...heading(2, "小节"), attrs: { level: 2, chapterStart: false } },
       { ...heading(3, "更小的节"), attrs: { level: 3, chapterStart: false } },
     ]);
-    expect(getChapterRange(document, 1)).toEqual({ start: 4, end: 6 });
+    // 旧文档没有显式身份：唯一的位置兼容入口需要调用方给出服务端目录顺序。
+    expect(resolveChapterRange(document, "chapter-1", 1)).toEqual({ start: 4, end: 6 });
+    expect(resolveChapterRange(document, "chapter-1", 9)).toBeNull();
   });
 
   it("章节身份取自标题节点，没有属性时才回落到位置", () => {
@@ -132,18 +134,28 @@ describe("chapter document operations", () => {
     expect(normalizeChapterHeadings(once)).toBe(once);
   });
 
-  it("replaces only the requested chapter", () => {
+  it("replaces only the requested chapter range", () => {
+    const tagged = (text: string, id: string): JSONContent => ({
+      type: "heading",
+      attrs: { level: 1, chapterStart: true, chapterId: id },
+      content: [{ type: "text", text }],
+    });
     const document: JSONContent = {
       type: "doc",
-      content: [chapter("第一章"), paragraph("旧"), chapter("第二章"), paragraph("保留")],
+      content: [tagged("第一章", "ch-a"), paragraph("旧"), tagged("第二章", "ch-b"), paragraph("保留")],
     };
+    const range = resolveChapterRange(document, "ch-a")!;
     expect(
-      replaceChapter(document, 0, {
-        type: "doc",
-        content: [chapter("第一章"), paragraph("新")],
-      }).content,
-    ).toEqual([chapter("第一章"), paragraph("新"), chapter("第二章"), paragraph("保留")]);
-    expect(replaceChapter(document, 99, { type: "doc" })).toEqual(document);
+      replaceChapterRange(
+        document,
+        range,
+        { type: "doc", content: [tagged("第一章", "ch-a"), paragraph("新")] },
+        "ch-a",
+      )!.content,
+    ).toEqual([tagged("第一章", "ch-a"), paragraph("新"), tagged("第二章", "ch-b"), paragraph("保留")]);
+    // 范围非法时返回 null：命令边界不做位置猜测。
+    expect(replaceChapterRange(document, { start: 0, end: 0 }, { type: "doc" })).toBeNull();
+    expect(resolveChapterRange(document, "ch-missing")).toBeNull();
   });
 
   it("给旧文档追加章节时会先把历史边界迁移到 H1", () => {
@@ -196,17 +208,16 @@ describe("chapter document operations", () => {
     expect(splitDocumentByChapters(noHeading.document).chapters).toHaveLength(2);
   });
 
-  it("removes first and last chapters and ignores an invalid index", () => {
+  it("removes the requested chapter range and rejects invalid ranges", () => {
     const document: JSONContent = {
       type: "doc",
       content: [chapter("第一章"), paragraph("一"), chapter("第二章"), paragraph("二")],
     };
-    const first = removeChapter(document, 0);
-    expect(first.removed?.title).toBe("第一章");
-    expect(splitDocumentByChapters(first.document).chapters[0]?.title).toBe("第二章");
-    const last = removeChapter(document, 1);
-    expect(last.removed?.title).toBe("第二章");
-    expect(splitDocumentByChapters(last.document).chapters).toHaveLength(1);
-    expect(removeChapter(document, 99)).toEqual({ document, removed: null });
+    const first = removeChapterRange(document, { start: 0, end: 2 })!;
+    expect(splitDocumentByChapters(first).chapters.map((item) => item.title)).toEqual(["第二章"]);
+    const last = removeChapterRange(document, { start: 2, end: 4 })!;
+    expect(splitDocumentByChapters(last).chapters.map((item) => item.title)).toEqual(["第一章"]);
+    expect(removeChapterRange(document, { start: 0, end: 0 })).toBeNull();
+    expect(removeChapterRange(document, { start: 0, end: 99 })).toBeNull();
   });
 });

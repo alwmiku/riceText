@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import type { RichTextNode } from "../../lib/types";
-import { updateLongTextChapter } from "../editor/long-text/long-text-chapter-operations";
+import {
+  longTextChapterIndex,
+  updateLongTextChapter,
+} from "../editor/long-text/long-text-chapter-operations";
 
 interface LongTextEditorBufferOptions {
   contentRef: MutableRefObject<RichTextNode>;
-  activeIndexRef: MutableRefObject<number>;
+  /** 编辑器里装载的章节身份；按 ID 写回，章节增删或移动都不会写错位置。 */
+  activeChapterIdRef: MutableRefObject<string>;
   replaceContent: (next: RichTextNode) => void;
   onChanged: () => void;
 }
@@ -12,7 +16,7 @@ interface LongTextEditorBufferOptions {
 /** 合并编辑器与章节节点视图的高频写入，再统一提交到整本文档。 */
 export function useLongTextEditorBuffer({
   contentRef,
-  activeIndexRef,
+  activeChapterIdRef,
   replaceContent,
   onChanged,
 }: LongTextEditorBufferOptions) {
@@ -25,7 +29,7 @@ export function useLongTextEditorBuffer({
     patch: { title?: string; text?: string };
   } | null>(null);
 
-  // 当前章编辑器只装载一个节点，因此按活动索引写回整本章节数组。
+  // 当前章编辑器只装载一个节点，因此按活动章节身份写回整本章节数组。
   const commitEditor = useCallback(() => {
     if (editorTimerRef.current !== null) {
       window.clearTimeout(editorTimerRef.current);
@@ -35,11 +39,13 @@ export function useLongTextEditorBuffer({
     pendingEditorRef.current = null;
     const first = pending?.content?.[0];
     if (!first) return;
+    const index = longTextChapterIndex(contentRef.current, activeChapterIdRef.current);
+    if (index < 0) return;
     const nodes = [...(contentRef.current.content ?? [])];
-    nodes.splice(activeIndexRef.current, 1, first);
+    nodes.splice(index, 1, first);
     replaceContent({ type: "doc", content: nodes });
     onChanged();
-  }, [activeIndexRef, contentRef, onChanged, replaceContent]);
+  }, [activeChapterIdRef, contentRef, onChanged, replaceContent]);
 
   // 节点视图更新按稳定 chapterId 定位，章节移动后也不会写错位置。
   const commitChapter = useCallback(() => {
@@ -76,14 +82,15 @@ export function useLongTextEditorBuffer({
       // 空转守卫：编辑器对当前章节点的序列化与原节点 JSON 一致（例如外部
       // content 同步、属性顺序重排或清理事务触发的 onChange）时直接忽略，
       // 避免「flush → 编辑器回写 → 再 flush」的无意义自旋改变正文引用。
-      const current = contentRef.current.content?.[activeIndexRef.current];
+      const index = longTextChapterIndex(contentRef.current, activeChapterIdRef.current);
+      const current = index >= 0 ? contentRef.current.content?.[index] : undefined;
       if (current && JSON.stringify(first) === JSON.stringify(current)) return;
       pendingEditorRef.current = { type: "doc", content: [first] };
       if (editorTimerRef.current !== null)
         window.clearTimeout(editorTimerRef.current);
       editorTimerRef.current = window.setTimeout(commitEditor, 300);
     },
-    [activeIndexRef, commitEditor, contentRef],
+    [activeChapterIdRef, commitEditor, contentRef],
   );
 
   const editChapter = useCallback(

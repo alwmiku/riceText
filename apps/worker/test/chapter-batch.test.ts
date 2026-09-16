@@ -102,6 +102,8 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM reply_receipts"),
     env.DB.prepare("DELETE FROM reply_gates"),
     env.DB.prepare("DELETE FROM comment_threads"),
+    env.DB.prepare("DELETE FROM chapter_write_guards"),
+    env.DB.prepare("DELETE FROM chapter_revisions"),
     env.DB.prepare("DELETE FROM document_revisions"),
     env.DB.prepare("DELETE FROM document_acl"),
     env.DB.prepare("DELETE FROM documents"),

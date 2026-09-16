@@ -37,6 +37,8 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM reply_receipts"),
     env.DB.prepare("DELETE FROM reply_gates"),
     env.DB.prepare("DELETE FROM comment_threads"),
+    env.DB.prepare("DELETE FROM chapter_write_guards"),
+    env.DB.prepare("DELETE FROM chapter_revisions"),
     env.DB.prepare("DELETE FROM document_revisions"),
     env.DB.prepare("DELETE FROM document_acl"),
     env.DB.prepare("DELETE FROM documents"),
@@ -81,6 +83,11 @@ beforeEach(async () => {
       now,
       0,
     ),
+    // 账本与修订一一对应：测试夹具直接用 SQL 建库时必须自己写首版归属。
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO chapter_revisions(document_id, chapter_id, chapter_revision, document_revision, operation, schema_version, author_id, created_at) " +
+        "VALUES (?, ?, 1, 1, 'seed', 1, ?, ?)",
+    ).bind("demo-post", "chapter-0", "author", now),
   ]);
 });
 
@@ -596,6 +603,12 @@ describe("RiceText Worker", () => {
       env.DB.prepare(
         "INSERT INTO chapters(id,title,sort_order,document_id,revision,updated_at,hidden) VALUES(?,?,?,?,1,?,0)",
       ).bind("chapter-b", "章节 B", 1, "demo-post", now),
+      env.DB.prepare(
+        "INSERT INTO chapter_revisions(document_id,chapter_id,chapter_revision,document_revision,operation,schema_version,author_id,created_at) VALUES(?,?,1,1,'seed',1,?,?)",
+      ).bind("demo-post", "chapter-a", "author", now),
+      env.DB.prepare(
+        "INSERT INTO chapter_revisions(document_id,chapter_id,chapter_revision,document_revision,operation,schema_version,author_id,created_at) VALUES(?,?,1,1,'seed',1,?,?)",
+      ).bind("demo-post", "chapter-b", "author", now),
     ]);
     const save = (baseRevision: number, chapterId: string, nextContent: unknown) =>
       exports.default.fetch(
@@ -2465,6 +2478,304 @@ describe("RiceText Worker", () => {
     expect(invalid.status).toBe(422);
     await expect(invalid.json()).resolves.toMatchObject({
       error: { code: "VALIDATION_ERROR" },
+    });
+  });
+
+  it("章节历史来自 append-only 账本：首版可见且不与其他章节互相干扰", async () => {
+    const documentWithTwoChapters = (first: string, second: string) => ({
+      type: "doc",
+      content: [
+        { type: "heading", attrs: { level: 1, chapterStart: true, chapterId: "ledger-a" }, content: [{ type: "text", text: "甲" }] },
+        { type: "paragraph", content: [{ type: "text", text: first }] },
+        { type: "heading", attrs: { level: 1, chapterStart: true, chapterId: "ledger-b" }, content: [{ type: "text", text: "乙" }] },
+        { type: "paragraph", content: [{ type: "text", text: second }] },
+      ],
+    });
+    const save = (baseRevision: number, mutationId: string, chapterId: string, value: unknown) =>
+      exports.default.fetch(
+        new Request("http://example.com/api/documents/ledger-doc", {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-user-id": "author" },
+          body: JSON.stringify({
+            title: "账本测试",
+            schemaVersion: 1,
+            baseRevision,
+            clientMutationId: mutationId,
+            chapterId,
+            content: value,
+          }),
+        }),
+      );
+    const history = async (chapterId: string) =>
+      (await (
+        await exports.default.fetch(
+          new Request(
+            "http://example.com/api/documents/ledger-doc/revisions?chapterId=" + chapterId,
+            { headers: { "x-user-id": "author" } },
+          ),
+        )
+      ).json()) as { items: Array<{ revision: number; origin: string }> };
+
+    expect((await save(0, "ledger-create", "ledger-a", documentWithTwoChapters("甲初始", "乙初始"))).status).toBe(201);
+    // 首版正文里的每个章节都拿到自己的第 1 个版本（旧实现只按 request_json 反推，首版不可见）。
+    expect((await history("ledger-a")).items.map((item) => item.revision)).toEqual([1]);
+    expect((await history("ledger-b")).items.map((item) => item.revision)).toEqual([1]);
+    expect((await history("ledger-a")).items[0]!.origin).toBe("document");
+
+    // 只改乙章：甲的账本不被推进，乙的版本号连续递增。
+    expect(
+      (await save(1, "ledger-b-2", "ledger-b", documentWithTwoChapters("甲初始", "乙改动"))).status,
+    ).toBe(201);
+    expect((await history("ledger-a")).items.map((item) => item.revision)).toEqual([1]);
+    expect((await history("ledger-b")).items.map((item) => item.revision)).toEqual([2, 1]);
+
+    const snapshot = await exports.default.fetch(
+      new Request("http://example.com/api/documents/ledger-doc/revisions/2?chapterId=ledger-b", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    expect(snapshot.status).toBe(200);
+    await expect(snapshot.json()).resolves.toMatchObject({ revision: 2 });
+
+    const missing = await exports.default.fetch(
+      new Request("http://example.com/api/documents/ledger-doc/revisions/9?chapterId=ledger-b", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    expect(missing.status).toBe(404);
+  });
+
+  it("其他章节更新后仍可批准当前章节的校订建议", async () => {
+    const documentWithTwoChapters = (first: string, second: string) => ({
+      type: "doc",
+      content: [
+        { type: "heading", attrs: { level: 1, chapterStart: true, chapterId: "scope-a" }, content: [{ type: "text", text: "甲" }] },
+        { type: "paragraph", content: [{ type: "text", text: first }] },
+        { type: "heading", attrs: { level: 1, chapterStart: true, chapterId: "scope-b" }, content: [{ type: "text", text: "乙" }] },
+        { type: "paragraph", content: [{ type: "text", text: second }] },
+      ],
+    });
+    const save = (baseRevision: number, mutationId: string, chapterId: string, value: unknown) =>
+      exports.default.fetch(
+        new Request("http://example.com/api/documents/scope-doc", {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-user-id": "author" },
+          body: JSON.stringify({
+            title: "章节级审核",
+            schemaVersion: 1,
+            baseRevision,
+            clientMutationId: mutationId,
+            chapterId,
+            content: value,
+          }),
+        }),
+      );
+    expect((await save(0, "scope-create", "scope-a", documentWithTwoChapters("雾港来信", "乙初始"))).status).toBe(201);
+
+    const submitted = await exports.default.fetch(
+      new Request("http://example.com/api/forum/documents/scope-doc/suggestions", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-id": "reader" },
+        body: JSON.stringify({
+          fromText: "雾港",
+          toText: "海港",
+          reason: "统一地名",
+          chapterId: "scope-a",
+          chapterTitle: "甲",
+          lineNo: 2,
+          lineText: "雾港来信",
+        }),
+      }),
+    );
+    expect(submitted.status).toBe(201);
+    const suggestion = (await submitted.json()) as { id: string };
+
+    // 另一章节被保存：整篇 revision 前移，但目标章节没变。
+    expect(
+      (await save(1, "scope-b-2", "scope-b", documentWithTwoChapters("雾港来信", "乙改动"))).status,
+    ).toBe(201);
+
+    const approved = await exports.default.fetch(
+      new Request("http://example.com/api/forum/suggestions/" + suggestion.id, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({ decision: "approve", baseRevision: 2 }),
+      }),
+    );
+    expect(approved.status, await approved.clone().text()).toBe(200);
+    const result = (await approved.json()) as { document: { revision: number }; suggestion: { status: string } };
+    expect(result.suggestion.status).toBe("approved");
+    expect(result.document.revision).toBe(3);
+
+    const state = await env.DB.prepare(
+      "SELECT current_revision FROM documents WHERE id = 'scope-doc'",
+    ).first<{ current_revision: number }>();
+    expect(state?.current_revision).toBe(3);
+  });
+
+  it("目标章节自身变化后拒绝批准，且不产生任何副作用", async () => {
+    // 追加段落让目标章节的内容版本推进，同时保留建议的定位行上下文，
+    // 这样冲突必须来自账本前置条件而不是定位失败。
+    const documentWithTwoChapters = (first: string, second: string, extraFirst?: string) => ({
+      type: "doc",
+      content: [
+        { type: "heading", attrs: { level: 1, chapterStart: true, chapterId: "race-a" }, content: [{ type: "text", text: "甲" }] },
+        { type: "paragraph", content: [{ type: "text", text: first }] },
+        ...(extraFirst ? [{ type: "paragraph", content: [{ type: "text", text: extraFirst }] }] : []),
+        { type: "heading", attrs: { level: 1, chapterStart: true, chapterId: "race-b" }, content: [{ type: "text", text: "乙" }] },
+        { type: "paragraph", content: [{ type: "text", text: second }] },
+      ],
+    });
+    const save = (baseRevision: number, mutationId: string, chapterId: string, value: unknown) =>
+      exports.default.fetch(
+        new Request("http://example.com/api/documents/race-doc", {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-user-id": "author" },
+          body: JSON.stringify({
+            title: "章节级冲突",
+            schemaVersion: 1,
+            baseRevision,
+            clientMutationId: mutationId,
+            chapterId,
+            content: value,
+          }),
+        }),
+      );
+    expect((await save(0, "race-create", "race-a", documentWithTwoChapters("雾港来信", "乙初始"))).status).toBe(201);
+
+    const submitted = await exports.default.fetch(
+      new Request("http://example.com/api/forum/documents/race-doc/suggestions", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-id": "reader" },
+        body: JSON.stringify({
+          fromText: "雾港",
+          toText: "海港",
+          reason: "统一地名",
+          chapterId: "race-a",
+          chapterTitle: "甲",
+          lineNo: 2,
+          lineText: "雾港来信",
+        }),
+      }),
+    );
+    const suggestion = (await submitted.json()) as { id: string };
+
+    // 目标章节自己被保存：内容版本推进，审核必须被拒绝。
+    expect(
+      (await save(1, "race-a-2", "race-a", documentWithTwoChapters("雾港来信", "乙初始", "甲新增内容")))
+        .status,
+    ).toBe(201);
+
+    const approved = await exports.default.fetch(
+      new Request("http://example.com/api/forum/suggestions/" + suggestion.id, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({ decision: "approve", baseRevision: 2 }),
+      }),
+    );
+    expect(approved.status).toBe(409);
+    await expect(approved.json()).resolves.toMatchObject({
+      error: { code: "CHAPTER_REVISION_CONFLICT" },
+    });
+    const state = await env.DB.prepare(
+      "SELECT (SELECT current_revision FROM documents WHERE id = 'race-doc') AS current_revision, " +
+        "(SELECT status FROM suggestions WHERE document_id = 'race-doc') AS status, " +
+        "(SELECT COUNT(*) FROM document_mutations WHERE document_id = 'race-doc') AS mutations, " +
+        "(SELECT COUNT(*) FROM suggestion_review_guards WHERE suggestion_id = ?) AS guards",
+    )
+      .bind(suggestion.id)
+      .first<{ current_revision: number; status: string; mutations: number; guards: number }>();
+    expect(state).toEqual({ current_revision: 2, status: "pending", mutations: 2, guards: 0 });
+  });
+
+  it("独立章节版本进账本：历史可读、可比较，且与目录 latestRevision 一致", async () => {
+    const chapterContent = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "独立章节正文" }] }],
+    };
+    const saved = await exports.default.fetch(
+      new Request("http://example.com/api/forum/novels/demo-post/chapters/standalone-1", {
+        method: "PUT",
+        headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({
+          title: "独立章",
+          order: 1,
+          content: chapterContent,
+          hash: "standalone-hash",
+          baseRevision: 0,
+        }),
+      }),
+    );
+    expect(saved.status, await saved.clone().text()).toBe(201);
+    await expect(saved.json()).resolves.toMatchObject({ id: "standalone-1", revision: 1 });
+
+    // 账本行不绑定整篇快照，并把章节正文快照存在行内。
+    const ledger = await env.DB.prepare(
+      "SELECT chapter_revision, document_revision, operation, content_json FROM chapter_revisions " +
+        "WHERE document_id = ? AND chapter_id = ?",
+    )
+      .bind("demo-post", "standalone-1")
+      .first<{
+        chapter_revision: number;
+        document_revision: number | null;
+        operation: string;
+        content_json: string | null;
+      }>();
+    expect(ledger?.chapter_revision).toBe(1);
+    expect(ledger?.document_revision).toBeNull();
+    expect(ledger?.operation).toBe("update");
+    expect(ledger?.content_json).toContain("独立章节正文");
+
+    // 历史列表直接来自账本，并标记为独立章节快照。
+    const history = await exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post/revisions?chapterId=standalone-1", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    await expect(history.json()).resolves.toMatchObject({
+      items: [{ revision: 1, origin: "chapter", operation: "update" }],
+      pageInfo: { nextCursor: null },
+    });
+
+    // 版本快照返回该章节自己的正文，可直接用于只读比较。
+    const snapshot = await exports.default.fetch(
+      new Request(
+        "http://example.com/api/documents/demo-post/revisions/1?chapterId=standalone-1",
+        { headers: { "x-user-id": "author" } },
+      ),
+    );
+    expect(snapshot.status).toBe(200);
+    expect(JSON.stringify(await snapshot.json())).toContain("独立章节正文");
+
+    // 目录暴露内容版本号（账本 MAX），与章节行上的乐观并发令牌区分。
+    const directory = await exports.default.fetch(
+      new Request("http://example.com/api/forum/chapters?documentId=demo-post", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    const rows = (await directory.json()) as {
+      items: Array<{ id: string; revision: number; latestRevision: number }>;
+    };
+    expect(rows.items.find((row) => row.id === "standalone-1")).toMatchObject({
+      revision: 1,
+      latestRevision: 1,
+    });
+
+    // 删除目录行后账本仍然保留：历史不因目录清理而消失。
+    const removed = await exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post/chapters/standalone-1", {
+        method: "DELETE",
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    expect(removed.status).toBe(200);
+    const afterDelete = await exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post/revisions?chapterId=standalone-1", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    await expect(afterDelete.json()).resolves.toMatchObject({
+      items: [{ revision: 1, origin: "chapter" }],
     });
   });
 });

@@ -11,7 +11,8 @@ import {
   applyStepsToDocument,
   createDocumentSchema,
   documentsEqual,
-  replaceChapter,
+  replaceChapterRange,
+  resolveChapterRange,
   splitDocumentByChapters,
   type JSONContent,
   type StepJson,
@@ -22,6 +23,12 @@ import {
   sanitizeDocumentForWrite,
 } from "@ricetext/server-core";
 import { WorkerHttpError } from "../http-error";
+import {
+  appendChapterRevision,
+  chapterRevisionGuard,
+  latestChapterRevision,
+  releaseChapterRevisionGuard,
+} from "./chapter-ledger";
 import { D1ReadRepository } from "./read-repository";
 
 type DocumentPointerRow = {
@@ -48,7 +55,14 @@ type WriteInput = {
   targetRevision: number | null;
   stepsJson: string | null;
   chapterId?: string;
+  /** 回滚目标：该章节自己的版本号，写入账本的 target_chapter_revision。 */
+  targetChapterRevision?: number | null;
   review?: { kind: ReviewKind; id: string; reviewerId: string };
+  /**
+   * 章节级并发前置条件（校订审核）：只要求目标章节的内容版本未变，
+   * 不再把整篇文档 revision 当作章节写入的并发基线。
+   */
+  chapterPrecondition?: { chapterId: string; expectedChapterRevision: number };
 };
 
 export type DocumentWriteResult = {
@@ -168,6 +182,19 @@ export class D1WriteRepository {
           )
           .bind(chapter.id, chapter.title, order, documentId, createdAt),
       ),
+      // 首版正文里的每个章节都要在账本里有自己的第 1 个版本，
+      // 否则章节历史会缺少创建时的内容快照。
+      ...chapterRows.map((chapter) =>
+        appendChapterRevision(this.db, {
+          documentId,
+          chapterId: chapter.id,
+          documentRevision: 1,
+          operation: "update",
+          schemaVersion: request.schemaVersion,
+          authorId,
+          createdAt,
+        }),
+      ),
     ];
     try {
       await this.db.batch(statements);
@@ -206,20 +233,37 @@ export class D1WriteRepository {
       this.reads.revision(documentId, targetDocumentRevision),
       this.reads.document(documentId),
     ]);
-    const targetChapter = splitDocumentByChapters(
+    // 章节定位只走 resolveChapterRange：显式 chapterId 优先，只有整篇正文都还
+    // 没有显式身份的旧文档才按服务端目录顺序回退，无法确认时直接 404。
+    const chapterOrder = await this.chapterOrder(documentId, request.chapterId);
+    const targetRange = resolveChapterRange(
       target.content as unknown as JSONContent,
-    ).chapters.find((chapter) => chapter.id === request.chapterId);
-    const currentChapters = splitDocumentByChapters(
+      request.chapterId,
+      chapterOrder,
+    );
+    const currentRange = resolveChapterRange(
       current.content as unknown as JSONContent,
-    ).chapters;
-    const currentIndex = currentChapters.findIndex((chapter) => chapter.id === request.chapterId);
-    if (!targetChapter || currentIndex < 0) {
+      request.chapterId,
+      chapterOrder,
+    );
+    if (!targetRange || !currentRange) {
       throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "目标章节在历史或当前正文中不存在");
     }
-    const content = replaceChapter(current.content as unknown as JSONContent, currentIndex, {
-      type: "doc",
-      content: targetChapter.blocks,
-    });
+    const content = replaceChapterRange(
+      current.content as unknown as JSONContent,
+      currentRange,
+      {
+        type: "doc",
+        content: (target.content as unknown as JSONContent).content!.slice(
+          targetRange.start,
+          targetRange.end,
+        ),
+      },
+      request.chapterId,
+    );
+    if (!content) {
+      throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "目标章节在历史或当前正文中不存在");
+    }
     return this.write({
       documentId,
       baseRevision: request.baseRevision,
@@ -230,6 +274,7 @@ export class D1WriteRepository {
       authorId,
       operation: "rollback",
       targetRevision: targetDocumentRevision,
+      targetChapterRevision: request.targetRevision,
       stepsJson: null,
       chapterId: request.chapterId,
     });
@@ -301,6 +346,7 @@ export class D1WriteRepository {
     schemaVersion: number;
     chapterId?: string;
     steps?: Array<Record<string, unknown>>;
+    chapterPrecondition?: { chapterId: string; expectedChapterRevision: number };
   }): Promise<DocumentWriteResult> {
     const requestJson = JSON.stringify({
       baseRevision: input.baseRevision,
@@ -312,10 +358,8 @@ export class D1WriteRepository {
     const content = sanitizeDocumentForWrite(input.content);
     const current = await this.reads.document(input.documentId);
     // 建议内容与当前正文一致时不落库，避免审核空转建议产生噪声修订。
-    if (
-      current.revision === input.baseRevision &&
-      documentsEqual(current.content as unknown as JSONContent, content as unknown as JSONContent)
-    )
+    // 这里只比较正文：章节级审核的并发基线是目标章节内容版本，不再是整篇 revision。
+    if (documentsEqual(current.content as unknown as JSONContent, content as unknown as JSONContent))
       return { envelope: current, created: false };
     return this.write({
       documentId: input.documentId,
@@ -329,12 +373,22 @@ export class D1WriteRepository {
       targetRevision: null,
       stepsJson: input.steps ? JSON.stringify(input.steps) : null,
       ...(input.chapterId ? { chapterId: input.chapterId } : {}),
+      ...(input.chapterPrecondition ? { chapterPrecondition: input.chapterPrecondition } : {}),
       review: {
         kind: input.kind,
         id: input.suggestionId,
         reviewerId: input.reviewerId,
       },
     });
+  }
+
+  /** 服务端目录顺序：仅用于没有显式章节身份的旧文档定位。 */
+  private async chapterOrder(documentId: string, chapterId: string): Promise<number | null> {
+    const row = await this.db
+      .prepare("SELECT sort_order FROM chapters WHERE id = ? AND document_id = ?")
+      .bind(chapterId, documentId)
+      .first<{ sort_order: number }>();
+    return row?.sort_order ?? null;
   }
 
   private async mutation(documentId: string, mutationId: string): Promise<MutationRow | null> {
@@ -364,23 +418,118 @@ export class D1WriteRepository {
     const existing = await this.mutation(input.documentId, input.mutationId);
     if (existing) return this.idempotentResult(input, existing);
 
+    // 章节级前置条件允许在「其他章节同时写入」造成的取号竞争中重取修订号：
+    // 每次重试都重新读取当前指针并重新校验章节守卫，只有章节本身变化才是真冲突。
+    const attempts = input.chapterPrecondition ? 3 : 1;
+    for (let attempt = 1; ; attempt += 1) {
+      const pointer = await this.requirePointer(input.documentId);
+      if (!input.chapterPrecondition && pointer.current_revision !== input.baseRevision) {
+        throw new WorkerHttpError(409, "REVISION_CONFLICT", "文档已被其他修订更新", {
+          currentRevision: pointer.current_revision,
+          baseRevision: input.baseRevision,
+        });
+      }
+      try {
+        return await this.commitWrite(input, pointer.current_revision);
+      } catch (error) {
+        const concurrentMutation = await this.mutation(input.documentId, input.mutationId);
+        if (concurrentMutation) return this.idempotentResult(input, concurrentMutation);
+        const failure = await this.mapWriteFailure(input, pointer.current_revision, error);
+        if (failure.retry && attempt < attempts) continue;
+        throw failure.error;
+      }
+    }
+  }
+
+  private async requirePointer(documentId: string): Promise<DocumentPointerRow> {
     const document = await this.db
+      .prepare("SELECT current_revision FROM documents WHERE id = ?")
+      .bind(documentId)
+      .first<DocumentPointerRow>();
+    if (!document) throw new WorkerHttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
+    return document;
+  }
+
+  /**
+   * 把 batch 失败映射成对外错误。
+   *
+   * 只有「提交期间其他写入推进了整篇指针」对章节级写入是可重试的取号竞争；
+   * 章节守卫、审核守卫与真正的基线冲突必须原样抛出，绝不静默成功。
+   */
+  private async mapWriteFailure(
+    input: WriteInput,
+    attemptedRevision: number,
+    error: unknown,
+  ): Promise<{ retry: boolean; error: unknown }> {
+    const detail = error instanceof Error ? error.message : String(error);
+    const precondition = input.chapterPrecondition;
+    if (precondition && detail.includes("CHAPTER_REVISION_CONFLICT")) {
+      const current = await latestChapterRevision(this.db, input.documentId, precondition.chapterId);
+      return {
+        retry: false,
+        error: new WorkerHttpError(
+          409,
+          "CHAPTER_REVISION_CONFLICT",
+          "该章节已被其他修改更新，请重新核对校订内容",
+          {
+            chapterId: precondition.chapterId,
+            currentChapterRevision: current,
+            expectedChapterRevision: precondition.expectedChapterRevision,
+          },
+        ),
+      };
+    }
+    if (input.review) {
+      const reviewed = await this.db
+        .prepare(
+          "SELECT 1 AS reviewed FROM suggestion_review_guards " +
+            "WHERE suggestion_kind = ? AND suggestion_id = ?",
+        )
+        .bind(input.review.kind, input.review.id)
+        .first<{ reviewed: number }>();
+      if (reviewed) {
+        return {
+          retry: false,
+          error: new WorkerHttpError(
+            409,
+            input.review.kind === "batch" ? "SUGGESTION_BATCH_REVIEWED" : "SUGGESTION_REVIEWED",
+            input.review.kind === "batch" ? "批量校订已审核" : "纠错建议已审核",
+          ),
+        };
+      }
+    }
+    const current = await this.db
       .prepare("SELECT current_revision FROM documents WHERE id = ?")
       .bind(input.documentId)
       .first<DocumentPointerRow>();
-    if (!document) throw new WorkerHttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
-    if (document.current_revision !== input.baseRevision) {
-      throw new WorkerHttpError(409, "REVISION_CONFLICT", "文档已被其他修订更新", {
-        currentRevision: document.current_revision,
-        baseRevision: input.baseRevision,
-      });
+    if (current && current.current_revision !== attemptedRevision) {
+      return {
+        retry: Boolean(precondition),
+        error: new WorkerHttpError(409, "REVISION_CONFLICT", "文档已被其他修订更新", {
+          currentRevision: current.current_revision,
+          baseRevision: input.baseRevision,
+        }),
+      };
     }
+    return { retry: false, error };
+  }
 
-    const revision = input.baseRevision + 1;
+  private async commitWrite(input: WriteInput, baseRevision: number): Promise<DocumentWriteResult> {
+    const revision = baseRevision + 1;
     const createdAt = new Date().toISOString();
     const contentJson = JSON.stringify(input.content);
     const anchors = [...collectInlineCommentAnchorIds(input.content)];
     const statements: D1PreparedStatement[] = [];
+    if (input.chapterPrecondition) {
+      statements.push(
+        chapterRevisionGuard(
+          this.db,
+          input.documentId,
+          input.chapterPrecondition.chapterId,
+          input.chapterPrecondition.expectedChapterRevision,
+        ),
+      );
+    }
     if (input.review) {
       statements.push(
         this.db
@@ -418,12 +567,29 @@ export class D1WriteRepository {
             ") VALUES (?, ?, ?, ?, ?)",
         )
         .bind(input.documentId, input.mutationId, input.requestJson, revision, createdAt),
+      // 章节版本账本：归属由服务端写入决定，不再从请求 JSON 反推。
+      ...(input.chapterId
+        ? [
+            appendChapterRevision(this.db, {
+              documentId: input.documentId,
+              chapterId: input.chapterId,
+              documentRevision: revision,
+              operation: input.operation,
+              schemaVersion: input.schemaVersion,
+              authorId: input.authorId,
+              targetChapterRevision:
+                input.operation === "rollback" ? (input.targetChapterRevision ?? null) : null,
+              stepsJson: input.stepsJson,
+              createdAt,
+            }),
+          ]
+        : []),
       this.db
         .prepare(
           "UPDATE documents SET schema_version = ?, current_revision = ?, updated_at = ? " +
             "WHERE id = ? AND current_revision = ?",
         )
-        .bind(input.schemaVersion, revision, createdAt, input.documentId, input.baseRevision),
+        .bind(input.schemaVersion, revision, createdAt, input.documentId, baseRevision),
       this.db
         .prepare("UPDATE comment_threads SET archived = 1 WHERE document_id = ?")
         .bind(input.documentId),
@@ -460,42 +626,15 @@ export class D1WriteRepository {
       );
     }
 
-    try {
-      await this.db.batch(statements);
-      return {
-        envelope: await this.reads.revision(input.documentId, revision),
-        created: true,
-      };
-    } catch (error) {
-      const concurrentMutation = await this.mutation(input.documentId, input.mutationId);
-      if (concurrentMutation) return this.idempotentResult(input, concurrentMutation);
-      if (input.review) {
-        const reviewed = await this.db
-          .prepare(
-            "SELECT 1 AS reviewed FROM suggestion_review_guards " +
-              "WHERE suggestion_kind = ? AND suggestion_id = ?",
-          )
-          .bind(input.review.kind, input.review.id)
-          .first<{ reviewed: number }>();
-        if (reviewed) {
-          throw new WorkerHttpError(
-            409,
-            input.review.kind === "batch" ? "SUGGESTION_BATCH_REVIEWED" : "SUGGESTION_REVIEWED",
-            input.review.kind === "batch" ? "批量校订已审核" : "纠错建议已审核",
-          );
-        }
-      }
-      const current = await this.db
-        .prepare("SELECT current_revision FROM documents WHERE id = ?")
-        .bind(input.documentId)
-        .first<DocumentPointerRow>();
-      if (current && current.current_revision !== input.baseRevision) {
-        throw new WorkerHttpError(409, "REVISION_CONFLICT", "文档已被其他修订更新", {
-          currentRevision: current.current_revision,
-          baseRevision: input.baseRevision,
-        });
-      }
-      throw error;
+    if (input.chapterPrecondition) {
+      statements.push(
+        releaseChapterRevisionGuard(this.db, input.documentId, input.chapterPrecondition.chapterId),
+      );
     }
+    await this.db.batch(statements);
+    return {
+      envelope: await this.reads.revision(input.documentId, revision),
+      created: true,
+    };
   }
 }

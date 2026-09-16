@@ -291,7 +291,6 @@ export default function ReadPage() {
                     baseRevision={document.revision}
                     chapterId={chapterId}
                     chapterTitle={visibleChapters[activeIndex]?.title ?? "正文"}
-                    chapterIndex={activeIndex}
                     fullContent={document.content}
                     chapterContent={chapterDoc}
                   />

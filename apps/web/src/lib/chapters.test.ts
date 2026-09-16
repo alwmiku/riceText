@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { JSONContent } from "@ricetext/editor-core";
-import { ensureChapterIdentity, mergeChapter, splitDocumentByHeadings } from "./chapters";
+import {
+  ensureChapterIdentity,
+  mergeChapterRange,
+  resolveChapterRange,
+  splitDocumentByHeadings,
+} from "./chapters";
 
 /** 章节标题：H1 + chapterStart（H1 是唯一的分章层级）。 */
 const chapter = (text: string): JSONContent => ({
@@ -98,19 +103,44 @@ describe("splitDocumentByHeadings", () => {
     expect(single.chapters[0]!.title).toBe("正文");
   });
 
-  it("mergeChapter 只替换对应章节的区间", () => {
+  it("按稳定 ID 解析章节范围并只替换该区间", () => {
+    const tagged = (text: string, chapterId: string): JSONContent => ({
+      type: "heading",
+      attrs: { level: 1, chapterStart: true, chapterId },
+      content: [{ type: "text", text }],
+    });
     const doc: JSONContent = {
       type: "doc",
-      content: [chapter("第一章"), paragraph("旧正文"), chapter("第二章"), paragraph("保留")],
+      content: [
+        tagged("第一章", "chapter_a"),
+        paragraph("旧正文"),
+        tagged("第二章", "chapter_b"),
+        paragraph("保留"),
+      ],
     };
-    const next = mergeChapter(doc, 0, {
-      type: "doc",
-      content: [chapter("第一章"), paragraph("新正文")],
-    });
+    const range = resolveChapterRange(doc, "chapter_a");
+    expect(range).toEqual({ start: 0, end: 2 });
+    const next = mergeChapterRange(
+      doc,
+      range!,
+      { type: "doc", content: [tagged("第一章", "chapter_a"), paragraph("新正文")] },
+      "chapter_a",
+    );
     expect(next).toEqual({
       type: "doc",
-      content: [chapter("第一章"), paragraph("新正文"), chapter("第二章"), paragraph("保留")],
+      content: [
+        tagged("第一章", "chapter_a"),
+        paragraph("新正文"),
+        tagged("第二章", "chapter_b"),
+        paragraph("保留"),
+      ],
     });
+    // 未知身份不做位置猜测；旧正文才允许按服务端目录顺序回退。
+    expect(resolveChapterRange(doc, "chapter_missing")).toBeNull();
+    expect(resolveChapterRange(doc, "chapter_first", 0)).toBeNull();
+    expect(
+      resolveChapterRange({ type: "doc", content: [chapter("第一章"), paragraph("旧正文")] }, "chapter_first", 0),
+    ).toEqual({ start: 0, end: 2 });
   });
 });
 
@@ -141,7 +171,7 @@ describe("ensureChapterIdentity", () => {
     // 否则目录行会变成孤儿，章节历史与版本号全部错位。
     const result = ensureChapterIdentity(
       { type: "doc", content: [chapter("第一章"), chapter("第二章")] },
-      (index) => ["stable-0", "stable-1"][index],
+      ({ position }) => ["stable-0", "stable-1"][position],
     );
     expect(result.content.content!.map(idOf)).toEqual(["stable-0", "stable-1"]);
   });

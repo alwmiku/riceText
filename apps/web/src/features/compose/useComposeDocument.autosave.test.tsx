@@ -138,7 +138,7 @@ describe("Compose 使用真实 autosave", () => {
     expect(result.current.contentRef.current).toEqual(latest);
     expect(loadLocalDocumentDraft("a")).toMatchObject({ baseRevision: 1, content: latest });
     api.saveDocumentSteps.mockResolvedValueOnce({ ...document("a", 2), content: latest });
-    await act(async () => expect(await result.current.publishChapter(0)).toBe(true));
+    await act(async () => expect(await result.current.publishChapter("chapter-0")).toBe(true));
     expect(api.saveDocumentSteps.mock.calls[0]![1]).toMatchObject({ baseRevision: 1 });
     expect(result.current.autosave).toMatchObject({ revision: 2, state: "saved" });
     expect(loadLocalDocumentDraft("a")).toBeNull();
@@ -297,7 +297,7 @@ describe("Compose 使用真实 autosave", () => {
     const { result, rerender, client } = setup(first);
     let pending!: Promise<boolean>;
     act(() => {
-      pending = result.current.publishChapter(0);
+      pending = result.current.publishChapter("chapter-0");
     });
     await waitFor(() =>
       expect(
@@ -419,7 +419,7 @@ describe("Compose 使用真实 autosave", () => {
     if (status) api.saveDocumentSteps.mockRejectedValueOnce(new ApiError("保存无效", status));
     else
       api.saveDocumentSteps.mockResolvedValueOnce({ ...document("a", 2), storage: "local-cache" });
-    await act(async () => expect(await result.current.publishChapter(0)).toBe(false));
+    await act(async () => expect(await result.current.publishChapter("chapter-0")).toBe(false));
     expect(result.current.autosave).toMatchObject({
       revision: 1,
       state: status === 409 ? "conflict" : status === 422 ? "error" : "offline",

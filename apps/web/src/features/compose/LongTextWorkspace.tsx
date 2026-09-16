@@ -89,9 +89,9 @@ export function LongTextWorkspace({
   onExit: () => boolean | Promise<boolean>;
   onAddChapter: (title: string, text: string) => boolean | Promise<boolean>;
   onSelect: (index: number) => void;
-  onDelete: (index: number) => void;
-  onMerge: (index: number) => void;
-  onMove: (from: number, to: number) => void;
+  onDelete: (chapterId: string) => void;
+  onMerge: (chapterId: string) => void;
+  onMove: (chapterId: string, targetChapterId: string) => void;
   onCreateFromGap: (
     text: string,
     start: number,

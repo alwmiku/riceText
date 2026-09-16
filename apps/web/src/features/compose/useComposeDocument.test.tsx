@@ -176,7 +176,7 @@ describe("useComposeDocument 水合", () => {
     });
     expect(mocks.saveDocument).not.toHaveBeenCalled();
 
-    await act(() => result.current.publishChapter(0));
+    await act(() => result.current.publishChapter("chapter-0"));
     expect(mocks.saveDocument).toHaveBeenCalledWith("demo-post", {
       title: "未命名文章",
       schemaVersion: 1,
@@ -370,7 +370,7 @@ describe("useComposeDocument 水合", () => {
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
 
     await act(async () => {
-      await result.current.publishChapter(2);
+      await result.current.publishChapter(bodyChapters[2]!.id);
     });
 
     // 1. 只有缺失的第三章调用新增章节接口；身份由正文节点铸造后原样上报。
@@ -421,7 +421,7 @@ describe("useComposeDocument 水合", () => {
     await waitFor(() => expect(result.current.content).toEqual(legacyDocument.content));
 
     await act(async () => {
-      expect(await result.current.publishChapter(0)).toBe(true);
+      expect(await result.current.publishChapter("legacy-local")).toBe(true);
     });
     const autosaveValue = mocks.autosave.mock.results.at(-1)?.value as {
       flush: ReturnType<typeof vi.fn>;
@@ -474,7 +474,7 @@ describe("useComposeDocument 水合", () => {
 
     let published = true;
     await act(async () => {
-      published = await result.current.publishChapter(1);
+      published = await result.current.publishChapter("chapter_b");
     });
     const autosaveValue = mocks.autosave.mock.results.at(-1)?.value as {
       flush: ReturnType<typeof vi.fn>;

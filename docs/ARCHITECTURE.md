@@ -46,7 +46,8 @@ ID 里不含位置，任何代码都不得从它反解章号；文章隔离由 `
 
 接口一律以 `chapterId` 寻址：读、存、删、隐藏、换序、批量上传、建议定位都是如此。
 换序请求用**有序的 id 列表**表达意图（数组下标即目标顺序），临时位置由服务端分配；
-暂存仍走既有的两阶段更新，避免唯一索引中途冲突。建议定位的 `chapterOrder` 由服务端查库解析，
+暂存仍走既有的两阶段更新，避免唯一索引中途冲突。建议定位的**文档内范围**由服务端用
+`resolveChapterRange` 解析（`SuggestionLocation.chapterRange`），
 `mergeSuggestionBatch` 不再解析 ID 字符串——那会把非 `chapter-` 前缀的历史 ID 整批挡掉。
 
 历史 ID（`chapter-<order>`、`chapter-v1-<hash>`、`<docId>-chapter-<order>-<hex>`、`lt-…`）不迁移，
@@ -71,7 +72,32 @@ ID 里不含位置，任何代码都不得从它反解章号；文章隔离由 `
 目录身份解析遵循「精确 chapterId → 唯一 order 兼容 → 拒绝远端保存」。目录缺失或存在歧义时只保留
 本地草稿，禁止猜测目录第一行，避免把后续章节的正文、历史和建议写到第一章。
 
-仍需分阶段收敛的边界：
+已收敛的边界：
+
+- **章节历史是 append-only 账本**。`chapter_revisions` 一行一个章节内容版本，
+  主键是 `(document_id, chapter_id, chapter_revision)`；版本号、作者、操作、
+  回滚目标、steps 与时间都由账本承载，章节历史只读这一张表，不再扫描整篇快照、
+  也不再用 `ROW_NUMBER()` 或 `json_extract(document_mutations.request_json,'$.chapterId')`
+  反推归属。`document_revisions` 仍是整篇不可变快照存储，`document_mutations` 仍只做幂等。
+- **章节版本号有两个不同计数器，禁止混用**。`chapters.revision` 是章节行上的乐观并发
+  令牌（换序、隐藏、删除等非内容操作也会推进），`chapter_revisions.chapter_revision`
+  是内容版本号（1 起连续）。对外展示用 `Chapter.latestRevision` 与历史列表里的 `revision`。
+- **章节命令边界只用稳定 ID**。`resolveChapterRange(document, chapterId, order?)` 把
+  「章节身份 → 文档内范围」收在一处：显式 `chapterId` 优先，只有整篇正文都还没有显式身份的
+  旧文档才允许用服务端给出的目录顺序回退，无法确认时返回 `null` 并拒绝写入。
+  `replaceChapterRange` / `removeChapterRange` / server-core 的建议合并都只接受已解析范围。
+  Web 侧同一规则出现在三处，都必须按「精确 ID → 唯一 order → 拒绝」执行：
+  `chapter-directory-identity.ts`（目录对账）、`useComposeDocument.locateActiveChapter`（保存与
+  合并）、`ComposePage` 的文档块范围校验（防止 `longTextBlock` 正文被当作整篇章节增删）。
+  长文本工作台的章节命令（删除/合并/移动/拆分）与编辑器缓冲同样按 `chapterId` 写回，
+  列表位置只用于渲染、选择与拖拽目标换算。
+- **校订审核用章节级并发基线**。`suggestions.base_chapter_revision` 记录提交时目标章节的
+  内容版本，批准时在同一个 D1 批次内用守卫表触发器校验该章节未被其他修改推进；
+  其他章节的更新不再让当前章节的审核失败。
+- **独立章节版本有完整历史**。独立章节保存与上传发布在同一个批次里追加账本行
+  （`document_revision` 为空、正文快照存在行内），历史列表用 `origin: "chapter"` 标记；
+  这类版本的「比较」直接比对账本快照，「回退」读取该快照后按普通单章保存写回，
+  因此同样呈现为一次新的章节版本。
 
 ## 后端与提交边界
 
@@ -82,21 +108,21 @@ ID 里不含位置，任何代码都不得从它反解章号；文章隔离由 `
 
 steps 保存顺序为鉴权和请求结构校验、幂等结果查询、基线校验、应用 steps、原子提交。
 Worker 在应用前查询幂等结果并验证读取的基线，提交层仍保留冲突与重复请求保护。
-成功请求重试返回原结果。历史卡片、比较和回退使用每个 `chapterId` 自己从 1 连续递增的章节 revision；整篇文档快照号只在仓储内部定位不可变快照并维持并发基线，不作为跨章节共享的用户版本号。章节回退只从目标快照取出同一 `chapterId` 的内容并替换当前章节，其他章节保持不变，随后为目标章节创建下一个版本。
+成功请求重试返回原结果。历史卡片、比较和回退使用 `chapter_revisions` 里每个 `chapterId` 自己从 1 连续递增的内容版本；整篇文档快照号只在仓储内部定位不可变快照并维持并发基线，不作为跨章节共享的用户版本号。章节回退先由账本把章节版本映射到整篇快照，再按 `resolveChapterRange` 解析出的范围替换当前章节，其他章节保持不变，随后为目标章节追加下一个版本。独立章节保存与上传发布同样在同一个批次里追加账本行（`document_revision` 为空，正文快照存在账本内），因此这些路径也有完整历史。
 
 章节整套发布在 D1 同一批次内先执行数据库 guard，再替换章节并写入发布回执。整套章节
 generation 保护更新、新增和清单遗漏而将被删除的章节；逐章 revision 继续校验。发布占用为
 uploading 会话上的 60 秒令牌，aborted 仅表示暂停；过期占用可恢复，旧请求只能释放自己的令牌。
 暂存触发器禁止占用期间改变清单。
 
-数据库变更只追加 `apps/worker/migrations`（当前到 `0012_document_mutation_timestamps.sql`）。
+数据库变更只追加 `apps/worker/migrations`（当前到 `0014_chapter_scoped_review_guards.sql`）。
 旧已发布回执保持可重放；旧未完成会话因没有整套 generation 基线，保留暂存数据但必须新建会话
 重新暂存，不能直接发布。HTTP 路由、既有章节 ID、历史 revision 及清单哈希序列化顺序保持兼容。
 
 本地演示数据由 `tools/cloudflare/d1-seed.ts` 生成 SQL 后写入 D1，它只写数据不建表，
 schema 的唯一来源仍是 migrations。
 
-单条建议由后端使用建议所属 documentId 和 chapterId 查询真实章节范围，结合行号及完整行上下文唯一定位。旧建议缺定位时仅接受全文唯一匹配。找不到或歧义分别返回 409 `SUGGESTION_SOURCE_NOT_FOUND` / `SUGGESTION_SOURCE_AMBIGUOUS`，失败不写正文或审批状态。当前单条审批仍通过文档 revision 写入；独立章节快照与文档范围不一致（包括空壳文档）时明确拒绝，避免写错正文。独立正文的完整批次校订工作流需要单独演进。
+单条建议由后端使用建议所属 documentId 和 chapterId 解析真实章节范围（`resolveChapterRange`），结合行号及完整行上下文唯一定位。旧建议缺定位时仅接受全文唯一匹配。找不到或歧义分别返回 409 `SUGGESTION_SOURCE_NOT_FOUND` / `SUGGESTION_SOURCE_AMBIGUOUS`，失败不写正文或审批状态。审批写入落在新的整篇修订上，但并发基线是目标章节的内容版本：其他章节更新后仍可批准，目标章节自身变化时返回 409 `CHAPTER_REVISION_CONFLICT` 且零副作用。独立章节快照与文档范围不一致（包括空壳文档）时明确拒绝，避免写错正文。独立正文的完整批次校订工作流需要单独演进。
 
 ## 扩展能力与修订区域
 

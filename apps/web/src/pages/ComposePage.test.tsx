@@ -695,6 +695,36 @@ describe("ComposePage", () => {
     expect(screen.getByText("已回退到章节版本 17，并创建新的章节版本")).toBeInTheDocument();
   });
 
+  it("独立章节回退读取该版本快照并按单章保存写回，不走整篇回退", async () => {
+    mockStandaloneChapters();
+    mocks.getRevision.mockResolvedValueOnce({
+      ...defaultDocument,
+      content: {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "历史正文" }] }],
+      },
+    });
+    mocks.uploadLongTextChapter.mockResolvedValueOnce({ revision: 3 });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByTestId("editor")).toHaveAttribute("data-editable", "true"),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "模拟回退" }, { timeout: 5_000 }));
+
+    await waitFor(() => expect(mocks.uploadLongTextChapter).toHaveBeenCalledTimes(1));
+    // 独立章节版本没有整篇快照：读历史 content 后用单章保存写回。
+    expect(mocks.getRevision).toHaveBeenCalledWith("demo-post", "stable-0", 17);
+    expect(mocks.restoreRevision).not.toHaveBeenCalled();
+    const [, chapterId, input] = mocks.uploadLongTextChapter.mock.calls[0]!;
+    expect(chapterId).toBe("stable-0");
+    expect(input).toMatchObject({ title: "章节0", order: 0, baseRevision: 0 });
+    expect(JSON.stringify(input.content)).toContain("历史正文");
+    expect(
+      await screen.findByText("已回退到章节版本 17，并创建新的章节版本"),
+    ).toBeInTheDocument();
+  });
+
   it("回退失败时显示接口错误", async () => {
     mocks.getDocument.mockResolvedValueOnce(twoChapterDoc);
     mocks.listForumChapters.mockResolvedValueOnce(chapterRows());

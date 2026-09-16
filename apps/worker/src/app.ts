@@ -478,16 +478,20 @@ export function createWorkerApp(): Hono<AppBindings> {
     const principal = await requirePrincipal(context);
     const query = RevisionSnapshotQuerySchema.parse(context.req.query());
     const repository = new D1ReadRepository(context.env.DB);
-    const result = await repository.revision(
+    const result = await repository.chapterRevision(
       input.documentId,
-      Number(input.revision),
       query.chapterId,
+      Number(input.revision),
     );
-    const visible = await visibleEnvelope(
-      context.env.DB,
-      result,
-      await canEditDocument(context, input.documentId, principal),
-    );
+    // 独立章节快照没有 H1 章节边界，隐藏章节投影会误删正文，只能对整篇快照套用。
+    const visible =
+      result.origin === "document"
+        ? await visibleEnvelope(
+            context.env.DB,
+            result.envelope,
+            await canEditDocument(context, input.documentId, principal),
+          )
+        : result.envelope;
     return context.json(response("getRevision", 200, visible));
   });
 
@@ -518,10 +522,10 @@ export function createWorkerApp(): Hono<AppBindings> {
       novelId: string;
       chapterId: string;
     };
-    await requireDocumentEditor(context, input.novelId);
+    const principal = await requireDocumentEditor(context, input.novelId);
     const request = SaveNovelChapterRequestSchema.parse(await body("saveNovelChapter", context));
     const repository = new D1ChapterRepository(context.env.DB);
-    const result = await repository.save(input.novelId, input.chapterId, request);
+    const result = await repository.save(input.novelId, input.chapterId, request, principal.id);
     return context.json(response("saveNovelChapter", 201, result), 201);
   });
 
@@ -529,14 +533,14 @@ export function createWorkerApp(): Hono<AppBindings> {
     const input = params("saveNovelChaptersBatch", context.req.param()) as {
       novelId: string;
     };
-    await requireDocumentEditor(context, input.novelId);
+    const principal = await requireDocumentEditor(context, input.novelId);
     const request = await limitedBatchBody<SaveNovelChaptersBatchRequest>(
       "saveNovelChaptersBatch",
       context,
       SaveNovelChaptersBatchRequestSchema,
     );
     const repository = new D1ChapterRepository(context.env.DB);
-    const result = await repository.saveBatch(input.novelId, request.chapters);
+    const result = await repository.saveBatch(input.novelId, request.chapters, principal.id);
     return context.json(response("saveNovelChaptersBatch", 200, { chapters: result }));
   });
 
@@ -583,9 +587,9 @@ export function createWorkerApp(): Hono<AppBindings> {
       novelId: string;
       uploadId: string;
     };
-    await requireDocumentEditor(context, input.novelId);
+    const principal = await requireDocumentEditor(context, input.novelId);
     const repository = new D1ChapterRepository(context.env.DB);
-    const result = await repository.completeUpload(input.novelId, input.uploadId);
+    const result = await repository.completeUpload(input.novelId, input.uploadId, principal.id);
     return context.json(response("completeChapterUpload", 200, result));
   });
 

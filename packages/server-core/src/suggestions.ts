@@ -1,9 +1,9 @@
 import type { TiptapDocument, TiptapNode } from "@ricetext/contracts";
 import {
   applyStepsToDocument,
-  getChapterRange,
-  replaceChapter,
+  replaceChapterRange,
   sharedSchema,
+  type ChapterRange,
   type JSONContent,
   type StepJson,
 } from "@ricetext/document-core";
@@ -26,10 +26,16 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(sortObjectKeys(value));
 }
 
-/** 服务端通过 (documentId, chapterId) 查得的当前章节顺序；null 表示身份已失效。 */
+/**
+ * 服务端解析出的建议定位。
+ *
+ * 章节范围由 `resolveChapterRange` 在仓储层解析（显式 chapterId 优先，
+ * 只有整篇正文都没有显式身份的旧文档才按服务端目录顺序回退）；
+ * 建议应用本身不接受位置参数，range 为 null 时直接判为定位失效。
+ */
 export interface SuggestionLocation {
   chapterId: string;
-  chapterOrder: number | null;
+  chapterRange: ChapterRange | null;
   /** 独立章节正文存在时，必须与文档中的章节快照一致才能走全文审核路径。 */
   chapterContent?: TiptapDocument | null;
   lineNo: number;
@@ -61,13 +67,7 @@ export function applySuggestionText(
   let start = 0;
   let end = content.content.length;
   if (location.chapterId) {
-    if (
-      location.chapterOrder === null ||
-      !Number.isSafeInteger(location.chapterOrder) ||
-      location.chapterOrder < 0
-    )
-      return missing();
-    const range = getChapterRange(content as JSONContent, location.chapterOrder);
+    const range = location.chapterRange;
     if (!range) return missing();
     ({ start, end } = range);
     if (location.chapterContent) {
@@ -185,7 +185,7 @@ export function replaceFirstText(
 ): TiptapDocument | null {
   return applySuggestionText(content, fromText, toText, {
     chapterId: "",
-    chapterOrder: null,
+    chapterRange: null,
     lineNo: 0,
     lineText: "",
   });
@@ -194,22 +194,21 @@ export function replaceFirstText(
 /**
  * 仅当目标章节规范化后完全一致时合并批次，避免把建议套到已变化的正文。
  *
- * `chapterOrder` 由调用方查库解析，**绝不从章节 ID 字符串推导**：ID 是创建时
- * 分配的不透明身份，格式与位置无关，解析它会把老格式 ID 的章节整批挡掉。
+ * `chapterRange` 由仓储层用 `resolveChapterRange` 解析，
+ * **绝不从章节 ID 字符串推导位置**：ID 是创建时分配的不透明身份，格式与位置无关。
  */
 export function mergeSuggestionBatch(
   current: TiptapDocument,
-  chapterOrder: number | null,
+  chapterRange: ChapterRange | null,
   before: TiptapDocument,
   after: TiptapDocument,
 ): TiptapDocument | null {
-  if (chapterOrder === null || !Number.isSafeInteger(chapterOrder) || chapterOrder < 0) return null;
-  const chapterIndex = chapterOrder;
-  const range = getChapterRange(current as JSONContent, chapterIndex);
-  if (!range) return null;
+  if (!chapterRange) return null;
+  const { start, end } = chapterRange;
+  if (start < 0 || end > current.content.length || end <= start) return null;
   const existing = {
     type: "doc" as const,
-    content: current.content.slice(range.start, range.end),
+    content: current.content.slice(start, end),
   };
   // 历史快照可能缺少后来新增的默认属性，比较前需先统一补齐。
   if (
@@ -217,19 +216,19 @@ export function mergeSuggestionBatch(
     canonicalJson(sanitizeDocumentForWrite(before))
   )
     return null;
-  return replaceChapter(
+  return replaceChapterRange(
     current as JSONContent,
-    chapterIndex,
+    chapterRange,
     after as JSONContent,
-  ) as TiptapDocument;
+  ) as TiptapDocument | null;
 }
 
 /** 验证提交 steps，并证明其修改范围没有越过声明的章节快照。 */
 export function validateSuggestionBatch(
   current: TiptapDocument,
   input: {
-    /** 目标章节在文档内的当前顺序；由调用方查库解析，不从 ID 推导。 */
-    chapterOrder: number | null;
+    /** 目标章节在文档内的范围；由仓储层解析，不从 ID 推导。 */
+    chapterRange: ChapterRange | null;
     beforeContent: TiptapDocument;
     afterContent: TiptapDocument;
     steps: Array<Record<string, unknown>>;
@@ -250,7 +249,7 @@ export function validateSuggestionBatch(
   }
   const expected = mergeSuggestionBatch(
     current,
-    input.chapterOrder,
+    input.chapterRange,
     input.beforeContent,
     input.afterContent,
   );

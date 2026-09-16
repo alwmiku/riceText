@@ -48,14 +48,17 @@ export function splitDocumentByChapters(document: JSONContent): SplitDocument {
   content.forEach((node, index) => {
     if (isChapterBoundary(node)) {
       if (current) current.end = index;
+      const chapterId = chapterIdOf(node);
       current = {
         // 身份来自节点属性（创建时铸造一次）；只有尚未落库的历史正文
         // 才回落到按位置推导，且这个回退值不作为新身份来源。
-        id: chapterIdOf(node) ?? `chapter-${chapters.length}`,
+        id: chapterId ?? `chapter-${chapters.length}`,
         title: collectText(node).trim(),
         blocks: [node],
         start: index,
         end: index + 1,
+        // 派生位置 ID 不是身份：调用方据此区分「真身份」与「旧文档占位」。
+        explicitIdentity: chapterId !== null,
       };
       chapters.push(current);
       return;
@@ -78,6 +81,7 @@ export function splitDocumentByChapters(document: JSONContent): SplitDocument {
           blocks: [...content],
           start: 0,
           end: content.length,
+          explicitIdentity: false,
         },
       ],
     };
@@ -85,9 +89,39 @@ export function splitDocumentByChapters(document: JSONContent): SplitDocument {
   return { lead, chapters };
 }
 
-export function getChapterRange(document: JSONContent, index: number): ChapterRange | null {
-  const chapter = splitDocumentByChapters(document).chapters[index];
-  return chapter ? { start: chapter.start, end: chapter.end } : null;
+/**
+ * 解析章节在完整文档中的节点范围。
+ *
+ * 显式持久化的 `chapterId` 优先；**只有整篇正文都还没有显式身份**（旧文档）时，
+ * 才允许用服务端目录顺序定位。这是唯一的位置兼容入口：目录顺序必须由服务端查库给出，
+ * 调用方不得从章节 ID 反解位置。两路都无法确认时返回 null，调用方必须拒绝写入。
+ */
+export function resolveChapterRange(
+  document: JSONContent,
+  chapterId: string,
+  chapterOrder?: number | null,
+): ChapterRange | null {
+  const { chapters } = splitDocumentByChapters(document);
+  const exact = chapters.find((chapter) => chapter.explicitIdentity && chapter.id === chapterId);
+  if (exact) return { start: exact.start, end: exact.end };
+  // 正文里存在别的显式身份，说明这不是一份旧文档：绝不用位置顶替未知身份。
+  if (chapters.some((chapter) => chapter.explicitIdentity)) return null;
+  if (chapterOrder === null || chapterOrder === undefined) return null;
+  if (!Number.isSafeInteger(chapterOrder) || chapterOrder < 0) return null;
+  const byOrder = chapters[chapterOrder];
+  return byOrder ? { start: byOrder.start, end: byOrder.end } : null;
+}
+
+/** 章节在文档中的范围是否合法（用于校验调用方解析出来的区间）。 */
+export function isValidChapterRange(document: JSONContent, range: ChapterRange): boolean {
+  const length = (document.content ?? []).length;
+  return (
+    Number.isSafeInteger(range.start) &&
+    Number.isSafeInteger(range.end) &&
+    range.start >= 0 &&
+    range.end > range.start &&
+    range.end <= length
+  );
 }
 
 /** 将章节块转换为修订建议使用的行表示。 */

@@ -136,6 +136,8 @@ export function resolveChapterSources(input: {
       volumeTitle: row.volumeTitle ?? "",
       source,
       directory: row,
+      // 目录行的 id 就是服务器持久化的章节身份（不是位置派生值）。
+      explicitIdentity: true,
       ...(chapter ? { documentChapter: chapter } : {}),
       blocks: source === "document" ? chapter!.blocks : [],
       start: chapter?.start ?? row.order,

@@ -6,14 +6,10 @@ import {
   type DocumentEnvelope,
   type RevisionPage,
 } from "@ricetext/contracts";
-import {
-  describeStepsJson,
-  splitDocumentByChapters,
-  type JSONContent,
-  type StepJson,
-} from "@ricetext/document-core";
+import { describeStepsJson, type StepJson } from "@ricetext/document-core";
 import { repairDocumentForRead } from "@ricetext/server-core";
 import { WorkerHttpError } from "../http-error";
+import { type ChapterRevisionOperation } from "./chapter-ledger";
 
 type DocumentRow = {
   id: string;
@@ -28,11 +24,12 @@ type RevisionRow = {
   revision: number;
   chapter_revision?: number;
   chapter_target_revision?: number | null;
+  chapter_document_revision?: number | null;
   schema_version: number;
   steps_json: string | null;
   author_id: string;
   author_name: string | null;
-  operation: "seed" | "update" | "rollback" | "suggestion" | "steps";
+  operation: ChapterRevisionOperation;
   target_revision: number | null;
   created_at: string;
 };
@@ -47,6 +44,7 @@ type ChapterRow = {
   content_json: string | null;
   updated_at: string;
   hidden: number;
+  latest_revision?: number | null;
 };
 
 const revisionSummary: Record<RevisionRow["operation"], string> = {
@@ -55,6 +53,7 @@ const revisionSummary: Record<RevisionRow["operation"], string> = {
   rollback: "回退历史版本",
   suggestion: "合并已审核纠错建议",
   steps: "应用增量编辑",
+  import: "导入并发布章节",
 };
 
 function envelope(row: DocumentRow): DocumentEnvelope {
@@ -87,66 +86,80 @@ export class D1ReadRepository {
     return envelope(row);
   }
 
-  /** 判断初始快照是否真实包含目标章节；目录位置相同不能视为同一章节。 */
-  private async seedContainsChapter(documentId: string, chapterId: string): Promise<number> {
-    const chapter = await this.db
-      .prepare("SELECT 1 AS found FROM chapters WHERE document_id = ? AND id = ?")
-      .bind(documentId, chapterId)
-      .first<{ found: number }>();
-    if (!chapter) throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节不存在");
-    const seed = await this.db
-      .prepare(
-        "SELECT content_json FROM document_revisions " +
-          "WHERE document_id = ? AND operation = 'seed' ORDER BY revision LIMIT 1",
-      )
-      .bind(documentId)
-      .first<{ content_json: string }>();
-    if (!seed) return 0;
-    const content = repairDocumentForRead(JSON.parse(seed.content_json));
-    return splitDocumentByChapters(content as unknown as JSONContent).chapters.some(
-      (chapterSection) => chapterSection.id === chapterId,
-    )
-      ? 1
-      : 0;
-  }
-
-  /** 把章节内版本号映射到内部文档快照号；全局号不会暴露给章节历史调用方。 */
+  /** 把章节内容版本号映射到内部整篇快照号；独立章节版本没有整篇快照。 */
   async documentRevisionForChapter(
     documentId: string,
     chapterId: string,
     chapterRevision: number,
   ): Promise<number> {
-    const includeSeed = await this.seedContainsChapter(documentId, chapterId);
-    const row = await this.db
-      .prepare(
-        [
-          "WITH scoped AS (",
-          "SELECT revision.revision AS document_revision,",
-          "ROW_NUMBER() OVER (ORDER BY revision.revision) AS chapter_revision",
-          "FROM document_revisions revision",
-          "WHERE revision.document_id = ?",
-          "AND ((revision.operation = 'seed' AND ? = 1) OR EXISTS (",
-          "SELECT 1 FROM document_mutations mutation",
-          "WHERE mutation.document_id = revision.document_id",
-          "AND mutation.revision = revision.revision",
-          "AND json_extract(mutation.request_json, '$.chapterId') = ?))",
-          ") SELECT document_revision FROM scoped WHERE chapter_revision = ?",
-        ].join(" "),
-      )
-      .bind(documentId, includeSeed, chapterId, chapterRevision)
-      .first<{ document_revision: number }>();
-    if (!row) throw new WorkerHttpError(404, "REVISION_NOT_FOUND", "章节版本不存在");
+    const row = await this.ledgerRow(documentId, chapterId, chapterRevision);
+    if (row.document_revision === null) {
+      throw new WorkerHttpError(404, "REVISION_NOT_FOUND", "该章节版本没有整篇快照");
+    }
     return row.document_revision;
   }
 
-  async revision(
+  private async ledgerRow(
     documentId: string,
-    revision: number,
-    chapterId?: string,
-  ): Promise<DocumentEnvelope> {
-    const documentRevision = chapterId
-      ? await this.documentRevisionForChapter(documentId, chapterId, revision)
-      : revision;
+    chapterId: string,
+    chapterRevision: number,
+  ): Promise<{
+    chapter_revision: number;
+    document_revision: number | null;
+    schema_version: number;
+    content_json: string | null;
+    created_at: string;
+  }> {
+    const row = await this.db
+      .prepare(
+        "SELECT chapter_revision, document_revision, schema_version, content_json, created_at " +
+          "FROM chapter_revisions WHERE document_id = ? AND chapter_id = ? AND chapter_revision = ?",
+      )
+      .bind(documentId, chapterId, chapterRevision)
+      .first<{
+        chapter_revision: number;
+        document_revision: number | null;
+        schema_version: number;
+        content_json: string | null;
+        created_at: string;
+      }>();
+    if (!row) throw new WorkerHttpError(404, "REVISION_NOT_FOUND", "章节版本不存在");
+    return row;
+  }
+
+  /**
+   * 读取章节版本快照。
+   *
+   * `origin` 表明快照来源：整篇不可变快照（document）或账本里的独立章节快照（chapter）。
+   * 调用方据此决定是否套用隐藏章节投影——独立章节快照没有章节标题边界。
+   */
+  async chapterRevision(
+    documentId: string,
+    chapterId: string,
+    chapterRevision: number,
+  ): Promise<{ envelope: DocumentEnvelope; origin: "document" | "chapter" }> {
+    const row = await this.ledgerRow(documentId, chapterId, chapterRevision);
+    if (row.document_revision !== null) {
+      return { envelope: await this.revision(documentId, row.document_revision), origin: "document" };
+    }
+    if (!row.content_json) {
+      throw new WorkerHttpError(404, "REVISION_NOT_FOUND", "该章节版本没有正文快照");
+    }
+    const document = await this.document(documentId);
+    return {
+      origin: "chapter",
+      envelope: DocumentEnvelopeSchema.parse({
+        id: document.id,
+        title: document.title,
+        schemaVersion: row.schema_version,
+        revision: document.revision,
+        savedAt: row.created_at,
+        content: repairDocumentForRead(JSON.parse(row.content_json)),
+      }),
+    };
+  }
+
+  async revision(documentId: string, revision: number): Promise<DocumentEnvelope> {
     const sql = [
       "SELECT document.id, document.title, revision.schema_version,",
       "revision.revision, revision.content_json, revision.created_at",
@@ -154,7 +167,7 @@ export class D1ReadRepository {
       "JOIN document_revisions revision ON revision.document_id = document.id",
       "WHERE document.id = ? AND revision.revision = ?",
     ].join(" ");
-    const row = await this.db.prepare(sql).bind(documentId, documentRevision).first<DocumentRow>();
+    const row = await this.db.prepare(sql).bind(documentId, revision).first<DocumentRow>();
     if (!row) throw new WorkerHttpError(404, "REVISION_NOT_FOUND", "文档或修订不存在");
     return envelope(row);
   }
@@ -178,33 +191,23 @@ export class D1ReadRepository {
 
     let rows: RevisionRow[];
     if (chapterId) {
-      const includeSeed = await this.seedContainsChapter(documentId, chapterId);
+      // 章节历史只读账本：不再扫描整篇快照，也不从 request_json 反推归属。
       const sql = [
-        "WITH scoped AS (",
-        "SELECT revision.revision AS document_revision, revision.schema_version,",
-        "revision.steps_json, revision.author_id, user.name AS author_name,",
-        "revision.operation, revision.target_revision, revision.created_at,",
-        "ROW_NUMBER() OVER (ORDER BY revision.revision) AS chapter_revision,",
-        "(SELECT CAST(json_extract(mutation.request_json, '$.targetRevision') AS INTEGER)",
-        "FROM document_mutations mutation",
-        "WHERE mutation.document_id = revision.document_id",
-        "AND mutation.revision = revision.revision LIMIT 1) AS chapter_target_revision",
-        "FROM document_revisions revision",
-        "LEFT JOIN users user ON user.id = revision.author_id",
-        "WHERE revision.document_id = ?",
-        "AND ((revision.operation = 'seed' AND ? = 1) OR EXISTS (",
-        "SELECT 1 FROM document_mutations mutation",
-        "WHERE mutation.document_id = revision.document_id",
-        "AND mutation.revision = revision.revision",
-        "AND json_extract(mutation.request_json, '$.chapterId') = ?))",
-        ") SELECT document_revision AS revision, chapter_revision, chapter_target_revision,",
-        "schema_version, steps_json, author_id, author_name, operation, target_revision, created_at",
-        "FROM scoped WHERE chapter_revision < ? ORDER BY chapter_revision DESC LIMIT ?",
+        "SELECT ledger.chapter_revision AS revision, ledger.chapter_revision,",
+        "ledger.document_revision AS chapter_document_revision,",
+        "ledger.target_chapter_revision AS chapter_target_revision,",
+        "ledger.schema_version, ledger.steps_json, ledger.author_id,",
+        "user.name AS author_name, ledger.operation, ledger.created_at",
+        "FROM chapter_revisions ledger",
+        "LEFT JOIN users user ON user.id = ledger.author_id",
+        "WHERE ledger.document_id = ? AND ledger.chapter_id = ?",
+        "AND ledger.chapter_revision < ?",
+        "ORDER BY ledger.chapter_revision DESC LIMIT ?",
       ].join(" ");
       rows = (
         await this.db
           .prepare(sql)
-          .bind(documentId, includeSeed, chapterId, cursorRevision, limit + 1)
+          .bind(documentId, chapterId, cursorRevision, limit + 1)
           .all<RevisionRow>()
       ).results;
     } else {
@@ -235,6 +238,7 @@ export class D1ReadRepository {
           : row.target_revision;
         return {
           revision: visibleRevision,
+          origin: chapterId && row.chapter_document_revision === null ? "chapter" : "document",
           schemaVersion: row.schema_version,
           savedAt: row.created_at,
           authorId: row.author_id,
@@ -261,8 +265,14 @@ export class D1ReadRepository {
   async chapters(documentId: string): Promise<Chapter[]> {
     const result = await this.db
       .prepare(
-        "SELECT id, title, volume_title, sort_order, document_id, revision, content_json, updated_at, hidden " +
-          "FROM chapters WHERE document_id = ? ORDER BY sort_order",
+        "SELECT chapters.id, chapters.title, chapters.volume_title, chapters.sort_order, " +
+          "chapters.document_id, chapters.revision, chapters.content_json, chapters.updated_at, " +
+          "chapters.hidden, chapter_ledger.latest_revision FROM chapters " +
+          "LEFT JOIN (SELECT document_id, chapter_id, MAX(chapter_revision) AS latest_revision " +
+          "FROM chapter_revisions GROUP BY document_id, chapter_id) chapter_ledger " +
+          "ON chapter_ledger.document_id = chapters.document_id " +
+          "AND chapter_ledger.chapter_id = chapters.id " +
+          "WHERE chapters.document_id = ? ORDER BY chapters.sort_order",
       )
       .bind(documentId)
       .all<ChapterRow>();
@@ -274,6 +284,7 @@ export class D1ReadRepository {
         order: row.sort_order,
         documentId: row.document_id,
         revision: row.revision,
+        latestRevision: row.latest_revision ?? 0,
         hasContent: row.content_json !== null,
         savedAt: row.updated_at,
         hidden: row.hidden === 1,

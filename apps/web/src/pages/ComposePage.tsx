@@ -34,10 +34,11 @@ import {
   uploadLongTextChapter,
 } from "../lib/api";
 import { getRevision } from "../lib/api/revisions";
+import { revisionQueryKeys } from "../lib/revision-query-keys";
 import {
   appendChapter,
   chapterTextLines,
-  removeChapter,
+  removeChapterRange as removeChapterBlocks,
   splitDocumentByChapters as splitDocumentByHeadings,
 } from "@ricetext/document-core";
 import type {
@@ -224,6 +225,8 @@ function ComposeDocumentSession({
   }, [activeChapter, activeDocumentId, selectedChapter?.id]);
   const activeChapterStatus = activeChapter?.directory;
   const usesUploadedChapters = activeChapter?.source === "standalone";
+  // 章节正文在整篇文档里的块范围：只有范围完全一致才算同一章节，
+  // 因此 longTextBlock 等非分章正文不会被误当成整篇章节写回或删除。
   const mappedDocumentIndex = activeChapter?.documentChapter
     ? chapters.findIndex(
         (chapter) =>
@@ -282,10 +285,9 @@ function ComposeDocumentSession({
         .replace(/\s+/gu, "").length,
     [editorContent],
   );
+  // 展示的是章节内容版本（账本），不是章节行上的乐观并发令牌。
   const activeRevision =
-    uploadedChapter?.id === activeChapter?.id && usesUploadedChapters
-      ? (uploadedChapter?.revision ?? activeChapterStatus?.revision ?? 0)
-      : (activeChapterStatus?.revision ?? 0);
+    activeChapterStatus?.latestRevision ?? activeChapterStatus?.revision ?? 0;
   const activeSavedAt =
     compose.autosave.state === "saved"
       ? (activeChapterStatus?.savedAt ?? compose.document.savedAt)
@@ -370,23 +372,31 @@ function ComposeDocumentSession({
     try {
       const snapshot = await getRevision(activeDocumentId, chapterId, revision);
       if (!isCurrentView() || request !== compareRequestRef.current) return;
-      const historical = resolveChapterSources({
-        documentId: activeDocumentId,
-        content: snapshot.content,
-        directory: chapterDirectory,
-        includeHidden: true,
-        preferDocumentContent: true,
-        includeUnlistedDocumentChapters: true,
-      }).find((chapter) => chapter.id === activeChapter?.id);
-      const historicalContent = resolveChapterContent(historical);
-      if (historicalContent.source !== "document") {
+      // 独立章节版本没有整篇快照：服务端返回的就是该章节自己的正文快照，直接比较。
+      // 整篇快照版本才需要按目录把当前章节从快照里解析出来。
+      const historicalContent =
+        activeChapter?.source === "standalone"
+          ? snapshot.content
+          : (() => {
+              const historical = resolveChapterSources({
+                documentId: activeDocumentId,
+                content: snapshot.content,
+                directory: chapterDirectory,
+                includeHidden: true,
+                preferDocumentContent: true,
+                includeUnlistedDocumentChapters: true,
+              }).find((chapter) => chapter.id === activeChapter?.id);
+              const resolved = resolveChapterContent(historical);
+              return resolved.source === "document" ? resolved.content : null;
+            })();
+      if (!historicalContent) {
         setNotice("该章节版本没有可比较的正文");
         return;
       }
       setComparison({
         revision,
         chapterTitle: activeChapter?.title ?? compose.document.title,
-        historicalContent: historicalContent.content,
+        historicalContent,
         currentContent,
       });
     } catch (cause) {
@@ -411,6 +421,44 @@ function ComposeDocumentSession({
     setComparingRevision(null);
     setComparison(null);
     try {
+      if (activeChapter?.source === "standalone") {
+        // 独立章节版本没有整篇快照：读取该版本正文后按普通单章保存写回。
+        // 回退因此呈现为一次新的章节版本，而不是整篇文档修订。
+        const snapshot = await getRevision(activeDocumentId, chapterId, revision);
+        if (!operationIsCurrent()) return;
+        const content = snapshot.content;
+        const baseRevision =
+          uploadedChapter?.id === chapterId ? uploadedChapter.revision : activeChapterStatus.revision;
+        const hash = await sha256Hex(
+          JSON.stringify({
+            title: activeChapterStatus.title,
+            order: activeChapterStatus.order,
+            content,
+          }),
+        );
+        if (!operationIsCurrent()) return;
+        const saved = await uploadLongTextChapter(activeDocumentId, chapterId, {
+          title: activeChapterStatus.title,
+          order: activeChapterStatus.order,
+          content,
+          hash,
+          baseRevision,
+        });
+        if (!operationIsCurrent()) return;
+        queryClient.setQueryData(
+          uploadedChapterKey,
+          (current: typeof uploadedChapter | undefined) =>
+            current ? { ...current, content, revision: saved.revision } : current,
+        );
+        void queryClient.invalidateQueries({
+          queryKey: chapterQueryKeys.directory(activeDocumentId),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: revisionQueryKeys.chapter(activeDocumentId, chapterId),
+        });
+        setNotice("已回退到章节版本 " + revision + "，并创建新的章节版本");
+        return;
+      }
       await compose.rollback(chapterId, revision, operationIsCurrent);
       if (!operationIsCurrent()) return;
       setNotice("已回退到章节版本 " + revision + "，并创建新的章节版本");
@@ -535,29 +583,38 @@ function ComposeDocumentSession({
       }
       return;
     }
-    const position = chapters.findIndex(
-      (candidate) =>
-        candidate.start === chapter.documentChapter?.start &&
-        candidate.end === chapter.documentChapter?.end,
-    );
-    if (position < 0) {
+    // 删除请求按正文里已验证的章节范围进行；命令边界不接受位置参数。
+    // 只有块范围与目录章节完全一致时才允许删除，longTextBlock 等非分章正文会被挡住。
+    const section = chapter.documentChapter
+      ? chapters.find(
+          (candidate) =>
+            candidate.start === chapter.documentChapter!.start &&
+            candidate.end === chapter.documentChapter!.end,
+        )
+      : undefined;
+    const nextDocument = section
+      ? removeChapterBlocks(compose.contentRef.current, {
+          start: section.start,
+          end: section.end,
+        })
+      : null;
+    if (!nextDocument) {
       setNotice("请在长文本工作台编辑此章节");
       return;
     }
-    const result = removeChapter(compose.contentRef.current, position);
-    if (!result.removed) return;
+    const removedOrder = chapter.directory?.order ?? chapter.order;
     resetView();
-    compose.replaceContent(result.document);
+    compose.replaceContent(nextDocument as unknown as RichTextNode);
     queryClient.setQueryData<ForumChapterItem[]>(
       chapterQueryKeys.directory(activeDocumentId),
       (current = []) =>
         current
           .filter((row) => row.id !== chapter.id)
-          .map((row) => (row.order > position ? { ...row, order: row.order - 1 } : row)),
+          .map((row) => (row.order > removedOrder ? { ...row, order: row.order - 1 } : row)),
     );
     setSelectedChapter(null);
     setChapterIndex(Math.min(index, Math.max(0, navigationChapters.length - 2)));
-    setNotice("已删除章节「" + result.removed.title + "」（仅本地草稿，点保存后生效）");
+    setNotice("已删除章节「" + chapter.title + "」（仅本地草稿，点保存后生效）");
     try {
       const outcome = await deleteDocumentChapter(activeDocumentId, chapter.id);
       if (outcome.deleted) {
@@ -568,7 +625,7 @@ function ComposeDocumentSession({
     } catch {
       if (isCurrentView()) {
         setNotice(
-          "已从本地草稿删除「" + result.removed.title + "」，服务器目录将在下次保存时重新对账",
+          "已从本地草稿删除「" + chapter.title + "」，服务器目录将在下次保存时重新对账",
         );
       }
     }
@@ -627,7 +684,9 @@ function ComposeDocumentSession({
       const latestBefore =
         queryClient.getQueryData<DocumentEnvelope>(documentKey)?.revision ??
         compose.autosave.revision;
-      const saved = await compose.publishChapter(mappedDocumentIndex, snapshot);
+      // 章节身份只来自目录/正文：没有活动章节（尚未注册的空白本地文章）时传空串，
+      // 该路径只会走「首次创建整篇文档」分支。
+      const saved = await compose.publishChapter(activeChapter?.id ?? "", snapshot);
       if (!isCurrentView() || !saved) return;
       const latestAfter = queryClient.getQueryData<DocumentEnvelope>(documentKey)?.revision;
       setNotice(
@@ -693,7 +752,9 @@ function ComposeDocumentSession({
             queryClient.setQueryData(uploadedChapterKey, (current: typeof uploadedChapter) =>
               current ? { ...current, content: next } : current,
             );
-          } else if (mappedDocumentIndex >= 0) compose.updateChapter(mappedDocumentIndex, next);
+          } else if (mappedDocumentIndex >= 0 && activeChapter) {
+            compose.updateChapter(activeChapter.id, next);
+          }
         }}
         onSplitChapter={longText.splitChapter}
         onChapterEdit={longText.editChapter}

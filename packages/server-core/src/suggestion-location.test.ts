@@ -11,8 +11,9 @@ const h = (text: string, level = 1): TiptapNode => ({
   content: [{ type: "text", text }],
 });
 const doc = (...content: TiptapNode[]): TiptapDocument => ({ type: "doc", content });
-const location: SuggestionLocation = { chapterId: "real-chapter-id", chapterOrder: 1, lineNo: 3, lineText: "target typo" };
-const legacy: SuggestionLocation = { chapterId: "", chapterOrder: null, lineNo: 0, lineText: "" };
+// 章节范围由服务端 `resolveChapterRange` 解析后传入：命令本身不再接受位置参数。
+const location: SuggestionLocation = { chapterId: "real-chapter-id", chapterRange: { start: 2, end: 5 }, lineNo: 3, lineText: "target typo" };
+const legacy: SuggestionLocation = { chapterId: "", chapterRange: null, lineNo: 0, lineText: "" };
 const current = doc(h("First"), p("target typo"), h("Second"), p("other typo"), p("target typo"));
 const apply = (content = current, overrides: Partial<SuggestionLocation> = {}, from = "typo", to = "fixed") => applySuggestionText(content, from, to, { ...location, ...overrides });
 const conflict = (run: () => unknown, code: string) => expect(run).toThrow(expect.objectContaining({ status: 409, code }));
@@ -35,19 +36,34 @@ describe("单条纠错建议定位", () => {
     expect(apply(current, { lineNo: 99 })).toEqual(apply());
   });
   it("通过行号和精确上下文区分相同文本行", () => {
-    const result = apply(doc(h("First"), h("Second"), p("target typo"), p("target typo")));
+    const result = apply(doc(h("First"), h("Second"), p("target typo"), p("target typo")), {
+      chapterRange: { start: 1, end: 4 },
+    });
     expect(result.content[2]).toEqual(p("target typo"));
     expect(result.content[3]).toEqual(p("target fixed"));
   });
   it("行号发生偏移时拒绝重复上下文", () => {
-    conflict(() => apply(doc(h("First"), h("Second"), p("target typo"), p("target typo")), { lineNo: 99 }), "SUGGESTION_SOURCE_AMBIGUOUS");
+    conflict(
+      () =>
+        apply(doc(h("First"), h("Second"), p("target typo"), p("target typo")), {
+          chapterRange: { start: 1, end: 4 },
+          lineNo: 99,
+        }),
+      "SUGGESTION_SOURCE_AMBIGUOUS",
+    );
   });
   it("上下文变化后不回退到其他行或章节", () => {
     conflict(() => apply(current, { lineText: "outdated typo" }), "SUGGESTION_SOURCE_NOT_FOUND");
-    conflict(() => apply(doc(h("First"), p("target typo"), h("Second"), p("changed"))), "SUGGESTION_SOURCE_NOT_FOUND");
+    conflict(
+      () => apply(doc(h("First"), p("target typo"), h("Second"), p("changed")), {
+        chapterRange: { start: 2, end: 4 },
+      }),
+      "SUGGESTION_SOURCE_NOT_FOUND",
+    );
   });
-  it.each([null, -1, 9, 0.5])("拒绝未解析或非法的服务端顺序 %s", (chapterOrder) => {
-    conflict(() => apply(current, { chapterOrder }), "SUGGESTION_SOURCE_NOT_FOUND");
+  it("拒绝未解析的章节范围，不降级为全文搜索", () => {
+    conflict(() => apply(current, { chapterRange: null }), "SUGGESTION_SOURCE_NOT_FOUND");
+    conflict(() => apply(current, { chapterRange: { start: 2, end: 2 } }), "SUGGESTION_SOURCE_NOT_FOUND");
   });
   it("不将已删除章节或孤立行号重新解释为旧版无定位建议", () => {
     conflict(() => apply(current, { chapterId: "" }), "SUGGESTION_SOURCE_NOT_FOUND");
@@ -63,8 +79,8 @@ describe("单条纠错建议定位", () => {
     conflict(() => apply(doc(h("First"), p("only typo"), h("Second"), p("other")), { lineNo: 0, lineText: "" }), "SUGGESTION_SOURCE_NOT_FOUND");
   });
   it("拒绝所选行内的重复及重叠匹配", () => {
-    conflict(() => apply(doc(p("typo typo")), { chapterOrder: 0, lineNo: 1, lineText: "typo typo" }), "SUGGESTION_SOURCE_AMBIGUOUS");
-    conflict(() => apply(doc(p("aaa")), { chapterOrder: 0, lineNo: 1, lineText: "aaa" }, "aa"), "SUGGESTION_SOURCE_AMBIGUOUS");
+    conflict(() => apply(doc(p("typo typo")), { chapterRange: { start: 0, end: 1 }, lineNo: 1, lineText: "typo typo" }), "SUGGESTION_SOURCE_AMBIGUOUS");
+    conflict(() => apply(doc(p("aaa")), { chapterRange: { start: 0, end: 1 }, lineNo: 1, lineText: "aaa" }, "aa"), "SUGGESTION_SOURCE_AMBIGUOUS");
   });
   it("跨相邻标记替换，并按字面量处理替换文本", () => {
     const content = doc({ type: "paragraph", content: [

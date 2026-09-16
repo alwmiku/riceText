@@ -14,6 +14,14 @@ import {
   sha256Hex,
 } from "@ricetext/server-core";
 import { WorkerHttpError } from "../http-error";
+import { appendSavedChapterRevision } from "./chapter-ledger";
+
+/** 账本聚合：章节内容版本数量（没有账本行的章节为 NULL）。 */
+const CHAPTER_LEDGER_JOIN =
+  " LEFT JOIN (SELECT document_id, chapter_id, MAX(chapter_revision) AS latest_revision " +
+  "FROM chapter_revisions GROUP BY document_id, chapter_id) chapter_ledger " +
+  "ON chapter_ledger.document_id = chapters.document_id " +
+  "AND chapter_ledger.chapter_id = chapters.id";
 
 type ChapterRow = {
   id: string;
@@ -24,6 +32,7 @@ type ChapterRow = {
   revision: number;
   updated_at: string;
   hidden: number;
+  latest_revision?: number | null;
 };
 
 type ChapterRevisionRow = {
@@ -38,6 +47,7 @@ function chapter(row: ChapterRow): Chapter {
     order: row.sort_order,
     documentId: row.document_id,
     revision: row.revision,
+    latestRevision: row.latest_revision ?? 0,
     savedAt: row.updated_at,
     hidden: row.hidden === 1,
   });
@@ -47,19 +57,24 @@ function chapter(row: ChapterRow): Chapter {
 export class D1ChapterRepository {
   constructor(private readonly db: D1Database) {}
 
-  private async requireDocument(documentId: string): Promise<void> {
+  /** 校验文档存在并返回其 schema_version（账本行需要记录版本）。 */
+  private async requireDocument(documentId: string): Promise<number> {
     const found = await this.db
-      .prepare("SELECT 1 AS found FROM documents WHERE id = ?")
+      .prepare("SELECT schema_version FROM documents WHERE id = ?")
       .bind(documentId)
-      .first<{ found: number }>();
+      .first<{ schema_version: number }>();
     if (!found) throw new WorkerHttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
+    return found.schema_version;
   }
 
   private async row(documentId: string, chapterId: string): Promise<ChapterRow | null> {
     return this.db
       .prepare(
-        "SELECT id, title, volume_title, sort_order, document_id, revision, updated_at, hidden " +
-          "FROM chapters WHERE id = ? AND document_id = ?",
+        "SELECT chapters.id, chapters.title, chapters.volume_title, chapters.sort_order, " +
+          "chapters.document_id, chapters.revision, chapters.updated_at, chapters.hidden, " +
+          "chapter_ledger.latest_revision FROM chapters" +
+          CHAPTER_LEDGER_JOIN +
+          " WHERE chapters.id = ? AND chapters.document_id = ?",
       )
       .bind(chapterId, documentId)
       .first<ChapterRow>();
@@ -68,8 +83,11 @@ export class D1ChapterRepository {
   async content(documentId: string, chapterId: string): Promise<ChapterContent> {
     const row = await this.db
       .prepare(
-        "SELECT id, title, volume_title, sort_order, document_id, revision, updated_at, hidden, content_json " +
-          "FROM chapters WHERE id = ? AND document_id = ?",
+        "SELECT chapters.id, chapters.title, chapters.volume_title, chapters.sort_order, " +
+          "chapters.document_id, chapters.revision, chapters.updated_at, chapters.hidden, " +
+          "chapters.content_json, chapter_ledger.latest_revision FROM chapters" +
+          CHAPTER_LEDGER_JOIN +
+          " WHERE chapters.id = ? AND chapters.document_id = ?",
       )
       .bind(chapterId, documentId)
       .first<ChapterRow & { content_json: string | null }>();
@@ -190,51 +208,53 @@ export class D1ChapterRepository {
       hash: string;
       baseRevision: number;
     },
+    authorId: string,
   ): Promise<{ id: string; title: string; order: number; revision: number }> {
-    await this.requireDocument(documentId);
+    const schemaVersion = await this.requireDocument(documentId);
     const content = sanitizeDocumentForWrite(
       convertLongTextBlocksToChapters(input.content as unknown as JSONContent),
     );
     const revision = input.baseRevision + 1;
     const now = new Date().toISOString();
+    const contentJson = JSON.stringify(content);
+    let executed: Array<{ meta: { changes: number } }>;
     try {
-      const row = await this.db
-        .prepare(
-          "INSERT INTO chapters(" +
-            "id, title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden" +
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0) " +
-            "ON CONFLICT(document_id, id) DO UPDATE SET " +
-            "title = excluded.title, sort_order = excluded.sort_order, " +
-            "revision = excluded.revision, content_json = excluded.content_json, " +
-            "content_hash = excluded.content_hash, updated_at = excluded.updated_at " +
-            "WHERE chapters.revision = ? " +
-            "RETURNING id, title, sort_order, revision",
-        )
-        .bind(
-          chapterId,
-          input.title,
-          input.order,
+      // 章节行与账本行必须在同一个事务批内提交：历史不会缺少这一版。
+      executed = (await this.db.batch([
+        this.db
+          .prepare(
+            "INSERT INTO chapters(" +
+              "id, title, sort_order, document_id, revision, content_json, content_hash, updated_at, hidden" +
+              ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0) " +
+              "ON CONFLICT(document_id, id) DO UPDATE SET " +
+              "title = excluded.title, sort_order = excluded.sort_order, " +
+              "revision = excluded.revision, content_json = excluded.content_json, " +
+              "content_hash = excluded.content_hash, updated_at = excluded.updated_at " +
+              "WHERE chapters.revision = ?",
+          )
+          .bind(
+            chapterId,
+            input.title,
+            input.order,
+            documentId,
+            revision,
+            contentJson,
+            input.hash,
+            now,
+            input.baseRevision,
+          ),
+        appendSavedChapterRevision(this.db, {
           documentId,
+          chapterId,
+          operation: "update",
+          schemaVersion,
+          authorId,
+          contentJson,
+          contentHash: input.hash,
           revision,
-          JSON.stringify(content),
-          input.hash,
-          now,
-          input.baseRevision,
-        )
-        .first<{
-          id: string;
-          title: string;
-          sort_order: number;
-          revision: number;
-        }>();
-      if (row) {
-        return {
-          id: row.id,
-          title: row.title,
-          order: row.sort_order,
-          revision: row.revision,
-        };
-      }
+          updatedAt: now,
+        }),
+      ])) as unknown as Array<{ meta: { changes: number } }>;
     } catch {
       const current = await this.db
         .prepare("SELECT revision FROM chapters WHERE id = ? AND document_id = ?")
@@ -254,6 +274,17 @@ export class D1ChapterRepository {
       throw new WorkerHttpError(409, "CHAPTER_ORDER_CONFLICT", "该章节位置已被其他章节占用");
     }
 
+    if ((executed[0]?.meta.changes ?? 0) > 0) {
+      const stored = await this.row(documentId, chapterId);
+      if (stored) {
+        return {
+          id: stored.id,
+          title: stored.title,
+          order: stored.sort_order,
+          revision: stored.revision,
+        };
+      }
+    }
     const current = await this.db
       .prepare("SELECT revision FROM chapters WHERE id = ? AND document_id = ?")
       .bind(chapterId, documentId)
@@ -433,7 +464,8 @@ export class D1ChapterRepository {
     }));
   }
 
-  async completeUpload(documentId: string, uploadId: string) {
+  async completeUpload(documentId: string, uploadId: string, authorId: string) {
+    const schemaVersion = await this.requireDocument(documentId);
     const upload = await this.db
       .prepare(
         "SELECT manifest_hash,total_chapters,status,published_at FROM chapter_uploads WHERE document_id=? AND id=?",
@@ -543,6 +575,23 @@ export class D1ChapterRepository {
         this.db
           .prepare("INSERT INTO chapter_publish_guards(document_id,upload_id,token) VALUES(?,?,?)")
           .bind(documentId, uploadId, token),
+        // 账本行必须在章节被替换之前写入：只有内容真正变化的章节才产生新版本。
+        this.db
+          .prepare(
+            "INSERT INTO chapter_revisions(" +
+              "document_id, chapter_id, chapter_revision, document_revision, operation, " +
+              "schema_version, author_id, target_chapter_revision, steps_json, content_json, created_at" +
+              ") SELECT item.document_id, item.chapter_id, " +
+              "COALESCE((SELECT MAX(ledger.chapter_revision) FROM chapter_revisions ledger " +
+              "WHERE ledger.document_id = item.document_id AND ledger.chapter_id = item.chapter_id), 0) + 1, " +
+              "NULL, 'import', ?, ?, NULL, NULL, item.content_json, ? " +
+              "FROM chapter_upload_items item " +
+              "WHERE item.document_id = ? AND item.upload_id = ? " +
+              "AND COALESCE((SELECT current.content_hash FROM chapters current " +
+              "WHERE current.document_id = item.document_id AND current.id = item.chapter_id), '') " +
+              "<> item.content_hash",
+          )
+          .bind(schemaVersion, authorId, publishedAt, documentId, uploadId),
         this.db
           .prepare("UPDATE chapters SET sort_order=-sort_order-1 WHERE document_id=?")
           .bind(documentId),
@@ -649,6 +698,7 @@ export class D1ChapterRepository {
       hash: string;
       baseRevision: number;
     }>,
+    authorId: string,
   ): Promise<
     Array<{
       id: string;
@@ -658,7 +708,7 @@ export class D1ChapterRepository {
       status: "saved" | "unchanged";
     }>
   > {
-    await this.requireDocument(documentId);
+    const schemaVersion = await this.requireDocument(documentId);
     const byId = new Map(
       (
         await this.metadata(
@@ -736,7 +786,7 @@ export class D1ChapterRepository {
         baseRevision: item.baseRevision,
       });
     }
-    // 占用行搬移与章节写入合并进同一个事务批：要么全部生效要么全部回滚。
+    // 章节写入与账本追加合并进同一个事务批：要么全部生效要么全部回滚。
     const statements = [
       ...write.map((item) =>
         this.db
@@ -761,6 +811,21 @@ export class D1ChapterRepository {
             now,
             item.baseRevision,
           ),
+      ),
+      // 账本追加排在所有 UPSERT 之后，且用「行等于本次写入」自守卫：
+      // 版本守卫失败（他人先写）的章节不会产生账本行。
+      ...write.map((item) =>
+        appendSavedChapterRevision(this.db, {
+          documentId,
+          chapterId: item.id,
+          operation: "update",
+          schemaVersion,
+          authorId,
+          contentJson: JSON.stringify(item.content),
+          contentHash: item.hash,
+          revision: item.revision,
+          updatedAt: now,
+        }),
       ),
     ];
     let executed: Array<{ meta: { changes: number } }> = [];

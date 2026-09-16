@@ -20,6 +20,8 @@ import {
   appendGapLongTextChapter,
   appendLongTextChapter,
   deleteLongTextChapter,
+  longTextChapterIdAt,
+  longTextChapterIndex,
   mergeLongTextChapter,
   moveLongTextChapter,
   splitLongTextChapter,
@@ -62,11 +64,28 @@ export function useLongTextWorkspace({
   const [hasLocalDraft, setHasLocalDraft] = useState(false);
   const [hasStoredDraft, setHasStoredDraft] = useState(false);
   const [documentVersion, setDocumentVersion] = useState(0);
-  const [activeIndex, setActiveIndex] = useState(0);
+  // 选中章节只保留稳定 ID：列表位置由它反查得到，不再维护第二份真相。
+  const [activeChapterId, setActiveChapterId] = useState("");
   const [chapterTitleStyle, setChapterTitleStyle] =
     useState<ChapterTitleStyle>("auto");
   const [rawText, setRawText] = useState<string | null>(null);
-  const activeIndexRef = useRef(0);
+  const activeChapterIdRef = useRef("");
+  /** 实际装载到编辑器的章节身份：正文里找不到（导入/结构变化）时落到第一章。 */
+  const resolvedActiveChapterId = useMemo(() => {
+    if (longTextChapterIndex(content, activeChapterId) >= 0) return activeChapterId;
+    return String(content.content?.[0]?.attrs?.chapterId ?? "");
+  }, [content, activeChapterId]);
+  // 渲染期同步 ref：防抖回调与编辑器缓冲始终读到与界面一致的身份。
+  activeChapterIdRef.current = resolvedActiveChapterId;
+  /** UI 用的列表位置：由稳定 ID 反查，找不到时收敛到第一项。 */
+  const activeIndex = useMemo(() => {
+    const index = longTextChapterIndex(content, resolvedActiveChapterId);
+    return index >= 0 ? index : 0;
+  }, [content, resolvedActiveChapterId]);
+  const selectActiveChapter = useCallback((chapterId: string) => {
+    activeChapterIdRef.current = chapterId;
+    setActiveChapterId(chapterId);
+  }, []);
   // 每次异步打开/恢复递增令牌；旧请求返回时发现令牌失效便放弃写入。
   const operationRef = useRef(0);
   const importWriteRef = useRef<Promise<void> | null>(null);
@@ -98,7 +117,7 @@ export function useLongTextWorkspace({
     editChapter,
   } = useLongTextEditorBuffer({
     contentRef,
-    activeIndexRef,
+    activeChapterIdRef,
     replaceContent,
     onChanged: markWorkspaceChanged,
   });
@@ -108,9 +127,8 @@ export function useLongTextWorkspace({
     operationRef.current += 1;
     discardEdits();
     replaceContent({ type: "doc", content: [] });
-    activeIndexRef.current = 0;
+    selectActiveChapter("");
     importWriteRef.current = null;
-    setActiveIndex(0);
     setEnabled(false);
     setHasLocalDraft(false);
     setHasStoredDraft(false);
@@ -120,7 +138,7 @@ export function useLongTextWorkspace({
       operationRef.current += 1;
       discardEdits();
     };
-  }, [documentId, discardEdits, replaceContent]);
+  }, [documentId, discardEdits, replaceContent, selectActiveChapter]);
 
   // 结构变化递增 documentVersion，强制单章编辑器按新的章节边界重建。
   const replaceLongTextDocument = useCallback(
@@ -143,9 +161,9 @@ export function useLongTextWorkspace({
   const editorContent = useMemo(
     () =>
       enabled
-        ? activeLongTextChapter(content, activeIndex)
+        ? activeLongTextChapter(content, resolvedActiveChapterId)
         : { type: "doc", content: [] },
-    [activeIndex, content, enabled],
+    [content, enabled, resolvedActiveChapterId],
   );
 
   const open = useCallback(async () => {
@@ -153,8 +171,7 @@ export function useLongTextWorkspace({
     skipNextCloseSaveRef.current = false;
     suspendDraft();
     acceptCurrentDraft();
-    activeIndexRef.current = 0;
-    setActiveIndex(0);
+    selectActiveChapter("");
     setHasLocalDraft(false);
     setHasStoredDraft(false);
     setEnabled(true);
@@ -235,8 +252,7 @@ export function useLongTextWorkspace({
         setNotice("没有可恢复的本机草稿");
         return;
       }
-      activeIndexRef.current = 0;
-      setActiveIndex(0);
+      selectActiveChapter("");
       const migrated = await migrateLongTextChapterIds(stored);
       if (operation !== operationRef.current) return;
       if (JSON.stringify(migrated) !== JSON.stringify(stored)) {
@@ -289,8 +305,7 @@ export function useLongTextWorkspace({
         resumeDraft();
         setHasLocalDraft(false);
         setHasStoredDraft(true);
-        activeIndexRef.current = 0;
-        setActiveIndex(0);
+        selectActiveChapter("");
         setRawText(text);
         replaceLongTextDocument(imported);
         setEnabled(true);
@@ -361,55 +376,55 @@ export function useLongTextWorkspace({
     suspendDraft,
   ]);
 
+  // 列表点击只在选择边界把位置换算成身份，命令一律按 ID 寻址。
   const selectChapter = useCallback(
     (index: number) => {
-      if (index === activeIndexRef.current) return;
+      const chapterId = longTextChapterIdAt(contentRef.current, index);
+      if (!chapterId || chapterId === activeChapterIdRef.current) return;
       flushEdits();
-      activeIndexRef.current = index;
-      setActiveIndex(index);
+      selectActiveChapter(chapterId);
       setDocumentVersion((version) => version + 1);
     },
-    [flushEdits],
+    [flushEdits, selectActiveChapter],
   );
 
-  // 所有纯章节操作都经此处同步文档、活动索引和编辑器版本。
+  // 所有纯章节操作都经此处同步文档、活动章节和编辑器版本。
   const applyOperation = useCallback(
-    (result: { document: RichTextNode; activeIndex: number } | null) => {
+    (result: { document: RichTextNode; activeChapterId: string } | null) => {
       if (!result) return false;
-      activeIndexRef.current = result.activeIndex;
+      // 先换文档再切选中章节：位置由新文档反查，二者永远一致。
       replaceLongTextDocument(result.document);
-      setActiveIndex(result.activeIndex);
+      selectActiveChapter(result.activeChapterId);
       return true;
     },
-    [replaceLongTextDocument],
+    [replaceLongTextDocument, selectActiveChapter],
   );
 
   const deleteChapter = useCallback(
-    (index: number) => {
+    (chapterId: string) => {
+      if (!chapterId) return;
       flushEdits();
       applyOperation(
-        deleteLongTextChapter(
-          contentRef.current,
-          index,
-          activeIndexRef.current,
-        ),
+        deleteLongTextChapter(contentRef.current, chapterId, activeChapterIdRef.current),
       );
     },
     [applyOperation, contentRef, flushEdits],
   );
 
   const mergeChapter = useCallback(
-    (index: number) => {
+    (chapterId: string) => {
+      if (!chapterId) return;
       flushEdits();
-      applyOperation(mergeLongTextChapter(contentRef.current, index));
+      applyOperation(mergeLongTextChapter(contentRef.current, chapterId));
     },
     [applyOperation, contentRef, flushEdits],
   );
 
   const moveChapter = useCallback(
-    (from: number, to: number) => {
+    (chapterId: string, targetChapterId: string) => {
+      if (!chapterId || chapterId === targetChapterId) return;
       flushEdits();
-      applyOperation(moveLongTextChapter(contentRef.current, from, to));
+      applyOperation(moveLongTextChapter(contentRef.current, chapterId, targetChapterId));
     },
     [applyOperation, contentRef, flushEdits],
   );
@@ -475,12 +490,14 @@ export function useLongTextWorkspace({
   const splitChapter = useCallback(
     async (before: string, after: string) => {
       flushEdits();
-      const index = activeIndexRef.current;
+      const chapterId = activeChapterIdRef.current;
       const snapshot = contentRef.current;
       const operation = operationRef.current;
+      const index = longTextChapterIndex(snapshot, chapterId);
+      if (index < 0) return;
       const current = snapshot.content?.[index];
       const splitTitle = `第 ${index + 2} 章`;
-      const chapterId = await createLongTextChapterIdInDocument(
+      const nextChapterId = await createLongTextChapterIdInDocument(
         snapshot,
         splitTitle,
         after,
@@ -488,17 +505,16 @@ export function useLongTextWorkspace({
       if (operation !== operationRef.current || snapshot !== contentRef.current)
         return;
       if (
-        current &&
         applyOperation(
-          splitLongTextChapter(snapshot, index, {
-            chapterId,
+          splitLongTextChapter(snapshot, chapterId, {
+            chapterId: nextChapterId,
             before,
             after,
           }),
         )
       ) {
         setNotice(
-          `已在光标处拆分为“${String(current.attrs?.title ?? "当前章")}”与“第 ${index + 2} 章”`,
+          `已在光标处拆分为“${String(current?.attrs?.title ?? "当前章")}”与“第 ${index + 2} 章”`,
         );
       }
     },

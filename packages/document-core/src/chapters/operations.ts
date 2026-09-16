@@ -1,28 +1,57 @@
 import type { JSONContent } from "@tiptap/core";
-import { splitDocumentByChapters } from "./boundaries.js";
+import { isValidChapterRange, splitDocumentByChapters } from "./boundaries.js";
 import {
   CHAPTER_HEADING_LEVEL,
   chapterLevelOf,
+  hasChapterMarker,
   normalizeChapterHeadings,
   normalizeWithChapterLevel,
 } from "./headings.js";
-import type { AppendChapterResult, RemoveChapterResult } from "./types.js";
+import type { AppendChapterResult, ChapterRange } from "./types.js";
 
-export function replaceChapter(
+/**
+ * 用 replacement 的内容替换文档中已解析的章节范围。
+ *
+ * 范围只能来自 `resolveChapterRange`（显式 chapterId 优先，旧文档才允许按服务端
+ * 目录顺序定位）：命令边界不接受位置参数，范围非法时返回 null，调用方必须拒绝写入，
+ * 而不是猜测第一个章节。
+ */
+export function replaceChapterRange(
   document: JSONContent,
-  index: number,
+  range: ChapterRange,
   replacement: JSONContent,
-): JSONContent {
+  chapterId?: string,
+): JSONContent | null {
   const normalized = normalizeChapterHeadings(document);
-  const chapter = splitDocumentByChapters(normalized).chapters[index];
-  if (!chapter) return normalized;
+  if (!isValidChapterRange(normalized, range)) return null;
   const content = [...(normalized.content ?? [])];
-  content.splice(chapter.start, chapter.end - chapter.start, ...(replacement.content ?? []));
-  // replacement 可能来自编辑器（未经归一化的章节片段，含旧的 H2 章节标题），
-  // 因此合并后再归一化一次；第一次归一化已经把原文档的章节标题统一到 H1，
-  // 这里只需处理 replacement 自己的层级。
+  const blocks = [...(replacement.content ?? [])];
+  // replacement 可能来自编辑器草稿或历史快照：身份以调用方指定为准，
+  // 绝不让一个缺身份或带旧身份的标题块静默顶替目标章节。
+  if (chapterId) claimChapterIdentity(blocks, chapterId);
+  content.splice(range.start, range.end - range.start, ...blocks);
   const merged: JSONContent = { type: "doc", content };
   return normalizeWithChapterLevel(merged, chapterLevelOf(merged));
+}
+
+/** 删除文档中已解析的章节范围；范围非法时返回 null。 */
+export function removeChapterRange(
+  document: JSONContent,
+  range: ChapterRange,
+): JSONContent | null {
+  const normalized = normalizeChapterHeadings(document);
+  if (!isValidChapterRange(normalized, range)) return null;
+  const content = [...(normalized.content ?? [])];
+  content.splice(range.start, range.end - range.start);
+  return { type: "doc", content };
+}
+
+/** 章节身份由调用方指定：替换块的首个章节标题必须携带目标 chapterId。 */
+function claimChapterIdentity(blocks: JSONContent[], chapterId: string): void {
+  const index = blocks.findIndex((node) => node.type === "heading" && hasChapterMarker(node));
+  if (index < 0) return;
+  const heading = blocks[index]!;
+  blocks[index] = { ...heading, attrs: { ...heading.attrs, chapterId } };
 }
 
 /**
@@ -80,13 +109,4 @@ function promoteHeading(node: JSONContent): JSONContent {
       chapterStart: true,
     },
   };
-}
-
-export function removeChapter(document: JSONContent, index: number): RemoveChapterResult {
-  const normalized = normalizeChapterHeadings(document);
-  const chapter = splitDocumentByChapters(normalized).chapters[index];
-  if (!chapter) return { document: normalized, removed: null };
-  const content = [...(normalized.content ?? [])];
-  content.splice(chapter.start, chapter.end - chapter.start);
-  return { document: { type: "doc", content }, removed: chapter };
 }
