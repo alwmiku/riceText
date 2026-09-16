@@ -82,10 +82,10 @@ export interface RiceTextApiClient {
     },
     signal?: AbortSignal,
   ): Promise<DocumentEnvelope>;
-  /** 注册正文中出现、但目录缺失的新章节；返回服务器分配的章节 id，客户端应同步回本地目录。 */
+  /** 注册正文中出现、但目录缺失的新章节；身份由调用方提供，位置由服务端追加。 */
   createDocumentChapter(
     documentId: string,
-    body: { title: string; order: number },
+    body: { title: string; chapterId?: string; order?: number },
     signal?: AbortSignal,
   ): Promise<z.infer<typeof ChapterSchema>>;
   /** 删除章节目录行（幂等）；历史修订不受影响。 */
@@ -195,13 +195,18 @@ export interface RiceTextApiClient {
     totalChapters: number;
     publishedAt: string;
   }>;
-  /** 换序暂存（每批最多 40 项，不发送正文；顺序已等于临时顺序时幂等返回）。 */
+  /**
+   * 换序暂存（每批最多 40 项，不发送正文）。
+   *
+   * 数组顺序就是目标顺序，临时位置由服务端分配；章节身份与正文都不变。
+   */
   stageNovelChapterReorder(
     novelId: string,
     body: {
       chapters: Array<{
         id: string;
-        temporaryOrder: number;
+        /** @deprecated 位置由服务端按数组顺序分配。 */
+        temporaryOrder?: number;
         baseRevision: number;
       }>;
     },

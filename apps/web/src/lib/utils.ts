@@ -21,6 +21,28 @@ export function createId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * 铸造章节身份；与领域层的 `createChapterId` 同一形态（`chapter-<uuid>`）。
+ *
+ * 这里保留一份等价实现，是为了让不依赖 document-core 的纯 Web 工具（例如本地草稿
+ * 列表）也能铸造身份；两者的形态由 packages/document-core 的测试固定。
+ */
+export function createChapterId(): string {
+  const uuid =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : Math.random().toString(16).slice(2, 10) +
+        "-" +
+        Math.random().toString(16).slice(2, 6) +
+        "-4" +
+        Math.random().toString(16).slice(2, 5) +
+        "-" +
+        Math.random().toString(16).slice(2, 6) +
+        "-" +
+        Math.random().toString(16).slice(2, 14);
+  return "chapter-" + uuid;
+}
+
 /** 计算文本的 SHA-256 十六进制摘要，用于章节内容差异对比。 */
 export async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest(

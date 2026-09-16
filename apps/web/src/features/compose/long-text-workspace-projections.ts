@@ -12,8 +12,9 @@ import { expandRawRangeToIncludeLeadingTitle } from "../editor/long-text/long-te
 
 /** 从完整章节 JSON 提取目录需要的轻量字段，避免侧栏持有正文节点。 */
 export function summarizeLongTextChapters(document: RichTextNode): ChapterSummary[] {
-  return (document.content ?? []).map((node, index) => ({
-    id: String(node.attrs?.chapterId ?? `chapter-${index}`),
+  return (document.content ?? []).map((node) => ({
+    // 身份只来自节点属性；没有身份的节点由迁移/buildCheckpoint 先补铸，不按位置编造。
+    id: String(node.attrs?.chapterId ?? ""),
     title: String(node.attrs?.title ?? "未命名章节"),
     volumeTitle: String(node.attrs?.volumeTitle ?? ""),
     charCount: String(node.attrs?.text ?? "").length,
@@ -26,7 +27,7 @@ export function mapLongTextCoverage(
   rawText: string | null,
 ): CoverageChapter[] {
   let previousEnd = 0;
-  return (document.content ?? []).map((node, index) => {
+  return (document.content ?? []).map((node) => {
     const text = String(node.attrs?.text ?? "");
     const title = String(node.attrs?.title ?? "未命名章节");
     const rawStart = typeof node.attrs?.start === "number" ? node.attrs.start : null;
@@ -34,7 +35,7 @@ export function mapLongTextCoverage(
     const end = typeof node.attrs?.end === "number" ? node.attrs.end : null;
     if (end !== null) previousEnd = Math.max(previousEnd, end);
     return {
-      id: String(node.attrs?.chapterId ?? `chapter-${index}`),
+      id: String(node.attrs?.chapterId ?? ""),
       title,
       charCount: text.length,
       start,

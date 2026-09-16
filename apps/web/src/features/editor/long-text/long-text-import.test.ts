@@ -15,7 +15,7 @@ describe("createLongTextDocument", () => {
         {
           type: "longTextBlock",
           attrs: {
-            chapterId: expect.stringMatching(/^chapter-v1-[0-9a-f]{64}$/),
+            chapterId: expect.stringMatching(/^chapter-[0-9a-f-]{36}$/),
             title: "第一章 起点",
             text: "第一章正文",
             order: 0,
@@ -26,7 +26,7 @@ describe("createLongTextDocument", () => {
         {
           type: "longTextBlock",
           attrs: {
-            chapterId: expect.stringMatching(/^chapter-v1-[0-9a-f]{64}$/),
+            chapterId: expect.stringMatching(/^chapter-[0-9a-f-]{36}$/),
             title: "第二章 终点",
             text: "第二章正文",
             order: 1,
@@ -38,25 +38,24 @@ describe("createLongTextDocument", () => {
     });
   });
 
-  it("keeps identical generated chapter IDs independent from documents", async () => {
+  it("每次导入都铸造新身份：身份不再由内容哈希决定", async () => {
     const source = "第一章 起点\n正文";
     const first = await createLongTextDocument(source, "article-a");
     const second = await createLongTextDocument(source, "article-b");
     const firstId = String(first.content?.[0]?.attrs?.chapterId);
     const secondId = String(second.content?.[0]?.attrs?.chapterId);
 
-    expect(firstId).toBe(secondId);
-    expect(firstId).toMatch(/^chapter-v1-[0-9a-f]{64}$/);
+    expect(firstId).toMatch(/^chapter-[0-9a-f-]{36}$/);
+    expect(secondId).toMatch(/^chapter-[0-9a-f-]{36}$/);
+    expect(firstId).not.toBe(secondId);
   });
 
-  it("gives identical chapters distinct deterministic hashes", async () => {
+  it("同内容的多章也各自拿到不同身份", async () => {
     const source = "第一章 相同\n正文\n第一章 相同\n正文";
-    const first = await createLongTextDocument(source, "article-a");
-    const second = await createLongTextDocument(source, "article-a");
-    const ids = first.content?.map((node) => node.attrs?.chapterId);
+    const document = await createLongTextDocument(source, "article-a");
+    const ids = document.content?.map((node) => node.attrs?.chapterId);
     expect(ids).toHaveLength(2);
     expect(ids?.[0]).not.toBe(ids?.[1]);
-    expect(ids).toEqual(second.content?.map((node) => node.attrs?.chapterId));
   });
 
   it("keeps leading extra material with its original range", async () => {

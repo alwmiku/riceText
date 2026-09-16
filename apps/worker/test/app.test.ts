@@ -424,12 +424,99 @@ describe("RiceText Worker", () => {
     await expect(emptyChapters.json()).resolves.toMatchObject({
       items: [{ documentId: "empty-post", title: "正文" }],
     });
+  });
 
+  it("新建文档时章节行的 ID 取自正文标题节点，位置只决定 sort_order", async () => {
+    const chapterId = "chapter-2f5c1d3a-9b7e-4c6f-8a1d-0e4b7c9d2f31";
+    const created = await exports.default.fetch(
+      new Request("http://example.com/api/documents/identity-post", {
+        method: "PUT",
+        headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({
+          title: "身份验收",
+          schemaVersion: 1,
+          baseRevision: 0,
+          clientMutationId: "identity-post-create",
+          content: {
+            type: "doc",
+            content: [
+              {
+                type: "heading",
+                attrs: { level: 1, chapterStart: true, chapterId },
+                content: [{ type: "text", text: "第一章" }],
+              },
+              { type: "paragraph", content: [{ type: "text", text: "正文" }] },
+            ],
+          },
+        }),
+      }),
+    );
+    expect(created.status).toBe(201);
+
+    const rows = await env.DB.prepare(
+      "SELECT id, sort_order FROM chapters WHERE document_id = ? ORDER BY sort_order",
+    )
+      .bind("identity-post")
+      .all<{ id: string; sort_order: number }>();
+    expect(rows.results).toEqual([{ id: chapterId, sort_order: 0 }]);
+
+    // 移动只改 sort_order：注册第二个章节到末尾后再换序，ID 必须保持不变。
+    const second = "chapter-7c1e9f04-2b6a-4d18-9e35-5a8f0b2c7d19";
+    const registerSecond = await exports.default.fetch(
+      new Request("http://example.com/api/documents/identity-post/chapters", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({ title: "第二章", chapterId: second }),
+      }),
+    );
+    expect(registerSecond.status).toBe(201);
+    await expect(registerSecond.json()).resolves.toMatchObject({ id: second, order: 1 });
+
+    // baseRevision 取实际值：章节行的版本号由服务端维护，客户端只回传它读到的值。
+    const revisions = await env.DB.prepare(
+      "SELECT id, revision FROM chapters WHERE document_id = ?",
+    )
+      .bind("identity-post")
+      .all<{ id: string; revision: number }>();
+    const revisionOf = (id: string) =>
+      revisions.results.find((row) => row.id === id)!.revision;
+    const reordered = await exports.default.fetch(
+      new Request("http://example.com/api/forum/novels/identity-post/chapters/reorder-stage", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-id": "author" },
+        body: JSON.stringify({
+          chapters: [
+            { id: second, baseRevision: revisionOf(second) },
+            { id: chapterId, baseRevision: revisionOf(chapterId) },
+          ],
+        }),
+      }),
+    );
+    expect(reordered.status, await reordered.clone().text()).toBe(200);
+
+    // 换序暂存把两章先后移到「当前最大 order + 1」起的空闲临时区间：
+    // 位置换了，身份必须一模一样。最终正文批次与 sort_order 落位是另一步提交。
+    const afterMove = await env.DB.prepare(
+      "SELECT id, sort_order FROM chapters WHERE document_id = ? ORDER BY sort_order",
+    )
+      .bind("identity-post")
+      .all<{ id: string; sort_order: number }>();
+    expect(afterMove.results.map((row) => row.id)).toEqual([second, chapterId]);
+    expect(afterMove.results.map((row) => row.sort_order)).toEqual([2, 3]);
+  });
+
+  it("读者不能创建新文档", async () => {
     const reader = await exports.default.fetch(
       new Request("http://example.com/api/documents/reader-post", {
         method: "PUT",
         headers: { "content-type": "application/json", "x-user-id": "reader" },
-        body: JSON.stringify({ ...request, clientMutationId: "reader-create" }),
+        body: JSON.stringify({
+          title: "读者文章",
+          schemaVersion: 1,
+          baseRevision: 0,
+          clientMutationId: "reader-create",
+          content: { type: "doc", content: [{ type: "paragraph" }] },
+        }),
       }),
     );
     expect(reader.status, await reader.clone().text()).toBe(403);
@@ -929,7 +1016,7 @@ describe("RiceText Worker", () => {
         new Request("http://example.com/api/documents/demo-post/chapters", {
           method: "POST",
           headers: { "content-type": "application/json", "x-user-id": "author" },
-          body: JSON.stringify({ title, order: 1 }),
+          body: JSON.stringify({ title, chapterId: "chapter-1" }),
         }),
       );
     const created = await register("第一章");
@@ -994,7 +1081,7 @@ describe("RiceText Worker", () => {
       new Request("http://example.com/api/documents/demo-post/chapters", {
         method: "POST",
         headers: { "content-type": "application/json", "x-user-id": "author" },
-        body: JSON.stringify({ title: "第一章", order: 1 }),
+        body: JSON.stringify({ title: "第一章", chapterId: "chapter-1" }),
       }),
     );
     expect(registered.status).toBe(201);

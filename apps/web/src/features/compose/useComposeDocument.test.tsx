@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { appendChapter } from "@ricetext/document-core";
+import { appendChapter, splitDocumentByChapters } from "@ricetext/document-core";
 import { useEffect, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultDocument } from "../../lib/seed";
@@ -16,6 +16,7 @@ import type {
   RichTextNode,
 } from "../../lib/types";
 import { ApiError } from "../../lib/api";
+import { ensureChapterIdentity } from "../../lib/chapters";
 import { useComposeDocument } from "./useComposeDocument";
 
 const mocks = vi.hoisted(() => ({
@@ -122,15 +123,18 @@ describe("useComposeDocument 水合", () => {
       id: "chapter-0",
       deleted: true,
     });
-    mocks.createDocumentChapter.mockReset().mockResolvedValue({
-      id: "chapter-2",
-      title: "第三章 新章节",
-      order: 2,
-      documentId: "demo-post",
-      revision: 0,
-      savedAt: "2026-09-01T20:00:00.000Z",
-      hidden: false,
-    });
+    // 真实服务端把请求里的身份原样写进目录并返回同一身份（重复注册是幂等的）。
+    mocks.createDocumentChapter
+      .mockReset()
+      .mockImplementation(async (_documentId: string, input: { chapterId?: string; title: string }) => ({
+        id: input.chapterId!,
+        title: input.title,
+        order: 2,
+        documentId: "demo-post",
+        revision: 0,
+        savedAt: "2026-09-01T20:00:00.000Z",
+        hidden: false,
+      }));
     mocks.listForumChapters.mockReset().mockResolvedValue([]);
     mocks.restoreRevision.mockReset();
     mocks.saveDocument.mockReset().mockResolvedValue({
@@ -354,31 +358,25 @@ describe("useComposeDocument 水合", () => {
     const testWrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
+    // 身份先由正文补铸一次，服务器目录只登记前两章：对齐完全按 chapterId 判定。
+    const identified = ensureChapterIdentity(appended.document).content;
+    const bodyChapters = splitDocumentByChapters(identified).chapters;
     mocks.getDocument.mockResolvedValueOnce({
       ...serverDocument,
-      content: appended.document as RichTextNode,
+      content: identified as RichTextNode,
     });
-    // 服务器目录已有前两章，仅第三章（order 2）缺失。
-    mocks.listForumChapters.mockResolvedValue([
-      {
-        id: "chapter-0",
-        title: "楔子",
-        order: 0,
+    const existingIds = bodyChapters.slice(0, 2).map((chapter) => chapter.id);
+    mocks.listForumChapters.mockResolvedValue(
+      existingIds.map((id, order) => ({
+        id,
+        title: bodyChapters[order]!.title,
+        order,
         documentId: "demo-post",
         revision: 1,
-        savedAt: "2026-08-20T07:00:00.000Z",
+        savedAt: "2026-08-20T0" + String(order + 7) + ":00:00.000Z",
         hidden: false,
-      },
-      {
-        id: "chapter-1",
-        title: "第一章 潮汐表",
-        order: 1,
-        documentId: "demo-post",
-        revision: 1,
-        savedAt: "2026-08-20T08:00:00.000Z",
-        hidden: false,
-      },
-    ]);
+      })),
+    );
 
     const { result } = renderHook(() => useComposeDocument("demo-post", 2), {
       wrapper: testWrapper,
@@ -389,12 +387,13 @@ describe("useComposeDocument 水合", () => {
       await result.current.publishChapter(2);
     });
 
-    // 1. 只有缺失的第三章调用新增章节接口。
+    // 1. 只有缺失的第三章调用新增章节接口；身份由正文节点铸造后原样上报。
     expect(mocks.createDocumentChapter).toHaveBeenCalledTimes(1);
-    expect(mocks.createDocumentChapter).toHaveBeenCalledWith("demo-post", {
-      title: "第三章 新章节",
-      order: 2,
-    });
+    const registerCall = mocks.createDocumentChapter.mock.calls.at(-1)!;
+    expect(registerCall[0]).toBe("demo-post");
+    expect(registerCall[1]).toMatchObject({ title: "第三章 新章节" });
+    const minted = registerCall[1].chapterId!;
+    expect(minted).toMatch(/^chapter-[0-9a-f-]{36}$/);
     // 2. 服务器 id 已同步回本地目录缓存。
     const chapters = client.getQueryData<ForumChapterItem[]>([
       "forum",
@@ -402,7 +401,7 @@ describe("useComposeDocument 水合", () => {
       "demo-post",
     ])!;
     expect(chapters).toContainEqual(
-      expect.objectContaining({ id: "chapter-2", order: 2, revision: 0 }),
+      expect.objectContaining({ id: minted, order: 2, revision: 0 }),
     );
     // 3. 文档保存使用服务器分配的章节 id。
     const autosaveValue = mocks.autosave.mock.results.at(-1)?.value as {
@@ -415,7 +414,7 @@ describe("useComposeDocument 水合", () => {
     expect(autosaveValue.flush).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
-      "chapter-2",
+      minted,
     );
   });
 

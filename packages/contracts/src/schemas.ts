@@ -581,12 +581,17 @@ export const CompleteChapterUploadResponseSchema = z
   })
   .strict();
 
-/** 换序暂存请求中的单个章节（仅携带轻量元数据，不发送正文）。 */
+/**
+ * 换序暂存请求中的单个章节（仅携带轻量元数据，不发送正文）。
+ *
+ * 身份只用 `id`；**数组顺序就是目标顺序**，客户端不再自算位置。
+ * `temporaryOrder` 仅为旧客户端保留，省略时由服务端分配。
+ */
 export const StageChapterReorderItemSchema = z
   .object({
     id: EntityIdSchema,
-    /** 全局唯一的临时 order；客户端取“当前最大服务器 order + 顺序号”。 */
-    temporaryOrder: z.number().int().nonnegative(),
+    /** @deprecated 位置由服务端按数组顺序分配；保留只为兼容旧客户端。 */
+    temporaryOrder: z.number().int().nonnegative().optional(),
     /** 该章节独立的保存版本号；过期时整批返回 409。 */
     baseRevision: z.number().int().nonnegative(),
   })
@@ -597,6 +602,7 @@ export type StageChapterReorderItem = z.infer<typeof StageChapterReorderItemSche
 /**
  * 换序暂存：每批最多 40 项（1 条文档查询 + 1 条元数据查询 + 最多 40 条
  * UPDATE 仍在 D1 Free 50 条查询上限内）。仅在确有换序时调用。
+ * 数组顺序即目标顺序；章节 ID 全程不变。
  */
 export const StageNovelChapterReorderRequestSchema = z
   .object({ chapters: z.array(StageChapterReorderItemSchema).min(1).max(40) })
@@ -632,11 +638,20 @@ export const StageNovelChapterReorderResponseSchema = z
 export type StageNovelChapterReorderResponse = z.infer<
   typeof StageNovelChapterReorderResponseSchema
 >;
-/** 新增章节请求：编辑器保存前把正文中已出现但服务器目录缺失的新章节注册进目录。 */
+/**
+ * 新增章节请求：编辑器保存前把正文中已出现但服务器目录缺失的新章节注册进目录。
+ *
+ * `chapterId` 由创建方铸造（`chapter-<uuid>`），服务端只接受并使用它，
+ * 不再按位置推导身份；重复注册同一 ID 是幂等的。旧客户端仍可只发 `order`，
+ * 服务端会为它铸造一个新身份。
+ */
 export const CreateDocumentChapterRequestSchema = z
   .object({
     title: z.string().min(1).max(500),
-    order: z.number().int().nonnegative(),
+    /** 章节身份；省略时由服务端铸造。 */
+    chapterId: EntityIdSchema.optional(),
+    /** @deprecated 位置不再参与身份；仅用于兼容旧客户端，服务端一律追加到末尾。 */
+    order: z.number().int().nonnegative().optional(),
   })
   .strict();
 /** 新增章节请求。 */

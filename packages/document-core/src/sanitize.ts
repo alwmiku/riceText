@@ -355,12 +355,14 @@ function sanitizeNodeAttributes(
           });
       }
       if (type === "paragraph") return { textAlign, ...indents };
-      // 属性键序必须与 schema 注册顺序（对齐、章节标记、缩进、标题等级）一致：
+      // 属性键序必须与 schema 注册顺序一致（对齐、章节标记、章节身份、缩进、标题等级）：
       // 重建文档会被编辑器往返（PM toJSON）与 JSON.stringify 比较（publishChapter
       // 的 merge 差异判断、批量校订）使用，键序不一致会产生无意义的差异代次。
+      // null 与 PM 默认值一致：没有身份的标题不会得到空字符串，避免无意义差异。
       return {
         textAlign,
         chapterStart: raw.chapterStart === true,
+        chapterId: nullableString(raw.chapterId, 128),
         ...indents,
         level: finiteInteger(raw.level, 2, 1, 6),
       };

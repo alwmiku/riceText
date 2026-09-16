@@ -20,8 +20,11 @@ const yieldToUI = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
  * 会把几千个本地章节错认成同一批已存在章节（改数/冲突假象）。新文件上传
  * 模型下：id 相同就复用，id 不同就是新章。
  */
-function resolveChapterId(node: RichTextNode, order: number): string {
-  return String(node.attrs?.chapterId ?? `chapter-${order}`);
+function resolveChapterId(node: RichTextNode): string {
+  // 身份只能来自节点属性：按位置回退会把几千个本地章节错认成同一批服务器章节。
+  const id = node.attrs?.chapterId;
+  if (typeof id !== "string" || !id.trim()) return "";
+  return id;
 }
 
 /** 服务器章节目录行（buildCheckpoint 使用的最小投影）。 */
@@ -52,7 +55,7 @@ export async function prepareChapterUploadPlan(
     directory.map((chapter) => [chapter.id, chapter]),
   );
   const nodes = document.content ?? [];
-  const ids = nodes.map((node, order) => resolveChapterId(node, order));
+  const ids = nodes.map((node) => resolveChapterId(node));
   if (ids.some((id) => !id.trim()) || new Set(ids).size !== ids.length) {
     throw new Error("本地章节标识为空或重复，请重新整理章节");
   }
@@ -68,7 +71,7 @@ export async function prepareChapterUploadPlan(
         .slice(offset, offset + 64)
         .map(async (node, index): Promise<PlannedUploadChapter> => {
           const order = offset + index;
-          const id = resolveChapterId(node, order);
+          const id = resolveChapterId(node);
           const title = String(node.attrs?.title ?? "未命名章节");
           const volumeTitle = String(node.attrs?.volumeTitle ?? "");
           const normalizedNode: RichTextNode = {

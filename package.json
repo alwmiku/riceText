@@ -20,6 +20,7 @@
     "test:e2e:password": "playwright test --config playwright.password.config.ts",
     "cf:e2e:prepare": "tsx tools/cloudflare/prepare-e2e.ts",
     "cf:seed:local": "tsx tools/cloudflare/seed-local.ts",
+    "db:recover-dump": "tsx tools/cloudflare/recover-d1-dump.ts",
     "cf:preflight": "node tools/cloudflare/preflight.mjs",
     "cf:smoke": "node tools/cloudflare/smoke.mjs",
     "auth:create-user": "tsx tools/cloudflare/create-password-user.ts",

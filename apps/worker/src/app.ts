@@ -29,7 +29,7 @@ import {
   type SaveNovelChaptersBatchRequest,
   type StageNovelChapterReorderRequest,
 } from "@ricetext/contracts";
-import { DomainError, projectDocumentForReader } from "@ricetext/server-core";
+import { createChapterId, DomainError, projectDocumentForReader } from "@ricetext/server-core";
 import {
   EMOJI_CATALOG,
   EMOJI_GROUPS,
@@ -397,7 +397,11 @@ export function createWorkerApp(): Hono<AppBindings> {
       await body("createDocumentChapter", context),
     );
     const repository = new D1ChapterRepository(context.env.DB);
-    const result = await repository.create(input.documentId, request);
+    // 身份由创建方提供；旧客户端只发 order 时由服务端铸造，位置一律追加到末尾。
+    const result = await repository.create(input.documentId, {
+      id: request.chapterId ?? createChapterId(),
+      title: request.title,
+    });
     const status = result.created ? 201 : 200;
     return context.json(response("createDocumentChapter", status, result.value), status);
   });

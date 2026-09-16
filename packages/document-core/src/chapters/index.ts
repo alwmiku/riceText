@@ -8,7 +8,13 @@ export {
   normalizeWithChapterLevel,
 } from "./headings.js";
 export { appendChapter, removeChapter, replaceChapter } from "./operations.js";
-export { chapterStorageId, scopedLongTextChapterId } from "./chapter-identity.js";
+export {
+  chapterStorageId,
+  createChapterId,
+  isChapterId,
+  isUsableChapterId,
+  scopedLongTextChapterId,
+} from "./chapter-identity.js";
 export { containsLongTextBlocks, convertLongTextBlocksToChapters } from "./long-text-conversion.js";
 export type {
   AppendChapterResult,

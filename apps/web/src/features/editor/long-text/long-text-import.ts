@@ -12,21 +12,14 @@ export async function createLongTextDocument(
   style: ChapterTitleStyle = "auto",
 ): Promise<RichTextNode> {
   const chapters = splitChaptersByStyle(text, style);
-  const occurrences = new Map<string, number>();
   const content: RichTextNode[] = [];
 
   for (const chapter of chapters) {
-    const key = chapter.title.normalize("NFC").trim() + "\0" + chapter.text.replace(/\r\n?/g, "\n").normalize("NFC");
-    const duplicateOrdinal = occurrences.get(key) ?? 0;
-    occurrences.set(key, duplicateOrdinal + 1);
     content.push({
       type: "longTextBlock",
       attrs: {
-        chapterId: await createLongTextChapterId(
-          chapter.title,
-          chapter.text,
-          duplicateOrdinal,
-        ),
+        // 身份与内容无关：导入时铸造一次，之后改标题或正文都不会换 ID。
+        chapterId: createLongTextChapterId(),
         title: chapter.title,
         volumeTitle: chapter.volumeTitle ?? "",
         text: chapter.text,

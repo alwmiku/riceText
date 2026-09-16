@@ -10,7 +10,6 @@ import {
   type TiptapDocument,
 } from "@ricetext/contracts";
 import {
-  chapterStorageId,
   decideChapterUploadWrite,
   serializeChapterUploadManifest,
   sanitizeDocumentForWrite,
@@ -91,48 +90,51 @@ export class D1ChapterRepository {
     });
   }
 
+  /**
+   * 注册一个新章节：身份由调用方（创建方）提供，位置一律追加到末尾。
+   *
+   * 重复注册同一 ID 是幂等的（只刷新标题），因此上次响应丢失后的重试安全。
+   * 章节位置不再由请求决定——位置是服务端状态，客户端只表达意图。
+   */
   async create(
     documentId: string,
-    input: { title: string; order: number },
+    input: { id: string; title: string },
   ): Promise<{ value: Chapter; created: boolean }> {
     await this.requireDocument(documentId);
-    const chapterId = chapterStorageId(documentId, input.order);
+    const chapterId = input.id;
     const now = new Date().toISOString();
+    let results: Array<{ meta: { changes: number } }>;
     try {
-      const results = await this.db.batch([
+      results = (await this.db.batch([
         this.db
           .prepare(
             "INSERT OR IGNORE INTO chapters(" +
               "id, title, sort_order, document_id, revision, updated_at, hidden" +
-              ") VALUES (?, ?, ?, ?, 0, ?, 0)",
+              ") SELECT ?, ?, COALESCE(MAX(sort_order) + 1, 0), ?, 0, ?, 0 " +
+              "FROM chapters WHERE document_id = ?",
           )
-          .bind(chapterId, input.title, input.order, documentId, now),
+          .bind(chapterId, input.title, documentId, now, documentId),
         this.db
           .prepare(
-            "UPDATE chapters SET title = ?, sort_order = ? " +
-              "WHERE id = ? AND document_id = ?",
+            "UPDATE chapters SET title = ? WHERE id = ? AND document_id = ?",
           )
-          .bind(input.title, input.order, chapterId, documentId),
-      ]);
-      const stored = await this.row(documentId, chapterId);
-      if (!stored) {
-        throw new WorkerHttpError(
-          409,
-          "CHAPTER_ORDER_CONFLICT",
-          "该章节位置已被其他章节占用",
-        );
-      }
-      return { value: chapter(stored), created: results[0]!.meta.changes > 0 };
+          .bind(input.title, chapterId, documentId),
+      ])) as unknown as Array<{ meta: { changes: number } }>;
     } catch (error) {
-      if (error instanceof WorkerHttpError) throw error;
+      // 唯一索引只可能在并发追加到同一序号时冲突：重读一次，命中已存在即当作幂等成功。
       const stored = await this.row(documentId, chapterId);
       if (stored) return { value: chapter(stored), created: false };
+      throw error;
+    }
+    const stored = await this.row(documentId, chapterId);
+    if (!stored) {
       throw new WorkerHttpError(
         409,
         "CHAPTER_ORDER_CONFLICT",
         "该章节位置已被其他章节占用",
       );
     }
+    return { value: chapter(stored), created: results[0]!.meta.changes > 0 };
   }
 
   async updateHidden(
@@ -922,11 +924,21 @@ export class D1ChapterRepository {
    */
   async stageReorder(
     documentId: string,
-    items: Array<{ id: string; temporaryOrder: number; baseRevision: number }>,
+    items: Array<{ id: string; temporaryOrder?: number | undefined; baseRevision: number }>,
   ): Promise<
     Array<{ id: string; revision: number; status: "staged" | "unchanged" }>
   > {
     await this.requireDocument(documentId);
+    const docOrders = await this.documentOrders(documentId);
+    // 数组顺序就是目标顺序：未显式给出临时位置时，从「当前最大 order + 1」起
+    // 连续分配，保证临时期落在空闲区间（下标直接当 order 会撞上批外章节）。
+    const temporaryBase =
+      docOrders.reduce((max, row) => Math.max(max, row.sort_order), -1) + 1;
+    const planned = items.map((item, index) => ({
+      id: item.id,
+      temporaryOrder: item.temporaryOrder ?? temporaryBase + index,
+      baseRevision: item.baseRevision,
+    }));
     const byId = new Map(
       (
         await this.metadata(
@@ -935,7 +947,6 @@ export class D1ChapterRepository {
         )
       ).map((row) => [row.id, row]),
     );
-    const docOrders = await this.documentOrders(documentId);
     const results: Array<{
       id: string;
       revision: number;
@@ -949,7 +960,7 @@ export class D1ChapterRepository {
     }> = [];
     const seenOrders = new Set<number>();
     const now = new Date().toISOString();
-    for (const item of items) {
+    for (const item of planned) {
       const existing = byId.get(item.id);
       if (seenOrders.has(item.temporaryOrder)) {
         throw new WorkerHttpError(
@@ -1035,7 +1046,7 @@ export class D1ChapterRepository {
           ),
         )) as unknown as Array<{ meta: { changes: number } }>;
       } catch (error) {
-        throw await this.resolveReorderConflict(documentId, items, error);
+        throw await this.resolveReorderConflict(documentId, planned, error);
       }
     }
     for (const [index, item] of staged.entries()) {

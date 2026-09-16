@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import { createChapterId } from "@ricetext/document-core";
 import { MAX_CHAPTER_LENGTH } from "./chapter-splitter.js";
 
 /**
@@ -127,7 +128,7 @@ export function LongTextView({
       .insertContentAt(insertAt, {
         type: "longTextBlock",
         attrs: {
-          chapterId: `chapter-${Date.now()}`,
+          chapterId: createChapterId(),
           title: `第 ${node.attrs.order + 1} 章`,
           text: after,
           order: (node.attrs.order ?? 0) + 1,

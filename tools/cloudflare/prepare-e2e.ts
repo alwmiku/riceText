@@ -11,7 +11,7 @@
 // e2e/emoji.spec.ts 只在桶里真的有图时才断言图片字节。
 import { webcrypto } from "node:crypto";
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { PASSWORD_HASH_ITERATIONS } from "../../packages/contracts/src/schemas.js";
 import { demoSeedStatements, seedSql } from "./d1-seed.js";
@@ -19,9 +19,27 @@ import { demoSeedStatements, seedSql } from "./d1-seed.js";
 const root = resolve(import.meta.dirname, "../..");
 const data = join(root, ".data", "cloudflare-e2e");
 const seedPath = join(data, "seed.sql");
-const persistTo = process.env.CF_E2E_PERSIST_TO
-  ? resolve(root, process.env.CF_E2E_PERSIST_TO)
-  : join(root, "apps", "worker", ".wrangler", "state");
+// 开发者的本地库（apps/worker/.wrangler/state）里是真实创作数据，绝不能被测试准备删掉。
+// 早先这里在缺少 CF_E2E_PERSIST_TO 时「默认指向」开发状态目录，等于把本地库当测试库清空，
+// 因此现在缺少变量就直接失败：唯一合法的目标是 E2E 专用目录。
+const developerState = join(root, "apps", "worker", ".wrangler", "state");
+const requestedState = process.env.CF_E2E_PERSIST_TO;
+if (!requestedState) {
+  throw new Error(
+    "缺少 CF_E2E_PERSIST_TO：本命令会清空目标 D1，不能对开发者的 apps/worker/.wrangler/state 运行。" +
+      "请由 Playwright（playwright.config.ts）传入 E2E 专用目录，例如" +
+      " CF_E2E_PERSIST_TO=.data/cloudflare-e2e-state。",
+  );
+}
+const persistTo = resolve(root, requestedState);
+if (persistTo === developerState || developerState.startsWith(persistTo + sep)) {
+  throw new Error(
+    "拒绝清空开发状态目录：" +
+      persistTo +
+      " 覆盖了 apps/worker/.wrangler/state。" +
+      "请改用 E2E 专用状态目录（.data/cloudflare-e2e-state）。",
+  );
+}
 
 /**
  * 重置本地模拟状态：D1 必须每次重建（上一次运行的 revision 会污染断言），

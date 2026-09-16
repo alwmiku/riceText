@@ -23,6 +23,10 @@ export interface DocumentExtensionsOptions {
  * 章节目录只把带此标记的标题视为章节边界，正文内的普通 H1/H2
  * 只是排版标题，不会再被切分成新章节。旧文档（无任何标记）仍按
  * 二级标题兜底切分，保证历史数据行为不变。
+ *
+ * 同一扩展还持久化 `chapterId`：章节身份创建时铸造一次（`chapter-<uuid>`），
+ * 随标题节点一起移动，因此草稿型文章的位置真源就是正文块顺序，不再靠位置对齐。
+ * 历史正文没有该属性时为 null，由编辑层补铸一次。
  */
 export const chapterStartExtension = Extension.create({
   name: "chapterStart",
@@ -36,6 +40,12 @@ export const chapterStartExtension = Extension.create({
             parseHTML: (element) => element.getAttribute("data-chapter-start") === "true",
             renderHTML: (attributes) =>
               attributes.chapterStart ? { "data-chapter-start": "true" } : {},
+          },
+          chapterId: {
+            default: null,
+            parseHTML: (element) => element.getAttribute("data-chapter-id"),
+            renderHTML: (attributes) =>
+              attributes.chapterId ? { "data-chapter-id": String(attributes.chapterId) } : {},
           },
         },
       },

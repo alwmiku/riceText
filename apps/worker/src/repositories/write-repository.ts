@@ -15,7 +15,7 @@ import {
   type JSONContent,
   type StepJson,
 } from "@ricetext/document-core";
-import { chapterStorageId, sanitizeDocumentForWrite } from "@ricetext/server-core";
+import { createChapterId, isChapterId, sanitizeDocumentForWrite } from "@ricetext/server-core";
 import { WorkerHttpError } from "../http-error";
 import { D1ReadRepository } from "./read-repository";
 
@@ -116,8 +116,16 @@ export class D1WriteRepository {
     if (existingMutation) return this.idempotentResult(writeInput, existingMutation);
 
     const createdAt = new Date().toISOString();
+    // 章节身份来自正文标题节点（由创建方铸造一次并持久化）；节点还没有身份时
+    // 服务端现铸一个作为兜底，位置只用于记录 sort_order。
     const chapters = splitDocumentByChapters(content as unknown as JSONContent).chapters;
-    const chapterRows = chapters.length > 0 ? chapters : [{ id: "chapter-0", title: "正文" }];
+    const chapterRows =
+      chapters.length > 0
+        ? chapters.map((chapter) => ({
+            id: isChapterId(chapter.id) ? chapter.id : createChapterId(),
+            title: chapter.title,
+          }))
+        : [{ id: createChapterId(), title: "正文" }];
     const statements: D1PreparedStatement[] = [
       this.db
         .prepare(
@@ -154,7 +162,7 @@ export class D1WriteRepository {
             "INSERT INTO chapters(id, title, sort_order, document_id, revision, updated_at, hidden) " +
               "VALUES (?, ?, ?, ?, 1, ?, 0)",
           )
-          .bind(chapterStorageId(documentId, order), chapter.title, order, documentId, createdAt),
+          .bind(chapter.id, chapter.title, order, documentId, createdAt),
       ),
     ];
     try {

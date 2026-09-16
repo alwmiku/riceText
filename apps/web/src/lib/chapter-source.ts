@@ -15,9 +15,7 @@ export interface ChapterSource extends ChapterIdentity, ChapterSection {
   documentChapter?: ChapterSection;
 }
 
-export function hasStandaloneChapterContent(
-  chapter: ForumChapterItem,
-): boolean {
+export function hasStandaloneChapterContent(chapter: ForumChapterItem): boolean {
   return chapter.hasContent ?? chapter.revision > 0;
 }
 
@@ -42,18 +40,25 @@ function embeddedChapters(content: RichTextNode): EmbeddedChapter[] {
     }));
   }
   const result: EmbeddedChapter[] = [];
+  // 节点自带的章节身份集合：切分结果里的 ID 落在这个集合里才算显式身份。
+  const carriedChapterIds = new Set(
+    nodes
+      .map((node) => node.attrs?.chapterId)
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
+  );
   let start = 0;
   const appendOrdinary = (end: number) => {
     if (end === start) return;
     const fragment = { type: "doc", content: nodes.slice(start, end) };
     if (isBlankDocumentShell(fragment)) return;
     for (const chapter of splitDocumentByHeadings(fragment).chapters) {
+      // 切分结果里的 ID 已经优先取节点属性（见 splitDocumentByChapters）；
+      // 这里不再按位置改写它，只标记身份是否来自节点，供编辑层决定是否补铸。
       result.push({
         ...chapter,
-        id: "chapter-" + result.length,
         start: start + chapter.start,
         end: start + chapter.end,
-        explicitIdentity: false,
+        explicitIdentity: carriedChapterIds.has(chapter.id),
       });
     }
   };
@@ -62,7 +67,7 @@ function embeddedChapters(content: RichTextNode): EmbeddedChapter[] {
     appendOrdinary(index);
     const id = node.attrs?.chapterId;
     result.push({
-      id: typeof id === "string" && id ? id : "chapter-" + result.length,
+      id: typeof id === "string" && id ? id : `chapter-${result.length}`,
       title: String(node.attrs?.title ?? "正文"),
       volumeTitle: String(node.attrs?.volumeTitle ?? ""),
       blocks: [node],
@@ -101,9 +106,7 @@ export function resolveChapterSources(input: {
   }
   const projected = input.documentIsReaderProjection === true;
   const projectionRows = directory.filter((row) => !row.hidden);
-  const projectedPositions = new Map(
-    projectionRows.map((row, index) => [row.id, index]),
-  );
+  const projectedPositions = new Map(projectionRows.map((row, index) => [row.id, index]));
   const legacy = embedded.every((chapter) => !chapter.explicitIdentity);
   const sources: ChapterSource[] = directory.map((row) => {
     let chapter = embeddedById.get(row.id);
@@ -154,9 +157,7 @@ export function resolveChapterSources(input: {
       });
     });
   }
-  return sources.filter(
-    (source) => input.includeHidden || !source.directory?.hidden,
-  );
+  return sources.filter((source) => input.includeHidden || !source.directory?.hidden);
 }
 
 export type ResolvedChapterContent =
@@ -168,8 +169,7 @@ export function resolveChapterContent(
   chapter: ChapterSource | undefined,
   request: { data?: ChapterContent | undefined; isError?: boolean } = {},
 ): ResolvedChapterContent {
-  if (!chapter || chapter.source === "placeholder")
-    return { source: "placeholder" };
+  if (!chapter || chapter.source === "placeholder") return { source: "placeholder" };
   if (chapter.source === "document") {
     return {
       source: "document",

@@ -47,12 +47,14 @@ export async function syncLongTextChapters(
 }
 
 /**
- * 注册正文中已出现但目录缺失的新章节：服务端分配并返回章节 id，
- * 调用方应把它同步回本地章节目录（保存与历史都使用该服务器 id）。
+ * 注册正文中已出现但目录缺失的新章节。
+ *
+ * 身份由调用方提供（`chapter-<uuid>`，与正文标题节点上的属性一致），服务端
+ * 把它追加到目录末尾并返回同一身份；重复注册是幂等的。
  */
 export async function createDocumentChapter(
   documentId: string,
-  input: { title: string; order: number },
+  input: { title: string; chapterId?: string },
 ): Promise<ForumChapterItem> {
   return api().createDocumentChapter(documentId, input);
 }
@@ -165,10 +167,9 @@ export async function completeLongTextChapterUpload(
   return api().completeChapterUpload(novelId, uploadId);
 }
 
-/** 换序暂存项：仅携带轻量元数据。 */
+/** 换序暂存项：仅携带轻量元数据；数组顺序就是目标顺序。 */
 export interface StageChapterReorderItem {
   id: string;
-  temporaryOrder: number;
   baseRevision: number;
 }
 

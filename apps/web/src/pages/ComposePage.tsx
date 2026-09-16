@@ -192,6 +192,9 @@ function ComposeDocumentSession({
     serverEnabled: articleSelection.authenticated && !articleSelection.loading,
     localOnly: !articleSelection.authenticated,
     initialTitle: articleSelection.selectedDraftTitle,
+    // 目录行是服务器权威身份：按目录位置（row.order）解析 id；目录数组本身可能无序。
+    resolveChapterId: (index) =>
+      directoryQuery.data?.find((row) => row.order === index)?.id,
   });
   const longText = useLongTextWorkspace({
     documentId: activeDocumentId,

@@ -4,7 +4,8 @@ export const DOCUMENT_NODE_ATTRIBUTES = {
   doc: [],
   paragraph: ["textAlign", "firstLineIndent", "leftIndent"],
   text: [],
-  heading: ["level", "textAlign", "chapterStart", "firstLineIndent", "leftIndent"],
+  // chapterId 是章节身份（创建时铸造一次），必须能随标题节点持久化。
+  heading: ["level", "textAlign", "chapterStart", "firstLineIndent", "leftIndent", "chapterId"],
   bulletList: [],
   orderedList: ["start", "type"],
   listItem: ["textAlign"],

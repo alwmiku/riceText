@@ -7,6 +7,12 @@ function collectText(node: JSONContent): string {
   return (node.content ?? []).map(collectText).join("");
 }
 
+/** 读取节点上持久化的章节身份；没有（或为空）时返回 null。 */
+function chapterIdOf(node: JSONContent): string | null {
+  const value = node.attrs?.chapterId;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 /** 标题层级；缺失或非法时按章节层级处理。 */
 function headingLevel(node: JSONContent): number {
   const level = node.attrs?.level;
@@ -43,7 +49,9 @@ export function splitDocumentByChapters(document: JSONContent): SplitDocument {
     if (isChapterBoundary(node)) {
       if (current) current.end = index;
       current = {
-        id: `chapter-${chapters.length}`,
+        // 身份来自节点属性（创建时铸造一次）；只有尚未落库的历史正文
+        // 才回落到按位置推导，且这个回退值不作为新身份来源。
+        id: chapterIdOf(node) ?? `chapter-${chapters.length}`,
         title: collectText(node).trim(),
         blocks: [node],
         start: index,

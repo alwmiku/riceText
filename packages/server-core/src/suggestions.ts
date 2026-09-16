@@ -55,11 +55,7 @@ export function applySuggestionText(
     );
   };
   const ambiguous = (): never => {
-    throw new DomainError(
-      409,
-      "SUGGESTION_SOURCE_AMBIGUOUS",
-      "建议对应多个位置，无法安全应用",
-    );
+    throw new DomainError(409, "SUGGESTION_SOURCE_AMBIGUOUS", "建议对应多个位置，无法安全应用");
   };
   if (!fromText) return missing();
   let start = 0;
@@ -71,10 +67,7 @@ export function applySuggestionText(
       location.chapterOrder < 0
     )
       return missing();
-    const range = getChapterRange(
-      content as JSONContent,
-      location.chapterOrder,
-    );
+    const range = getChapterRange(content as JSONContent, location.chapterOrder);
     if (!range) return missing();
     ({ start, end } = range);
     if (location.chapterContent) {
@@ -150,8 +143,7 @@ export function applySuggestionText(
     }
   }
   const match = matches[0];
-  if (!match || !lines.some((line) => line.segments === match.segments))
-    return missing();
+  if (!match || !lines.some((line) => line.segments === match.segments)) return missing();
   const finish = match.offset + fromText.length;
   const covered = match.segments.filter(
     (segment) => segment.end > match.offset && segment.start < finish,
@@ -162,9 +154,7 @@ export function applySuggestionText(
     !first ||
     !last ||
     covered.some(
-      (segment, index) =>
-        segment.parent !== first.parent ||
-        segment.index !== first.index + index,
+      (segment, index) => segment.parent !== first.parent || segment.index !== first.index + index,
     )
   )
     return missing();
@@ -201,16 +191,20 @@ export function replaceFirstText(
   });
 }
 
-/** 仅当目标章节规范化后完全一致时合并批次，避免把建议套到已变化的正文。 */
+/**
+ * 仅当目标章节规范化后完全一致时合并批次，避免把建议套到已变化的正文。
+ *
+ * `chapterOrder` 由调用方查库解析，**绝不从章节 ID 字符串推导**：ID 是创建时
+ * 分配的不透明身份，格式与位置无关，解析它会把老格式 ID 的章节整批挡掉。
+ */
 export function mergeSuggestionBatch(
   current: TiptapDocument,
-  chapterId: string,
+  chapterOrder: number | null,
   before: TiptapDocument,
   after: TiptapDocument,
 ): TiptapDocument | null {
-  const match = /^chapter-([0-9]+)$/.exec(chapterId);
-  if (!match) return null;
-  const chapterIndex = Number(match[1]);
+  if (chapterOrder === null || !Number.isSafeInteger(chapterOrder) || chapterOrder < 0) return null;
+  const chapterIndex = chapterOrder;
   const range = getChapterRange(current as JSONContent, chapterIndex);
   if (!range) return null;
   const existing = {
@@ -234,7 +228,8 @@ export function mergeSuggestionBatch(
 export function validateSuggestionBatch(
   current: TiptapDocument,
   input: {
-    chapterId: string;
+    /** 目标章节在文档内的当前顺序；由调用方查库解析，不从 ID 推导。 */
+    chapterOrder: number | null;
     beforeContent: TiptapDocument;
     afterContent: TiptapDocument;
     steps: Array<Record<string, unknown>>;
@@ -255,23 +250,15 @@ export function validateSuggestionBatch(
   }
   const expected = mergeSuggestionBatch(
     current,
-    input.chapterId,
+    input.chapterOrder,
     input.beforeContent,
     input.afterContent,
   );
   const normalized = expected
-    ? applyStepsToDocument(
-        sharedSchema(),
-        expected as unknown as JSONContent,
-        [],
-      )
+    ? applyStepsToDocument(sharedSchema(), expected as unknown as JSONContent, [])
     : null;
   if (!normalized || canonicalJson(applied) !== canonicalJson(normalized)) {
-    throw new DomainError(
-      422,
-      "BATCH_SCOPE_MISMATCH",
-      "批量校订 steps 与当前章节修改不一致",
-    );
+    throw new DomainError(422, "BATCH_SCOPE_MISMATCH", "批量校订 steps 与当前章节修改不一致");
   }
   return applied;
 }

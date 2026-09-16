@@ -219,7 +219,15 @@ export class D1SuggestionRepository {
         },
       );
     }
-    validateSuggestionBatch(current.content, input);
+    // 章号由查库解析：章节 ID 是不透明身份，不能从字符串反解位置。
+    const chapter = await this.db
+      .prepare("SELECT sort_order FROM chapters WHERE id = ? AND document_id = ?")
+      .bind(input.chapterId, documentId)
+      .first<{ sort_order: number }>();
+    validateSuggestionBatch(current.content, {
+      ...input,
+      chapterOrder: chapter?.sort_order ?? null,
+    });
     const row: SuggestionBatchRow = {
       id: crypto.randomUUID(),
       document_id: documentId,
@@ -467,9 +475,15 @@ export class D1SuggestionRepository {
     }
 
     const current = await this.reads.document(row.document_id);
+    const batchChapter = row.chapter_id
+      ? await this.db
+          .prepare("SELECT sort_order FROM chapters WHERE id = ? AND document_id = ?")
+          .bind(row.chapter_id, row.document_id)
+          .first<{ sort_order: number }>()
+      : null;
     const merged = mergeSuggestionBatch(
       current.content,
-      row.chapter_id,
+      batchChapter?.sort_order ?? null,
       repairDocumentForRead(JSON.parse(row.before_content_json)),
       repairDocumentForRead(JSON.parse(row.after_content_json)),
     );

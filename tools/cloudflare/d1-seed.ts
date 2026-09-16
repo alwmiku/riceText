@@ -411,7 +411,7 @@ export function demoSeedStatements(options: DemoSeedOptions): string[] {
   // 因此用 ON CONFLICT 只同步标题与排序。content_json 留空：正文走文档快照，
   // 章节正文一旦为空，客户端会回退到文档正文而不是报 404。
   statements.push(
-    "INSERT INTO chapters(id, title, sort_order, document_id, revision, volume_title, content_json, content_hash, updated_at, hidden) VALUES " +
+    "INSERT OR IGNORE INTO chapters(id, title, sort_order, document_id, revision, volume_title, content_json, content_hash, updated_at, hidden) VALUES " +
       DEMO_CHAPTERS.map(
         (chapter, order) =>
           "(" +
@@ -523,10 +523,12 @@ export function demoSeedStatements(options: DemoSeedOptions): string[] {
         ");",
     );
   }
-
   // 校订建议每次重置为固定状态：上一次运行的审核结果不能污染本轮断言。
+  // 必须同时限定 document_id：别的文章里存在同名 ID 时，删掉的就是用户的真实数据。
   statements.push(
-    "DELETE FROM suggestions WHERE id IN (" +
+    "DELETE FROM suggestions WHERE document_id = " +
+      quote(DEMO_DOCUMENT_ID) +
+      " AND id IN (" +
       DEMO_SUGGESTIONS.map((suggestion) => quote(suggestion.id)).join(", ") +
       ");",
   );

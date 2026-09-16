@@ -122,4 +122,19 @@ pnpm --filter @ricetext/worker exec wrangler d1 execute DB --local --file <种�
 ```
 
 schema 只有 `apps/worker/migrations` 一份来源：种子只写数据、不建表，因此不会出现两套
-schema 各自漂移。
+schema 各自漂移。本地开发库（`apps/worker/.wrangler/state`）用 `pnpm cf:seed:local` 播种。
+
+`pnpm cf:e2e:prepare` 会**清空目标 D1**，因此必须带 `CF_E2E_PERSIST_TO`（Playwright 会传
+`.data/cloudflare-e2e-state`）。缺少该变量、或目标覆盖到开发者状态目录时命令直接失败，
+不会拿真实创作数据当测试数据。
+
+## 抢救本地 D1 数据
+
+本地 D1 被误清空或误覆盖时，只要还有一份 D1 转储（例如 `.data/d1-local.sql`）就能按文章
+重新抽出来，不依赖原 schema 版本：
+
+```bash
+pnpm db:recover-dump -- --source .data/d1-local.sql --documents article_xxx,article_yyy
+# 先看输出确认列与当前 schema 一致、没有混进演示文章，再导入（导入前备份状态目录）：
+pnpm --filter @ricetext/worker exec wrangler d1 execute DB --local --persist-to ../../apps/worker/.wrangler/state --file ../../.data/recovered/recover.sql
+```

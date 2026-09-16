@@ -32,7 +32,14 @@ describe("schema 持久化往返", () => {
       expect(editor.commands.updateAttributes("heading", { chapterStart: true })).toBe(true);
       expect(editor.commands.adjustIndent("firstLineIndent", 2)).toBe(true);
       const heading = roundTrip(editor).content![0]!;
-      expect(heading.attrs).toEqual({ textAlign: "center", chapterStart: true, firstLineIndent: 2, leftIndent: 0, level: 2 });
+      expect(heading.attrs).toEqual({
+        textAlign: "center",
+        chapterStart: true,
+        firstLineIndent: 2,
+        leftIndent: 0,
+        level: 2,
+        chapterId: null,
+      });
       expect(heading.content![0]!.marks).toContainEqual({ type: "textStyle", attrs: { color: "#197c73", fontFamily: "Noto Serif SC", fontSize: "18px" } });
       expect(editor.chain().selectAll().setParagraph().toggleOrderedList().run()).toBe(true);
       expect(roundTrip(editor).content![0]!.attrs).toEqual({ start: 1, type: null });
@@ -59,7 +66,14 @@ describe("schema 持久化往返", () => {
     ] };
     const read = parseDocumentJson(JSON.stringify(legacy));
     expect(read.issues).toEqual([]);
-    expect(read.document.content![0]!.attrs).toEqual({ textAlign: "left", chapterStart: false, firstLineIndent: 0, leftIndent: 0, level: 2 });
+    expect(read.document.content![0]!.attrs).toEqual({
+      textAlign: "left",
+      chapterStart: false,
+      firstLineIndent: 0,
+      leftIndent: 0,
+      level: 2,
+      chapterId: null,
+    });
     expect(read.document.content![1]!.attrs).toEqual({ start: 4, type: null });
     expect(read.document.content![2]!.attrs).toMatchObject({ bookTitle: "Book", variant: "fanqie", readerTime: "", batteryLevel: 100, pageLabel: "1/1" });
     expect(read.document.content![3]!.attrs).toEqual({ chapterId: "c1", title: "", volumeTitle: "", text: "Legacy text", order: 0, start: null, end: null });

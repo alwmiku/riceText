@@ -102,6 +102,7 @@ describe("持久化 schema 规则", () => {
       firstLineIndent: 0,
       leftIndent: 0,
       level: 1,
+      chapterId: null,
     });
     expect(defaults("orderedList")).toEqual({ start: 1, type: null });
     expect(defaults("codeBlock")).toEqual({ language: null });

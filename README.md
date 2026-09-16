@@ -107,6 +107,8 @@ Unicode 表情与颜文字存为普通文本；站点自定义表情是行内原
 
 正文只持久化白名单 Tiptap JSON；图片二进制不会嵌入正文。文档保存使用递增 revision、`baseRevision` 与 `clientMutationId` 实现乐观并发与幂等写入，不依赖内容 Hash 或静默覆盖；章节差异同步则使用内容哈希做最小上传。客户端与服务端都按 schema 白名单校验/净化 JSON，拒绝未知节点、危险 URL、任意样式与 base64 媒体。
 
+章节身份是 `chapter-<uuid>`，创建时铸造一次，移动、改名、改正文都不变；ID 不含位置，代码不得从它反解章号，位置只由服务端的 `order` 给出。读、存、删、隐藏、换序、批量上传与建议定位一律以 `chapterId` 寻址；换序请求用有序 id 列表表达意图，数组下标即目标顺序。历史 ID（`chapter-<order>`、`chapter-v1-<hash>` 等）不迁移，按不透明身份继续可用。
+
 ## 接口说明
 
 `packages/contracts` 是接口与类型的单一来源：所有路由、请求/响应 schema 与类型化客户端 `createApiClient` 均由同一份契约生成，`apps/web` 的 API 层直接复用该客户端。执行 `pnpm.cmd --filter @ricetext/contracts openapi` 可重新生成 `docs/openapi.yaml`；生成的 OpenAPI 3.1 包含中文用途、权限、请求/响应字段、状态码与示例，路由通过 `x-implementation-status` 标记 `implemented`（已实现）。

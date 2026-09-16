@@ -148,9 +148,9 @@ const twoChapterDoc: DocumentEnvelope = {
     content: [
       // 书名是章内小标题（H2）；章节标题统一是 H1 + chapterStart。
       { type: 'heading', attrs: { level: 2, chapterStart: false }, content: [{ type: 'text', text: '雾港来信' }] },
-      { type: 'heading', attrs: { level: 1, chapterStart: true }, content: [{ type: 'text', text: '第一章 潮汐表' }] },
+      { type: 'heading', attrs: { level: 1, chapterStart: true, chapterId: 'stable-0' }, content: [{ type: 'text', text: '第一章 潮汐表' }] },
       { type: 'paragraph', content: [{ type: 'text', text: '潮声沿着旧城墙漫上来。' }] },
-      { type: 'heading', attrs: { level: 1, chapterStart: true }, content: [{ type: 'text', text: '第二章 陌生船票' }] },
+      { type: 'heading', attrs: { level: 1, chapterStart: true, chapterId: 'stable-1' }, content: [{ type: 'text', text: '第二章 陌生船票' }] },
       { type: 'paragraph', content: [{ type: 'text', text: '他在抽屉底层找到一张陌生的船票。' }] },
     ],
   },
@@ -187,10 +187,11 @@ describe('ComposePage', () => {
     mocks.realEditor = null;
     mocks.editorReady.mockReset();
     mocks.autosave.mockReset().mockReturnValue(autosaveValue());
-    mocks.createDocumentChapter.mockReset().mockImplementation(async (_documentId: string, input: { title: string; order: number }) => ({
-      id: 'chapter-' + String(input.order),
+    // 真实服务端把请求里的章节身份原样写入目录并返回同一身份。
+    mocks.createDocumentChapter.mockReset().mockImplementation(async (_documentId: string, input: { title: string; chapterId?: string }) => ({
+      id: input.chapterId!,
       title: input.title,
-      order: input.order,
+      order: 0,
       documentId: 'demo-post',
       revision: 0,
       savedAt: '2026-09-01T20:00:00.000Z',
@@ -431,10 +432,10 @@ describe('ComposePage', () => {
     expect(
       screen.getByText(/已删除章节「第一章 潮汐表」/),
     ).toBeInTheDocument();
-    // 目录行通过删除章节接口清理（幂等）。
+    // 目录行通过删除章节接口清理（幂等）；身份取自正文标题节点。
     expect(mocks.deleteDocumentChapter).toHaveBeenCalledWith(
       'demo-post',
-      'chapter-0',
+      'stable-0',
     );
   });
 
@@ -748,8 +749,10 @@ describe('ComposePage', () => {
     expect(mocks.getLongTextChapter).not.toHaveBeenCalled();
     mocks.listForumChapters.mockResolvedValue([rows[0]!]);
     fireEvent.click(screen.getByRole('button', { name: '模拟删除当前章节' }));
+    // 删除按身份命中服务器行：位置变了也不会删错章节。
     await waitFor(() => expect(mocks.deleteDocumentChapter).toHaveBeenCalledWith('demo-post', 'stable-1'));
-    expect(screen.getByTestId('editor').dataset.content).toContain('潮声沿着旧城墙');
+    // 删除后页面回落到剩下的一章：正文与目录都指向同一实体。
+    await waitFor(() => expect(screen.getByTestId('editor').dataset.content).toContain('潮声沿着旧城墙'));
     expect(screen.getByTestId('editor').dataset.content).not.toContain('陌生的船票');
   });
 

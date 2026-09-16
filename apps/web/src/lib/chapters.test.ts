@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { JSONContent } from "@ricetext/editor-core";
-import { mergeChapter, splitDocumentByHeadings } from "./chapters";
+import { ensureChapterIdentity, mergeChapter, splitDocumentByHeadings } from "./chapters";
 
 /** 章节标题：H1 + chapterStart（H1 是唯一的分章层级）。 */
 const chapter = (text: string): JSONContent => ({
@@ -111,5 +111,91 @@ describe("splitDocumentByHeadings", () => {
       type: "doc",
       content: [chapter("第一章"), paragraph("新正文"), chapter("第二章"), paragraph("保留")],
     });
+  });
+});
+
+describe("ensureChapterIdentity", () => {
+  const tagged = (text: string, chapterId: string): JSONContent => ({
+    type: "heading",
+    attrs: { level: 1, chapterStart: true, chapterId },
+    content: [{ type: "text", text }],
+  });
+  const idOf = (node: JSONContent): unknown => node.attrs?.chapterId;
+
+  it("补铸一次后就固定下来，后续调用不再改动正文", () => {
+    const document: JSONContent = {
+      type: "doc",
+      content: [chapter("第一章"), paragraph("正文")],
+    };
+    const first = ensureChapterIdentity(document);
+    expect(first.changed).toBe(true);
+    expect(idOf(first.content.content![0]!)).toMatch(/^chapter-[0-9a-f-]{36}$/u);
+
+    const second = ensureChapterIdentity(first.content);
+    expect(second.changed).toBe(false);
+    expect(second.content).toBe(first.content);
+  });
+
+  it("第一次保存复用服务器目录里的身份，而不是另铸一个", () => {
+    // 旧正文没有 chapterId，但目录里已经有这一章：必须沿用目录 id，
+    // 否则目录行会变成孤儿，章节历史与版本号全部错位。
+    const result = ensureChapterIdentity(
+      { type: "doc", content: [chapter("第一章"), chapter("第二章")] },
+      (index) => ["stable-0", "stable-1"][index],
+    );
+    expect(result.content.content!.map(idOf)).toEqual(["stable-0", "stable-1"]);
+  });
+
+  it("目录里没有的章节才现铸，且不与已有身份冲突", () => {
+    const result = ensureChapterIdentity(
+      { type: "doc", content: [tagged("第一章", "stable-0"), chapter("第二章")] },
+      () => undefined,
+    );
+    const ids = result.content.content!.map(idOf) as string[];
+    expect(ids[0]).toBe("stable-0");
+    expect(ids[1]).toMatch(/^chapter-[0-9a-f-]{36}$/u);
+    expect(ids[1]).not.toBe(ids[0]);
+  });
+
+  it("移动章节只改顺序：身份跟着标题节点走", () => {
+    const document: JSONContent = {
+      type: "doc",
+      content: [tagged("第一章", "stable-0"), tagged("第二章", "stable-1")],
+    };
+    const moved: JSONContent = {
+      type: "doc",
+      content: [document.content![1]!, document.content![0]!],
+    };
+    const result = ensureChapterIdentity(moved);
+    expect(result.changed).toBe(false);
+    expect(result.content.content!.map(idOf)).toEqual(["stable-1", "stable-0"]);
+  });
+
+  it("没有章节标题的正文保持原样", () => {
+    const document: JSONContent = {
+      type: "doc",
+      content: [paragraph("整篇正文")],
+    };
+    const result = ensureChapterIdentity(document);
+    expect(result.changed).toBe(false);
+    expect(result.content).toEqual(document);
+  });
+
+  it("改标题与改正文都不影响身份", () => {
+    const first = ensureChapterIdentity({
+      type: "doc",
+      content: [chapter("第一章"), paragraph("初稿")],
+    });
+    const id = idOf(first.content.content![0]!);
+    const edited: JSONContent = {
+      type: "doc",
+      content: [
+        { ...chapter("改名后的第一章"), attrs: first.content.content![0]!.attrs },
+        paragraph("改过的正文"),
+      ],
+    };
+    const result = ensureChapterIdentity(edited);
+    expect(result.changed).toBe(false);
+    expect(idOf(result.content.content![0]!)).toBe(id);
   });
 });

@@ -47,6 +47,36 @@ describe("chapter document operations", () => {
     expect(getChapterRange(document, 1)).toEqual({ start: 4, end: 6 });
   });
 
+  it("章节身份取自标题节点，没有属性时才回落到位置", () => {
+    const tagged = (text: string, id: string): JSONContent => ({
+      type: "heading",
+      attrs: { level: 1, chapterStart: true, chapterId: id },
+      content: [{ type: "text", text }],
+    });
+    const result = splitDocumentByChapters({
+      type: "doc",
+      content: [tagged("第一章", "chapter-aaaa"), paragraph("一"), chapter("第二章")],
+    });
+    expect(result.chapters.map((item) => item.id)).toEqual(["chapter-aaaa", "chapter-1"]);
+
+    // 身份随节点移动：交换两块顺序后，ID 跟着各自的标题走，位置只影响下标。
+    const moved = splitDocumentByChapters({
+      type: "doc",
+      content: [chapter("第二章"), tagged("第一章", "chapter-aaaa")],
+    });
+    expect(moved.chapters.map((item) => item.id)).toEqual(["chapter-0", "chapter-aaaa"]);
+  });
+
+  it("空 chapterId 不算身份", () => {
+    const blank: JSONContent = {
+      type: "heading",
+      attrs: { level: 1, chapterStart: true, chapterId: "" },
+      content: [{ type: "text", text: "第一章" }],
+    };
+    const result = splitDocumentByChapters({ type: "doc", content: [blank] });
+    expect(result.chapters[0]!.id).toBe("chapter-0");
+  });
+
   it("把历史文档的 H2 章节标题升为 H1，目录不会被清空", () => {
     const legacy: JSONContent = {
       type: "doc",
