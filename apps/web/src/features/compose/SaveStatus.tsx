@@ -19,6 +19,7 @@ export function SaveStatus({
   savedAt,
 }: {
   state: SaveState;
+  /** 当前章节版本；文档全局修订号只在历史面板中展示。 */
   revision: number;
   savedAt: string;
 }) {
@@ -44,13 +45,9 @@ export function SaveStatus({
         <span className={`h-[7px] w-[7px] rounded-full ${dotColor}`} />
       )}
       <span>
-        {statusLabels[state]} · v{revision}
+        {statusLabels[state]} · 章节 v{revision}
       </span>
-      {(
-        state === "saved" ||
-        state === "local-saved" ||
-        state === "offline"
-      ) ? (
+      {state === "saved" || state === "local-saved" || state === "offline" ? (
         <span className="max-[840px]:hidden">· {formatTime(savedAt)}</span>
       ) : null}
     </span>

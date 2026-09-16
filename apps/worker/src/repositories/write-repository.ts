@@ -11,6 +11,7 @@ import {
   applyStepsToDocument,
   createDocumentSchema,
   documentsEqual,
+  replaceChapter,
   splitDocumentByChapters,
   type JSONContent,
   type StepJson,
@@ -30,11 +31,6 @@ type DocumentPointerRow = {
 type MutationRow = {
   request_json: string;
   revision: number;
-};
-
-type RevisionContentRow = {
-  schema_version: number;
-  content_json: string;
 };
 
 type WriteOperation = "update" | "rollback" | "suggestion" | "steps";
@@ -201,25 +197,41 @@ export class D1WriteRepository {
     request: RollbackDocumentRequest,
     authorId: string,
   ): Promise<DocumentWriteResult> {
-    const target = await this.db
-      .prepare(
-        "SELECT schema_version, content_json FROM document_revisions " +
-          "WHERE document_id = ? AND revision = ?",
-      )
-      .bind(documentId, request.targetRevision)
-      .first<RevisionContentRow>();
-    if (!target) throw new WorkerHttpError(404, "REVISION_NOT_FOUND", "目标修订不存在");
+    const targetDocumentRevision = await this.reads.documentRevisionForChapter(
+      documentId,
+      request.chapterId,
+      request.targetRevision,
+    );
+    const [target, current] = await Promise.all([
+      this.reads.revision(documentId, targetDocumentRevision),
+      this.reads.document(documentId),
+    ]);
+    const targetChapter = splitDocumentByChapters(
+      target.content as unknown as JSONContent,
+    ).chapters.find((chapter) => chapter.id === request.chapterId);
+    const currentChapters = splitDocumentByChapters(
+      current.content as unknown as JSONContent,
+    ).chapters;
+    const currentIndex = currentChapters.findIndex((chapter) => chapter.id === request.chapterId);
+    if (!targetChapter || currentIndex < 0) {
+      throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "目标章节在历史或当前正文中不存在");
+    }
+    const content = replaceChapter(current.content as unknown as JSONContent, currentIndex, {
+      type: "doc",
+      content: targetChapter.blocks,
+    });
     return this.write({
       documentId,
       baseRevision: request.baseRevision,
       mutationId: request.clientMutationId,
       requestJson: JSON.stringify(request),
-      schemaVersion: target.schema_version,
-      content: sanitizeDocumentForWrite(JSON.parse(target.content_json)),
+      schemaVersion: current.schemaVersion,
+      content: sanitizeDocumentForWrite(content),
       authorId,
       operation: "rollback",
-      targetRevision: request.targetRevision,
+      targetRevision: targetDocumentRevision,
       stepsJson: null,
+      chapterId: request.chapterId,
     });
   }
 

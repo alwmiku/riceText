@@ -26,6 +26,8 @@ type DocumentRow = {
 
 type RevisionRow = {
   revision: number;
+  chapter_revision?: number;
+  chapter_target_revision?: number | null;
   schema_version: number;
   steps_json: string | null;
   author_id: string;
@@ -85,7 +87,66 @@ export class D1ReadRepository {
     return envelope(row);
   }
 
-  async revision(documentId: string, revision: number): Promise<DocumentEnvelope> {
+  /** 判断初始快照是否真实包含目标章节；目录位置相同不能视为同一章节。 */
+  private async seedContainsChapter(documentId: string, chapterId: string): Promise<number> {
+    const chapter = await this.db
+      .prepare("SELECT 1 AS found FROM chapters WHERE document_id = ? AND id = ?")
+      .bind(documentId, chapterId)
+      .first<{ found: number }>();
+    if (!chapter) throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节不存在");
+    const seed = await this.db
+      .prepare(
+        "SELECT content_json FROM document_revisions " +
+          "WHERE document_id = ? AND operation = 'seed' ORDER BY revision LIMIT 1",
+      )
+      .bind(documentId)
+      .first<{ content_json: string }>();
+    if (!seed) return 0;
+    const content = repairDocumentForRead(JSON.parse(seed.content_json));
+    return splitDocumentByChapters(content as unknown as JSONContent).chapters.some(
+      (chapterSection) => chapterSection.id === chapterId,
+    )
+      ? 1
+      : 0;
+  }
+
+  /** 把章节内版本号映射到内部文档快照号；全局号不会暴露给章节历史调用方。 */
+  async documentRevisionForChapter(
+    documentId: string,
+    chapterId: string,
+    chapterRevision: number,
+  ): Promise<number> {
+    const includeSeed = await this.seedContainsChapter(documentId, chapterId);
+    const row = await this.db
+      .prepare(
+        [
+          "WITH scoped AS (",
+          "SELECT revision.revision AS document_revision,",
+          "ROW_NUMBER() OVER (ORDER BY revision.revision) AS chapter_revision",
+          "FROM document_revisions revision",
+          "WHERE revision.document_id = ?",
+          "AND ((revision.operation = 'seed' AND ? = 1) OR EXISTS (",
+          "SELECT 1 FROM document_mutations mutation",
+          "WHERE mutation.document_id = revision.document_id",
+          "AND mutation.revision = revision.revision",
+          "AND json_extract(mutation.request_json, '$.chapterId') = ?))",
+          ") SELECT document_revision FROM scoped WHERE chapter_revision = ?",
+        ].join(" "),
+      )
+      .bind(documentId, includeSeed, chapterId, chapterRevision)
+      .first<{ document_revision: number }>();
+    if (!row) throw new WorkerHttpError(404, "REVISION_NOT_FOUND", "章节版本不存在");
+    return row.document_revision;
+  }
+
+  async revision(
+    documentId: string,
+    revision: number,
+    chapterId?: string,
+  ): Promise<DocumentEnvelope> {
+    const documentRevision = chapterId
+      ? await this.documentRevisionForChapter(documentId, chapterId, revision)
+      : revision;
     const sql = [
       "SELECT document.id, document.title, revision.schema_version,",
       "revision.revision, revision.content_json, revision.created_at",
@@ -93,8 +154,8 @@ export class D1ReadRepository {
       "JOIN document_revisions revision ON revision.document_id = document.id",
       "WHERE document.id = ? AND revision.revision = ?",
     ].join(" ");
-    const row = await this.db.prepare(sql).bind(documentId, revision).first<DocumentRow>();
-    if (!row) throw new WorkerHttpError(404, "REVISION_NOT_FOUND", "文档或版本不存在");
+    const row = await this.db.prepare(sql).bind(documentId, documentRevision).first<DocumentRow>();
+    if (!row) throw new WorkerHttpError(404, "REVISION_NOT_FOUND", "文档或修订不存在");
     return envelope(row);
   }
 
@@ -112,74 +173,88 @@ export class D1ReadRepository {
 
     const cursorRevision = cursor ? Number(cursor) : Number.MAX_SAFE_INTEGER;
     if (!Number.isSafeInteger(cursorRevision) || cursorRevision < 1) {
-      throw new WorkerHttpError(422, "INVALID_CURSOR", "版本 cursor 必须是正整数 revision");
+      throw new WorkerHttpError(422, "INVALID_CURSOR", "版本 cursor 必须是正整数");
     }
-    let includeSeed = 0;
+
+    let rows: RevisionRow[];
     if (chapterId) {
-      const chapter = await this.db
-        .prepare("SELECT sort_order FROM chapters WHERE document_id = ? AND id = ?")
-        .bind(documentId, chapterId)
-        .first<{ sort_order: number }>();
-      if (!chapter) throw new WorkerHttpError(404, "CHAPTER_NOT_FOUND", "章节不存在");
-      const seed = await this.db
-        .prepare(
-          "SELECT content_json FROM document_revisions " +
-            "WHERE document_id = ? AND operation = 'seed' ORDER BY revision LIMIT 1",
-        )
-        .bind(documentId)
-        .first<{ content_json: string }>();
-      if (seed) {
-        const content = repairDocumentForRead(JSON.parse(seed.content_json));
-        includeSeed = splitDocumentByChapters(content as unknown as JSONContent).chapters[
-          chapter.sort_order
-        ]
-          ? 1
-          : 0;
-      }
+      const includeSeed = await this.seedContainsChapter(documentId, chapterId);
+      const sql = [
+        "WITH scoped AS (",
+        "SELECT revision.revision AS document_revision, revision.schema_version,",
+        "revision.steps_json, revision.author_id, user.name AS author_name,",
+        "revision.operation, revision.target_revision, revision.created_at,",
+        "ROW_NUMBER() OVER (ORDER BY revision.revision) AS chapter_revision,",
+        "(SELECT CAST(json_extract(mutation.request_json, '$.targetRevision') AS INTEGER)",
+        "FROM document_mutations mutation",
+        "WHERE mutation.document_id = revision.document_id",
+        "AND mutation.revision = revision.revision LIMIT 1) AS chapter_target_revision",
+        "FROM document_revisions revision",
+        "LEFT JOIN users user ON user.id = revision.author_id",
+        "WHERE revision.document_id = ?",
+        "AND ((revision.operation = 'seed' AND ? = 1) OR EXISTS (",
+        "SELECT 1 FROM document_mutations mutation",
+        "WHERE mutation.document_id = revision.document_id",
+        "AND mutation.revision = revision.revision",
+        "AND json_extract(mutation.request_json, '$.chapterId') = ?))",
+        ") SELECT document_revision AS revision, chapter_revision, chapter_target_revision,",
+        "schema_version, steps_json, author_id, author_name, operation, target_revision, created_at",
+        "FROM scoped WHERE chapter_revision < ? ORDER BY chapter_revision DESC LIMIT ?",
+      ].join(" ");
+      rows = (
+        await this.db
+          .prepare(sql)
+          .bind(documentId, includeSeed, chapterId, cursorRevision, limit + 1)
+          .all<RevisionRow>()
+      ).results;
+    } else {
+      const sql = [
+        "SELECT revision.revision, revision.schema_version, revision.steps_json,",
+        "revision.author_id, user.name AS author_name, revision.operation,",
+        "revision.target_revision, revision.created_at",
+        "FROM document_revisions revision",
+        "LEFT JOIN users user ON user.id = revision.author_id",
+        "WHERE revision.document_id = ? AND revision.revision < ?",
+        "ORDER BY revision.revision DESC LIMIT ?",
+      ].join(" ");
+      rows = (
+        await this.db
+          .prepare(sql)
+          .bind(documentId, cursorRevision, limit + 1)
+          .all<RevisionRow>()
+      ).results;
     }
-    const chapterClause = chapterId
-      ? [
-          "AND ((revision.operation = 'seed' AND ? = 1) OR EXISTS (",
-          "SELECT 1 FROM document_mutations mutation",
-          "WHERE mutation.document_id = revision.document_id",
-          "AND mutation.revision = revision.revision",
-          "AND json_extract(mutation.request_json, '$.chapterId') = ?))",
-        ].join(" ")
-      : "";
-    const bindings: (string | number)[] = [documentId, cursorRevision];
-    if (chapterId) bindings.push(includeSeed, chapterId);
-    bindings.push(limit + 1);
-    const sql = [
-      "SELECT revision.revision, revision.schema_version, revision.steps_json,",
-      "revision.author_id, user.name AS author_name, revision.operation,",
-      "revision.target_revision, revision.created_at",
-      "FROM document_revisions revision",
-      "LEFT JOIN users user ON user.id = revision.author_id",
-      "WHERE revision.document_id = ? AND revision.revision < ?",
-      chapterClause,
-      "ORDER BY revision.revision DESC LIMIT ?",
-    ].join(" ");
-    const result = await this.db.prepare(sql).bind(...bindings).all<RevisionRow>();
-    const hasMore = result.results.length > limit;
-    const page = result.results.slice(0, limit);
+
+    const hasMore = rows.length > limit;
+    const page = rows.slice(0, limit);
     return RevisionPageSchema.parse({
-      items: page.map((row) => ({
-        revision: row.revision,
-        schemaVersion: row.schema_version,
-        savedAt: row.created_at,
-        authorId: row.author_id,
-        authorName: row.author_name ?? row.author_id,
-        operation: row.operation,
-        summary:
-          row.operation === "rollback" && row.target_revision !== null
-            ? "回退到版本 " + String(row.target_revision)
-            : revisionSummary[row.operation],
-        stepsSummary: row.steps_json
-          ? describeStepsJson(JSON.parse(row.steps_json) as StepJson[])
+      items: page.map((row) => {
+        const visibleRevision = chapterId ? row.chapter_revision! : row.revision;
+        const targetRevision = chapterId
+          ? (row.chapter_target_revision ?? null)
+          : row.target_revision;
+        return {
+          revision: visibleRevision,
+          schemaVersion: row.schema_version,
+          savedAt: row.created_at,
+          authorId: row.author_id,
+          authorName: row.author_name ?? row.author_id,
+          operation: row.operation,
+          summary:
+            row.operation === "rollback" && targetRevision !== null
+              ? "回退到章节版本 " + String(targetRevision)
+              : revisionSummary[row.operation],
+          stepsSummary: row.steps_json
+            ? describeStepsJson(JSON.parse(row.steps_json) as StepJson[])
+            : null,
+          targetRevision,
+        };
+      }),
+      pageInfo: {
+        nextCursor: hasMore
+          ? String(chapterId ? page.at(-1)!.chapter_revision : page.at(-1)!.revision)
           : null,
-        targetRevision: row.target_revision,
-      })),
-      pageInfo: { nextCursor: hasMore ? String(page.at(-1)!.revision) : null },
+      },
     });
   }
 

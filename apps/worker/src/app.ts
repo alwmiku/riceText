@@ -14,6 +14,7 @@ import {
   ReviewSuggestionBatchRequestSchema,
   ReviewSuggestionRequestSchema,
   RevisionQuerySchema,
+  RevisionSnapshotQuerySchema,
   SaveNovelChapterRequestSchema,
   SubmitPollVoteRequestSchema,
   SyncNovelChaptersRequestSchema,
@@ -475,8 +476,13 @@ export function createWorkerApp(): Hono<AppBindings> {
       revision: string;
     };
     const principal = await requirePrincipal(context);
+    const query = RevisionSnapshotQuerySchema.parse(context.req.query());
     const repository = new D1ReadRepository(context.env.DB);
-    const result = await repository.revision(input.documentId, Number(input.revision));
+    const result = await repository.revision(
+      input.documentId,
+      Number(input.revision),
+      query.chapterId,
+    );
     const visible = await visibleEnvelope(
       context.env.DB,
       result,

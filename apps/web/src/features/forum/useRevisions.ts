@@ -7,12 +7,12 @@ export function useRevisions(documentId: string, chapterId?: string) {
   const chapterRegistered = Boolean(chapterId);
   const revisionsQuery = useQuery({
     queryKey: forumQueryKeys.revisions(documentId, chapterId),
-    queryFn: ({ signal }) => getRevisions(documentId, chapterId, signal),
+    queryFn: ({ signal }) => getRevisions(documentId, chapterId!, signal),
     enabled: chapterRegistered,
   });
 
   return {
-    revisions: chapterRegistered ? revisionsQuery.data ?? [] : [],
+    revisions: chapterRegistered ? (revisionsQuery.data ?? []) : [],
     isLoading: revisionsQuery.isLoading,
     error: revisionsQuery.error,
   };

@@ -82,6 +82,7 @@ describe("RevisionComparison", () => {
         onExit={vi.fn()}
       />,
     );
+    expect(screen.getByText("章节版本 17 与现有内容 · 第一章")).toBeInTheDocument();
     expect(screen.getByText("1 处内容块变化")).toBeInTheDocument();
     await waitFor(() => expect(container.querySelectorAll(".ProseMirror")).toHaveLength(1));
     expect(container.querySelector('[data-version-side="history"] strong')).toHaveTextContent(

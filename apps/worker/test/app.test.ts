@@ -2,7 +2,7 @@
 import { createExecutionContext } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { contractRoutes } from "@ricetext/contracts";
-import { createDocumentSchema, diffDocuments, sanitizeDocument } from "@ricetext/document-core";
+import { createDocumentSchema, diffDocuments } from "@ricetext/document-core";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { http, HttpResponse } from "msw";
 import { cleanupStaleAssets, D1AssetRepository } from "../src/repositories/asset-repository";
@@ -188,9 +188,12 @@ describe("RiceText Worker", () => {
     });
 
     const revisionResponse = await exports.default.fetch(
-      new Request("http://example.com/api/documents/demo-post/revisions?limit=10", {
-        headers: { "x-user-id": "reader" },
-      }),
+      new Request(
+        "http://example.com/api/documents/demo-post/revisions?limit=10&chapterId=chapter-0",
+        {
+          headers: { "x-user-id": "reader" },
+        },
+      ),
     );
     expect(revisionResponse.status).toBe(200);
     await expect(revisionResponse.json()).resolves.toMatchObject({
@@ -563,50 +566,107 @@ describe("RiceText Worker", () => {
     expect(revisionCount?.count).toBe(2);
   });
 
-  it("通过创建新的不可变修订执行回滚", async () => {
-    const saveResponse = await exports.default.fetch(
-      new Request("http://example.com/api/documents/demo-post", {
-        method: "PUT",
-        headers: { "content-type": "application/json", "x-user-id": "author" },
-        body: JSON.stringify({
-          schemaVersion: 1,
-          baseRevision: 1,
-          clientMutationId: "before-rollback",
-          content: {
-            type: "doc",
-            content: [
-              {
-                type: "paragraph",
-                attrs: { textAlign: "left" },
-                content: [{ type: "text", text: "将被回滚" }],
-              },
-            ],
-          },
+  it("按章节版本回退且不改变其他章节", async () => {
+    const chapterDocument = (first: string, second: string) => ({
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 1, chapterStart: true, chapterId: "chapter-a" },
+          content: [{ type: "text", text: "章节 A" }],
+        },
+        { type: "paragraph", content: [{ type: "text", text: first }] },
+        {
+          type: "heading",
+          attrs: { level: 1, chapterStart: true, chapterId: "chapter-b" },
+          content: [{ type: "text", text: "章节 B" }],
+        },
+        { type: "paragraph", content: [{ type: "text", text: second }] },
+      ],
+    });
+    const initial = chapterDocument("A 初始内容", "B 初始内容");
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE document_revisions SET content_json = ? WHERE document_id = ? AND revision = 1",
+      ).bind(JSON.stringify(initial), "demo-post"),
+      env.DB.prepare("DELETE FROM chapters WHERE document_id = ?").bind("demo-post"),
+      env.DB.prepare(
+        "INSERT INTO chapters(id,title,sort_order,document_id,revision,updated_at,hidden) VALUES(?,?,?,?,1,?,0)",
+      ).bind("chapter-a", "章节 A", 0, "demo-post", now),
+      env.DB.prepare(
+        "INSERT INTO chapters(id,title,sort_order,document_id,revision,updated_at,hidden) VALUES(?,?,?,?,1,?,0)",
+      ).bind("chapter-b", "章节 B", 1, "demo-post", now),
+    ]);
+    const save = (baseRevision: number, chapterId: string, nextContent: unknown) =>
+      exports.default.fetch(
+        new Request("http://example.com/api/documents/demo-post", {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-user-id": "author" },
+          body: JSON.stringify({
+            schemaVersion: 1,
+            baseRevision,
+            clientMutationId: "save-" + chapterId,
+            chapterId,
+            content: nextContent,
+          }),
         }),
+      );
+    expect((await save(1, "chapter-a", chapterDocument("A 修改内容", "B 初始内容"))).status).toBe(
+      201,
+    );
+    expect((await save(2, "chapter-b", chapterDocument("A 修改内容", "B 修改内容"))).status).toBe(
+      201,
+    );
+
+    const before = await exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post/revisions?chapterId=chapter-a", {
+        headers: { "x-user-id": "author" },
       }),
     );
-    expect(saveResponse.status).toBe(201);
+    await expect(before.json()).resolves.toMatchObject({
+      items: [{ revision: 2 }, { revision: 1 }],
+    });
 
     const rollback = await exports.default.fetch(
       new Request("http://example.com/api/documents/demo-post/rollback", {
         method: "POST",
         headers: { "content-type": "application/json", "x-user-id": "author" },
         body: JSON.stringify({
-          baseRevision: 2,
+          baseRevision: 3,
+          chapterId: "chapter-a",
           targetRevision: 1,
-          clientMutationId: "rollback-to-1",
+          clientMutationId: "rollback-chapter-a-to-1",
         }),
       }),
     );
     expect(rollback.status).toBe(201);
     const result = (await rollback.json()) as { revision: number; content: unknown };
-    expect(result.revision).toBe(3);
-    expect(result.content).toEqual(sanitizeDocument(content));
+    expect(result.revision).toBe(4);
+    expect(JSON.stringify(result.content)).toContain("A 初始内容");
+    expect(JSON.stringify(result.content)).toContain("B 修改内容");
+    expect(JSON.stringify(result.content)).not.toContain("A 修改内容");
 
-    const operation = await env.DB.prepare(
-      "SELECT operation, target_revision FROM document_revisions WHERE revision = 3",
-    ).first<{ operation: string; target_revision: number }>();
-    expect(operation).toEqual({ operation: "rollback", target_revision: 1 });
+    const after = await exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post/revisions?chapterId=chapter-a", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    await expect(after.json()).resolves.toMatchObject({
+      items: [
+        { revision: 3, operation: "rollback", targetRevision: 1 },
+        { revision: 2 },
+        { revision: 1 },
+      ],
+    });
+    const chapterRows = await env.DB.prepare(
+      "SELECT id, revision FROM chapters WHERE document_id = ? ORDER BY id",
+    )
+      .bind("demo-post")
+      .all<{ id: string; revision: number }>();
+    expect(chapterRows.results).toEqual([
+      { id: "chapter-a", revision: 3 },
+      { id: "chapter-b", revision: 2 },
+    ]);
   });
 
   it("拒绝读者写入及不安全的文档内容", async () => {
@@ -682,7 +742,7 @@ describe("RiceText Worker", () => {
     expect(result.content.content[0]?.content?.[0]?.text).toMatch(/^海/);
 
     const history = await exports.default.fetch(
-      new Request("http://example.com/api/documents/demo-post/revisions", {
+      new Request("http://example.com/api/documents/demo-post/revisions?chapterId=chapter-0", {
         headers: { "x-user-id": "author" },
       }),
     );
@@ -1121,7 +1181,14 @@ describe("RiceText Worker", () => {
       }),
     );
     const page = (await history.json()) as { items: Array<{ revision: number }> };
-    expect(page.items.map((item) => item.revision)).toEqual([2]);
+    expect(page.items.map((item) => item.revision)).toEqual([1]);
+    const snapshot = await exports.default.fetch(
+      new Request("http://example.com/api/documents/demo-post/revisions/1?chapterId=chapter-1", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    expect(snapshot.status).toBe(200);
+    await expect(snapshot.json()).resolves.toMatchObject({ revision: 2 });
   });
 
   it("原子删除章节元数据并保留建议历史", async () => {

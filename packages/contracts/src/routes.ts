@@ -34,6 +34,7 @@ import {
   ResolveReplyGateResponseSchema,
   RevisionPageSchema,
   RevisionQuerySchema,
+  RevisionSnapshotQuerySchema,
   ReviewSuggestionBatchRequestSchema,
   ReviewSuggestionRequestSchema,
   RollbackDocumentRequestSchema,
@@ -415,7 +416,7 @@ export const contractRoutes: readonly ContractRoute[] = [
     path: "/api/documents/:documentId/revisions",
     tags: ["文档"],
     summary: "分页读取版本历史",
-    description: "按 revision 倒序返回；cursor 使用上一页最后一项的 revision。",
+    description: "带 chapterId 时按该章节自己的版本倒序返回；cursor 使用上一页最后一个章节版本。",
     params: documentParams,
     query: revisionQuery,
     responses: {
@@ -429,8 +430,10 @@ export const contractRoutes: readonly ContractRoute[] = [
     path: "/api/documents/:documentId/revisions/:revision",
     tags: ["文档"],
     summary: "读取指定历史版本",
-    description: "读取不可变 revision 的完整 Tiptap JSON，用于只读比较。",
+    description:
+      "带 chapterId 时，路径中的 revision 是该章节自己的版本号；返回对应内部快照用于只读比较。",
     params: revisionParams,
+    query: RevisionSnapshotQuerySchema,
     responses: {
       200: { description: "指定历史 revision 的完整快照。", schema: DocumentEnvelopeSchema },
       404: { description: "文档或版本不存在。", schema: ApiErrorSchema },
@@ -441,8 +444,9 @@ export const contractRoutes: readonly ContractRoute[] = [
     method: "POST",
     path: "/api/documents/:documentId/rollback",
     tags: ["文档"],
-    summary: "回退到指定版本",
-    description: "需要 author 或 moderator。回退会复制目标内容并创建新 revision，不删除任何历史。",
+    summary: "回退当前章节到指定版本",
+    description:
+      "需要 author 或 moderator。只替换目标章节，并为该章节创建下一个版本；其他章节保持不变。",
     params: documentParams,
     body: RollbackDocumentRequestSchema,
     responses: {

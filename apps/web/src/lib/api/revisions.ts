@@ -1,38 +1,40 @@
 import { createEntityId } from "@ricetext/contracts";
-import { seedRevisions } from "../seed";
 import type { DocumentEnvelope, RevisionSummary, RichTextNode } from "../types";
 import { api, isServiceUnavailable, rethrowClientError } from "./client";
 
 export async function getRevisions(
   id: string,
-  chapterId?: string,
+  chapterId: string,
   signal?: AbortSignal,
 ): Promise<RevisionSummary[]> {
   try {
-    return (await api().listRevisions(id, undefined, chapterId, signal)).items;
+    return (await api().listRevisions(id, chapterId, undefined, signal)).items;
   } catch (error) {
     if (!isServiceUnavailable(error)) rethrowClientError(error);
-    return chapterId ? [] : seedRevisions;
+    return [];
   }
 }
 
 export async function getRevision(
   id: string,
+  chapterId: string,
   revision: number,
   signal?: AbortSignal,
 ): Promise<DocumentEnvelope> {
-  const envelope = await api().getRevision(id, revision, signal);
+  const envelope = await api().getRevision(id, revision, chapterId, signal);
   return { ...envelope, content: envelope.content as unknown as RichTextNode };
 }
 
 export async function restoreRevision(
   id: string,
+  chapterId: string,
   revision: number,
   baseRevision: number,
 ): Promise<DocumentEnvelope> {
   const envelope = await api().rollbackDocument(id, {
     targetRevision: revision,
     baseRevision,
+    chapterId,
     clientMutationId: createEntityId("mutation"),
   });
   return { ...envelope, content: envelope.content as unknown as RichTextNode };

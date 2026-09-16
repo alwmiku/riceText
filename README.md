@@ -105,7 +105,7 @@ Unicode 表情与颜文字存为普通文本；站点自定义表情是行内原
 
 ## 数据与安全
 
-正文只持久化白名单 Tiptap JSON；图片二进制不会嵌入正文。文档保存使用递增 revision、`baseRevision` 与 `clientMutationId` 实现乐观并发与幂等写入，不依赖内容 Hash 或静默覆盖；章节差异同步则使用内容哈希做最小上传。客户端与服务端都按 schema 白名单校验/净化 JSON，拒绝未知节点、危险 URL、任意样式与 base64 媒体。
+正文只持久化白名单 Tiptap JSON；图片二进制不会嵌入正文。每个章节使用自己的连续 revision 作为历史、比较和回退编号；整篇快照号只作为服务端内部存储指针和并发基线，不对章节历史暴露。文档保存结合内部 `baseRevision` 与 `clientMutationId` 实现乐观并发和幂等写入，不依赖内容 Hash 或静默覆盖；章节差异同步则使用内容哈希做最小上传。客户端与服务端都按 schema 白名单校验/净化 JSON，拒绝未知节点、危险 URL、任意样式与 base64 媒体。
 
 对外可见、持久化或跨模块流转的业务 ID 统一为 `<类型前缀>_<uuid-v4>`；服务端内部 request ID、锁、认证 state 和会话 token 可保持裸 UUID 或高熵随机值。ID 不编码时间、顺序和父实体，排序与清理只依赖 `created_at`、`updated_at`、`sort_order`、`revision` 等独立字段。历史 ID 不批量重写，新代码写新格式、读取路径继续兼容旧值。
 

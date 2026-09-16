@@ -103,10 +103,10 @@ describe("Web API 客户端", () => {
 
   it("读取指定历史版本正文", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...defaultDocument, revision: 7 }));
-    const result = await getRevision("demo-post", 7);
+    const result = await getRevision("demo-post", "chapter-0", 7);
     expect(result.revision).toBe(7);
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/documents/demo-post/revisions/7",
+      "/api/documents/demo-post/revisions/7?chapterId=chapter-0",
       expect.objectContaining({ headers: expect.any(Headers) }),
     );
   });
@@ -284,20 +284,22 @@ describe("Web API 客户端", () => {
 
   it("读取版本支持服务器、网络回退和 HTTP 错误", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ items: seedRevisions.slice(0, 1) }));
-    await expect(getRevisions("demo-post")).resolves.toEqual(seedRevisions.slice(0, 1));
+    await expect(getRevisions("demo-post", "chapter-0")).resolves.toEqual(
+      seedRevisions.slice(0, 1),
+    );
 
     fetchMock.mockRejectedValueOnce(new TypeError("网络离线"));
-    await expect(getRevisions("demo-post")).resolves.toBe(seedRevisions);
+    await expect(getRevisions("demo-post", "chapter-0")).resolves.toEqual([]);
 
     // 服务不可用（代理 502/503）与断网等价，同样降级到本地历史
     fetchMock.mockResolvedValueOnce(jsonResponse(null, { status: 503 }));
-    await expect(getRevisions("demo-post")).resolves.toBe(seedRevisions);
+    await expect(getRevisions("demo-post", "chapter-0")).resolves.toEqual([]);
 
     // 业务错误（如权限不足）必须向上抛出
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ error: { code: "FORBIDDEN", message: "无权访问" } }, { status: 403 }),
     );
-    await expect(getRevisions("demo-post")).rejects.toMatchObject({
+    await expect(getRevisions("demo-post", "chapter-0")).rejects.toMatchObject({
       status: 403,
       message: "无权访问",
     });
@@ -341,11 +343,15 @@ describe("Web API 客户端", () => {
 
   it("按契约回滚指定版本", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...defaultDocument, revision: 19 }));
-    await restoreRevision("demo-post", 12, 18);
+    await restoreRevision("demo-post", "chapter-0", 12, 18);
 
     const [, init] = fetchMock.mock.calls[0]!;
     expect(init).toMatchObject({ method: "POST" });
-    expect(JSON.parse(String(init?.body))).toMatchObject({ targetRevision: 12, baseRevision: 18 });
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      targetRevision: 12,
+      baseRevision: 18,
+      chapterId: "chapter-0",
+    });
     expect(JSON.parse(String(init?.body)).clientMutationId).toMatch(/^mutation_/);
   });
 

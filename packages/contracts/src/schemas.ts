@@ -188,10 +188,11 @@ export const UpdateDocumentStepsRequestSchema = z
 /** 增量更新文档请求。 */
 export type UpdateDocumentStepsRequest = z.infer<typeof UpdateDocumentStepsRequestSchema>;
 
-/** 不可变历史版本的摘要。 */
+/** 章节作用域内的不可变历史版本摘要。 */
 export const RevisionSummarySchema = z
   .object({
-    revision: z.number().int().nonnegative(),
+    /** 当前章节自己的连续版本号，从 1 开始。 */
+    revision: z.number().int().positive(),
     schemaVersion: z.number().int().positive(),
     savedAt: DateTimeSchema,
     authorId: EntityIdSchema,
@@ -200,7 +201,7 @@ export const RevisionSummarySchema = z
     summary: z.string(),
     /** 本次修订应用的 steps 的人类可读描述（快照修订为 null）。 */
     stepsSummary: z.string().nullable(),
-    targetRevision: z.number().int().nonnegative().nullable(),
+    targetRevision: z.number().int().positive().nullable(),
   })
   .strict();
 /** 历史版本摘要。 */
@@ -214,14 +215,17 @@ export const CursorQuerySchema = z
   })
   .strict();
 
-/** 版本历史查询；chapterId 存在时只返回该章实际变化的版本。 */
+/** 章节版本历史查询；chapterId 必填，返回该章自己的连续版本号。 */
 export const RevisionQuerySchema = CursorQuerySchema.extend({
   cursor: z
     .string()
     .regex(/^[1-9]\d*$/, "版本 cursor 必须是正整数 revision")
     .optional(),
-  chapterId: EntityIdSchema.optional(),
+  chapterId: EntityIdSchema,
 }).strict();
+
+/** 指定章节历史快照查询；revision 路径参数在此作用域内是章节版本。 */
+export const RevisionSnapshotQuerySchema = z.object({ chapterId: EntityIdSchema }).strict();
 
 /** 通用游标分页信息。 */
 export const PageInfoSchema = z.object({ nextCursor: z.string().nullable() }).strict();
@@ -236,15 +240,16 @@ export const RevisionPageSchema = z
 /** 历史版本分页结果。 */
 export type RevisionPage = z.infer<typeof RevisionPageSchema>;
 
-/** 回滚会创建新版本，而不会删除旧版本。 */
+/** 章节回滚只替换目标章节，并创建该章的下一个版本。 */
 export const RollbackDocumentRequestSchema = z
   .object({
     baseRevision: z.number().int().nonnegative(),
-    targetRevision: z.number().int().nonnegative(),
+    chapterId: EntityIdSchema,
+    targetRevision: z.number().int().positive(),
     clientMutationId: EntityIdSchema,
   })
   .strict();
-/** 文档回滚请求。 */
+/** 章节版本回滚请求；baseRevision 仅作为内部整篇快照并发基线。 */
 export type RollbackDocumentRequest = z.infer<typeof RollbackDocumentRequestSchema>;
 
 /** 统一 API 错误响应。 */

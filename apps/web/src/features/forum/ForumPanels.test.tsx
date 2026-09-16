@@ -45,9 +45,7 @@ function renderWithQuery(ui: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
-  );
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
 
 const chaptersFixture = [
@@ -141,14 +139,10 @@ describe("ForumPanels", () => {
         onSelect={vi.fn()}
       />,
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "收起卷 第一卷 幼儿园卷" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "收起卷 第一卷 幼儿园卷" }));
     expect(screen.queryByText("第1章开始")).not.toBeInTheDocument();
     expect(screen.getByText("第3章入学")).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "展开卷 第一卷 幼儿园卷" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "展开卷 第一卷 幼儿园卷" }));
     expect(screen.getByText("第2章成长")).toBeInTheDocument();
   });
 
@@ -158,32 +152,25 @@ describe("ForumPanels", () => {
     mocks.listSuggestionBatchesMock.mockReset().mockResolvedValue([]);
     mocks.reviewSuggestionBatchMock.mockReset();
     mocks.listSuggestionsMock.mockReset();
-    mocks.listSuggestionsMock.mockResolvedValue(
-      structuredClone(pendingSuggestions),
-    );
+    mocks.listSuggestionsMock.mockResolvedValue(structuredClone(pendingSuggestions));
     mocks.reviewSuggestionMock.mockReset();
-    mocks.reviewSuggestionMock.mockImplementation(
-      async (id: string, decision: string) => {
-        // 真实 API 语义：审核后列表查询返回更新后的状态。
-        const reviewed = pendingSuggestions.map((suggestion) =>
-          suggestion.id === id
-            ? {
-                ...suggestion,
-                status:
-                  decision === "approve"
-                    ? ("approved" as const)
-                    : ("rejected" as const),
-                reviewerId: "author",
-              }
-            : suggestion,
-        );
-        mocks.listSuggestionsMock.mockResolvedValue(reviewed);
-        return {
-          suggestion: reviewed.find((suggestion) => suggestion.id === id)!,
-          document: null,
-        };
-      },
-    );
+    mocks.reviewSuggestionMock.mockImplementation(async (id: string, decision: string) => {
+      // 真实 API 语义：审核后列表查询返回更新后的状态。
+      const reviewed = pendingSuggestions.map((suggestion) =>
+        suggestion.id === id
+          ? {
+              ...suggestion,
+              status: decision === "approve" ? ("approved" as const) : ("rejected" as const),
+              reviewerId: "author",
+            }
+          : suggestion,
+      );
+      mocks.listSuggestionsMock.mockResolvedValue(reviewed);
+      return {
+        suggestion: reviewed.find((suggestion) => suggestion.id === id)!,
+        document: null,
+      };
+    });
     mocks.getAttachmentMock.mockReset();
     mocks.getAttachmentMock.mockResolvedValue(structuredClone(freeAttachment));
     mocks.purchaseAttachmentMock.mockReset();
@@ -202,21 +189,19 @@ describe("ForumPanels", () => {
     mocks.getPollMock.mockReset();
     mocks.getPollMock.mockResolvedValue(structuredClone(forumPoll));
     mocks.votePollMock.mockReset();
-    mocks.votePollMock.mockImplementation(
-      async (_id: string, optionIds: string[]) => {
-        // 真实 API 语义：投票后轮询查询返回更新后的票数。
-        const updated = {
-          ...structuredClone(forumPoll),
-          viewerOptionIds: optionIds,
-          options: forumPoll.options.map((option) => ({
-            ...option,
-            votes: option.votes + (optionIds.includes(option.id) ? 1 : 0),
-          })),
-        };
-        mocks.getPollMock.mockResolvedValue(updated);
-        return updated;
-      },
-    );
+    mocks.votePollMock.mockImplementation(async (_id: string, optionIds: string[]) => {
+      // 真实 API 语义：投票后轮询查询返回更新后的票数。
+      const updated = {
+        ...structuredClone(forumPoll),
+        viewerOptionIds: optionIds,
+        options: forumPoll.options.map((option) => ({
+          ...option,
+          votes: option.votes + (optionIds.includes(option.id) ? 1 : 0),
+        })),
+      };
+      mocks.getPollMock.mockResolvedValue(updated);
+      return updated;
+    });
     mocks.getPollVotesMock.mockReset();
     mocks.getPollVotesMock.mockResolvedValue({
       items: [
@@ -245,15 +230,9 @@ describe("ForumPanels", () => {
         activeRevision={18}
       />,
     );
-    expect(
-      screen.getByRole("complementary", { name: "章节目录" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /^第一章/ }),
-    ).toHaveAttribute("data-active", "true");
-    expect(
-      screen.getByRole("button", { name: /^第三章/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "章节目录" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^第一章/ })).toHaveAttribute("data-active", "true");
+    expect(screen.getByRole("button", { name: /^第三章/ })).toBeInTheDocument();
     expect(screen.getByText("创作中")).toBeInTheDocument();
     expect(screen.getByText("章节总结")).toBeInTheDocument();
     expect(screen.getByText("3,842")).toBeInTheDocument();
@@ -261,13 +240,7 @@ describe("ForumPanels", () => {
   });
 
   it("没有统计数据时章节总结显示占位", () => {
-    renderWithQuery(
-      <ChapterRail
-        chapters={chaptersFixture}
-        currentIndex={0}
-        onSelect={vi.fn()}
-      />,
-    );
+    renderWithQuery(<ChapterRail chapters={chaptersFixture} currentIndex={0} onSelect={vi.fn()} />);
     expect(screen.getByText("章节总结")).toBeInTheDocument();
     expect(screen.getAllByText("—")).toHaveLength(2);
   });
@@ -304,16 +277,8 @@ describe("ForumPanels", () => {
   });
 
   it("未提供 onAddChapter 时隐藏新增章节入口", () => {
-    renderWithQuery(
-      <ChapterRail
-        chapters={chaptersFixture}
-        currentIndex={0}
-        onSelect={vi.fn()}
-      />,
-    );
-    expect(
-      screen.queryByRole("button", { name: /新增章节/ }),
-    ).not.toBeInTheDocument();
+    renderWithQuery(<ChapterRail chapters={chaptersFixture} currentIndex={0} onSelect={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /新增章节/ })).not.toBeInTheDocument();
   });
 
   it("章节行右向箭头弹出操作窗，删除确认后触发回调", () => {
@@ -326,13 +291,9 @@ describe("ForumPanels", () => {
         onDelete={onDelete}
       />,
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: /打开章节操作 第二章/ }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /打开章节操作 第二章/ }));
     fireEvent.click(screen.getByRole("button", { name: /删除章节/ }));
-    expect(
-      screen.getByRole("alertdialog", { name: "删除章节" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("alertdialog", { name: "删除章节" })).toBeInTheDocument();
     expect(screen.getByText(/第二章 · 陌生船票/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "删除" }));
     expect(onDelete).toHaveBeenCalledWith(2);
@@ -349,9 +310,7 @@ describe("ForumPanels", () => {
         onDelete={onDelete}
       />,
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: /打开章节操作 楔子/ }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /打开章节操作 楔子/ }));
     fireEvent.click(screen.getByRole("button", { name: /删除章节/ }));
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -368,27 +327,15 @@ describe("ForumPanels", () => {
         deleteMode="server"
       />,
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: /打开章节操作 楔子/ }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /打开章节操作 楔子/ }));
     fireEvent.click(screen.getByRole("button", { name: /删除章节/ }));
     expect(screen.getByText(/立即从服务器删除/)).toBeInTheDocument();
   });
 
   it("未提供 onDelete 时操作弹窗不渲染删除按钮", () => {
-    renderWithQuery(
-      <ChapterRail
-        chapters={chaptersFixture}
-        currentIndex={0}
-        onSelect={vi.fn()}
-      />,
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: /打开章节操作 楔子/ }),
-    );
-    expect(
-      screen.queryByRole("button", { name: /删除章节/ }),
-    ).not.toBeInTheDocument();
+    renderWithQuery(<ChapterRail chapters={chaptersFixture} currentIndex={0} onSelect={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /打开章节操作 楔子/ }));
+    expect(screen.queryByRole("button", { name: /删除章节/ })).not.toBeInTheDocument();
   });
 
   it("操作弹窗提供隐藏/恢复与校订入口并触发回调", () => {
@@ -406,20 +353,14 @@ describe("ForumPanels", () => {
     );
     // 已隐藏章节：行内显示「已隐藏」，弹窗显示「取消隐藏」。
     expect(screen.getByText("已隐藏")).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: /打开章节操作 第一章/ }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /打开章节操作 第一章/ }));
     fireEvent.click(screen.getByRole("button", { name: /取消隐藏/ }));
     expect(onToggleHidden).toHaveBeenCalledWith(1, false);
     // 未隐藏章节：弹窗显示「隐藏章节」，校订入口与阅读页图标一致（GitCompareArrows）。
-    fireEvent.click(
-      screen.getByRole("button", { name: /打开章节操作 楔子/ }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /打开章节操作 楔子/ }));
     fireEvent.click(screen.getByRole("button", { name: /隐藏章节/ }));
     expect(onToggleHidden).toHaveBeenCalledWith(0, true);
-    fireEvent.click(
-      screen.getByRole("button", { name: /打开章节操作 第一章/ }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /打开章节操作 第一章/ }));
     fireEvent.click(screen.getByRole("button", { name: /校订章节/ }));
     expect(onProofread).toHaveBeenCalledWith(1);
   });
@@ -427,11 +368,7 @@ describe("ForumPanels", () => {
   it("点击章节触发切换回调", () => {
     const onSelect = vi.fn();
     renderWithQuery(
-      <ChapterRail
-        chapters={chaptersFixture}
-        currentIndex={1}
-        onSelect={onSelect}
-      />,
+      <ChapterRail chapters={chaptersFixture} currentIndex={1} onSelect={onSelect} />,
     );
     fireEvent.click(screen.getByRole("button", { name: /^第二章/ }));
     expect(onSelect).toHaveBeenCalledWith(2);
@@ -500,15 +437,9 @@ describe("ForumPanels", () => {
         onRestore={vi.fn()}
       />,
     );
-    fireEvent.click(
-      (await screen.findAllByRole("button", { name: /接受/ }))[0]!,
-    );
+    fireEvent.click((await screen.findAllByRole("button", { name: /接受/ }))[0]!);
     await waitFor(() =>
-      expect(mocks.reviewSuggestionMock).toHaveBeenCalledWith(
-        "s1",
-        "approve",
-        18,
-      ),
+      expect(mocks.reviewSuggestionMock).toHaveBeenCalledWith("s1", "approve", 18),
     );
     fireEvent.click(screen.getByRole("tab", { name: /已接受/ }));
     expect(await screen.findByText("已合并并建版")).toBeInTheDocument();
@@ -548,13 +479,9 @@ describe("ForumPanels", () => {
     expect(await screen.findByText("作者获得 7（70%）")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "购买附件" }));
     await waitFor(() =>
-      expect(mocks.purchaseAttachmentMock).toHaveBeenCalledWith(
-        "attachment-sample",
-      ),
+      expect(mocks.purchaseAttachmentMock).toHaveBeenCalledWith("attachment-sample"),
     );
-    expect(
-      await screen.findByRole("button", { name: "已购买，可下载" }),
-    ).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "已购买，可下载" })).toBeDisabled();
   });
 
   it("金币不足时禁止购买附件", async () => {
@@ -570,9 +497,7 @@ describe("ForumPanels", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "附件" }));
-    expect(
-      await screen.findByRole("button", { name: "金币不足" }),
-    ).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "金币不足" })).toBeDisabled();
   });
 
   it("读者可以选择投票并展开实名明细", async () => {
@@ -592,9 +517,7 @@ describe("ForumPanels", () => {
     expect(towerOption).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(towerOption);
     await waitFor(() =>
-      expect(mocks.votePollMock).toHaveBeenCalledWith("poll-route", [
-        "poll-option-tower",
-      ]),
+      expect(mocks.votePollMock).toHaveBeenCalledWith("poll-route", ["poll-option-tower"]),
     );
     const selectedOption = await screen.findByRole("button", {
       name: /钟楼.*29 票.*已选/,
@@ -619,14 +542,14 @@ describe("ForumPanels", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "历史" }));
 
-    expect(await screen.findByText("版本 18")).toBeInTheDocument();
+    expect(await screen.findByText("章节版本 18")).toBeInTheDocument();
     expect(mocks.getRevisionsMock).toHaveBeenCalledWith(
       "post_7",
       "chapter-0",
       expect.any(AbortSignal),
     );
     fireEvent.click(screen.getAllByRole("button", { name: "回退" })[1]!);
-    expect(screen.getByRole("alertdialog", { name: "确认回退版本" })).toBeInTheDocument();
+    expect(screen.getByRole("alertdialog", { name: "确认回退章节版本" })).toBeInTheDocument();
     expect(onRestore).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "确认回退" }));
     expect(onRestore).toHaveBeenCalledWith(17);
@@ -634,19 +557,10 @@ describe("ForumPanels", () => {
 
   it("HistoryPanel 支持空列表和直接回退", () => {
     const onRestore = vi.fn();
-    const { rerender } = render(
-      <HistoryPanel revisions={[]} onRestore={onRestore} />,
-    );
-    expect(
-      screen.queryByRole("button", { name: "回退" }),
-    ).not.toBeInTheDocument();
+    const { rerender } = render(<HistoryPanel revisions={[]} onRestore={onRestore} />);
+    expect(screen.queryByRole("button", { name: "回退" })).not.toBeInTheDocument();
 
-    rerender(
-      <HistoryPanel
-        revisions={seedRevisions.slice(0, 1)}
-        onRestore={onRestore}
-      />,
-    );
+    rerender(<HistoryPanel revisions={seedRevisions.slice(0, 1)} onRestore={onRestore} />);
     fireEvent.click(screen.getByRole("button", { name: "回退" }));
     fireEvent.click(screen.getByRole("button", { name: "确认回退" }));
     expect(onRestore).toHaveBeenCalledWith(18);

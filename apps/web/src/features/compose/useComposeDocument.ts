@@ -38,7 +38,12 @@ export interface ComposeDocumentController {
   ensureServerDocument: () => Promise<"created" | "existing" | false>;
   updateChapter: (chapterIndex: number, chapter: RichTextNode) => void;
   publishChapter: (chapterIndex: number, latestChapter?: RichTextNode) => Promise<boolean>;
-  rollback: (revision: number, isOperationCurrent?: () => boolean) => Promise<DocumentEnvelope>;
+  /** 仅回退指定章节；返回值仍是包含最新整篇快照的文档信封。 */
+  rollback: (
+    chapterId: string,
+    revision: number,
+    isOperationCurrent?: () => boolean,
+  ) => Promise<DocumentEnvelope>;
 }
 
 /** 管理服务器文档、编辑代次、自动保存、显式发布和版本回滚。 */
@@ -482,10 +487,10 @@ export function useComposeDocument(
   );
 
   const rollback = useCallback(
-    async (revision: number, isOperationCurrent?: () => boolean) => {
+    async (chapterId: string, revision: number, isOperationCurrent?: () => boolean) => {
       const operation = ++rollbackEpochRef.current;
       // 服务端回滚会创建新 revision；返回内容必须同时替换本地正文和保存基线。
-      const next = await restoreRevision(document.id, revision, autosave.revision);
+      const next = await restoreRevision(document.id, chapterId, revision, autosave.revision);
       // 宿主可进一步限定到章节/视图操作；旧结果不能通过查询缓存重新水合当前正文。
       if (
         !isCurrent() ||
@@ -500,6 +505,17 @@ export function useComposeDocument(
       setContent(next.content);
       setGeneration(generationRef.current);
       autosave.acceptSaved(next, next.content, generationRef.current);
+      queryClient.setQueryData<ForumChapterItem[]>(
+        chapterQueryKeys.directory(document.id),
+        (current = []) =>
+          current.map((chapter) =>
+            chapter.id === chapterId
+              ? { ...chapter, revision: chapter.revision + 1, savedAt: next.savedAt }
+              : chapter,
+          ),
+      );
+      void queryClient.invalidateQueries({ queryKey: ["revisions", document.id, chapterId] });
+      void queryClient.invalidateQueries({ queryKey: chapterQueryKeys.directory(document.id) });
       return next;
     },
     [autosave, document.id, isCurrent, queryClient],

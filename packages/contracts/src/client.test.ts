@@ -26,9 +26,10 @@ describe("createApiClient", () => {
       clientMutationId: "save-1",
       content,
     });
-    await client.listRevisions("demo-post", "3");
+    await client.listRevisions("demo-post", "chapter-0", "3");
     await client.rollbackDocument("demo-post", {
       baseRevision: 3,
+      chapterId: "chapter-0",
       targetRevision: 1,
       clientMutationId: "rollback-1",
     });
@@ -39,19 +40,9 @@ describe("createApiClient", () => {
     await client.getDice("roll-1");
     await client.rerollDice("roll-1");
     await client.getCommentThread("demo-post", "anchor-opening");
-    await client.getCommentThread(
-      "demo-post",
-      "anchor-opening",
-      "newest",
-      "root-1",
-    );
+    await client.getCommentThread("demo-post", "anchor-opening", "newest", "root-1");
     await client.createCommentReply("demo-post", "anchor-opening", "根回复");
-    await client.createCommentReply(
-      "demo-post",
-      "anchor-opening",
-      "子回复",
-      "root-1",
-    );
+    await client.createCommentReply("demo-post", "anchor-opening", "子回复", "root-1");
     await client.voteComment("reply-1", -1);
     await client.getForumSession();
     await client.searchUsers("林");
@@ -105,16 +96,12 @@ describe("createApiClient", () => {
       chapters: [{ id: "chapter-0", temporaryOrder: 99, baseRevision: 1 }],
     });
 
-    const calls = fetchMock.mock.calls as unknown as Array<
-      [string, RequestInit]
-    >;
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
     expect(calls).toHaveLength(32);
-    expect(calls[0]?.[0]).toBe(
-      "https://forum.example.test/api/documents/forum post",
-    );
+    expect(calls[0]?.[0]).toBe("https://forum.example.test/api/documents/forum post");
     expect(calls[0]?.[1].signal).toBe(controller.signal);
     expect(calls[2]?.[0]).toBe(
-      "https://forum.example.test/api/documents/demo-post/revisions?cursor=3",
+      "https://forum.example.test/api/documents/demo-post/revisions?cursor=3&chapterId=chapter-0",
     );
     expect(calls[8]?.[0]).toBe(
       "https://forum.example.test/api/documents/demo-post/comments/anchor-opening?sort=score",
@@ -135,12 +122,8 @@ describe("createApiClient", () => {
       baseRevision: 2,
       clientMutationId: "save-1",
     });
-    expect(new Headers(updateInit.headers)).toEqual(
-      expect.objectContaining({}),
-    );
-    expect(new Headers(updateInit.headers).get("content-type")).toBe(
-      "application/json",
-    );
+    expect(new Headers(updateInit.headers)).toEqual(expect.objectContaining({}));
+    expect(new Headers(updateInit.headers).get("content-type")).toBe("application/json");
     expect(new Headers(updateInit.headers).get("x-user-id")).toBe("author");
 
     const uploadInit = calls[4]![1];
@@ -180,9 +163,7 @@ describe("createApiClient", () => {
       baseRevision: 2,
       steps: [{ stepType: "replace", from: 1, to: 2 }],
     });
-    expect(calls[23]?.[0]).toBe(
-      "https://forum.example.test/api/forum/suggestion-batches/batch-1",
-    );
+    expect(calls[23]?.[0]).toBe("https://forum.example.test/api/forum/suggestion-batches/batch-1");
     expect(calls[23]?.[1].method).toBe("PATCH");
     expect(calls[30]?.[0]).toBe(
       "https://forum.example.test/api/forum/novels/demo-post/chapters/batch",
@@ -217,9 +198,7 @@ describe("createApiClient", () => {
       fetch: fetchMock as unknown as typeof fetch,
     });
 
-    const error = await client
-      .getDocument("demo-post")
-      .catch((reason: unknown) => reason);
+    const error = await client.getDocument("demo-post").catch((reason: unknown) => reason);
 
     expect(error).toBeInstanceOf(ApiClientError);
     expect(error).toMatchObject({
@@ -233,8 +212,7 @@ describe("createApiClient", () => {
 
   it("在失败响应不是 JSON 时使用 HTTP 默认错误信息", async () => {
     const fetchMock = vi.fn(
-      async () =>
-        new Response("not-json", { status: 502, statusText: "Bad Gateway" }),
+      async () => new Response("not-json", { status: 502, statusText: "Bad Gateway" }),
     );
     const client = createApiClient({
       fetch: fetchMock as unknown as typeof fetch,

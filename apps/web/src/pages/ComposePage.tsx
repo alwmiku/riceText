@@ -327,11 +327,16 @@ function ComposeDocumentSession({
 
   const compareRevision = async (revision: number) => {
     if (!contentReady) return;
+    const chapterId = activeChapterStatus?.id;
+    if (!chapterId) {
+      setNotice("当前章节尚未保存，无法比较历史版本");
+      return;
+    }
     const request = ++compareRequestRef.current;
     const currentContent = structuredClone(editorRef.current?.getJSON() ?? editorContent);
     setComparingRevision(revision);
     try {
-      const snapshot = await getRevision(activeDocumentId, revision);
+      const snapshot = await getRevision(activeDocumentId, chapterId, revision);
       if (!isCurrentView() || request !== compareRequestRef.current) return;
       const historical = resolveChapterSources({
         documentId: activeDocumentId,
@@ -343,7 +348,7 @@ function ComposeDocumentSession({
       }).find((chapter) => chapter.id === activeChapter?.id);
       const historicalContent = resolveChapterContent(historical);
       if (historicalContent.source !== "document") {
-        setNotice("该历史版本没有当前章节正文");
+        setNotice("该章节版本没有可比较的正文");
         return;
       }
       setComparison({
@@ -354,7 +359,7 @@ function ComposeDocumentSession({
       });
     } catch (cause) {
       if (isCurrentView() && request === compareRequestRef.current) {
-        setNotice(cause instanceof Error ? cause.message : "版本比较加载失败");
+        setNotice(cause instanceof Error ? cause.message : "章节版本比较加载失败");
       }
     } finally {
       if (isCurrentView() && request === compareRequestRef.current) setComparingRevision(null);
@@ -363,17 +368,23 @@ function ComposeDocumentSession({
 
   const rollback = async (revision: number) => {
     if (!canWriteChapter) return;
+    const chapterId = activeChapterStatus?.id;
+    if (!chapterId) {
+      setNotice("当前章节尚未保存，无法回退");
+      return;
+    }
     const request = ++rollbackRequestRef.current;
     const operationIsCurrent = () => isCurrentView() && rollbackRequestRef.current === request;
     compareRequestRef.current += 1;
     setComparingRevision(null);
     setComparison(null);
     try {
-      const next = await compose.rollback(revision, operationIsCurrent);
+      await compose.rollback(chapterId, revision, operationIsCurrent);
       if (!operationIsCurrent()) return;
-      setNotice("已回退到版本 " + revision + "，并创建版本 " + next.revision);
+      setNotice("已回退到章节版本 " + revision + "，并创建新的章节版本");
     } catch (error) {
-      if (operationIsCurrent()) setNotice(error instanceof Error ? error.message : "版本回退失败");
+      if (operationIsCurrent())
+        setNotice(error instanceof Error ? error.message : "章节版本回退失败");
     }
   };
 
@@ -575,7 +586,7 @@ function ComposeDocumentSession({
                 }
               : current,
         );
-        setNotice("章节已保存为版本 " + saved.revision);
+        setNotice("章节已保存为章节版本 " + saved.revision);
         return;
       }
       if (mappedDocumentIndex < 0) return;
@@ -589,7 +600,7 @@ function ComposeDocumentSession({
       const latestAfter = queryClient.getQueryData<DocumentEnvelope>(documentKey)?.revision;
       setNotice(
         latestAfter === undefined || latestAfter === latestBefore
-          ? "内容没有变化，未创建新版本；该章的版本号与历史在首次实际保存时生成"
+          ? "内容没有变化，未创建章节版本；该章的历史在首次实际保存时生成"
           : mode === "compact"
             ? "回复已进入发布队列"
             : "正文已保存，可切换到阅读视图检查",

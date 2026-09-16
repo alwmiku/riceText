@@ -15,7 +15,7 @@ import {
 import type { RevisionSummary } from "../../lib/types";
 import { formatTime } from "../../lib/utils";
 
-/** 展示不可变历史版本摘要，并提供正文比较与二次确认回退操作。 */
+/** 展示当前章节自己的连续版本，并提供正文比较与二次确认回退操作。 */
 export function HistoryPanel({
   revisions,
   comparingRevision,
@@ -33,13 +33,13 @@ export function HistoryPanel({
       <div className="flex flex-col gap-2">
         {revisions.length === 0 ? (
           <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-[11px] text-muted-foreground">
-            暂无历史记录，保存当前章节后会自动生成
+            暂无章节版本记录，保存当前章节后会自动生成
           </p>
         ) : null}
         {revisions.map((item) => (
           <article key={item.revision} className="rounded-md border border-border p-2.5">
             <div className="flex items-center justify-between">
-              <strong className="text-xs">版本 {item.revision}</strong>
+              <strong className="text-xs">章节版本 {item.revision}</strong>
               <time className="text-[10px] text-muted-foreground">{formatTime(item.savedAt)}</time>
             </div>
             <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
@@ -75,15 +75,19 @@ export function HistoryPanel({
         ))}
       </div>
 
-      <AlertDialog open={pendingRestore !== null} onOpenChange={(open) => !open && setPendingRestore(null)}>
+      <AlertDialog
+        open={pendingRestore !== null}
+        onOpenChange={(open) => !open && setPendingRestore(null)}
+      >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
             <AlertDialogMedia className="bg-destructive/10 text-destructive">
               <TriangleAlert />
             </AlertDialogMedia>
-            <AlertDialogTitle>确认回退版本</AlertDialogTitle>
+            <AlertDialogTitle>确认回退章节版本</AlertDialogTitle>
             <AlertDialogDescription>
-              将以版本 {pendingRestore ?? ""} 的正文创建一个新版本。现有历史不会删除，但当前未保存内容会被替换。
+              将以章节版本 {pendingRestore ?? ""}{" "}
+              的正文创建一个新章节版本。其他章节不会改变，但当前未保存内容会被替换。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

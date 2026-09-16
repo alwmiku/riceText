@@ -165,13 +165,13 @@ export function RevisionComparison({
   return (
     <section
       className="overflow-hidden rounded-lg border border-border bg-[#fbfcfc] shadow-panel"
-      aria-label="版本格式比较视图"
+      aria-label="章节版本格式比较视图"
     >
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-white px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <GitCompareArrows size={15} className="shrink-0 text-primary" aria-hidden="true" />
           <p className="min-w-0 truncate text-[13px] font-bold text-[#232a31]">
-            版本 {historicalRevision} 与现有内容 · {chapterTitle}
+            章节版本 {historicalRevision} 与现有内容 · {chapterTitle}
           </p>
           <span className="shrink-0 rounded bg-secondary px-1.5 py-px text-[10px] font-semibold text-secondary-foreground">
             {comparison.changedBlocks} 处内容块变化
