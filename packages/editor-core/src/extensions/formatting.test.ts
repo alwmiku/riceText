@@ -222,7 +222,12 @@ describe("format painter", () => {
       to: editor.state.doc.content.size - 1,
     });
     editor.commands.applyFormatPainter();
-    expect(marks(editor, "secret")).toEqual({ spoiler: {}, underline: {} });
+    // 黑幕内只放行字号：涂抹过来的 textStyle 会带进颜色/字体，但它们在黑幕里
+    // 不参与渲染，落库时也只留字号（净化器静默归一化，见 sanitize 测试）。
+    const painted = marks(editor, "secret");
+    expect(Object.keys(painted).sort()).toEqual(["spoiler", "textStyle", "underline"]);
+    // 浏览器把内联 #ff0000 归一化成 rgb()。
+    expect(painted.textStyle).toMatchObject({ color: "rgb(255, 0, 0)" });
     expect(marks(editor, "code")).toEqual({ code: {} });
     expect(marks(editor, "plain").bold).toEqual({});
     expect(editor.getText()).toBe(originalText);

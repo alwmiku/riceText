@@ -44,11 +44,14 @@ describe("RichTextViewer", () => {
     render(
       <RichTextViewer content={defaultDocument.content as JSONContent} />,
     );
-    const spoiler = await screen.findByText(
+    const text = await screen.findByText(
       "这一句包含结局线索，请谨慎查看。",
     );
+    // 覆盖层绘制黑带，揭示状态仍挂在可交互的外层 .rt-spoiler 上。
+    const spoiler = text.closest(".rt-spoiler");
+    expect(spoiler).not.toBeNull();
     expect(spoiler).not.toHaveClass("rt-spoiler--revealed");
-    fireEvent.click(spoiler);
+    fireEvent.click(text);
     expect(spoiler).toHaveClass("rt-spoiler--revealed");
   });
 });

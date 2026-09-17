@@ -363,6 +363,7 @@ export function addViewerNodeViews(
         });
       case "spoiler":
         return Spoiler.extend({
+          // 与 document-core 同构：外层承载交互，内层供 SpoilerOverlay 测量文字片段。
           renderHTML() {
             return [
               "span",
@@ -373,7 +374,7 @@ export function addViewerNodeViews(
                 tabindex: "0",
                 "aria-expanded": "false",
               },
-              0,
+              ["span", { class: "rt-spoiler__ink" }, 0],
             ];
           },
         });

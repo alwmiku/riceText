@@ -290,11 +290,11 @@ function sanitizeMarks(
         continue;
       }
       if (mark.type === "textStyle") {
-        addIssue(context, {
-          code: "invalid-attribute",
-          path,
-          message: "spoiler 内不允许使用文本样式，已将其移除。",
-        });
+        // 黑幕内只保留字号：颜色会让隐藏的正文透出来（渲染层也强制继承黑幕颜色），
+        // 字体则不在黑幕内提供。这里静默归一化而不是判成校验问题——粘贴、格式刷与
+        // 旧客户端都可能带进这两个属性，写边界报错会让整篇正文存不进去。
+        const fontSize = typeof mark.attrs?.fontSize === "string" ? mark.attrs.fontSize : null;
+        if (fontSize) spoilerSafeMarks.push({ type: "textStyle", attrs: { fontSize } });
         continue;
       }
       spoilerSafeMarks.push(mark);

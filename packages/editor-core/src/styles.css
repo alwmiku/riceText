@@ -1432,14 +1432,54 @@
   opacity: 1;
 }
 
+/*
+ * 黑幕正文仍由真实 span 承担交互和选区；PluginView 在每个 textblock 内放置一个受
+ * ProseMirror 管理的覆盖层。覆盖层跟随 NodeView transform、滚动和裁切，不在行内盒上挂伪元素。
+ *
+ * 层级关系：覆盖层 z-index 0 在黑带位置，正文 span z-index 1 压在它上面，因此黑幕文字
+ * 仍然可以被选中、点击和显示光标；覆盖层自身不吃指针事件。
+ */
 .rt-spoiler {
+  --rt-spoiler-ink: #171a19;
+
+  position: relative;
+  z-index: 1;
   color: transparent;
   caret-color: #ffffff;
-  background: #171a19;
-  border-radius: 3px;
   box-decoration-break: clone;
   cursor: pointer;
   transition: color 120ms ease;
+}
+
+/* 内层只保留为文字与 getClientRects() 测量锚点。 */
+.rt-spoiler__ink {
+  box-decoration-break: clone;
+}
+
+/* 含黑幕的 textblock：作为覆盖层绝对定位的包含块。 */
+.rt-spoiler-overlay-block-host {
+  position: relative;
+}
+
+/* 覆盖层容器：铺满所在块，只负责承载绘制块。 */
+.rt-spoiler-overlay {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+  user-select: none;
+}
+
+/*
+ * 单个绘制块。圆角由 PluginView 按几何结果写成 0 或 3px；
+ * 阴角块用「黑底 + 表面色裁切块」两层叠加得到，因此这里不需要任何特殊形状声明。
+ */
+.rt-spoiler-overlay__piece {
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
 }
 
 .rt-spoiler::selection {
@@ -1451,6 +1491,15 @@
 .rt-spoiler:focus,
 .rt-spoiler--revealed {
   color: #ffffff;
+}
+
+/*
+ * 黑幕内只允许字号。颜色标记渲染成带内联 color 的 <span>，内联样式会盖掉黑幕
+ * 的 transparent，把藏起来的正文透出来；黑幕是渲染层的隐藏契约，因此这里强制
+ * 继承黑幕自身的颜色（隐藏时透明、展开时白色）。字号不受影响。
+ */
+.rt-spoiler [data-text-color] {
+  color: inherit !important;
 }
 
 /*

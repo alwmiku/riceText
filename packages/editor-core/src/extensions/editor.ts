@@ -14,6 +14,7 @@ import { schemaExtensions } from "./schema.js";
 import { ParagraphIndent } from "./paragraph-indent.js";
 import { FormatPainter } from "./format-painter.js";
 import { SharedClipboard } from "./clipboard.js";
+import { SpoilerOverlay } from "./spoiler-overlay.js";
 
 export interface EditorExtensionsOptions {
   /** 追加在规范编辑器组合之后的扩展。 */
@@ -75,7 +76,8 @@ export function createEditorExtensions(options: EditorExtensionsOptions = {}): E
           return extension;
       }
     })
-    .concat(FormatPainter, SharedClipboard, options.additionalExtensions ?? []);
+    // SpoilerOverlay 只增加装饰与绘制，不注册节点或 mark，因此追加在规范扩展之后。
+    .concat(FormatPainter, SharedClipboard, SpoilerOverlay, options.additionalExtensions ?? []);
 }
 
 /** 原有编辑器扩展工厂的兼容别名。 */

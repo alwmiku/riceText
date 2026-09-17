@@ -1,6 +1,12 @@
 import { Editor, type JSONContent } from '@tiptap/core'
 import { describe, expect, it } from 'vitest'
-import { createDocumentSchema, parseDocumentJson, stringifyDocument, validateDocument } from '@ricetext/document-core'
+import {
+  createDocumentSchema,
+  parseDocumentJson,
+  sanitizeDocument,
+  stringifyDocument,
+  validateDocument,
+} from '@ricetext/document-core'
 
 import { editorExtensions } from './extensions.js'
 
@@ -160,7 +166,7 @@ describe('editorExtensions', () => {
     invalidArray.destroy()
   })
 
-  it('防止粗体、斜体和文本样式与 spoiler 共存', () => {
+  it('防止粗体与斜体与 spoiler 共存，黑幕内只放行字号', () => {
     const editor = new Editor({ extensions: editorExtensions(), content: '<p>secret</p>' })
     editor.commands.selectAll()
     editor.commands.toggleBold()
@@ -179,13 +185,24 @@ describe('editorExtensions', () => {
     expect(marks).toContainEqual({ type: 'spoiler' })
     expect(marks).not.toContainEqual({ type: 'italic' })
 
+    // 字号是黑幕内唯一可用的行内样式。颜色/字体与字号同属 textStyle mark，
+    // mark 级 excludes 只能整体排除，因此它们能与黑幕同时存在，但既不参与渲染
+    //（见 styles.css 的 .rt-spoiler [data-text-color]），净化时也会被丢弃。
     editor.commands.selectAll()
     editor.commands.toggleSpoiler()
-    editor.commands.setColor('#ff0000')
+    editor.commands.setMark('textStyle', { color: '#ff0000', fontSize: '32px' })
+    // 重新盖上黑幕：字号必须留下，颜色/字体也不会把黑幕挤掉。
     editor.commands.toggleSpoiler()
     marks = editor.getJSON().content?.[0]?.content?.[0]?.marks
     expect(marks).toContainEqual({ type: 'spoiler' })
-    expect(marks).not.toContainEqual(expect.objectContaining({ type: 'textStyle' }))
+    expect(marks?.find((mark) => mark.type === 'textStyle')?.attrs).toMatchObject({
+      color: '#ff0000',
+      fontSize: '32px',
+    })
+    expect(sanitizeDocument(editor.getJSON()).content?.[0]?.content?.[0]?.marks).toContainEqual({
+      type: 'textStyle',
+      attrs: { fontSize: '32px' },
+    })
     editor.destroy()
   })
 

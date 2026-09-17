@@ -31,8 +31,14 @@ describe("extension compositions", () => {
       ...canonicalNames,
       "formatPainter",
       "sharedClipboard",
+      "spoilerOverlay",
     ]);
-    expect(extensionNames(createViewerExtensions(viewerRef))).toEqual(canonicalNames);
+    // spoilerOverlay 只做渲染，不属于持久化 schema，因此追加在规范扩展之后，
+    // 编辑器与只读查看器各挂一次。
+    expect(extensionNames(createViewerExtensions(viewerRef))).toEqual([
+      ...canonicalNames,
+      "spoilerOverlay",
+    ]);
   });
 
   it("keeps schema, editor, and viewer persisted node and mark names in parity", () => {

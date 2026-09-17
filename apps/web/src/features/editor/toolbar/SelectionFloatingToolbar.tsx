@@ -134,13 +134,13 @@ function FormatControls({ editor, mobile = false }: { editor: Editor; mobile?: b
             ))}
           </select>
         </label>
+        {/* 黑幕内只有字号可调；字体与颜色仍随 spoilerActive 禁用。 */}
         <FontSizeControl
           ariaLabel="选区字号"
           value={textStyle.fontSize ?? "16px"}
           sizes={FONT_SIZES}
           min={FONT_SIZE_RANGE.min}
           max={FONT_SIZE_RANGE.max}
-          disabled={spoilerActive}
           className="[&_button]:h-[30px] [&_input]:h-[30px] [&_input]:w-[54px]"
           onCommit={(size) => setFontSize(editor, `${size}px`)}
         />

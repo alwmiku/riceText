@@ -673,7 +673,10 @@ export const emojiNodeSpec = {
 export const spoilerMarkSpec = {
   name: "spoiler",
   inclusive: false,
-  excludes: "bold italic textStyle",
+  // 黑幕内唯一可用的行内样式是字号，而字号与颜色/字体同属 textStyle mark：
+  // mark 级 excludes 只能整体排除，无法只挡颜色与字体，因此这里放行 textStyle，
+  // 由净化器（只保留 fontSize）与渲染规则（颜色不能点亮隐藏文字）负责收口。
+  excludes: "bold italic",
   // 黑幕文本本身是正文，但只在显式展开后才允许修订；标记没有节点 DOM，
   // 因此按自己渲染的签名定位。
   capabilities: {
@@ -686,8 +689,14 @@ export const spoilerMarkSpec = {
   parseHTML() {
     return [{ tag: "span[data-spoiler]" }];
   },
+  // 外层保留交互与揭示状态，内层是正文和布局测量锚点；黑带由 editor-core 的
+  // SpoilerOverlay 在受 ProseMirror 管理的 textblock 覆盖层中统一绘制。
   renderHTML() {
-    return ["span", { class: "rt-spoiler", "data-spoiler": "true" }, 0];
+    return [
+      "span",
+      { class: "rt-spoiler", "data-spoiler": "true" },
+      ["span", { class: "rt-spoiler__ink" }, 0],
+    ];
   },
 } satisfies MarkConfig;
 

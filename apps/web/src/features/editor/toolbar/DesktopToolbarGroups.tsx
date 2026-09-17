@@ -132,12 +132,12 @@ export function TextFormatGroup({ editor, condensed }: { editor: Editor; condens
       </span>
       {!condensed && (
         <span className={groupClassName}>
+          {/* 黑幕内唯一可调的行内样式就是字号：字体与颜色（连同加粗/斜体）仍禁用。 */}
           <FontSizeControl
             value={textStyle.fontSize ?? "16px"}
             sizes={FONT_SIZES}
             min={FONT_SIZE_RANGE.min}
             max={FONT_SIZE_RANGE.max}
-            disabled={spoilerActive}
             onCommit={(size) => setFontSize(editor, `${size}px`)}
           />
           <select

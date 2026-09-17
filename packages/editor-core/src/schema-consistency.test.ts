@@ -37,11 +37,14 @@ describe("schema 一致性", () => {
 
   it("遵循 document-core 扩展顺序，且每项增强仅添加一次", () => {
     const canonical = createDocumentExtensions().map((extension) => extension.name);
-    for (const extensions of [schemaExtensions(), createViewerExtensions(viewerRef)]) {
-      expect(extensions.map((extension) => extension.name)).toEqual(canonical);
-    }
+    expect(schemaExtensions().map((extension) => extension.name)).toEqual(canonical);
+    // 覆盖层扩展不注册节点或 mark，只增加装饰与绘制，故紧跟在规范扩展之后。
+    expect(createViewerExtensions(viewerRef).map((extension) => extension.name)).toEqual([
+      ...canonical,
+      "spoilerOverlay",
+    ]);
     const names = editorExtensions().map((extension) => extension.name);
-    expect(names).toEqual([...canonical, "formatPainter", "sharedClipboard"]);
+    expect(names).toEqual([...canonical, "formatPainter", "sharedClipboard", "spoilerOverlay"]);
     expect(new Set(names).size).toBe(names.length);
   });
 

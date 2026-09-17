@@ -103,6 +103,51 @@ describe("字号应用", () => {
     expect(editor.state.doc.firstChild?.attrs.fontSize).toBeUndefined();
   });
 
+  it("黑幕中的文字可以调字号，保存时字号不会被净化器丢掉", () => {
+    const editor = makeEditor({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "黑幕内容", marks: [{ type: "spoiler" }] }],
+        },
+      ],
+    });
+    editor.commands.setTextSelection({ from: 1, to: 5 });
+    expect(setFontSize(editor, "32px")).toBe(true);
+
+    const text = editor.state.doc.firstChild?.firstChild;
+    expect(text?.marks.find((mark) => mark.type.name === "spoiler")).toBeTruthy();
+    expect(text?.marks.find((mark) => mark.type.name === "textStyle")?.attrs.fontSize).toBe("32px");
+    expect(editor.getHTML()).toContain("font-size: 32px");
+
+    // 写边界（净化器）只保留字号，字号必须能通过保存校验。
+    const marks = sanitizeDocument(editor.getJSON()).content?.[0]?.content?.[0]?.marks;
+    expect(marks).toContainEqual({ type: "spoiler" });
+    expect(marks).toContainEqual({ type: "textStyle", attrs: { fontSize: "32px" } });
+  });
+
+  it("光标停在黑幕文字里也能改字号（作用到整段）", () => {
+    const editor = makeEditor({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "黑幕内容", marks: [{ type: "spoiler" }] }],
+        },
+      ],
+    });
+    editor.commands.setTextSelection(3);
+    expect(editor.state.selection.empty).toBe(true);
+
+    expect(setFontSize(editor, "24px")).toBe(true);
+    const marks = editor.state.doc.firstChild?.firstChild?.marks ?? [];
+    expect(marks.map((mark) => mark.type.name)).toEqual(
+      expect.arrayContaining(["spoiler", "textStyle"]),
+    );
+    expect(marks.find((mark) => mark.type.name === "textStyle")?.attrs.fontSize).toBe("24px");
+  });
+
   it("自定义输入按白名单区间收窄，无法解析时保留原值", () => {
     // 需要段内已有文本节点：字号是 textStyle mark，空段落无处落笔。
     const editor = makeEditor({

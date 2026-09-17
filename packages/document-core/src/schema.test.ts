@@ -51,9 +51,11 @@ describe("持久化 schema 规则", () => {
       emoji: "",
     });
     expect(schema.nodes.codeBlock!.spec.marks).toBe("");
+    // 黑幕内只允许字号，而字号与颜色/字体同属 textStyle mark，因此这里只排除粗体与斜体；
+    // 颜色/字体由净化器与渲染规则收口。
     expect(schema.marks.spoiler!.spec).toMatchObject({
       inclusive: false,
-      excludes: "bold italic textStyle",
+      excludes: "bold italic",
     });
     for (const name of [
       "richImage",

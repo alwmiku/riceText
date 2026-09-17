@@ -180,8 +180,8 @@ describe('document sanitization', () => {
     expect(result.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining(['unknown-mark', 'unknown-attribute', 'unsafe-url', 'invalid-attribute']))
   })
 
-  it('strips bold, italic, and text style from spoiler text', () => {
-    const safe = sanitizeDocument({
+  it('keeps only the font size of text styles inside spoiler text', () => {
+    const input = {
       type: 'doc',
       content: [{
         type: 'paragraph',
@@ -196,13 +196,39 @@ describe('document sanitization', () => {
           ],
         }],
       }],
-    })
+    }
+    const safe = sanitizeDocument(input)
 
     const marks = safe.content?.[0]?.content?.[0]?.marks
     expect(marks).toContainEqual({ type: 'spoiler' })
     expect(marks).not.toContainEqual({ type: 'bold' })
     expect(marks).not.toContainEqual({ type: 'italic' })
-    expect(marks).not.toContainEqual(expect.objectContaining({ type: 'textStyle' }))
+    // 黑幕里的字号必须留下：它是黑幕允许的唯一文本样式。
+    expect(marks).toContainEqual({ type: 'textStyle', attrs: { fontSize: '18px' } })
+  })
+
+  it('silently drops spoiler colors and fonts so a styled spoiler still saves', () => {
+    const styled = {
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [{
+          type: 'text',
+          text: 'secret',
+          marks: [
+            { type: 'spoiler' },
+            { type: 'textStyle', attrs: { color: '#ff0000', fontFamily: 'serif' } },
+          ],
+        }],
+      }],
+    }
+
+    // 颜色会让隐藏的正文透出来，字体也不在黑幕内提供：两者都被静默归一化，
+    // 不能让粘贴/格式刷带进来的它们把整篇正文挡在保存之外。
+    expect(validateDocument(styled).valid).toBe(true)
+    expect(sanitizeDocument(styled).content?.[0]?.content?.[0]?.marks).toEqual([
+      { type: 'spoiler' },
+    ])
   })
 
   it('normalizes attributes for every persisted business node', () => {

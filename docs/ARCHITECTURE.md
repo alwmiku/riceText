@@ -8,6 +8,8 @@
 
 未知节点和属性仍被拒绝。已有 `longTextBlock.volumeTitle` 明确允许省略；显式值必须为最多 500 字符的字符串。扩展修改需同时满足真实编辑 JSON、净化器与契约的往返测试，不能以通配属性放行解决漂移。
 
+黑幕（`spoiler`）内**只允许字号**。字号与颜色、字体同属 `textStyle` mark，而 mark 级 `excludes` 只能整体排除，无法只挡其中两个属性；因此 schema 只排除粗体与斜体（放行 `textStyle`），颜色与字体由两处收口：净化器在黑幕内静默只保留 `fontSize`（粘贴、格式刷带进来的颜色/字体不能让整篇正文被写边界拒绝），`styles.css` 强制黑幕内带颜色标记的文本继承黑幕自身的颜色（内联颜色会盖掉 `transparent`，让隐藏正文漏光）。同一个文件里还处理了字号带来的**黑带台阶**：黑带按行内盒绘制，字号变大时会被 `textStyle` 容器切成高低两段。标记仍渲染成外层 `span.rt-spoiler`（交互与揭示状态）和内层 `span.rt-spoiler__ink`（正文与布局测量锚点），但两层都不直接画黑底。编辑器与查看器共同挂载 schema-neutral 的 `SpoilerOverlay`：插件用 ProseMirror `Decoration.widget` 在每个含黑幕的 textblock 中放置受管理的绝对覆盖层，PluginView 测量连续黑幕的可见矩形，按 VS Code 选择区思路把角分类为外角、内角和平边，再用普通定位块与同一套 3px `border-radius` 绘制。局部高度差不足 6px 时将该侧归一为平边而不缩小半径，避免混合字号下阴角与阳角碰撞；分页、字体和容器布局变化通过合并到单个 animation frame 的重测更新。
+
 表情分两类，共用同一份目录（`packages/contracts/src/emoji-catalog.ts`，schema 与渲染共享的常量）：纯文本表情（Unicode 字符、颜文字）直接写成普通 `text` 节点，不占用新 schema；站点自定义表情写成行内原子节点 `emoji`（`emojiId` + `name` + 相对 `src` + `fallback`），图片由 `GET /api/emoji/:emojiId/image` 提供，正文不携带二进制。
 
 `src` 是渲染缓存：净化器命中目录时一律用目录派生的 `/api/emoji/<id>/image` 覆盖正文里的值，目录里查不到的 `emojiId` 则保留原值且不报错——表情包条目下线后，历史正文仍能保存与降级渲染。图片是随仓库提交的静态资源（`assets/emoji/`，沿用表情包原文件名，可含动图），由目录条目的 `assetFile` 显式指向而不是从 `id` 推导：站点表情包用中文文件名，而 `id` 要留给 URL 与持久化契约。

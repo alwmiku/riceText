@@ -150,12 +150,9 @@ function TextFormatSubmenu({ editor }: { editor: Editor }) {
               自定义字号…
             </ContextMenuItem>
             <ContextMenuSeparator />
+            {/* 黑幕内只有字号可调（自定义字号与预设同规则）。 */}
             {FONT_SIZES.map((fontSize) => (
-              <ContextMenuItem
-                key={fontSize}
-                disabled={spoilerActive}
-                onSelect={() => setFontSize(editor, fontSize)}
-              >
+              <ContextMenuItem key={fontSize} onSelect={() => setFontSize(editor, fontSize)}>
                 {fontSize}
               </ContextMenuItem>
             ))}

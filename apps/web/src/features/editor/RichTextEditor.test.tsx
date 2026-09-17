@@ -119,6 +119,51 @@ describe("RichTextEditor presets", () => {
     await waitFor(() => expect(onChange).toHaveBeenCalled());
   });
 
+  it("黑幕选区可以调字号，字体与加粗仍然禁用", async () => {
+    const editorRef: { current: Editor | null } = { current: null };
+    render(
+      <RichTextEditor
+        content={{
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "黑幕内容", marks: [{ type: "spoiler" }] }],
+            },
+          ],
+        }}
+        mode="full"
+        onChange={vi.fn()}
+        onReady={(value) => {
+          editorRef.current = value;
+        }}
+      />,
+    );
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+    const editor = editorRef.current;
+    if (!editor) throw new Error("编辑器未初始化");
+    act(() => {
+      editor.commands.setTextSelection({ from: 1, to: 5 });
+    });
+
+    // 黑幕内唯一可调的行内样式是字号：同一选区里字体与加粗仍被禁用。
+    expect(screen.getByLabelText("字号")).toBeEnabled();
+    expect(screen.getByLabelText("字体")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "加粗" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("字号"), { target: { value: "20px" } });
+    fireEvent.keyDown(screen.getByLabelText("字号"), { key: "Enter" });
+    expect(editor.getHTML()).toContain("font-size: 20px");
+
+    // 离开黑幕选区后，整组格式控件恢复可用。
+    act(() => {
+      editor.commands.setTextSelection({ from: 1, to: 5 });
+      editor.commands.unsetSpoiler();
+      editor.commands.setTextSelection(3);
+    });
+    expect(screen.getByLabelText("字体")).toBeEnabled();
+  });
+
   it("选中文字后插入链接，文档能通过保存校验", async () => {
     const editorRef: { current: Editor | null } = { current: null };
     render(
