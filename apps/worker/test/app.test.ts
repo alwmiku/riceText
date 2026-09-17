@@ -219,6 +219,34 @@ describe("RiceText Worker", () => {
     });
   });
 
+  it("没有账本行的章节用章节行版本号兜底，不显示成第 0 版", async () => {
+    // 上传型/历史章节没有账本行：latestRevision 必须回退到 chapters.revision，
+    // 否则界面会把已有正文的章节显示成「章节 v0」。
+    await env.DB.prepare(
+      "INSERT INTO chapters(id, title, sort_order, document_id, revision, updated_at, hidden) " +
+        "VALUES (?, ?, ?, ?, ?, ?, 0)",
+    )
+      .bind("legacy-chapter", "历史章节", 5, "demo-post", 7, now)
+      .run();
+    const response = await exports.default.fetch(
+      new Request("http://example.com/api/forum/chapters?documentId=demo-post", {
+        headers: { "x-user-id": "author" },
+      }),
+    );
+    const body = (await response.json()) as {
+      items: Array<{ id: string; revision: number; latestRevision: number }>;
+    };
+    expect(body.items.find((row) => row.id === "legacy-chapter")).toMatchObject({
+      revision: 7,
+      latestRevision: 7,
+    });
+    // 有账本行的章节仍然以账本为准。
+    expect(body.items.find((row) => row.id === "chapter-0")).toMatchObject({
+      revision: 1,
+      latestRevision: 1,
+    });
+  });
+
   it("仅在显式启用时允许演示身份请求头", async () => {
     const anonymous = await exports.default.fetch("http://example.com/api/forum/session");
     expect(anonymous.status).toBe(401);

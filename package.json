@@ -25,7 +25,8 @@
     "cf:smoke": "node tools/cloudflare/smoke.mjs",
     "auth:create-user": "tsx tools/cloudflare/create-password-user.ts",
     "db:reset-articles": "tsx tools/cloudflare/reset-article-data.ts",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check:ci": "pnpm check && pnpm test:e2e && pnpm test:e2e:password"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

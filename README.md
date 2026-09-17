@@ -68,7 +68,21 @@ pnpm.cmd build
 pnpm.cmd test:e2e
 ```
 
-`pnpm.cmd check` 依次执行 lint、类型检查、测试与构建。E2E 使用 Playwright，首次运行前需执行 `pnpm.cmd exec playwright install chromium`。
+`pnpm.cmd check` 依次执行 lint、类型检查、单元/集成测试与构建；`pnpm.cmd check:ci` 在它之上再跑
+两套 E2E（`test:e2e` + `test:e2e:password`），**与 CI 完全一致**。CI 会在 `check` 之外执行 E2E，
+因此只跑 `check` 通过并不代表 CI 会通过：改动涉及界面文案、DOM 结构、种子数据或 e2e 断言时，
+提交前用 `pnpm.cmd check:ci` 跑一遍。
+
+E2E 使用 Playwright，首次运行前需执行 `pnpm.cmd exec playwright install chromium`。只想验证受影响的用例时用关键词过滤（几十秒）：
+
+```powershell
+pnpm.cmd exec playwright test -g "关键词"
+pnpm.cmd test:e2e:password            # 密码登录用例，端口 5174/8788
+```
+
+E2E 需要 8787/5173（主套件）与 8788/5174（密码套件）空闲；Windows 上如果报
+`EACCES: permission denied`，先用 `netsh interface ipv4 show excludedportrange protocol=tcp`
+确认端口是否落在系统保留段里（Hyper-V/WSL/Docker 会动态保留整段端口，此时换端口或重启 winnat）。
 
 ## 功能状态
 
