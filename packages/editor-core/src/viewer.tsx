@@ -1,7 +1,9 @@
+import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useMemo, useRef } from "react";
 
+import { spoilerRangeStart } from "./extensions/spoiler-overlay.js";
 import { sanitizeDocument, sanitizeUrl } from "./sanitize.js";
 import { useRichTextViewerController } from "./viewer/controller.js";
 import { ImageLightbox } from "./viewer/lightbox.js";
@@ -20,6 +22,31 @@ import {
   type ViewerContext,
   type ViewerContextRef,
 } from "./viewer/types.js";
+
+/**
+ * 求某个片段所属整条黑幕的 key。
+ *
+ * 字号 mark 会把一次遮挡拆成多个外层 span，揭示必须以整条为单位：只用 posAtDOM 取被点
+ * 片段自身的位置，会让每个片段各成一个 key，点开后只亮出一部分文字。
+ */
+function spoilerRangeKey(editor: Editor, fragment: HTMLElement): string {
+  let pos: number;
+  try {
+    pos = editor.view.posAtDOM(fragment, 0) ?? 0;
+  } catch {
+    pos = 0;
+  }
+  return `spoiler:${spoilerRangeStart(editor.state.doc, pos)}`;
+}
+
+/** 找出与给定片段同属一条黑幕的所有外层 span，用于整条切换展开状态。 */
+function spoilerFragments(editor: Editor, fragment: HTMLElement): HTMLElement[] {
+  const key = spoilerRangeKey(editor, fragment);
+  const matches = Array.from(
+    editor.view.dom.querySelectorAll<HTMLElement>('[data-spoiler="true"]'),
+  ).filter((candidate) => spoilerRangeKey(editor, candidate) === key);
+  return matches.length > 0 ? matches : [fragment];
+}
 
 export type {
   RichTextViewerController,
@@ -166,17 +193,13 @@ export function RichTextViewer({
 
       const spoiler = target.closest<HTMLElement>('[data-spoiler="true"]');
       if (spoiler) {
-        let pos: number;
-        try {
-          pos = editor.view.posAtDOM(spoiler, 0) ?? 0;
-        } catch {
-          pos = 0;
-        }
-        const key = `spoiler:${pos}`;
+        const key = spoilerRangeKey(editor, spoiler);
         const next = !current.controller.revealedSpoilers.has(key);
         current.controller.toggleSpoiler(key);
-        spoiler.classList.toggle("rt-spoiler--revealed", next);
-        spoiler.setAttribute("aria-expanded", String(next));
+        for (const fragment of spoilerFragments(editor, spoiler)) {
+          fragment.classList.toggle("rt-spoiler--revealed", next);
+          fragment.setAttribute("aria-expanded", String(next));
+        }
       }
     };
 
@@ -193,11 +216,13 @@ export function RichTextViewer({
       } catch {
         pos = 0;
       }
-      const key = `spoiler:${pos}`;
+      const key = `spoiler:${spoilerRangeStart(editor.state.doc, pos)}`;
       const next = !current.controller.revealedSpoilers.has(key);
       current.controller.toggleSpoiler(key);
-      spoiler.classList.toggle("rt-spoiler--revealed", next);
-      spoiler.setAttribute("aria-expanded", String(next));
+      for (const fragment of spoilerFragments(editor, spoiler)) {
+        fragment.classList.toggle("rt-spoiler--revealed", next);
+        fragment.setAttribute("aria-expanded", String(next));
+      }
     };
 
     dom.addEventListener("click", handleClick);

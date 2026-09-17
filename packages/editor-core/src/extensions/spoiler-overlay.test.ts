@@ -9,6 +9,7 @@ import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createEditorExtensions } from "./editor.js";
+import { spoilerRangeBounds, spoilerRangeStart } from "./spoiler-overlay.js";
 
 const mounted: HTMLElement[] = [];
 
@@ -108,6 +109,45 @@ describe("SpoilerOverlay PluginView", () => {
 
     editor.destroy();
     expect(overlay?.children).toHaveLength(0);
+  });
+
+  // 一条黑幕被字号 mark 拆成三个 span：它们必须共享同一个起点，悬停/揭示都要整条生效。
+  it("treats font-size-split fragments as one spoiler for peek", async () => {
+    const { editor } = createSpoilerEditor();
+    const fragments = Array.from(
+      editor.view.dom.querySelectorAll<HTMLElement>('[data-spoiler="true"]'),
+    );
+    expect(fragments).toHaveLength(3);
+
+    const bounds = fragments.map((fragment) =>
+      spoilerRangeBounds(editor.state.doc, editor.view.posAtDOM(fragment, 0)),
+    );
+    expect(new Set(bounds.map((value) => value.from)).size).toBe(1);
+    // 范围终点必须覆盖整条黑幕的最后一个片段，否则只有前几段会亮。
+    expect(new Set(bounds.map((value) => value.to)).size).toBe(1);
+    expect(bounds[0]!.to).toBeGreaterThan(
+      spoilerRangeStart(editor.state.doc, editor.view.posAtDOM(fragments[1]!, 0)),
+    );
+
+    const inks = Array.from(editor.view.dom.querySelectorAll<HTMLElement>(".rt-spoiler__ink"));
+    setClientRect(inks[0]!, domRect(0, 10, 20, 30));
+    setClientRect(inks[1]!, domRect(20, 0, 50, 34));
+    setClientRect(inks[2]!, domRect(50, 10, 70, 30));
+    window.dispatchEvent(new Event("resize"));
+    await frame();
+
+    // 指针只落在中间那一段，但整条黑幕都要点亮：窥视通过 ProseMirror 装饰表达，
+    // 不能直接改正文 DOM（那会触发重绘并丢掉状态）。
+    fragments[1]!.dispatchEvent(new Event("pointerover", { bubbles: true }));
+    await frame();
+    const peeked = Array.from(editor.view.dom.querySelectorAll<HTMLElement>(".rt-spoiler--peek"));
+    expect(peeked.map((element) => element.textContent)).toEqual(["小", "大", "小"]);
+
+    editor.view.dom.dispatchEvent(new Event("pointerleave"));
+    await frame();
+    expect(editor.view.dom.querySelectorAll(".rt-spoiler--peek")).toHaveLength(0);
+
+    editor.destroy();
   });
 
   it("keeps an empty widget safe when layout APIs return no rectangles", async () => {

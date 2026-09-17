@@ -1487,9 +1487,18 @@
   background: var(--rt-selected-border);
 }
 
+/*
+ * 展开黑幕的三种来源：
+ * - :hover / :focus 是浏览器原生命中，只作用于指针或焦点下的那个片段；
+ * - --revealed 是查看器点击后持久展开；
+ * - --peek 由 SpoilerOverlay 以 ProseMirror 装饰的形式加在整条黑幕上。
+ * 字号 mark 会把一条黑幕拆成多个 span，若只有前两者，悬停或点击后只会亮出一部分文字。
+ * 装饰元素位于黑幕 span 内部，它自身的颜色会覆盖外层的 transparent，不需要 !important。
+ */
 .rt-spoiler:hover,
 .rt-spoiler:focus,
-.rt-spoiler--revealed {
+.rt-spoiler--revealed,
+.rt-spoiler--peek {
   color: #ffffff;
 }
 

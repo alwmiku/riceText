@@ -696,3 +696,47 @@ describe("RichTextViewer", () => {
     expect(result.current.lightbox.index).toBeNull();
   });
 });
+
+// 字号 mark 会把一次遮挡拆成多个外层 span：点击其中任意一段，整条黑幕都要展开，
+// 否则读者只会看到一部分文字亮起。
+it("reveals every fragment of a font-size-split spoiler", async () => {
+  render(
+    <RichTextViewer
+      content={{
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "小字", marks: [{ type: "spoiler" }] },
+              {
+                type: "text",
+                text: "大字",
+                marks: [{ type: "spoiler" }, { type: "textStyle", attrs: { fontSize: "32px" } }],
+              },
+              { type: "text", text: "小字", marks: [{ type: "spoiler" }] },
+            ],
+          },
+        ],
+      }}
+    />,
+  );
+
+  const fragments = await waitFor(() => {
+    const found = Array.from(document.querySelectorAll<HTMLElement>('[data-spoiler="true"]'));
+    expect(found).toHaveLength(3);
+    return found;
+  });
+
+  fireEvent.click(fragments[1]!);
+  for (const fragment of fragments) {
+    expect(fragment).toHaveClass("rt-spoiler--revealed");
+    expect(fragment).toHaveAttribute("aria-expanded", "true");
+  }
+
+  fireEvent.click(fragments[0]!);
+  for (const fragment of fragments) {
+    expect(fragment).not.toHaveClass("rt-spoiler--revealed");
+    expect(fragment).toHaveAttribute("aria-expanded", "false");
+  }
+});

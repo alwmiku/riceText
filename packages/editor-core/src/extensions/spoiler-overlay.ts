@@ -26,7 +26,26 @@ import {
  * - widget 不参与文档位置，不会改变任何持久化结构。
  */
 
-export const spoilerOverlayKey = new PluginKey<DecorationSet>("spoilerOverlay");
+export const spoilerOverlayKey = new PluginKey<SpoilerOverlayState>("spoilerOverlay");
+
+/** 把窥视装饰叠加到基础装饰上；区间为空时直接返回基础集合。 */
+function withPeek(
+  doc: ProseMirrorNode,
+  base: DecorationSet,
+  peek: SpoilerOverlayState["peek"],
+): DecorationSet {
+  if (!peek || peek.to <= peek.from) return base;
+  return base.add(doc, [Decoration.inline(peek.from, peek.to, { class: PEEK_CLASS })]);
+}
+
+function overlayState(
+  doc: ProseMirrorNode,
+  peek: SpoilerOverlayState["peek"],
+  base?: DecorationSet,
+): SpoilerOverlayState {
+  const resolved = base ?? overlayDecorations(doc);
+  return { base: resolved, peek, decorations: withPeek(doc, resolved, peek) };
+}
 
 /** 承载覆盖层的 textblock 类名，提供 position: relative 作为定位基准。 */
 const BLOCK_HOST_CLASS = "rt-spoiler-overlay-block-host";
@@ -36,12 +55,16 @@ const FILL_CLASS = "rt-spoiler-overlay__piece--fill";
 const CUTOUT_CLASS = "rt-spoiler-overlay__piece--cutout";
 /** 向上找不到不透明背景时的兜底表面色；与 --rt-surface 的默认值一致。 */
 const FALLBACK_SURFACE = "#ffffff";
+/** 悬停或聚焦时临时点亮整条黑幕的装饰类名；由 ProseMirror 自己渲染，见下方 state。 */
+const PEEK_CLASS = "rt-spoiler--peek";
 
 /** 一个黑幕内层 span 的测量结果。 */
 interface MeasuredSource {
   /** 该片段在文档中的位置区间，用于判断两个 span 是否连续。 */
   from: number;
   to: number;
+  /** 所属整条黑幕的起点，与 spoilerRangeStart() 一致，作为揭示与窥视的共享 key。 */
+  rangeStart: number;
   /** 所属 textblock 的内容起点，同时是覆盖层 widget 的定位位置。 */
   blockStart: number;
   rects: SpoilerRect[];
@@ -55,6 +78,16 @@ interface MeasuredRun {
   blockStart: number;
   rects: SpoilerRect[];
   surfaceColor: string;
+}
+
+/** 插件状态：按文档生成的装饰，加上当前被悬停/聚焦点亮的那条黑幕。 */
+interface SpoilerOverlayState {
+  /** 由文档派生的 block host 与覆盖层 widget。 */
+  base: DecorationSet;
+  /** 临时点亮的黑幕区间；null 表示没有。 */
+  peek: { from: number; to: number } | null;
+  /** base 与 peek 合并后的最终装饰，交给 ProseMirror 渲染。 */
+  decorations: DecorationSet;
 }
 
 /** 已经定位到某个 textblock 覆盖层内的待渲染方块。 */
@@ -112,6 +145,62 @@ function textblockStart(doc: ProseMirrorNode, position: number): number {
 }
 
 /**
+ * 求某个位置所在「整条黑幕」的起点，作为一次遮挡的稳定 key。
+ *
+ * 字号 mark 会把一条黑幕拆成多个 span（外层 span 按 mark 组合分段），但它们在语义上是
+ * 同一次遮挡：几何分组、悬停窥视和点击揭示都必须以整条为单位，否则只会亮起被操作的那一段。
+ *
+ * 做法是在 textblock 内按「连续带 spoiler mark 的内联节点」回溯，忽略字号等其它 mark 差异，
+ * 因此同一条黑幕的每个片段都会得到同一个起点；中间夹着普通正文则自然分成两条。
+ */
+export function spoilerRangeBounds(
+  doc: ProseMirrorNode,
+  position: number,
+): { from: number; to: number } {
+  const safe = Math.max(0, Math.min(position, doc.content.size));
+  const resolved: ResolvedPos = doc.resolve(safe);
+  let depth = resolved.depth;
+  while (depth > 0 && !resolved.node(depth).isTextblock) depth -= 1;
+
+  const block = resolved.node(depth);
+  const blockStart = resolved.start(depth);
+  const offset = safe - blockStart;
+  // 先扫出完整的连续区间，再判断 offset 落在哪一个区间里。
+  // 不能一边扫一边记录命中：命中中间片段时 runEnd 还停在那一段，会漏掉后面的片段。
+  let runFrom: number | null = null;
+  let cursor = 0;
+  let matchedFrom: number | null = null;
+  let matchedTo: number | null = null;
+
+  for (let index = 0; index < block.childCount; index += 1) {
+    const child = block.child(index);
+    const marked = child.marks.some((mark) => mark.type.name === "spoiler");
+    if (marked && runFrom === null) runFrom = cursor;
+    if (!marked && runFrom !== null) {
+      if (offset >= runFrom && offset <= cursor) {
+        matchedFrom = runFrom;
+        matchedTo = cursor;
+      }
+      runFrom = null;
+    }
+    cursor += child.nodeSize;
+  }
+  if (runFrom !== null && offset >= runFrom && offset <= cursor) {
+    matchedFrom = runFrom;
+    matchedTo = cursor;
+  }
+
+  const from = blockStart + (matchedFrom ?? offset);
+  const to = blockStart + (matchedTo ?? offset);
+  return { from, to: Math.max(from, to) };
+}
+
+/** 整条黑幕的起点，用作揭示与窥视的稳定 key。 */
+export function spoilerRangeStart(doc: ProseMirrorNode, position: number): number {
+  return spoilerRangeBounds(doc, position).from;
+}
+
+/**
  * 取内层 span 对应的文档位置区间。
  *
  * 位置取自外层 [data-spoiler] 元素：mark 的 DOM 是外层 span，内层只是测量锚点。
@@ -162,6 +251,7 @@ function collectRuns(view: EditorView): MeasuredRun[] {
     if (!positions || rects.length === 0) return;
     sources.push({
       ...positions,
+      rangeStart: spoilerRangeStart(view.state.doc, positions.from),
       blockStart: textblockStart(view.state.doc, positions.from),
       rects,
       surfaceColor: nearestOpaqueSurface(element, fallback),
@@ -262,10 +352,10 @@ function overlayDecorations(doc: ProseMirrorNode): DecorationSet {
  * 容差取 1 个设备像素：浏览器返回的分数坐标在整数与半像素之间抖动，容差太小会把同一条
  * 边判成两条，太大会把真实空隙吃掉。
  */
-function renderPieces(view: EditorView): RenderedPiece[] {
+function renderPieces(runs: readonly MeasuredRun[]): RenderedPiece[] {
   const epsilon = Math.max(0.5, 1 / (window.devicePixelRatio || 1));
   const rendered: RenderedPiece[] = [];
-  for (const run of collectRuns(view)) {
+  for (const run of runs) {
     const pieces = buildSpoilerOverlayPieces(run.rects, { epsilon });
     for (const piece of pieces) {
       rendered.push({
@@ -354,6 +444,50 @@ export class SpoilerOverlayView {
     this.schedule();
   };
 
+  /** 悬停或聚焦到某个片段时点亮整条黑幕，而不是只亮指针下的那一段。 */
+  private readonly onPointerOver = (event: Event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    this.applyPeek(target?.closest<HTMLElement>('[data-spoiler="true"]') ?? null);
+  };
+
+  private readonly onPointerLeaveView = () => {
+    this.applyPeek(null);
+  };
+
+  private readonly onFocusIn = (event: Event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    this.applyPeek(target?.closest<HTMLElement>('[data-spoiler="true"]') ?? null);
+  };
+
+  private readonly onFocusOut = () => {
+    this.applyPeek(null);
+  };
+
+  /**
+   * 把窥视状态统一写到某条黑幕的所有片段上。
+   *
+   * 一条黑幕会因为字号 mark 拆成多个外层 span，reveal 必须整条生效：只给指针下的片段
+   * 上色，就会出现「悬停后只显示一部分文字」的问题。
+   */
+  private applyPeek(fragment: HTMLElement | null): void {
+    const bounds = fragment ? this.rangeBoundsOf(fragment) : null;
+    const next = bounds && bounds.to > bounds.from ? bounds : null;
+    const current = spoilerOverlayKey.getState(this.view.state)?.peek ?? null;
+    if (current?.from === next?.from && current?.to === next?.to) return;
+    // 窥视状态交给 ProseMirror 的装饰表达：直接改正文 DOM（写属性或类名）会让
+    // ProseMirror 反复重绘这些 span，既丢状态又会形成渲染循环。
+    this.view.dispatch(this.view.state.tr.setMeta(spoilerOverlayKey, { peek: next }));
+  }
+
+  /** 求外层 span 所属整条黑幕的区间；视图尚未布局时返回 null。 */
+  private rangeBoundsOf(element: HTMLElement): { from: number; to: number } | null {
+    try {
+      return spoilerRangeBounds(this.view.state.doc, this.view.posAtDOM(element, 0));
+    } catch {
+      return null;
+    }
+  }
+
   private readonly onCompositionStart = () => {
     this.composing = true;
   };
@@ -432,6 +566,11 @@ export class SpoilerOverlayView {
     this.view.dom.addEventListener("load", this.schedule, true);
     this.view.dom.addEventListener("compositionstart", this.onCompositionStart);
     this.view.dom.addEventListener("compositionend", this.onCompositionEnd);
+    // 悬停/聚焦按「整条黑幕」点亮：只靠 CSS :hover 只会亮起指针下的那一个片段。
+    this.view.dom.addEventListener("pointerover", this.onPointerOver);
+    this.view.dom.addEventListener("pointerleave", this.onPointerLeaveView);
+    this.view.dom.addEventListener("focusin", this.onFocusIn);
+    this.view.dom.addEventListener("focusout", this.onFocusOut);
     window.addEventListener("resize", this.schedule);
     window.addEventListener("beforeprint", this.schedule);
     window.addEventListener("afterprint", this.schedule);
@@ -443,6 +582,10 @@ export class SpoilerOverlayView {
     this.view.dom.removeEventListener("load", this.schedule, true);
     this.view.dom.removeEventListener("compositionstart", this.onCompositionStart);
     this.view.dom.removeEventListener("compositionend", this.onCompositionEnd);
+    this.view.dom.removeEventListener("pointerover", this.onPointerOver);
+    this.view.dom.removeEventListener("pointerleave", this.onPointerLeaveView);
+    this.view.dom.removeEventListener("focusin", this.onFocusIn);
+    this.view.dom.removeEventListener("focusout", this.onFocusOut);
     window.removeEventListener("resize", this.schedule);
     window.removeEventListener("beforeprint", this.schedule);
     window.removeEventListener("afterprint", this.schedule);
@@ -488,7 +631,7 @@ export class SpoilerOverlayView {
     this.syncResizeObservation(Array.from(targets.values(), (target) => target.block));
 
     const active = new Set<string>();
-    for (const item of renderPieces(this.view)) {
+    for (const item of renderPieces(collectRuns(this.view))) {
       const target = targets.get(item.blockStart);
       if (!target) continue;
       const { id, piece } = item;
@@ -530,12 +673,20 @@ export const SpoilerOverlay = Extension.create({
       new Plugin({
         key: spoilerOverlayKey,
         state: {
-          init: (_, state) => overlayDecorations(state.doc),
-          apply: (transaction, decorations) =>
-            transaction.docChanged ? overlayDecorations(transaction.doc) : decorations,
+          init: (_, state) => overlayState(state.doc, null),
+          apply: (transaction, value, _previous, next) => {
+            const meta = transaction.getMeta(spoilerOverlayKey) as
+              { peek?: SpoilerOverlayState["peek"] } | undefined;
+            const peek = meta && "peek" in meta ? (meta.peek ?? null) : value.peek;
+            if (!transaction.docChanged) {
+              if (peek === value.peek) return value;
+              return { base: value.base, peek, decorations: withPeek(next.doc, value.base, peek) };
+            }
+            return overlayState(next.doc, peek);
+          },
         },
         props: {
-          decorations: (state) => spoilerOverlayKey.getState(state) ?? null,
+          decorations: (state) => spoilerOverlayKey.getState(state)?.decorations ?? null,
         },
         view: (view) => new SpoilerOverlayView(view),
       }),
