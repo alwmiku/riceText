@@ -90,6 +90,54 @@ test("作者编辑先自动保存本地，点击保存后才上传最小 revisio
   expect(await status.textContent()).not.toBe(initialStatus);
 });
 
+test("文章标签区分服务器标签与作者自建，并随文章保存到服务器", async ({ page, isMobile }) => {
+  // 两个 worker 同时改同一篇文章的标签会互相覆盖，标签交互只在桌面验证。
+  test.skip(isMobile, "标签写入与布局无关，移动端跳过以避免并行写入竞争");
+  await page.addInitScript(() => {
+    localStorage.setItem("ricetext:selected-document", "demo-post");
+  });
+  await page.goto("/compose");
+  const bar = page.getByLabel("文章标签");
+  await expect(bar).toBeVisible({ timeout: 20_000 });
+  // 先等种子标签渲染完成：查询返回前 tags 是空数组，此时清空会读错服务器状态。
+  await expect(bar.getByText("连载中")).toBeVisible({ timeout: 20_000 });
+  await expect(bar.getByText("奇幻")).toBeVisible();
+  await expect(bar.locator('[data-source="server"]').first()).toBeVisible();
+
+  // 从可控起点开始：清空可能来自种子或上次运行（重试）的标签。
+  const removals = bar.getByRole("button", { name: /^移除标签 / });
+  for (let guard = 0; guard < 8 && (await removals.count()) > 0; guard += 1) {
+    const before = await removals.count();
+    await removals.first().click();
+    await expect(removals).toHaveCount(before - 1);
+  }
+  await expect(removals).toHaveCount(0);
+  await expect(bar.getByText("还没有标签")).toBeVisible();
+
+  // 点击「站点标签」从服务器字典里挑：来源是服务器标签（彩色胶囊）。
+  await bar.getByRole("button", { name: "浏览站点标签" }).click();
+  await bar.getByRole("option", { name: /新手指南/ }).click();
+  await expect(bar.getByText("新手指南")).toBeVisible();
+  await expect(bar.locator('[data-source="server"]').first()).toBeVisible();
+
+  // 手动输入 #标签：直接建成只属于这篇文章的作者标签。
+  const input = bar.getByLabel("输入新标签");
+  await input.fill("#潮汐");
+  await input.press("Enter");
+  await expect(bar.getByText("潮汐")).toBeVisible();
+  await expect(bar.locator('[data-source="author"]').first()).toBeVisible();
+  await expect(bar.getByText("整篇文章 · 2/5")).toBeVisible();
+
+  // 标签是服务端元数据：刷新后仍在，且不依赖正文保存。
+  await page.reload();
+  await expect(page.getByLabel("文章标签").getByText("潮汐")).toBeVisible({ timeout: 20_000 });
+
+  // 阅读页只读展示同一组标签。
+  await page.goto("/read");
+  await expect(page.getByLabel("文章标签").getByText("新手指南")).toBeVisible();
+  await expect(page.getByLabel("文章标签").getByText("潮汐")).toBeVisible();
+});
+
 test("读者身份进入创作页时工具栏整体禁用，正文可选但不可改", async ({ page, isMobile }) => {
   test.skip(isMobile, "只读工具栏的完整布局仅在桌面验证");
   await page.addInitScript(() => {

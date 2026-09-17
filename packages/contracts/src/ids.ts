@@ -17,6 +17,7 @@ export const ENTITY_ID_PREFIXES = {
   attachment: "attachment",
   user: "user",
   mutation: "mutation",
+  tag: "tag",
 } as const;
 
 /** 已注册的持久化业务实体前缀。 */

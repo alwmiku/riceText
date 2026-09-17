@@ -120,12 +120,14 @@ generation 保护更新、新增和清单遗漏而将被删除的章节；逐章
 uploading 会话上的 60 秒令牌，aborted 仅表示暂停；过期占用可恢复，旧请求只能释放自己的令牌。
 暂存触发器禁止占用期间改变清单。
 
-数据库变更只追加 `apps/worker/migrations`（当前到 `0014_chapter_scoped_review_guards.sql`）。
+数据库变更只追加 `apps/worker/migrations`（当前到 `0015_document_tags.sql`）。
 旧已发布回执保持可重放；旧未完成会话因没有整套 generation 基线，保留暂存数据但必须新建会话
 重新暂存，不能直接发布。HTTP 路由、既有章节 ID、历史 revision 及清单哈希序列化顺序保持兼容。
 
 本地演示数据由 `tools/cloudflare/d1-seed.ts` 生成 SQL 后写入 D1，它只写数据不建表，
 schema 的唯一来源仍是 migrations。
+
+文章标签是整篇文章的元数据，与章节和正文版本都无关：`tags` 是站点字典（版主维护，`slug` 创建后不可改，隐藏只做软隐藏），`document_tags` 是文章对标签的引用，主键 `(document_id, slug)`，`source` 区分服务器标签与作者自建。作者提交的文本命中未隐藏的字典条目时归为服务器标签，否则只写进这篇文章，绝不自动扩充字典；改名由 `tags_label_sync` 触发器同步 `document_tags.label`，「每篇最多 5 个」由仓储校验与 `document_tags_limit` 触发器双保险。标签写入不产生 `document_revisions`/`chapter_revisions`，也不改 `documents.current_revision`，因此与正文的乐观并发基线互不干扰；规则本身（规范化、去重键、上限与来源解析）在 `packages/contracts/src/tags.ts`，Web 与 Worker 共用一份。
 
 单条建议由后端使用建议所属 documentId 和 chapterId 解析真实章节范围（`resolveChapterRange`），结合行号及完整行上下文唯一定位。旧建议缺定位时仅接受全文唯一匹配。找不到或歧义分别返回 409 `SUGGESTION_SOURCE_NOT_FOUND` / `SUGGESTION_SOURCE_AMBIGUOUS`，失败不写正文或审批状态。审批写入落在新的整篇修订上，但并发基线是目标章节的内容版本：其他章节更新后仍可批准，目标章节自身变化时返回 409 `CHAPTER_REVISION_CONFLICT` 且零副作用。独立章节快照与文档范围不一致（包括空壳文档）时明确拒绝，避免写错正文。独立正文的完整批次校订工作流需要单独演进。
 

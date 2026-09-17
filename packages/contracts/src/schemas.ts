@@ -1,5 +1,12 @@
 import { z } from "zod";
 import { EMOJI_ID_PATTERN } from "./emoji-catalog.js";
+import {
+  TAG_DESCRIPTION_MAX,
+  TAG_INPUT_MAX,
+  TAG_LABEL_MAX,
+  TAG_LIMIT,
+  TAG_SLUG_MAX,
+} from "./tags.js";
 
 /** 编辑器对外提供的三种布局模式。 */
 export const EditorModeSchema = z.enum(["compact", "full", "mobile"]);
@@ -880,6 +887,77 @@ export const PollVoteSchema = z
 export const PollVotePageSchema = z
   .object({ items: z.array(PollVoteSchema), pageInfo: PageInfoSchema })
   .strict();
+
+/** 服务器标签：站点字典里的条目，只有版主能维护，作者只能引用未隐藏的条目。 */
+export const TagSchema = z
+  .object({
+    id: EntityIdSchema,
+    /** 去重与匹配键，创建后不可修改。 */
+    slug: z.string().min(1).max(TAG_SLUG_MAX),
+    /** 展示文本，可修正；修正后所有引用它的文章会一起更新。 */
+    label: z.string().min(1).max(TAG_LABEL_MAX),
+    description: z.string().max(TAG_DESCRIPTION_MAX),
+    /** 软隐藏：不再出现在候选与读者视图里，但历史引用不会丢失。 */
+    hidden: z.boolean(),
+  })
+  .strict();
+/** 服务器标签类型。 */
+export type Tag = z.infer<typeof TagSchema>;
+
+/** 文章上的一枚标签；`tagId` 只对服务器标签有值。 */
+export const DocumentTagSchema = z
+  .object({
+    slug: z.string().min(1).max(TAG_SLUG_MAX),
+    label: z.string().min(1).max(TAG_LABEL_MAX),
+    source: z.enum(["server", "author"]),
+    tagId: EntityIdSchema.nullable(),
+  })
+  .strict();
+/** 文章标签类型。 */
+export type DocumentTag = z.infer<typeof DocumentTagSchema>;
+
+/** 整篇文章的标签集合；数组顺序就是展示顺序。 */
+export const DocumentTagsSchema = z
+  .object({ items: z.array(DocumentTagSchema).max(TAG_LIMIT) })
+  .strict();
+/** 服务器标签列表响应。 */
+export const ServerTagListSchema = z.object({ items: z.array(TagSchema) }).strict();
+
+/**
+ * 全量替换文章标签。
+ *
+ * 只发送展示文本：文本命中未隐藏的字典条目时由服务端归为服务器标签，否则建成作者标签。
+ * 全量替换而不是增量增删，避免并发下的「先加后删」歧义。
+ */
+export const UpdateDocumentTagsRequestSchema = z
+  .object({
+    // 这里只设语法上限：真正的「最多 5 个」由服务端解析后报 TAG_LIMIT_EXCEEDED，
+    // 否则超限会被 Zod 提前吞掉，客户端只能拿到笼统的 VALIDATION_ERROR。
+    items: z
+      .array(z.object({ label: z.string().min(1).max(TAG_INPUT_MAX) }).strict())
+      .max(TAG_LIMIT * 4),
+  })
+  .strict();
+
+/** 新建服务器标签；slug 由 label 推导，不单独接收。 */
+export const CreateTagRequestSchema = z
+  .object({
+    label: z.string().min(1).max(TAG_INPUT_MAX),
+    description: z.string().max(TAG_DESCRIPTION_MAX).optional(),
+  })
+  .strict();
+
+/** 维护服务器标签：slug 不可改，label/description/hidden 可改。 */
+export const UpdateTagRequestSchema = z
+  .object({
+    label: z.string().min(1).max(TAG_INPUT_MAX).optional(),
+    description: z.string().max(TAG_DESCRIPTION_MAX).optional(),
+    hidden: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.values(value).some((item) => item !== undefined), {
+    message: "至少提供一个要修改的字段",
+  });
 
 /** 图片上传适配器，方便将本地 API 替换为对象存储。 */
 export interface AssetAdapter {

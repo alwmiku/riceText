@@ -50,6 +50,8 @@ DELETE FROM chapter_revisions;
 DELETE FROM document_mutations;
 DELETE FROM document_revisions;
 DELETE FROM document_acl;
+DELETE FROM document_tags;
+DELETE FROM tags;
 DELETE FROM documents;
 `;
 

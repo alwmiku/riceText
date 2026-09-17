@@ -9001,6 +9001,978 @@ paths:
                   code: EXAMPLE_ERROR
                   message: 投票不存在。
       x-implementation-status: implemented
+  /api/documents/{documentId}/tags:
+    get:
+      operationId: listDocumentTags
+      tags:
+        - 文档
+      summary: 读取文章标签
+      description: |-
+        标签属于整篇文章，与章节无关。编辑器额外看到已隐藏的服务器标签；读者只看到可展示标签。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: 按展示顺序排列的标签。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    maxItems: 5
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        slug:
+                          type: string
+                          minLength: 1
+                          maxLength: 48
+                        label:
+                          type: string
+                          minLength: 1
+                          maxLength: 24
+                        source:
+                          type: string
+                          enum:
+                            - server
+                            - author
+                        tagId:
+                          anyOf:
+                            - type: string
+                              minLength: 1
+                              maxLength: 128
+                              pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                            - type: "null"
+                      required:
+                        - slug
+                        - label
+                        - source
+                        - tagId
+                      additionalProperties: false
+                required:
+                  - items
+                additionalProperties: false
+        "401":
+          description: 游客不能读取文章标签。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 游客不能读取文章标签。
+        "404":
+          description: 文档不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档不存在。
+      x-implementation-status: implemented
+    put:
+      operationId: updateDocumentTags
+      tags:
+        - 文档
+      summary: 全量替换文章标签
+      description: |-
+        需要 author 或 moderator。只发送标签文本：命中未隐藏的站点标签时归为服务器标签，否则建成只属于这篇文章的作者标签（不会写进站点字典）。标签是元数据，不产生新修订、不改变 current_revision。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          description: 文档稳定 ID，例如 demo-post
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+            description: 文档稳定 ID，例如 demo-post
+          example: demo-post
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  maxItems: 20
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      label:
+                        type: string
+                        minLength: 1
+                        maxLength: 64
+                    required:
+                      - label
+                    additionalProperties: false
+              required:
+                - items
+              additionalProperties: false
+      responses:
+        "200":
+          description: 替换后的标签集合。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    maxItems: 5
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        slug:
+                          type: string
+                          minLength: 1
+                          maxLength: 48
+                        label:
+                          type: string
+                          minLength: 1
+                          maxLength: 24
+                        source:
+                          type: string
+                          enum:
+                            - server
+                            - author
+                        tagId:
+                          anyOf:
+                            - type: string
+                              minLength: 1
+                              maxLength: 128
+                              pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                            - type: "null"
+                      required:
+                        - slug
+                        - label
+                        - source
+                        - tagId
+                      additionalProperties: false
+                required:
+                  - items
+                additionalProperties: false
+        "401":
+          description: 需要登录。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 需要登录。
+        "403":
+          description: 当前身份无编辑权限。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 当前身份无编辑权限。
+        "404":
+          description: 文档不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 文档不存在。
+        "422":
+          description: 标签文本非法（TAG_LABEL_INVALID）或超过 5 个（TAG_LIMIT_EXCEEDED）。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 标签文本非法（TAG_LABEL_INVALID）或超过 5 个（TAG_LIMIT_EXCEEDED）。
+      x-implementation-status: implemented
+  /api/forum/tags:
+    get:
+      operationId: listServerTags
+      tags:
+        - 论坛业务
+      summary: 读取站点标签字典
+      description: |-
+        可选标签来源；默认不返回已隐藏条目。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: 按展示名排序的站点标签。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          minLength: 1
+                          maxLength: 128
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                        slug:
+                          type: string
+                          minLength: 1
+                          maxLength: 48
+                        label:
+                          type: string
+                          minLength: 1
+                          maxLength: 24
+                        description:
+                          type: string
+                          maxLength: 200
+                        hidden:
+                          type: boolean
+                      required:
+                        - id
+                        - slug
+                        - label
+                        - description
+                        - hidden
+                      additionalProperties: false
+                required:
+                  - items
+                additionalProperties: false
+        "401":
+          description: 需要登录。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 需要登录。
+      x-implementation-status: implemented
+    post:
+      operationId: createServerTag
+      tags:
+        - 论坛业务
+      summary: 新建站点标签
+      description: |-
+        仅版主可用。slug 由标签文本推导且之后不可修改；同 slug 视为重复，返回 409。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                description:
+                  type: string
+                  maxLength: 200
+              required:
+                - label
+              additionalProperties: false
+      responses:
+        "201":
+          description: 新建的站点标签。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  slug:
+                    type: string
+                    minLength: 1
+                    maxLength: 48
+                  label:
+                    type: string
+                    minLength: 1
+                    maxLength: 24
+                  description:
+                    type: string
+                    maxLength: 200
+                  hidden:
+                    type: boolean
+                required:
+                  - id
+                  - slug
+                  - label
+                  - description
+                  - hidden
+                additionalProperties: false
+        "401":
+          description: 需要登录。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 需要登录。
+        "403":
+          description: 只有版主可以维护站点字典。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 只有版主可以维护站点字典。
+        "409":
+          description: 同名或同 slug 的标签已存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 同名或同 slug 的标签已存在。
+        "422":
+          description: 标签文本非法。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 标签文本非法。
+      x-implementation-status: implemented
+  /api/forum/tags/{tagId}:
+    patch:
+      operationId: updateServerTag
+      tags:
+        - 论坛业务
+      summary: 维护站点标签
+      description: |-
+        仅版主可用。slug 不可修改；改 label 会同步所有引用该标签的文章展示文本，hidden 只做软隐藏。
+
+        生产使用 HttpOnly session cookie；x-user-id 仅供显式启用的本地 demo 模式。
+      parameters:
+        - name: tagId
+          in: path
+          required: true
+          description: 路径参数 tagId
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+        - name: x-user-id
+          in: header
+          required: false
+          description: 仅限本地 demo：论坛身份 ID author、reader 或 moderator。preview/production 会忽略该请求头。
+          schema:
+            type: string
+            enum:
+              - author
+              - reader
+              - moderator
+            default: reader
+          example: reader
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        description: 请求字段由共享 Zod 契约校验。
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                description:
+                  type: string
+                  maxLength: 200
+                hidden:
+                  type: boolean
+              additionalProperties: false
+      responses:
+        "200":
+          description: 更新后的站点标签。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 128
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
+                  slug:
+                    type: string
+                    minLength: 1
+                    maxLength: 48
+                  label:
+                    type: string
+                    minLength: 1
+                    maxLength: 24
+                  description:
+                    type: string
+                    maxLength: 200
+                  hidden:
+                    type: boolean
+                required:
+                  - id
+                  - slug
+                  - label
+                  - description
+                  - hidden
+                additionalProperties: false
+        "401":
+          description: 需要登录。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 需要登录。
+        "403":
+          description: 只有版主可以维护站点字典。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 只有版主可以维护站点字典。
+        "404":
+          description: 标签不存在。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 标签不存在。
+        "409":
+          description: 改名后与既有标签冲突。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 改名后与既有标签冲突。
+        "422":
+          description: 标签文本非法或没有提供任何字段。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        minLength: 1
+                      message:
+                        type: string
+                        minLength: 1
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties:
+                          type: object
+                          description: 递归节点，完整结构由 @ricetext/contracts 的 Zod 契约校验。
+                          additionalProperties: true
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                required:
+                  - error
+                additionalProperties: false
+              example:
+                error:
+                  code: EXAMPLE_ERROR
+                  message: 标签文本非法或没有提供任何字段。
+      x-implementation-status: implemented
   /api/auth/password/login:
     post:
       operationId: passwordLogin

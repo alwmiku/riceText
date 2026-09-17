@@ -7,3 +7,4 @@ export * from "./client.js";
 export * from "./document-policy.js";
 export * from "./emoji-catalog.js";
 export * from "./document-traversal.js";
+export * from "./tags.js";

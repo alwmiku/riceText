@@ -5,7 +5,7 @@
 // `d1 execute --file`，批处理里出现错误时整批回滚，不会留下半份演示数据。
 // 表结构不在这里定义——唯一的 schema 来源是 apps/worker/migrations。
 import type { JSONContent } from "@ricetext/document-core";
-import { PASSWORD_HASH_ITERATIONS } from "@ricetext/contracts";
+import { PASSWORD_HASH_ITERATIONS, tagSlug } from "@ricetext/contracts";
 
 /** 演示文章 ID；E2E 用 localStorage 预选它。 */
 export const DEMO_DOCUMENT_ID = "demo-post";
@@ -433,6 +433,96 @@ export function demoSeedStatements(options: DemoSeedOptions): string[] {
       " ON CONFLICT(document_id, id) DO UPDATE SET title=excluded.title, sort_order=excluded.sort_order;",
   );
 
+  // 站点标签字典：slug 由 label 推导，和运行时共用同一份规则。
+  // 版务类（吧务/水贴）与书评类（推书/主攻/主受）都要有，编辑页的候选列表才是真实站点的样子。
+  for (const tag of [
+    { id: "tag-serial", label: "连载中", description: "章节仍在更新的长篇" },
+    { id: "tag-fantasy", label: "奇幻", description: "含超自然设定的故事" },
+    { id: "tag-guide", label: "新手指南", description: "站点使用说明与入门文章" },
+    { id: "tag-moderation", label: "吧务", description: "版务公告、处理结果与规则说明" },
+    { id: "tag-flood", label: "水贴", description: "与正文无关的闲聊灌水" },
+    { id: "tag-recommend", label: "推书", description: "书评与推荐清单" },
+    { id: "tag-gong", label: "主攻", description: "以攻方视角展开的感情线" },
+    { id: "tag-shou", label: "主受", description: "以受方视角展开的感情线" },
+  ]) {
+    statements.push(
+      insert(
+        "tags",
+        {
+          id: tag.id,
+          slug: tagSlug(tag.label),
+          label: tag.label,
+          description: tag.description,
+          hidden: 0,
+          created_by: "moderator",
+          created_at: now,
+          updated_at: now,
+        },
+        "OR IGNORE",
+      ),
+    );
+  }
+
+  // 演示文章同时带两类标签：前两个引用站点字典，最后一个只属于这篇文章。
+  statements.push(
+    insert(
+      "document_tags",
+      {
+        document_id: DEMO_DOCUMENT_ID,
+        slug: tagSlug("连载中"),
+        label: "连载中",
+        tag_id: "tag-serial",
+        source: "server",
+        position: 0,
+        created_by: "author",
+        created_at: now,
+      },
+      "OR IGNORE",
+    ),
+    insert(
+      "document_tags",
+      {
+        document_id: DEMO_DOCUMENT_ID,
+        slug: tagSlug("奇幻"),
+        label: "奇幻",
+        tag_id: "tag-fantasy",
+        source: "server",
+        position: 1,
+        created_by: "author",
+        created_at: now,
+      },
+      "OR IGNORE",
+    ),
+    insert(
+      "document_tags",
+      {
+        document_id: DEMO_DOCUMENT_ID,
+        slug: tagSlug("慢热"),
+        label: "慢热",
+        tag_id: null,
+        source: "author",
+        position: 2,
+        created_by: "author",
+        created_at: now,
+      },
+      "OR IGNORE",
+    ),
+    insert(
+      "document_tags",
+      {
+        document_id: DEMO_DOCUMENT_ID,
+        slug: tagSlug("推书"),
+        label: "推书",
+        tag_id: "tag-recommend",
+        source: "server",
+        position: 3,
+        created_by: "author",
+        created_at: now,
+      },
+      "OR IGNORE",
+    ),
+  );
+
   statements.push(
     insert(
       "comment_threads",
@@ -543,23 +633,41 @@ export function demoSeedStatements(options: DemoSeedOptions): string[] {
       ");",
   );
   for (const suggestion of DEMO_SUGGESTIONS) {
+    const row: Record<string, string | number | null> = {
+      id: suggestion.id,
+      document_id: DEMO_DOCUMENT_ID,
+      chapter_id: suggestion.chapterId,
+      chapter_title: suggestion.chapterTitle,
+      line_no: suggestion.lineNo,
+      line_text: suggestion.lineText,
+      from_text: suggestion.fromText,
+      to_text: suggestion.toText,
+      reason: suggestion.reason,
+      status: "pending",
+      author_id: suggestion.authorId,
+      reviewer_id: null,
+      created_at: now,
+      reviewed_at: null,
+    };
+    const columns = Object.keys(row);
+    // 章节是稳定 ID、可能被上传或重排换成新的身份：目标章节已不在时跳过这条演示建议。
+    // suggestions.chapter_id 有外键，直接插入会让整份种子（连同标签、投票等）一起回滚，
+    // 因此这里用带 EXISTS 的 INSERT ... SELECT，而不是无条件 INSERT。
     statements.push(
-      insert("suggestions", {
-        id: suggestion.id,
-        document_id: DEMO_DOCUMENT_ID,
-        chapter_id: suggestion.chapterId,
-        chapter_title: suggestion.chapterTitle,
-        line_no: suggestion.lineNo,
-        line_text: suggestion.lineText,
-        from_text: suggestion.fromText,
-        to_text: suggestion.toText,
-        reason: suggestion.reason,
-        status: "pending",
-        author_id: suggestion.authorId,
-        reviewer_id: null,
-        created_at: now,
-        reviewed_at: null,
-      }),
+      "INSERT INTO suggestions(" +
+        columns.join(", ") +
+        ") SELECT " +
+        columns
+          .map((column) => {
+            const value = row[column]!;
+            return value === null ? "NULL" : quote(value);
+          })
+          .join(", ") +
+        " WHERE EXISTS (SELECT 1 FROM chapters WHERE document_id = " +
+        quote(DEMO_DOCUMENT_ID) +
+        " AND id = " +
+        quote(suggestion.chapterId) +
+        ");",
     );
   }
   return statements;
@@ -584,6 +692,8 @@ export const EMPTY_DOCUMENTS_SQL = [
   "DELETE FROM document_mutations;",
   "DELETE FROM document_revisions;",
   "DELETE FROM document_acl;",
+  "DELETE FROM document_tags;",
+  "DELETE FROM tags;",
   "DELETE FROM documents;",
 ];
 

@@ -15,8 +15,10 @@ import {
   CreateDocumentChapterRequestSchema,
   CreateSuggestionBatchRequestSchema,
   CreateSuggestionRequestSchema,
+  CreateTagRequestSchema,
   CursorQuerySchema,
   DeleteDocumentChapterResponseSchema,
+  DocumentTagsSchema,
   ForumSessionSchema,
   DiceRollSchema,
   DocumentEnvelopeSchema,
@@ -33,6 +35,7 @@ import {
   ResolveReplyGateRequestSchema,
   ResolveReplyGateResponseSchema,
   RevisionPageSchema,
+  ServerTagListSchema,
   RevisionQuerySchema,
   RevisionSnapshotQuerySchema,
   ReviewSuggestionBatchRequestSchema,
@@ -52,9 +55,12 @@ import {
   SuggestionSchema,
   SyncNovelChaptersRequestSchema,
   SyncNovelChaptersResponseSchema,
+  TagSchema,
   UpdateDocumentChapterRequestSchema,
   UpdateDocumentRequestSchema,
   UpdateDocumentStepsRequestSchema,
+  UpdateDocumentTagsRequestSchema,
+  UpdateTagRequestSchema,
   VoteCommentRequestSchema,
 } from "./schemas.js";
 
@@ -134,6 +140,7 @@ const documentChapterParams = z
   .object({ documentId: EntityIdSchema, chapterId: EntityIdSchema })
   .strict();
 const documentQuery = z.object({ documentId: EntityIdSchema }).strict();
+const tagParams = z.object({ tagId: EntityIdSchema }).strict();
 
 /** 全部 REST 契约；OpenAPI 文档与客户端均由此生成。 */
 export const contractRoutes: readonly ContractRoute[] = [
@@ -877,6 +884,96 @@ export const contractRoutes: readonly ContractRoute[] = [
     responses: {
       200: { description: "实名用户与所选 optionId。", schema: PollVotePageSchema },
       404: { description: "投票不存在。", schema: ApiErrorSchema },
+    },
+  },
+  {
+    operationId: "listDocumentTags",
+    method: "GET",
+    path: "/api/documents/:documentId/tags",
+    tags: ["文档"],
+    implementationStatus: "implemented",
+    summary: "读取文章标签",
+    description:
+      "标签属于整篇文章，与章节无关。编辑器额外看到已隐藏的服务器标签；读者只看到可展示标签。",
+    params: documentParams,
+    responses: {
+      200: { description: "按展示顺序排列的标签。", schema: DocumentTagsSchema },
+      401: { description: "游客不能读取文章标签。", schema: ApiErrorSchema },
+      404: { description: "文档不存在。", schema: ApiErrorSchema },
+    },
+  },
+  {
+    operationId: "updateDocumentTags",
+    method: "PUT",
+    path: "/api/documents/:documentId/tags",
+    tags: ["文档"],
+    implementationStatus: "implemented",
+    summary: "全量替换文章标签",
+    description:
+      "需要 author 或 moderator。只发送标签文本：命中未隐藏的站点标签时归为服务器标签，否则建成只属于这篇文章的作者标签（不会写进站点字典）。标签是元数据，不产生新修订、不改变 current_revision。",
+    params: documentParams,
+    body: UpdateDocumentTagsRequestSchema,
+    responses: {
+      200: { description: "替换后的标签集合。", schema: DocumentTagsSchema },
+      401: { description: "需要登录。", schema: ApiErrorSchema },
+      403: { description: "当前身份无编辑权限。", schema: ApiErrorSchema },
+      404: { description: "文档不存在。", schema: ApiErrorSchema },
+      422: {
+        description:
+          "标签文本非法（TAG_LABEL_INVALID）或超过 5 个（TAG_LIMIT_EXCEEDED）。",
+        schema: ApiErrorSchema,
+      },
+    },
+  },
+  {
+    operationId: "listServerTags",
+    method: "GET",
+    path: "/api/forum/tags",
+    tags: ["论坛业务"],
+    implementationStatus: "implemented",
+    summary: "读取站点标签字典",
+    description: "可选标签来源；默认不返回已隐藏条目。",
+    responses: {
+      200: { description: "按展示名排序的站点标签。", schema: ServerTagListSchema },
+      401: { description: "需要登录。", schema: ApiErrorSchema },
+    },
+  },
+  {
+    operationId: "createServerTag",
+    method: "POST",
+    path: "/api/forum/tags",
+    tags: ["论坛业务"],
+    implementationStatus: "implemented",
+    summary: "新建站点标签",
+    description:
+      "仅版主可用。slug 由标签文本推导且之后不可修改；同 slug 视为重复，返回 409。",
+    body: CreateTagRequestSchema,
+    responses: {
+      201: { description: "新建的站点标签。", schema: TagSchema },
+      401: { description: "需要登录。", schema: ApiErrorSchema },
+      403: { description: "只有版主可以维护站点字典。", schema: ApiErrorSchema },
+      409: { description: "同名或同 slug 的标签已存在。", schema: ApiErrorSchema },
+      422: { description: "标签文本非法。", schema: ApiErrorSchema },
+    },
+  },
+  {
+    operationId: "updateServerTag",
+    method: "PATCH",
+    path: "/api/forum/tags/:tagId",
+    tags: ["论坛业务"],
+    implementationStatus: "implemented",
+    summary: "维护站点标签",
+    description:
+      "仅版主可用。slug 不可修改；改 label 会同步所有引用该标签的文章展示文本，hidden 只做软隐藏。",
+    params: tagParams,
+    body: UpdateTagRequestSchema,
+    responses: {
+      200: { description: "更新后的站点标签。", schema: TagSchema },
+      401: { description: "需要登录。", schema: ApiErrorSchema },
+      403: { description: "只有版主可以维护站点字典。", schema: ApiErrorSchema },
+      404: { description: "标签不存在。", schema: ApiErrorSchema },
+      409: { description: "改名后与既有标签冲突。", schema: ApiErrorSchema },
+      422: { description: "标签文本非法或没有提供任何字段。", schema: ApiErrorSchema },
     },
   },
 ];

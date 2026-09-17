@@ -13,6 +13,7 @@ import ReadPage from './ReadPage';
 const mocks = vi.hoisted(() => ({
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
+  getDocumentTags: vi.fn(),
   getLongTextChapter: vi.fn(),
   listForumChapters: vi.fn(),
   listDocuments: vi.fn(),
@@ -27,6 +28,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../lib/api', () => ({
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
+  getDocumentTags: mocks.getDocumentTags,
   getLongTextChapter: mocks.getLongTextChapter,
   missingDocument: (id: string) => ({
     id,
@@ -102,6 +104,7 @@ describe('ReadPage', () => {
       content: interactiveDocument.content,
     });
     mocks.getCommentThread.mockReset().mockResolvedValue(seedComments);
+    mocks.getDocumentTags.mockReset().mockResolvedValue([]);
     mocks.listForumChapters.mockReset().mockResolvedValue([]);
     mocks.listDocuments.mockReset().mockResolvedValue([
       {
@@ -447,5 +450,16 @@ describe('ReadPage', () => {
         screen.getByRole('navigation', { name: '章节目录' }),
       ).toBeInTheDocument(),
     );
+  });
+
+  it('文章标签在阅读页只读展示，并区分服务器标签与自建标签', async () => {
+    mocks.getDocumentTags.mockResolvedValue([
+      { slug: '连载中', label: '连载中', source: 'server', tagId: 'tag-serial' },
+      { slug: '慢热', label: '慢热', source: 'author', tagId: null },
+    ]);
+    renderPage(identities[1]!);
+    expect(await screen.findByText('连载中')).toBeInTheDocument();
+    expect(screen.getByText('慢热')).toBeInTheDocument();
+    expect(screen.getByLabelText('文章标签')).toBeInTheDocument();
   });
 });

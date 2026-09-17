@@ -19,6 +19,7 @@ export function StandardComposeWorkspace({
   saveStatus,
   editor,
   comparison,
+  documentTags,
   identity,
   saveDisabled,
   activeCharCount,
@@ -48,6 +49,8 @@ export function StandardComposeWorkspace({
   editor: ReactNode;
   /** 桌面替换编辑区、窄屏占满正文区的只读比较视图。 */
   comparison?: ReactNode;
+  /** 正文下方的整篇文章区域（当前是标签栏）；与章节无关，因此不进编辑器。 */
+  documentTags?: ReactNode;
   identity: SeedIdentity;
   /** 各章节的服务器隐藏状态（按目录顺序对齐）。 */
   hiddenChapters?: ReadonlyArray<boolean>;
@@ -125,6 +128,7 @@ export function StandardComposeWorkspace({
             </div>
           </div>
           {comparison ?? editor}
+          {documentTags ? <div className="mt-2">{documentTags}</div> : null}
         </section>
         {chapterUnitCan(unit, CHAPTER_EDITOR_CAPABILITIES.remoteTools) ? (
           <ForumBusinessPanel
@@ -230,6 +234,9 @@ export function StandardComposeWorkspace({
         </div>
       </div>
       {comparison ?? editor}
+      {documentTags ? (
+        <div className="mx-auto mt-2 max-w-[860px] px-1">{documentTags}</div>
+      ) : null}
     </section>
   );
 }

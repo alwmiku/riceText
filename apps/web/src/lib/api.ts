@@ -35,6 +35,7 @@ export {
 } from "./api/suggestions";
 export { uploadAsset } from "./api/assets";
 export { createDice } from "./api/dice";
+export { getDocumentTags, listServerTags, saveDocumentTags } from "./api/tags";
 export { getAttachment, purchaseAttachment } from "./api/attachments";
 export { getPoll, votePoll, getPollVotes } from "./api/polls";
 export type { ForumSuggestion } from "./types";

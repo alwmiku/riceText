@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -30,6 +30,7 @@ import { useArticleSelection } from "../features/documents/useArticleSelection";
 import { LongTextWorkspace } from "../features/compose/LongTextWorkspace";
 import { SaveStatus } from "../features/compose/SaveStatus";
 import { StandardComposeWorkspace } from "../features/compose/StandardComposeWorkspace";
+import { DocumentTagsBar } from "../features/tags/DocumentTagsBar";
 import { useChapterUpload } from "../features/compose/useChapterUpload";
 import { useComposeDocument } from "../features/compose/useComposeDocument";
 import { useLongTextWorkspace } from "../features/compose/useLongTextWorkspace";
@@ -39,13 +40,17 @@ import { RichTextEditor } from "../features/editor/RichTextEditor";
 import {
   deleteDocumentChapter,
   getCommentThread,
+  getDocumentTags,
   getLongTextChapter,
   listForumChapters,
+  listServerTags,
+  saveDocumentTags,
   setDocumentChapterHidden,
   uploadLongTextChapter,
 } from "../lib/api";
 import { getRevision } from "../lib/api/revisions";
 import { revisionQueryKeys } from "../lib/revision-query-keys";
+import { tagQueryKeys } from "../lib/tag-query-keys";
 import {
   appendChapter,
   chapterTextLines,
@@ -256,6 +261,30 @@ function ComposeDocumentSession({
     queryFn: ({ signal }) => getLongTextChapter(activeDocumentId, activeChapter!.id, signal),
     enabled: articleSelection.authenticated && usesUploadedChapters,
   });
+  // 标签属于整篇文章：与当前章节、编辑器内容都无关，因此不进 useComposeDocument。
+  const documentTagsQuery = useQuery({
+    queryKey: tagQueryKeys.document(activeDocumentId),
+    queryFn: ({ signal }) => getDocumentTags(activeDocumentId, signal),
+    enabled: articleSelection.authenticated && compose.articleStarted,
+  });
+  const serverTagsQuery = useQuery({
+    queryKey: tagQueryKeys.serverDictionary(),
+    queryFn: ({ signal }) => listServerTags(signal),
+    enabled: canEditSelected,
+    // 站点字典由版主维护，短时间内重复进出编辑页不必重取。
+    staleTime: 5 * 60 * 1000,
+  });
+  const documentTagsMutation = useMutation({
+    mutationFn: (labels: string[]) => saveDocumentTags(activeDocumentId, labels),
+    onSuccess: (items) => {
+      queryClient.setQueryData(tagQueryKeys.document(activeDocumentId), items);
+    },
+  });
+  const documentTagsHint = !compose.articleStarted
+    ? "文章保存到服务器后就可以加标签"
+    : !canEditSelected
+      ? "只有作者或版主可以修改文章标签"
+      : undefined;
   const uploadedChapter = chapterQuery.data;
   const resolvedContent = useMemo(
     () =>
@@ -1036,6 +1065,21 @@ function ComposeDocumentSession({
           }
           editor={editor}
           comparison={comparisonView}
+          documentTags={
+            <DocumentTagsBar
+              tags={documentTagsQuery.data ?? []}
+              candidates={serverTagsQuery.data ?? []}
+              readOnly={!canEditSelected || !compose.articleStarted}
+              readOnlyHint={documentTagsHint}
+              saving={documentTagsMutation.isPending}
+              error={
+                documentTagsMutation.error instanceof Error
+                  ? documentTagsMutation.error.message
+                  : undefined
+              }
+              onChange={(labels) => documentTagsMutation.mutate(labels)}
+            />
+          }
           identity={identity}
           saveDisabled={!canWriteChapter || publishingScope === viewScope}
           syncing={syncing}

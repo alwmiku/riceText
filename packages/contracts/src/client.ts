@@ -21,6 +21,8 @@ import type {
   SuggestionBatchSchema,
   SuggestionSchema,
   DocumentListItem,
+  DocumentTag,
+  Tag,
 } from "./schemas.js";
 
 /** 非 2xx 响应抛出的类型化错误。 */
@@ -387,6 +389,30 @@ export interface RiceTextApiClient {
     cursor?: string,
     signal?: AbortSignal,
   ): Promise<z.infer<typeof PollVotePageSchema>>;
+  /** 读取整篇文章的标签（与章节无关）。 */
+  listDocumentTags(
+    documentId: string,
+    signal?: AbortSignal,
+  ): Promise<{ items: DocumentTag[] }>;
+  /** 全量替换文章标签；来源由服务端按站点字典解析。 */
+  updateDocumentTags(
+    documentId: string,
+    body: { items: Array<{ label: string }> },
+    signal?: AbortSignal,
+  ): Promise<{ items: DocumentTag[] }>;
+  /** 读取站点标签字典（不含隐藏条目）。 */
+  listServerTags(signal?: AbortSignal): Promise<{ items: Tag[] }>;
+  /** 新建站点标签（仅版主）。 */
+  createServerTag(
+    body: { label: string; description?: string },
+    signal?: AbortSignal,
+  ): Promise<Tag>;
+  /** 维护站点标签（仅版主）；slug 不可改。 */
+  updateServerTag(
+    tagId: string,
+    body: { label?: string; description?: string; hidden?: boolean },
+    signal?: AbortSignal,
+  ): Promise<Tag>;
 }
 
 /** 创建零依赖的类型化 fetch 客户端。 */
@@ -614,5 +640,22 @@ export function createApiClient(options: ApiClientOptions = {}): RiceTextApiClie
       }),
     listPollVotes: (id, cursor, signal) =>
       request(`/api/forum/polls/${id}/votes${query({ cursor })}`, { signal }),
+    listDocumentTags: (documentId, signal) =>
+      request(`/api/documents/${documentId}/tags`, { signal }),
+    updateDocumentTags: (documentId, body, signal) =>
+      request(`/api/documents/${documentId}/tags`, {
+        method: "PUT",
+        body: json(body),
+        signal,
+      }),
+    listServerTags: (signal) => request("/api/forum/tags", { signal }),
+    createServerTag: (body, signal) =>
+      request("/api/forum/tags", { method: "POST", body: json(body), signal }),
+    updateServerTag: (tagId, body, signal) =>
+      request(`/api/forum/tags/${tagId}`, {
+        method: "PATCH",
+        body: json(body),
+        signal,
+      }),
   };
 }

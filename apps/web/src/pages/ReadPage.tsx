@@ -21,6 +21,7 @@ import { TocSidebar } from "../features/viewer/TocSidebar";
 import {
   getCommentThread,
   getDocument,
+  getDocumentTags,
   getLongTextChapter,
   listForumChapters,
   missingDocument,
@@ -29,12 +30,15 @@ import {
 } from "../lib/api";
 import { chapterTextLines } from "../lib/chapters";
 import { chapterQueryKeys } from "../lib/chapter-query-keys";
+import { tagQueryKeys } from "../lib/tag-query-keys";
 import {
   resolveChapterContent,
   resolveChapterSources,
   type ChapterIdentity,
 } from "../lib/chapter-source";
 import { Skeleton } from "../components/ui/skeleton";
+import { TAG_CHIP_BASE, tagChipClassName, tagChipStyle } from "../features/tags/tag-colors";
+import { cn } from "../lib/utils";
 import type { CommentReply } from "../lib/types";
 import { formatTime } from "../lib/utils";
 
@@ -116,6 +120,12 @@ export default function ReadPage() {
     queryKey: chapterQueryKeys.content(documentId, activeChapter?.id),
     queryFn: ({ signal }) => getLongTextChapter(documentId, activeChapter!.id, signal),
     enabled: articleSelection.authenticated && activeChapter?.source === "standalone",
+  });
+  // 文章标签只读展示：读者看不到已隐藏的服务器标签（服务端按编辑权过滤）。
+  const { data: documentTags = [] } = useQuery({
+    queryKey: tagQueryKeys.document(documentId),
+    queryFn: ({ signal }) => getDocumentTags(documentId, signal),
+    enabled: Boolean(documentId) && articleSelection.authenticated,
   });
   const resolvedContent = useMemo(
     () =>
@@ -313,6 +323,21 @@ export default function ReadPage() {
                 </div>
               ) : null}
             </div>
+            {documentTags.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5" aria-label="文章标签">
+                {documentTags.map((tag) => (
+                  <span
+                    key={tag.slug}
+                    data-source={tag.source}
+                    title={tag.source === "server" ? "站点标签" : "作者自建标签"}
+                    className={cn(TAG_CHIP_BASE, "text-[11px]", tagChipClassName(tag))}
+                    style={tagChipStyle(tag)}
+                  >
+                    {tag.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </header>
           {contentError ? (
             <p role="alert">

@@ -106,6 +106,15 @@ export async function requireDocumentEditor(
   return principal;
 }
 
+/** 站点字典维护（标签等）只允许版主；作者身份不构成维护权。 */
+export async function requireModerator(context: AppContext): Promise<ForumUser> {
+  const principal = await requirePrincipal(context);
+  if (principal.role !== "moderator") {
+    throw new WorkerHttpError(403, "FORBIDDEN", "只有版主可以维护站点字典");
+  }
+  return principal;
+}
+
 export async function sessionUser(
   context: AppContext,
   current: ForumUser,

@@ -10,6 +10,7 @@ import {
   ResolveMentionRequestSchema,
   ResolveReplyGateRequestSchema,
   CreateSuggestionRequestSchema,
+  CreateTagRequestSchema,
   getContractRoute,
   ReviewSuggestionBatchRequestSchema,
   ReviewSuggestionRequestSchema,
@@ -25,6 +26,8 @@ import {
   StageChapterUploadBatchRequestSchema,
   UpdateDocumentRequestSchema,
   UpdateDocumentStepsRequestSchema,
+  UpdateDocumentTagsRequestSchema,
+  UpdateTagRequestSchema,
   VoteCommentRequestSchema,
   type DocumentEnvelope,
   type SaveNovelChaptersBatchRequest,
@@ -46,6 +49,7 @@ import {
   canEditDocument,
   optionalPrincipal,
   requireDocumentEditor,
+  requireModerator,
   requirePrincipal,
   sessionUser,
 } from "./auth";
@@ -62,6 +66,7 @@ import { D1ForumRepository } from "./repositories/forum-repository";
 import { D1PollRepository } from "./repositories/poll-repository";
 import { D1ReadRepository } from "./repositories/read-repository";
 import { D1SuggestionRepository } from "./repositories/suggestion-repository";
+import { D1TagRepository } from "./repositories/tag-repository";
 import { D1WriteRepository } from "./repositories/write-repository";
 
 type AppBindings = { Bindings: WorkerEnv; Variables: WorkerVariables };
@@ -430,6 +435,35 @@ export function createWorkerApp(): Hono<AppBindings> {
     const repository = new D1ChapterRepository(context.env.DB);
     const result = await repository.delete(input.documentId, input.chapterId);
     return context.json(response("deleteDocumentChapter", 200, result));
+  });
+
+  // 标签属于整篇文章：读时编辑器多看到已隐藏的服务器标签，写时全量替换。
+  app.get("/api/documents/:documentId/tags", async (context) => {
+    const input = params("listDocumentTags", context.req.param()) as { documentId: string };
+    const principal = await requirePrincipal(context);
+    const repository = new D1TagRepository(context.env.DB);
+    if (!(await repository.documentExists(input.documentId))) {
+      throw new WorkerHttpError(404, "DOCUMENT_NOT_FOUND", "文档不存在");
+    }
+    const items = await repository.documentTags(input.documentId, {
+      includeHidden: await canEditDocument(context, input.documentId, principal),
+    });
+    return context.json(response("listDocumentTags", 200, { items }));
+  });
+
+  app.put("/api/documents/:documentId/tags", async (context) => {
+    const input = params("updateDocumentTags", context.req.param()) as { documentId: string };
+    const principal = await requireDocumentEditor(context, input.documentId);
+    const request = UpdateDocumentTagsRequestSchema.parse(
+      await body("updateDocumentTags", context),
+    );
+    const repository = new D1TagRepository(context.env.DB);
+    const items = await repository.replaceDocumentTags(
+      input.documentId,
+      request.items.map((item) => item.label),
+      principal.id,
+    );
+    return context.json(response("updateDocumentTags", 200, { items }));
   });
 
   app.patch("/api/documents/:documentId/steps", async (context) => {
@@ -815,6 +849,30 @@ export function createWorkerApp(): Hono<AppBindings> {
       }
     }
     return context.json(response("listChapters", 200, { items }));
+  });
+
+  app.get("/api/forum/tags", async (context) => {
+    await requirePrincipal(context);
+    const repository = new D1TagRepository(context.env.DB);
+    const items = await repository.serverTags();
+    return context.json(response("listServerTags", 200, { items }));
+  });
+
+  app.post("/api/forum/tags", async (context) => {
+    const principal = await requireModerator(context);
+    const request = CreateTagRequestSchema.parse(await body("createServerTag", context));
+    const repository = new D1TagRepository(context.env.DB);
+    const tag = await repository.createServerTag(request, principal.id);
+    return context.json(response("createServerTag", 201, tag), 201);
+  });
+
+  app.patch("/api/forum/tags/:tagId", async (context) => {
+    const input = params("updateServerTag", context.req.param()) as { tagId: string };
+    await requireModerator(context);
+    const request = UpdateTagRequestSchema.parse(await body("updateServerTag", context));
+    const repository = new D1TagRepository(context.env.DB);
+    const tag = await repository.updateServerTag(input.tagId, request);
+    return context.json(response("updateServerTag", 200, tag));
   });
 
   app.get("/api/forum/session", async (context) => {

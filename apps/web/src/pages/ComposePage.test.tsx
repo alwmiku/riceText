@@ -20,10 +20,13 @@ const mocks = vi.hoisted(() => ({
   flush: vi.fn(),
   getCommentThread: vi.fn(),
   getDocument: vi.fn(),
+  getDocumentTags: vi.fn(),
   getLongTextChapter: vi.fn(),
   listForumChapters: vi.fn(),
   listDocuments: vi.fn(),
+  listServerTags: vi.fn(),
   saveDocument: vi.fn(),
+  saveDocumentTags: vi.fn(),
   restoreRevision: vi.fn(),
   getRevision: vi.fn(),
   setDocumentChapterHidden: vi.fn(),
@@ -46,6 +49,7 @@ vi.mock("../lib/api", () => ({
   deleteDocumentChapter: mocks.deleteDocumentChapter,
   getCommentThread: mocks.getCommentThread,
   getDocument: mocks.getDocument,
+  getDocumentTags: mocks.getDocumentTags,
   getLongTextChapter: mocks.getLongTextChapter,
   missingDocument: (id: string) => ({
     id,
@@ -58,8 +62,10 @@ vi.mock("../lib/api", () => ({
   }),
   listForumChapters: mocks.listForumChapters,
   listDocuments: mocks.listDocuments,
+  listServerTags: mocks.listServerTags,
   restoreRevision: mocks.restoreRevision,
   saveDocument: mocks.saveDocument,
+  saveDocumentTags: mocks.saveDocumentTags,
   setDocumentChapterHidden: mocks.setDocumentChapterHidden,
   uploadLongTextChapter: mocks.uploadLongTextChapter,
 }));
@@ -381,6 +387,19 @@ describe("ComposePage", () => {
       storage: "server",
     });
     mocks.getCommentThread.mockReset().mockResolvedValue([]);
+    mocks.getDocumentTags.mockReset().mockResolvedValue([]);
+    mocks.listServerTags.mockReset().mockResolvedValue([]);
+    // 服务端把提交的文本原样回写成标签，测试只关心提交了什么。
+    mocks.saveDocumentTags
+      .mockReset()
+      .mockImplementation(async (_id: string, labels: string[]) =>
+        labels.map((label) => ({
+          slug: label,
+          label,
+          source: "author" as const,
+          tagId: null,
+        })),
+      );
     mocks.restoreRevision
       .mockReset()
       .mockResolvedValue({ ...defaultDocument, revision: 19, savedAt: "2026-08-20T12:00:00.000Z" });
@@ -1383,5 +1402,46 @@ describe("ComposePage", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "复制本地副本" }));
     expect(writeText).toHaveBeenCalledWith(JSON.stringify(defaultDocument.content, null, 2));
+  });
+
+  it("编辑页底部的标签栏区分服务器标签与自建标签并全量保存", async () => {
+    mocks.listServerTags.mockResolvedValue([
+      {
+        id: "tag-serial",
+        slug: "连载中",
+        label: "连载中",
+        description: "章节仍在更新",
+        hidden: false,
+      },
+    ]);
+    mocks.getDocumentTags.mockResolvedValue([
+      { slug: "慢热", label: "慢热", source: "author", tagId: null },
+    ]);
+    renderPage();
+
+    // 已有标签按来源展示，标签栏在正文下方（不在编辑器内部）。
+    expect(await screen.findByText("慢热")).toBeInTheDocument();
+    expect(document.querySelector('[data-source="author"]')).not.toBeNull();
+    expect(screen.getByText("整篇文章 · 1/5")).toBeInTheDocument();
+
+    // 输入 # 时选取站点标签：提交的是整篇文章的目标标签文本。
+    const input = screen.getByLabelText("输入新标签");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "#" } });
+    fireEvent.click(await screen.findByRole("option", { name: /连载中/ }));
+    await waitFor(() =>
+      expect(mocks.saveDocumentTags).toHaveBeenCalledWith("demo-post", ["慢热", "连载中"]),
+    );
+  });
+
+  it("没有编辑权时标签栏只读，不提供输入框", async () => {
+    mocks.getDocumentTags.mockResolvedValue([
+      { slug: "连载中", label: "连载中", source: "server", tagId: "tag-serial" },
+    ]);
+    // reader 身份：文章列表里 canEdit 为 false。
+    renderPage(identities.find((item) => item.role === "reader")!);
+    expect(await screen.findByText("连载中")).toBeInTheDocument();
+    expect(screen.queryByLabelText("输入新标签")).not.toBeInTheDocument();
+    expect(screen.getByText("只有作者或版主可以修改文章标签")).toBeInTheDocument();
   });
 });
