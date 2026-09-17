@@ -14,7 +14,7 @@ import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { PASSWORD_HASH_ITERATIONS } from "../../packages/contracts/src/schemas.js";
-import { demoSeedStatements, seedSql } from "./d1-seed.js";
+import { demoSeedStatements, EMPTY_DOCUMENTS_SQL, seedSql } from "./d1-seed.js";
 
 const root = resolve(import.meta.dirname, "../..");
 const data = join(root, ".data", "cloudflare-e2e");
@@ -123,8 +123,12 @@ const hash = await webcrypto.subtle.deriveBits(
   256,
 );
 
+// 密码登录用例要求「没有任何文章」：种子只写账号与凭据，并额外清一次文章域
+// （只删不跳过插入是无效的：插入语句紧接着删除就会把演示文章建回来）。
+const emptyDocuments = process.env.CF_E2E_EMPTY_DOCUMENTS === "true";
 const statements = demoSeedStatements({
   now: "2026-09-02T00:00:00.000Z",
+  includeDocuments: !emptyDocuments,
   password: {
     userId: "author",
     username: "writer",
@@ -132,29 +136,7 @@ const statements = demoSeedStatements({
     passwordHash: Buffer.from(hash).toString("base64url"),
   },
 });
-if (process.env.CF_E2E_EMPTY_DOCUMENTS === "true") {
-  // 密码登录用例要求「没有任何文章」：种子照常写入账号与凭据，文章域清空。
-  statements.unshift(
-    "PRAGMA defer_foreign_keys = TRUE;",
-    "DELETE FROM chapter_upload_items;",
-    "DELETE FROM chapter_uploads;",
-    "DELETE FROM suggestion_review_guards;",
-    "DELETE FROM suggestion_batches;",
-    "DELETE FROM suggestions;",
-    "DELETE FROM comment_votes;",
-    "DELETE FROM comment_replies;",
-    "DELETE FROM comment_threads;",
-    "DELETE FROM reply_receipts;",
-    "DELETE FROM reply_gates;",
-    "DELETE FROM chapters;",
-    "DELETE FROM chapter_write_guards;",
-    "DELETE FROM chapter_revisions;",
-    "DELETE FROM document_mutations;",
-    "DELETE FROM document_revisions;",
-    "DELETE FROM document_acl;",
-    "DELETE FROM documents;",
-  );
-}
+if (emptyDocuments) statements.unshift(...EMPTY_DOCUMENTS_SQL);
 await writeFile(seedPath, seedSql(statements), "utf8");
 
 for (const args of [

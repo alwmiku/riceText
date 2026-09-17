@@ -26,6 +26,13 @@ export interface DemoSeedOptions {
   now: string;
   /** 登录凭据；不传时跳过 password_credentials。 */
   password?: DemoPasswordCredential;
+  /**
+   * 是否写入文章域（文档、章节、评论、投票、附件、建议等）。
+   *
+   * 密码登录 E2E 要求数据库里「一篇文章都没有」：此时只写账号与凭据。
+   * 只清空文章域是不够的——种子里的文章插入语句会紧跟删除之后把它们再建回来。
+   */
+  includeDocuments?: boolean;
 }
 
 /** 转义为 SQL 字面量；种子里的中文与 JSON 都经过这一层，避免手写引号出错。 */
@@ -301,7 +308,7 @@ const DEMO_SUGGESTIONS: ReadonlyArray<{
 
 /** 生成演示种子语句；全部幂等（INSERT OR IGNORE / 先删后插固定 ID）。 */
 export function demoSeedStatements(options: DemoSeedOptions): string[] {
-  const { now, password } = options;
+  const { now, password, includeDocuments = true } = options;
   const statements: string[] = [];
 
   for (const user of [
@@ -370,6 +377,9 @@ export function demoSeedStatements(options: DemoSeedOptions): string[] {
       ),
     );
   }
+
+  // 只写账号与凭据的模式（密码登录 E2E）到此为止，文章域整体略过。
+  if (!includeDocuments) return statements;
 
   statements.push(
     insert(
