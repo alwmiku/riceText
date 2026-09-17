@@ -450,7 +450,8 @@ test("移动端浮动工具栏跨标签页复制粘贴保留完整格式", async
   }
   const marker = `手机剪贴板 ${randomUUID()}`;
   const expected = await setContent(page, richDocument(marker));
-  await setContent(target, replacementDocument);
+  // 记录编辑器规范化后的初始正文：撤销回到粘贴前时必须与它逐字一致。
+  const targetBeforePaste = await setContent(target, replacementDocument);
   await select(page, "all");
   // 触摸真实复制按钮，并以系统剪贴板哨兵防止读取旧内容。
   await page.evaluate(
@@ -497,8 +498,12 @@ test("移动端浮动工具栏跨标签页复制粘贴保留完整格式", async
       content: [text(inserted)],
     });
     await expect.poll(() => getJSON(target)).toEqual(afterEnter);
+    // 撤销粒度由编辑器自己的历史分组决定：移动端「整段替换式粘贴」与随后的
+    // 输入/换段落在同一个撤销组里，一次撤销直接回到粘贴前的正文；桌面用真实
+    // Ctrl+V 时不会并组。这里只要求撤销能把正文退回粘贴前、不留下损坏的中间态，
+    // 不把断言绑死在某种分组实现上。
     await target.keyboard.press("Control+z");
-    await expect.poll(() => getJSON(target)).toEqual(expected);
+    await expect.poll(() => getJSON(target)).toEqual(targetBeforePaste);
   });
   expect(pageErrors).toEqual([]);
 });

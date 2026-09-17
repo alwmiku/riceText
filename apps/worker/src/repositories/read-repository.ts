@@ -284,7 +284,9 @@ export class D1ReadRepository {
         order: row.sort_order,
         documentId: row.document_id,
         revision: row.revision,
-        latestRevision: row.latest_revision ?? 0,
+        // 账本只在有内容版本时才有行；上传/历史数据没有账本行时回退到章节行 revision，
+        // 避免对外把已有正文的章节显示成“第 0 版”。
+        latestRevision: row.latest_revision ?? row.revision,
         hasContent: row.content_json !== null,
         savedAt: row.updated_at,
         hidden: row.hidden === 1,

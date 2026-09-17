@@ -72,8 +72,8 @@ test("作者编辑先自动保存本地，点击保存后才上传最小 revisio
   await page.goto("/compose");
   const status = page.locator(".save-status");
   await expect(status).toContainText("已保存到服务器");
-  // 等待服务器真实 revision 渲染完成（占位文档也是 v0 起步，避免读数竞态）。
-  await expect(status).toHaveText(/已保存到服务器 · v[1-9]\d*/);
+  // 等待服务器真实章节版本渲染完成（占位文档也是 v0 起步，避免读数竞态）。
+  await expect(status).toHaveText(/已保存到服务器 · 章节 v[1-9]\d*/);
   const initialStatus = await status.textContent();
   const initialRevision = initialStatus?.match(/v\d+/)?.[0] ?? "";
   await expect(page.locator(".ProseMirror")).toHaveAttribute("contenteditable", "true");
@@ -135,7 +135,8 @@ test("移动端向下阅读时收起页头，向上滚动时恢复", async ({ pa
     localStorage.setItem("ricetext:active-chapter:demo-post", "3");
   });
   await page.goto("/compose");
-  await expect(page.locator(".ProseMirror h2")).toHaveText("第三章 没有寄件人的信");
+  // H1 是唯一的分章层级：章节标题渲染成 h1。
+  await expect(page.locator(".ProseMirror h1")).toHaveText("第三章 没有寄件人的信");
   const header = page.getByRole("banner");
   const directory = page.getByRole("button", { name: "打开章节目录" });
   await expect(directory).toBeVisible();
@@ -204,7 +205,7 @@ test("移动端选择正文后显示浮动修订入口", async ({ page, isMobile
   // 阅读页不使用编辑页的章节键；通过目录选中含“潮声”的第一章。
   await readingDirectory.getByRole("button", { name: /第一章.*潮汐表/ }).click();
   await expect(readingDirectory).toBeHidden();
-  await expect(page.locator(".rt-viewer .ProseMirror h2")).toHaveText("第一章 潮汐表");
+  await expect(page.locator(".rt-viewer .ProseMirror h1")).toHaveText("第一章 潮汐表");
   await readDirectory.click();
   await expect(readingDirectory).toBeVisible();
   await readingDirectory.getByRole("button", { name: "关闭阅读目录", exact: true }).click();

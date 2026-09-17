@@ -47,7 +47,8 @@ function chapter(row: ChapterRow): Chapter {
     order: row.sort_order,
     documentId: row.document_id,
     revision: row.revision,
-    latestRevision: row.latest_revision ?? 0,
+    // 没有账本行的章节（上传/历史数据）回退到章节行 revision，不显示成第 0 版。
+    latestRevision: row.latest_revision ?? row.revision,
     savedAt: row.updated_at,
     hidden: row.hidden === 1,
   });
